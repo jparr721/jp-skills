@@ -66,7 +66,7 @@ Ask the user to name the subsystem in plain English. Examples: "the web authenti
 
 ## Step 2 - Stack Scout and Discovery (parallel)
 
-Dispatch both agents in a single tool-call block.
+Dispatch both agents in parallel.
 
 ### Agent 0 - Stack Scout (fast)
 
@@ -119,7 +119,7 @@ Then ask the user three questions:
 
 ## Step 4 - Architect Agents (parallel, 5 lenses)
 
-Dispatch all five agents in a single tool-call block. Each receives the same confirmed file list, the same `stack_specific_concerns` block appended to its lens prompt, and the same severity threshold.
+Dispatch all five agents in parallel. Each receives the same confirmed file list, the same `stack_specific_concerns` block appended to its lens prompt, and the same severity threshold.
 
 ### Agent 1 - Boundaries and Coupling
 

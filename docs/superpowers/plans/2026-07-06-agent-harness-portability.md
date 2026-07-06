@@ -61,7 +61,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 
 | Skill | Use it when |
 |-------|-------------|
-| [`dark-factory`](dark-factory/SKILL.md) | You want to drive an entire Linear epic (or task) to merged-on-main autonomously - a swarm of implement/review/fix/integrate sub-agents plus a background QA agent, orchestrated under a strict context firewall. Takes a Linear task ID, renames the branch to Linear's `gitBranchName`. Changes code and can merge to `main`. |
+| [`dark-factory`](dark-factory/SKILL.md) | You want to drive an entire Linear epic (or task) to merged-on-main autonomously - a swarm of implement/review/fix/integrate sub-agents plus a background QA agent, orchestrated under a strict context firewall. Takes a Linear task ID and assumes the orchestrator worktree is already on the user-set epic branch. Changes code and can merge to `main`. |
 | [`architecture-audit`](architecture-audit/SKILL.md) | You want a scoped, multi-agent architectural audit of one subsystem - coupling, boundaries, data flow, dependency direction, testability, complexity. Outputs prioritized, TDD-ready tasks. Read-only. |
 | [`nextjs-code-quality-audit`](nextjs-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of a Next.js codebase - refactoring opportunities, misplaced concerns, DRY violations, missing tests, structural issues. Read-only. |
 | [`elysia-code-quality-audit`](elysia-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of an Elysia (Bun) backend - plugin/scope misuse, missing schema validation, DRY violations, security, tests. Tuned for `apps/` monorepos with Drizzle, Better Auth, pg-boss. Read-only. |
