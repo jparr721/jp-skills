@@ -1,6 +1,6 @@
 # skills
 
-A collection of Claude Code skills. Each lives in its own directory with a `SKILL.md`.
+A portable collection of agent skills. Each skill lives in its own directory with a `SKILL.md`.
 
 ## Skills
 
@@ -12,31 +12,42 @@ A collection of Claude Code skills. Each lives in its own directory with a `SKIL
 | [`elysia-code-quality-audit`](elysia-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of an Elysia (Bun) backend - plugin/scope misuse, missing schema validation, DRY violations, security, tests. Tuned for `apps/` monorepos with Drizzle, Better Auth, pg-boss. Read-only. |
 | [`vite-tauri-code-quality-audit`](vite-tauri-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of a Vite + Tauri codebase - IPC boundary issues, misplaced concerns, DRY violations, bundle/build problems, Tauri security misconfig. Read-only. |
 
-## Install (link a skill)
+## Install
 
-There is no install script. Open Claude Code in this repo and ask it to link the skill you want:
+Link a skill directory into the registry for each harness you use. Symlinks keep this repo as the single source of truth, so editing a skill here updates every linked harness.
 
-```
-Link the dark-factory skill to my global registry.
-```
+| Harness | Registry |
+|---------|----------|
+| Claude | `~/.claude/skills/` |
+| OpenCode | `~/.agents/skills/` |
+| Codex | `~/.codex/skills/` |
 
-Or, to pick from the list:
-
-```
-Which skills can I install from this repo? Link the ones I choose.
-```
-
-Claude Code does the work: it symlinks the chosen skill directory into your global registry at `~/.claude/skills/`, so the skill is available in every project without copying files.
-
-## What that does under the hood
-
-For each skill you pick, the link is a single symlink:
+## Link A Skill
 
 ```bash
 ln -s "$PWD/<skill-name>" ~/.claude/skills/<skill-name>
+ln -s "$PWD/<skill-name>" ~/.agents/skills/<skill-name>
+ln -s "$PWD/<skill-name>" ~/.codex/skills/<skill-name>
 ```
 
-Because it is a symlink (not a copy), editing the skill here updates the linked version everywhere immediately.
+## Verify A Link
 
-- **Verify a link:** `ls -la ~/.claude/skills/<skill-name>`
-- **Unlink a skill:** `rm ~/.claude/skills/<skill-name>` (removes only the symlink, never the source)
+```bash
+ls -la ~/.claude/skills/<skill-name>
+ls -la ~/.agents/skills/<skill-name>
+ls -la ~/.codex/skills/<skill-name>
+```
+
+## Unlink A Skill
+
+```bash
+rm ~/.claude/skills/<skill-name>
+rm ~/.agents/skills/<skill-name>
+rm ~/.codex/skills/<skill-name>
+```
+
+Removing a symlink does not remove the source skill directory.
+
+## Harness Notes
+
+Skill instructions are written as generic actions. Each harness maps actions such as dispatching agents, asking the user, reading files, searching files, editing files, and running commands to its native tools.

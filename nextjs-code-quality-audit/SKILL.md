@@ -20,7 +20,7 @@ Dispatch a team of specialized agents to audit a Next.js codebase in parallel. E
 
 ## Agent Team
 
-Dispatch **all five agents in parallel** using the Agent tool. Each agent returns its findings as structured output. After all complete, merge and output directly to the conversation.
+Dispatch **all five agents in parallel**. Each agent returns its findings as structured output. After all complete, merge and output directly to the conversation.
 
 ```dot
 digraph audit {

@@ -34,8 +34,8 @@ Dispatch a team of senior-architect agents to audit a single subsystem named by 
 digraph audit {
   rankdir=LR;
   intake [label="User names\nsubsystem" shape=doublecircle];
-  scout [label="Agent 0\nStack Scout\n(Sonnet)"];
-  discover [label="Discovery\nAgent\n(Sonnet)"];
+  scout [label="Agent 0\nStack Scout\n(Fast)"];
+  discover [label="Discovery\nAgent\n(Fast)"];
   confirm [label="User confirms\nfile list + threshold" shape=diamond];
   arch1 [label="1. Boundaries\n& Coupling"];
   arch2 [label="2. Data Flow\n& State"];
@@ -68,9 +68,9 @@ Ask the user to name the subsystem in plain English. Examples: "the web authenti
 
 Dispatch both agents in a single tool-call block.
 
-### Agent 0 - Stack Scout (Sonnet, fast)
+### Agent 0 - Stack Scout (fast)
 
-A single quick pass to determine the stack and stack-specific concerns. Use Sonnet to keep this cheap; its output gates the prompts of the expensive architect agents downstream.
+A single quick pass to determine the stack and stack-specific concerns. Use a fast, cheaper agent; its output gates the prompts of the architect agents downstream.
 
 **Prompt the agent with:**
 > Read root manifests (`package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `Gemfile`, `composer.json`, `pom.xml`, `build.gradle`), root config files (`next.config.*`, `vite.config.*`, `tsconfig.json`, `tauri.conf.json`, framework markers), and sample file extensions across `src/` or repo root. Return:
@@ -83,9 +83,9 @@ A single quick pass to determine the stack and stack-specific concerns. Use Sonn
 > ```
 > Stack-specific concerns must be architectural, not stylistic. Examples for Next.js: "auth checks belong in middleware, not page components", "RSC/client boundary leaks via client-only imports in server components", "route handlers should delegate to a service layer". For unknown stacks return an empty list.
 
-Dispatch via `Agent` with `subagent_type: "general-purpose"` and `model: "sonnet"`.
+Dispatch as a general-purpose fast agent.
 
-### Discovery Agent (Sonnet, fast)
+### Discovery Agent (fast)
 
 Resolves the user's subsystem name into a concrete file set. Runs in parallel with the Stack Scout.
 
@@ -110,14 +110,14 @@ After both fast agents return, present the user with:
 - The detected stack and stack-specific concerns
 - The four-bucket file list
 
-Then ask the user three questions (use `AskUserQuestion` where possible):
+Then ask the user three questions:
 1. **Confirm or edit the file list.** User may drop adjacent, promote uncertain to core, or add files the discovery agent missed.
 2. **Severity threshold.** Default: Moderate and above; Minor dropped.
 3. **Focus areas to emphasize or skip.** Optional free-text.
 
 **Do not dispatch architect agents until the user confirms.** This is the primary off-the-rails guard. The agents physically cannot examine files outside the confirmed list.
 
-## Step 4 - Architect Agents (Opus, parallel, 5 lenses)
+## Step 4 - Architect Agents (parallel, 5 lenses)
 
 Dispatch all five agents in a single tool-call block. Each receives the same confirmed file list, the same `stack_specific_concerns` block appended to its lens prompt, and the same severity threshold.
 
@@ -274,10 +274,10 @@ Accept the user's selected IDs. Confirm the prioritized list back to them. Then 
 | Step | Who runs | Why |
 |------|----------|-----|
 | 1. Intake | Main thread | User scopes the subsystem |
-| 2a. Stack scout | Sonnet, agent | Cheap pass for stack + concerns |
-| 2b. Discovery | Sonnet, agent | Resolve subsystem to file set |
+| 2a. Stack scout | Fast agent | Cheap pass for stack + concerns |
+| 2b. Discovery | Fast agent | Resolve subsystem to file set |
 | 3. Confirm | Main thread + user | Lock scope, set threshold |
-| 4. 5 lenses | Opus, parallel agents | Independent architectural analysis |
+| 4. 5 lenses | Parallel architect agents | Independent architectural analysis |
 | 5. Synthesis | Main thread | Apply consensus rule, build TDD plans |
 | 6. Prioritize | Main thread + user | User picks; skill stops |
 
@@ -289,4 +289,4 @@ Accept the user's selected IDs. Confirm the prioritized list back to them. Then 
 - **Promoting peeked files into the findings section.** Peeks are for context only. If a peek looks load-bearing, surface it as a scope-expansion candidate and let the user decide.
 - **Writing diffs in the Direction field.** Direction is shape, not code. The user will write the failing test first and let the test shape the diff.
 - **Continuing past the prioritization step.** The skill ends after the user picks priorities. No edits, no commits, no test scaffolding. That is the user's next session.
-- **Using Opus for the stack scout.** Stack detection is mechanical. Sonnet is faster and cheaper and the architect agents need the budget more.
+- **Overspending on the stack scout.** Stack detection is mechanical. Use a fast, cheaper agent and save the strongest reasoning for the architect agents.
