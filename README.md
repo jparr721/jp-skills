@@ -11,6 +11,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 | [`nextjs-code-quality-audit`](nextjs-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of a Next.js codebase - refactoring opportunities, misplaced concerns, DRY violations, missing tests, structural issues. Read-only. |
 | [`elysia-code-quality-audit`](elysia-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of an Elysia (Bun) backend - plugin/scope misuse, missing schema validation, DRY violations, security, tests. Tuned for `apps/` monorepos with Drizzle, Better Auth, pg-boss. Read-only. |
 | [`vite-tauri-code-quality-audit`](vite-tauri-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of a Vite + Tauri codebase - IPC boundary issues, misplaced concerns, DRY violations, bundle/build problems, Tauri security misconfig. Read-only. |
+| [`pr-review-toolkit`](pr-review-toolkit/SKILL.md) | You want a pull-request or git-diff review across comments, tests, error handling, type design, code quality, and simplification opportunities. Read-only unless you explicitly ask for fixes. |
 
 ## Install
 
