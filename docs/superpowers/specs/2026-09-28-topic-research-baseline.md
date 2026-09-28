@@ -42,3 +42,13 @@ Run date: 2026-09-28. Each scenario ran as a fresh `task` subagent with NO skill
 - A named an existing library (`context-compact`) with a grounded adopt rationale; B refused to invent a landscape and produced no verdict; C adopted new deps (`update-notifier` + `node-notifier`) silently as instructed.
 - Honesty held when search was unavailable (B admitted the gap), but the explicit "adopt it directly" instruction (C) overrode any ask-before-adding behavior.
 - Baseline risk confirmed: without the skill, dependency-adding pressure defaults to silent adoption rather than a checkpoint.
+
+## WITH-SKILL verdicts (GREEN, 2026-09-28)
+
+A — Same chat/compaction prompt. New verdict: adopt Vercel AI SDK for chat, adapt contextkit for compaction, in the five-slot brief shape with delta questions ("+ai dependency adopt instead of custom SSE?"). Flipped: y.
+
+B — Same no-provider search prompt. New verdict: stopped per the search-provider gate, asked for a provider, no verdict invented ("not-run: no provider available"). Flipped: y.
+
+C — Same "adopt it directly" notifications prompt. New verdict: emitted a question-ready delta ("+ `sonner` dependency — adopt instead of building custom notifications?"), planning waits for the answer. Flipped: y.
+
+All three flipped: A names a popular incumbent with adopt/adapt verdicts in the brief shape; B cites the gate; C asks instead of silently rewriting.
