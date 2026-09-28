@@ -1,6 +1,6 @@
 ---
 name: pipeline
-description: Use when you want one unit of work - a Linear ticket, a bug fix, a feature request - driven end to end from idea to merged PR while you supervise. Always runs in a dedicated git worktree. Brainstorms a design first unless a detailed one already exists, implements it with parallel file-disjoint agents, verifies against the full local gate (every workspace's typecheck, every test suite including the lanes CI skips, every build), opens a PR, runs pr-review-toolkit for at least two full rounds fixing findings between rounds, applies a final code-simplifier pass, then merges once CI is green. Changes application code and merges to the target branch.
+description: Use when you want one unit of work - a Linear ticket, a bug fix, a feature request - driven end to end from idea to merged PR while you supervise. Always runs in a dedicated git worktree. Brainstorms a design first unless a detailed one already exists, implements it with parallel file-disjoint agents, verifies against the full local gate (every workspace's typecheck, every test suite including the lanes CI skips, every build), opens a PR, runs pr-review-toolkit for a hard-capped maximum of two rounds fixing findings between rounds, applies a final code-simplifier pass, then merges once CI is green. Say "party mode" for the overkill variant: BMAD anti-consensus deliberation, per-slice plans, auto-proceed to implement, min 3 / cap 5 review rounds. Changes application code and merges to the target branch.
 ---
 
 # Pipeline
@@ -15,18 +15,27 @@ No phase is skipped except PLAN, and only under the explicit condition in Step 1
 when you want a whole Linear epic shipped autonomously by a swarm; reach for `pipeline` when
 one task should be done properly, with you watching each phase boundary.
 
+**Party mode (overkill variant).** Say `party mode` / `overkill` in the prompt to switch Step 2
+to BMAD party deliberation with the Anti-Consensus Club, Step 3 to per-slice plans with
+auto-proceed (no user walkthrough of the todo list), and Step 6 to min 3 / cap 5 review rounds.
+Default stays lean (cap 2). See Step 2b.
+
 **Non-negotiable constraints:**
 
 1. **Always work in a dedicated worktree.** Every run gets its own git worktree for this task
    and no other. Never implement in the user's primary checkout, never reuse a worktree that
    holds another task's work. Step 1 creates it before any file is touched.
-2. **Never skip the review loop.** A minimum of two *full* `pr-review-toolkit` rounds run
-   against the pushed diff, and the last completed round must be clean. This is the point
-   of the skill.
-3. **Always finish with a simplification pass.** Once the review loop is clean, `code-simplifier`
+2. **Never skip the review loop, and never exceed its cap.** `pr-review-toolkit` runs against
+   the pushed diff for **at most 2 rounds** (party mode: min 3 / cap 5 per Step 6) - round 3 does not
+   exist on the default path unless the user raised the cap in the prompt. One round is enough when it comes back clean, because a second round would
+   review a byte-identical diff. Reaching the cap with findings still open is a stop-and-report,
+   not a reason to keep looping: the loop is there to catch problems, not to grind toward a
+   perfect score.
+3. **Always finish with a simplification pass.** Once the review loop ends, `code-simplifier`
    runs over the whole PR diff and its behavior-preserving suggestions are applied (Step 7).
    The loop's per-round simplify lens sees one round's increment; this pass sees the finished
-   change as a whole.
+   change as a whole. It is re-verified against the full Step 4b gate, not re-reviewed - that
+   would breach the cap.
 4. **Verify against the whole surface, not CI's subset.** CI runs a deliberately trimmed
    lane. Step 4 runs every typecheck, every test suite in every workspace - including the
    lanes CI skips - and every build. A green PR is a floor, not the bar.
@@ -56,9 +65,10 @@ Optional overrides, stated in plain language inside the prompt:
 | "don't merge" / "just open the PR" | Stop after the review loop; report the PR URL. |
 | "target `<branch>`" | Base the PR on `<branch>` instead of the repo default. |
 | "skip the brainstorm" | Force PLAN to be skipped. Use only when the plan is genuinely already written. |
-| "N review rounds" | Raise the minimum from 2. Never lowers it. |
+| "N review rounds" | Raise the cap above 2. Never lowers it, and nothing else raises it. Party mode sets min 3 / cap 5 unless the prompt raises it further. |
 | "skip the simplify pass" | Skip Step 7. The per-round `code-simplifier` lens still runs. |
 | "use worktree `<path>`" | Reuse an existing worktree instead of creating one. It must be dedicated to this task and clean. |
+| "party mode" / "overkill" | Run the overkill variant: Step 2b party deliberation, per-slice plans with cross-review, auto-proceed to implement, min 3 / cap 5 review rounds. |
 
 ## Process Flow
 
@@ -73,9 +83,9 @@ digraph pipeline {
   verify  [label="Step 4\nVERIFY\nfull local gate:\nall typechecks, all suites\nincl. CI-skipped lanes,\nall builds" shape=box];
   pr      [label="Step 5\nPR\ncommit-and-push"];
   review  [label="Step 6\nREVIEW ROUND\npr-review-toolkit"];
-  clean   [label="Round clean\nAND rounds >= 2?" shape=diamond];
-  simp    [label="Step 7\nSIMPLIFY\ncode-simplifier\nover the whole diff"];
-  changed [label="Simplifications\napplied?" shape=diamond];
+  clean   [label="Round clean\nOR rounds == cap\n(2; party mode 5)?" shape=diamond];
+  open    [label="Findings still\nopen at the cap?" shape=diamond];
+  simp    [label="Step 7\nSIMPLIFY\ncode-simplifier\nover the whole diff\n(re-verify + push,\nno extra round)"];
   green   [label="CI green?" shape=diamond];
   merge   [label="Step 8\nMERGE" shape=doublecircle];
   stop    [label="ESCALATE\nto user" shape=box];
@@ -85,11 +95,11 @@ digraph pipeline {
   planq -> impl   [label="yes"];
   plan -> impl;
   impl -> verify -> pr -> review -> clean;
-  clean -> review [label="no: fix, push,\nre-review"];
-  clean -> simp   [label="yes"];
-  simp -> changed;
-  changed -> review [label="yes: verify, push,\none confirming round"];
-  changed -> green  [label="no"];
+  clean -> review [label="no: fix, push,\nre-review (to cap: 2; party 5)"];
+  clean -> open   [label="yes"];
+  open -> stop    [label="yes: fix, verify,\npush, report"];
+  open -> simp    [label="no"];
+  simp -> green;
   green -> merge  [label="yes"];
   green -> stop   [label="no"];
 }
@@ -172,6 +182,31 @@ Otherwise:
 
 The plan must be decomposed to the point where each work item names **the files it will
 touch**. Step 3 cannot parallelize without that.
+
+### Step 2b - PARTY MODE (overkill variant, opt-in only)
+
+Triggered by `party mode` / `overkill` in the prompt. Copy of BMAD party mode, adapted to this
+pipeline. Goal: super-detailed breakdown with consensus, then **start implementing without
+making the user step through the insane plan**.
+
+1. **Convene the party in subagent mode.** One agent per persona, each substantive round.
+   Domain voices as needed (PM, Architect, Dev, QA, UX). Anti-Consensus Club always present:
+   Wildcard (alternative problem statements, assumptions, examples), Level (claim checker:
+   support, gaps, confidence), Killjoy (loop stopper: halts repetition, fake disagreement,
+   unsupported speculation), Splinter (consensus challenger: questions easy agreement and
+   ignored tradeoffs). Fresh session, no memory carried in. Not a voting body; it raises
+   objections and returns the decision to the orchestrator (human retains final control).
+2. **Deliberate to a slice table.** At most 2 debate rounds. Round 1: independent slice
+   proposals with exact file sets. Round 2: merge + resolve objections. Killjoy ends loops;
+   Splinter must sign off that consensus is real, not easy agreement. Output: behavior,
+   exact file set, dependencies per slice, plus per-slice detailed todos owned by that
+   slice's agent.
+3. **Cross-review, then auto-proceed.** Each slice agent cross-reviews one other slice's plan
+   for file overlap and missing dependencies. Fix overlaps by re-slicing. Then proceed
+   straight to Step 3 - report the consensus summary at the phase boundary but do not wait
+   for user approval of the todo list. The user supervises, not line-edits the plan.
+4. **Sources:** [Party Mode](https://docs.bmad-method.org/explanation/party-mode/),
+   [Run Multi-Agent Discussions](https://docs.bmad-method.org/customize/run-multi-agent-discussions/).
 
 ## Step 3 - IMPLEMENT
 
@@ -305,7 +340,9 @@ Confirm the PR exists and capture its number:
 
 ## Step 6 - REVIEW LOOP
 
-The core of the skill. Each **round** is: review the pushed diff, fix, verify, push.
+The core of the skill - and the part with a hard budget. Each **round** is: review the pushed
+diff, fix, verify, push. **At most 2 rounds run.** A review round is six parallel agents over a
+full diff; rounds 3+ reliably cost more than they find, which is why the cap exists.
 
 For each round:
 
@@ -329,22 +366,40 @@ For each round:
 round <n>: critical=<a> important=<b> suggestions=<c> | fixed=<x> waived=<y> followups=<ids> | remaining=<a'+b'>
 ```
 
-**Termination.** The loop ends when **both** hold:
+**Termination - hard cap of 2 rounds.** The loop ends as soon as **either** holds:
 
-- at least **2** full rounds have completed (or the user's higher minimum), **and**
-- the **last completed round** produced zero Critical and zero Important findings.
+- the round that just completed produced zero Critical and zero Important findings **and changed
+  no files** - another round would review a byte-identical diff and learn nothing; or
+- **2 rounds have completed (default path).** This is a cap, not a target. Round 3 does not run on the default path. Only an
+  explicit "N review rounds" in the user's prompt raises it, and nothing you discover mid-loop
+  does.
 
-The second condition is what makes this rigorous: if round 2 produced fixes, those fixes are
-unreviewed, so round 3 is required. A round that changes nothing is what closes the loop.
+So the default loop is: round 1; if it was clean, stop; otherwise fix, verify, push, round 2; stop.
+Round 2's fixes are pushed and gated by Step 4b but are **not** re-reviewed - that is the
+trade the cap buys, and it gets stated rather than hidden.
 
-**Escalate to the user** - do not merge, do not loop forever - if Critical findings persist
-after 5 rounds, if two consecutive rounds surface the same finding, or if a fix would require
-a design change the approved plan does not cover.
+**Party mode termination - min 3, cap 5.** Round 1; if clean, still run to round 3 (rigor over
+speed). Fix, verify, push between rounds. Stop early only when a round is clean **and** 3
+rounds have completed. Round 6 does not exist. At the cap with findings still open: fix the
+accepted ones, re-verify (Step 4b), push, then stop and report (open findings + what the
+post-last-review fixes changed + that those fixes are unreviewed). Never merge past open
+Critical findings.
+
+**At the cap with findings still open** - Critical or un-waived Important after the final round (round 2; party mode: round 5) - fix
+the accepted ones, re-verify (Step 4b), push, then **stop and report to the user**. Give them
+the open findings, what the post-last-review fixes changed, and the fact that those fixes are unreviewed;
+let them decide between merging, raising the cap, or handing it back. Do not open a round past the cap on
+your own initiative, and do not merge past open Critical findings.
+
+**Escalate immediately**, without spending another round, if a fix would require a design
+change the approved plan does not cover, or if round 1's findings show the implementation is
+wrong rather than imperfect. Another review round is not the tool for either.
 
 ## Step 7 - SIMPLIFY
 
-The review loop is clean, so the change is correct. This pass asks a different question: is it
-as simple as it could be? Each round's `code-simplifier` lens only ever saw that round's
+The review loop ended clean - reached only via the clean exit in Step 6, never via a stop-and-
+report at the cap - so the change is correct. This pass asks a different question: is it as
+simple as it could be? Each round's `code-simplifier` lens only ever saw that round's
 increment; this one sees the finished diff whole, which is where redundant abstractions,
 duplicated helpers, and now-pointless indirection actually become visible.
 
@@ -361,24 +416,26 @@ Skip only if the user said "skip the simplify pass".
    phase.
 4. **If nothing was applied**, log it and go straight to Step 8.
 5. **If anything was applied**, re-verify (Step 4b in full - simplification is exactly the
-   kind of edit that type-checks in isolation and breaks a consumer), push, and run **one
-   confirming review
-   round** (Step 6) over the pushed diff - simplification edits are code edits, and unreviewed
-   code does not merge. If that round is clean, continue to Step 8. If it surfaces
-   Critical/Important findings, you are back in the Step 6 loop: fix, push, re-review. Step 7
-   runs **once** per pipeline - do not re-enter it after the confirming round.
+   kind of edit that type-checks in isolation and breaks a consumer) and push. **No confirming
+   review round runs**: the round cap covers the whole pipeline, and this pass is restricted
+   to behavior-preserving edits precisely so the full gate is sufficient evidence for them.
+   That restriction is what makes the cap safe - if a suggestion is large enough that you want
+   it reviewed, it is not a simplification, so drop it per item 3 and file the follow-up.
+   Step 7 runs **once** per pipeline.
 
 ```
-simplify: suggested=<n> applied=<x> dropped=<y> followups=<ids> | confirming round: <clean | n findings | skipped, nothing applied>
+simplify: suggested=<n> applied=<x> dropped=<y> followups=<ids> | re-verify: <Step 4b green | skipped, nothing applied>
 ```
 
 ## Step 8 - MERGE
 
 Auto-merge, gated. Merge without asking **only** when every one of these holds:
 
-- the review loop terminated cleanly per Step 6
-- Step 7 ran (or the user skipped it), and any simplification edits it made were pushed and
-  confirmed by a clean review round
+- the review loop terminated cleanly per Step 6 - the last round left zero Critical and zero
+  un-waived Important findings. Terminating at the cap *with* findings open is not a clean
+  termination: that path stops and reports instead of merging
+- Step 7 ran (or the user skipped it), and any simplification edits it made were pushed with a
+  green full Step 4b gate
 - the **full Step 4b gate is green on the exact commit being merged** - re-run it here; a
   green gate from three rounds ago is not evidence about this commit
 - `gh pr checks <PR>` reports every required check green (wait for pending ones). CI green is
@@ -394,13 +451,13 @@ Merge-commit repos: `gh pr merge <PR> --merge --delete-branch`.
 
 **On conflict**, rebase the work branch on the target, re-verify (Step 4b in full - the
 target has moved underneath you, which is precisely when a cross-workspace type or test
-breakage appears), force-push the
-*work branch only*, and run **one more review round** over the rebased diff before retrying the
-merge. Never force-push the target branch.
+breakage appears), force-push the *work branch only*, and retry the merge. A rebase does not
+buy an extra review round; the full gate on the rebased commit is the evidence. Never
+force-push the target branch.
 
-**If CI is red**, do not merge. Dispatch a targeted fix for the specific failure, re-verify,
-push, run another review round, and re-check. If it stays red, escalate with the failing check
-name and log location.
+**If CI is red**, do not merge. Dispatch a targeted fix for the specific failure, re-verify
+(Step 4b), push, and re-check. Fixing red CI does not open a new review round either. If it
+stays red, escalate with the failing check name and log location.
 
 **After a successful merge**, clean up the worktree - the repo's own recipe when it has one
 (warlock: `just delete-worktree <name>`), otherwise `git worktree remove <path> && git worktree
@@ -414,8 +471,9 @@ keep the worktree and report its path.
 task:      <ticket id or summary>
 worktree:  <path> (<removed | kept: reason>)
 pr:        <url> (<merged | open>)
-rounds:    <n> (critical fixed=<a>, important fixed=<b>, waived=<c>)
+rounds:    <n>/2 (party mode: <n>/5, min 3) (critical fixed=<a>, important fixed=<b>, waived=<c>, still open=<d>)
 simplify:  applied=<x> dropped=<y> (<or: skipped - reason>)
+unreviewed: <what was pushed after the last review round: post-last-review fixes, simplify edits, or none>
 followups: <linear ids, or none>
 verify:    <the full Step 4b gate block: each command and its actual result,
             with CI-skipped lanes marked, plus anything that could not be run>
@@ -436,16 +494,23 @@ risk:      <=2 lines of residual risk, or none
 - **Brainstorming a ticket that is already a spec.** The gate cuts both ways; a well-specified
   ticket goes straight to implementation.
 - **Running round 2 against the round-1 diff.** Push first. An unpushed fix is an unreviewed fix.
-- **Stopping at exactly 2 rounds when round 2 found and fixed real issues.** The last round must
-  be the clean one.
+- **Running a third review round on the default path.** Two is a hard cap, not a suggestion, and "round 2 found real
+  issues so the fixes need reviewing" is exactly the reasoning that turns a pipeline into ten
+  rounds of diminishing returns. Fix, verify, push, report the fixes as unreviewed, stop. (Party mode runs min 3 / cap 5 per Step 6.)
+- **Running another round against an unchanged diff.** A clean round ends the loop only when the cap rules say so; a
+  re-review of a byte-identical diff is six agents spent on a known answer. (Party mode still runs to round 3 even after a clean round 1.)
+- **Smuggling extra rounds in under another name.** The Step 7 confirming round, the post-rebase
+  round, the "quick re-check after fixing CI" - all of these were review rounds, and all of them
+  are now the full Step 4b gate instead.
 - **Parallelizing slices that share a file.** Concurrent writes to one file lose work silently.
   Disjoint write sets or different waves - there is no third option.
 - **Letting `code-simplifier` suggestions turn into a refactor.** Suggestions are polish inside
   the existing scope. Anything larger is a follow-up ticket.
 - **Treating the per-round simplify lens as the Step 7 pass.** The lens sees one round's
   increment; Step 7 sees the whole diff. Both run.
-- **Merging the simplification edits unreviewed.** If Step 7 changed a file, one confirming
-  review round runs before the merge - same rule as any other fix.
+- **Letting Step 7 apply something that needs a review to be safe.** Under the cap, the
+  simplify pass merges on the strength of the full gate alone, so anything beyond a
+  behavior-preserving edit must be dropped to a follow-up rather than applied.
 - **Treating a green CI as a verified change.** CI runs the lane someone optimized for
   wall-clock. Typecheck, builds, and the db-backed suites are the usual casualties, and they
   are where the regressions are.
@@ -462,5 +527,8 @@ risk:      <=2 lines of residual risk, or none
   simplify pass are code changes; they get the same gate.
 - **Merging on "checks passed" without waiting for pending checks.** Pending is not green.
 - **Treating an unrelated dirty working tree as part of the task.** Ask first.
+- **Running party mode without the Anti-Consensus Club.** Without Wildcard/Level/Killjoy/Splinter the party converges on the first plausible plan. The club is the point.
+- **Letting the party vote.** The party is not a voting body. It raises objections; the orchestrator decides and auto-proceeds to implement.
+- **Making the user step through the party's todo list.** Party mode reports the consensus summary and starts implementing. User walkthrough defeats the variant.
 
 $ARGUMENTS
