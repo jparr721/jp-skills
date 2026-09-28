@@ -215,12 +215,12 @@ consensus, then **start implementing without making anyone step through the insa
    unsupported speculation), Splinter (consensus challenger: questions easy agreement and
    ignored tradeoffs). Fresh session, no memory carried in. Not a voting body; it raises
    objections and returns the decision to the orchestrator (supervisor proposes, human retains
-   final control via batched questions only).
+   final control via batched questions only). Always spawn one `topic-research` agent in Round 1 (fresh session, search tools on); its brief is required input to Round 2 — skip only when the incoming plan already names its prior-art decision.
 2. **Deliberate to a slice table.** At most 2 debate rounds. Round 1: independent slice
    proposals with exact file sets. Round 2: merge + resolve objections. Killjoy ends loops;
    Splinter must sign off that consensus is real, not easy agreement. Output: behavior,
    exact file set, dependencies per slice, plus per-slice detailed todos owned by that
-   slice's agent. The supervisor records the table; it is the contract for Steps 3-9.
+   slice's agent. The supervisor records the table; it is the contract for Steps 3-9. Round 2 must accept-or-reject each topic-research verdict with a stated reason; the disposition is recorded in the consensus table.
 3. **Cross-review, then auto-proceed.** Each slice agent cross-reviews one other slice's plan
    for file overlap and missing dependencies. Fix overlaps by re-slicing. Then proceed
    straight to Step 3 - the supervisor logs the consensus summary but nobody waits for approval

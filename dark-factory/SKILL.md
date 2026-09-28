@@ -30,7 +30,7 @@ implement/review loop. No `pipeline`, no factory.
    fix agents, never re-runs reviews. Per-ticket review loop and QA belong to `pipeline`.
 4. **Shared questions once.** Anything every ticket would ask - notably local-vs-CI
    verification - is asked once by the principal at the parameter gate and propagated to all
-   pipeline calls. Asking it per ticket is a protocol violation.
+   pipeline calls. Asking it per ticket is a protocol violation. Topic-research delta questions (adopt-X-instead-of-Y) are shared questions: asked once by the principal and propagated, never re-asked per ticket.
 5. **One auth token, held centrally.** `AUTH_TOKEN` (session cookie / bearer token) is supplied
    once, held by the principal, and propagated to every ticket pipeline for QA. It travels via
    env only, never lands in files, logs, ledger, or outcome blocks. Pipelines whose QA needs no
