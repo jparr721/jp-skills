@@ -17,6 +17,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 |-------|-------------|--------|
 | [`pipeline`](pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. | Changes code, merges PR |
 | [`dark-factory`](dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. | Changes code, can merge to `main` |
+| [`hotfix`](hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate, working-tree edits only. | Edits working tree, never commits |
 
 ### Research
 
@@ -48,15 +49,15 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (currently 1.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (currently 1.1.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
-Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (XDG default; Windows `%APPDATA%\jp-skills`): `config.json` (`repo_path`, `installed_version`, `updated_at`), `servers/`, `tmp/<skill>/`. Skills cache state here, never in the repo or cwd. `tmp/` is scratch — the Framework tail (`shared/cleanup.md`, appended to every skill) clears your own scratch and persists record corrections at session end.
+Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (XDG default; Windows `%APPDATA%\jp-skills`): `config.json` (`repo_path`, `installed_version`, `updated_at`), `servers/`, `tmp/<skill>/`, `worktrees/<repo>/<branch>/`. Skills cache state here, never in the repo or cwd. `tmp/` is scratch — the Framework tail (`shared/cleanup.md`, appended to every skill) clears your own scratch and persists record corrections at session end. `pipeline` (and `dark-factory` via `pipeline`) creates isolated git worktrees under `worktrees/` grouped by repo, so `git worktree list` stays traceable in one place.
 
 ## Upgrading
 
-Run the [`upgrading-jp-skills`](upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks all three harness registries, stamps `installed_version`.
+Run the [`upgrading-jp-skills`](upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks all five harness registries, stamps `installed_version`.
 
 ## Dependencies
 
@@ -76,6 +77,8 @@ Link a skill directory into the registry for each harness you use. Symlinks keep
 | Claude | `~/.claude/skills/` |
 | OpenCode | `~/.agents/skills/` |
 | Codex | `~/.codex/skills/` |
+| Pi | `~/.pi/agent/skills/` |
+| Oh My Pi (`omp`) | `~/.omp/agent/skills/` |
 
 ## Link A Skill
 
@@ -83,6 +86,8 @@ Link a skill directory into the registry for each harness you use. Symlinks keep
 ln -s "$PWD/<skill-name>" ~/.claude/skills/<skill-name>
 ln -s "$PWD/<skill-name>" ~/.agents/skills/<skill-name>
 ln -s "$PWD/<skill-name>" ~/.codex/skills/<skill-name>
+ln -s "$PWD/<skill-name>" ~/.pi/agent/skills/<skill-name>
+ln -s "$PWD/<skill-name>" ~/.omp/agent/skills/<skill-name>
 ```
 
 ## Link Everything
@@ -94,8 +99,12 @@ for d in */; do
   ln -s "$PWD/$skill" ~/.claude/skills/$skill 2>/dev/null
   ln -s "$PWD/$skill" ~/.agents/skills/$skill 2>/dev/null
   ln -s "$PWD/$skill" ~/.codex/skills/$skill 2>/dev/null
+  ln -s "$PWD/$skill" ~/.pi/agent/skills/$skill 2>/dev/null
+  ln -s "$PWD/$skill" ~/.omp/agent/skills/$skill 2>/dev/null
 done
 ```
+
+Restart `omp` after adding or removing skills so discovery runs again.
 
 ## Verify A Link
 
@@ -103,6 +112,8 @@ done
 ls -la ~/.claude/skills/<skill-name>
 ls -la ~/.agents/skills/<skill-name>
 ls -la ~/.codex/skills/<skill-name>
+ls -la ~/.pi/agent/skills/<skill-name>
+ls -la ~/.omp/agent/skills/<skill-name>
 ```
 
 ## Unlink A Skill
@@ -111,6 +122,8 @@ ls -la ~/.codex/skills/<skill-name>
 rm ~/.claude/skills/<skill-name>
 rm ~/.agents/skills/<skill-name>
 rm ~/.codex/skills/<skill-name>
+rm ~/.pi/agent/skills/<skill-name>
+rm ~/.omp/agent/skills/<skill-name>
 ```
 
 Removing a symlink does not remove the source skill directory.
@@ -136,3 +149,5 @@ New skills follow the same shape: one directory, one `SKILL.md` with `name` + `d
 ## Harness Notes
 
 Skill instructions are written as generic actions. Each harness maps actions such as dispatching agents, asking the user, reading files, searching files, editing files, and running commands to its native tools.
+
+Oh My Pi surfaces linked skills as namespaced slash commands: type `/skill:` (e.g. `/skill:pipeline`), not `/<skill-name>`. Restart `omp` after linking so startup discovery picks them up.
