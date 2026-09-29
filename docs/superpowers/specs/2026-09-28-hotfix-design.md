@@ -6,7 +6,7 @@ Date: 2026-09-28. Status: approved by user in session; implementation via writin
 
 - New `hotfix/` skill: in-place fix on the user's current branch. Never creates a worktree, branch, commit, push, PR, or merge. Working tree edits only; the user inspects the diff and commits.
 - Intake snapshots `git status/branch` and treats unrelated dirty files as off-limits; asks two batched questions (live-repro opt-in, symptom + suspected files).
-- Live repro is opt-in: on yes, requests steps/creds, observes (browser/CLI/logs), and confirms the symptom before planning. No repro, no spread claim.
+- Live repro is opt-in: on yes, requests steps/creds, observes (browser/CLI/logs), and confirms the symptom before planning. Creds follow the pipeline precedent: held in memory, passed via env, never baked into files, never printed in logs or report — record only `creds: provided (redacted)`, never persisted to spec, skill, or scratch. No repro, no spread claim.
 - Confirm gate pins exact source lines. No pin → stops and asks; never plans off a guess.
 - Issue spread analysis defaults to conditional 1→3 (reversible): 1 triage scout maps same-pattern / same-component / blame-history hits; fans to 3 parallel only on 2+ suspect sites or a shared component/util. Flip to always-3 with a one-line change if recall proves low.
 - Plan gate is DEAD simple, 5 lines max (what / where / spread scope / risk / repro check); waits for one-word approval even for 1-file fixes.
