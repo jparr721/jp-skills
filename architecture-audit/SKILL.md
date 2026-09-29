@@ -290,3 +290,6 @@ Accept the user's selected IDs. Confirm the prioritized list back to them. Then 
 - **Writing diffs in the Direction field.** Direction is shape, not code. The user will write the failing test first and let the test shape the diff.
 - **Continuing past the prioritization step.** The skill ends after the user picks priorities. No edits, no commits, no test scaffolding. That is the user's next session.
 - **Overspending on the stack scout.** Stack detection is mechanical. Use a fast, cheaper agent and save the strongest reasoning for the architect agents.
+
+## Framework tail
+Before finishing, read `../shared/cleanup.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/shared/cleanup.md`) and follow it.

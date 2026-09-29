@@ -321,3 +321,6 @@ Any of these are **Critical** by default: missing auth on a user-scoped route, r
 - **Recommending a framework migration.** "Move to Hono" is not an audit finding.
 - **Reporting on workspace packages.** A finding in `packages/*` belongs in that package's audit, not this one. Note it briefly and move on.
 - **Changing behavior.** "This null check is unnecessary" - if removing it changes behavior on null input, don't flag it.
+
+## Framework tail
+Before finishing, read `../shared/cleanup.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/shared/cleanup.md`) and follow it.

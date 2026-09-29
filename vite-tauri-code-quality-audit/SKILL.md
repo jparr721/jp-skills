@@ -285,3 +285,6 @@ Any leaked secret, overbroad allowlist, or destructive command without tests is 
 - **Suggesting rewrites.** The goal is targeted fixes, not "rewrite this module."
 - **Recommending a Tauri v1 -> v2 migration as part of the audit.** That's a separate project.
 - **Changing behavior.** "This null check is unnecessary" - if removing it changes what happens on null input, it changes behavior. Don't flag it.
+
+## Framework tail
+Before finishing, read `../shared/cleanup.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/shared/cleanup.md`) and follow it.

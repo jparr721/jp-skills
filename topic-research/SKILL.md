@@ -40,3 +40,6 @@ After party consensus, each deviation delta becomes exactly one batched supervis
 3. Verdict: adapt — wrap `context-compact` behind the repo session interface.
 4. Delta: "+ `context-compact` dependency — adopt instead of building a compactor?"
 5. Queries: "conversation compaction library", "npm context-compact", "awesome llm compaction"; confidence high.
+
+## Framework tail
+Before finishing, read `../shared/cleanup.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/shared/cleanup.md`) and follow it.

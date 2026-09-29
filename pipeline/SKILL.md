@@ -625,3 +625,6 @@ risk:      <=2 lines of residual risk, or none
 - **Treating an unrelated dirty working tree as part of the task.** The supervisor relays it as a batched question. Ask through it first.
 
 $ARGUMENTS
+
+## Framework tail
+Before finishing, read `../shared/cleanup.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/shared/cleanup.md`) and follow it.

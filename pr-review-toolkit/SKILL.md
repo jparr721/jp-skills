@@ -203,3 +203,6 @@ If no high-confidence issues exist, say so and include the scope, lenses run, an
 - **Skipping error review because code compiles.** Silent failures are behavioral bugs, not type errors.
 - **Running simplification before serious review findings.** Simplification is polish after correctness and project-rule issues are known.
 - **Leaving Claude-specific commands or frontmatter in portable instructions.** Use generic actions: dispatch agents, inspect diffs, merge findings.
+
+## Framework tail
+Before finishing, read `../shared/cleanup.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/shared/cleanup.md`) and follow it.

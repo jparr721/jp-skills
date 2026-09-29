@@ -217,3 +217,6 @@ After all agents complete, merge findings and output them directly to the user. 
 - **Suggesting rewrites:** The goal is targeted fixes, not "rewrite this module."
 - **Missing the forest:** 20 Minor findings but missing that auth is checked in 15 different pages — focus on the high-impact patterns.
 - **Changing behavior:** "This null check is unnecessary" — if removing it changes what happens on null input, it changes behavior. Don't flag it.
+
+## Framework tail
+Before finishing, read `../shared/cleanup.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/shared/cleanup.md`) and follow it.

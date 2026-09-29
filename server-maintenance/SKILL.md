@@ -14,9 +14,10 @@ Named server maps to one stable on-disk record. Ask once, persist, never re-ask.
 - SSH fails or access path is unclear.
 - When NOT to use: local-only work with no remote host.
 
-## Stable path
-Base: `$SERVER_MAINTENANCE_DIR` else `~/.local/share/server-maintenance/servers/`. File: `<slug>.md`, slug = lowercase server name with `[^a-z0-9-]` collapsed to `-`.
+## Stable home
+Canonical home: `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (XDG default; Windows `%APPDATA%\jp-skills`). Records live in `<home>/servers/` as `<slug>.md`, slug = lowercase server name with `[^a-z0-9-]` collapsed to `-`. Scratch goes in `<home>/tmp/server-maintenance/`.
 Never store secrets: key paths not key material, password-manager refs not passwords. Never store under repo/cwd — harness-local paths get forgotten.
+Legacy fallback: if `<slug>.md` is missing here but exists at `~/.local/share/server-maintenance/servers/<slug>.md`, move it into `<home>/servers/` (pre-v1 location, do not write new records there).
 
 ## Flow
 1. Resolve name: slugify the given name. None/ambiguous → ask human for server name plus connection instructions (ssh target, user, port, identity file, bastion/jump, VPN prereq, sudo rule).
@@ -52,3 +53,6 @@ Never store secrets: key paths not key material, password-manager refs not passw
 - Storing the record in repo/cwd instead of the stable base.
 - Guessing connection flags instead of asking once and persisting.
 - Saving secrets into the record instead of refs/paths.
+
+## Framework tail
+Before finishing, read `../shared/cleanup.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/shared/cleanup.md`) and follow it.

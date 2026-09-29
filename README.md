@@ -1,24 +1,66 @@
-# skills
+# jp-skills
 
-A portable collection of agent skills. Each skill lives in its own directory with a `SKILL.md`.
+A portable collection of agent skills. Each skill lives in its own directory with a `SKILL.md`. This repo is the single source of truth — link skills into each harness via symlinks, so editing here updates everywhere.
+
+## Categories
+
+- **Orchestration** — drive units of work end to end, supervised or autonomous.
+- **Research** — check prior art before committing to a custom plan.
+- **Audits & review** — scoped read-only analysis of architecture, quality, and diffs.
+- **Operations** — stateful remote work with persistent connection memory.
 
 ## Skills
 
-| Skill | Use it when |
-|-------|-------------|
-| [`pipeline`](pipeline/SKILL.md) | You want a single unit of work - a Linear ticket, a bug fix, a feature request - driven end to end from idea to merged PR while you supervise. Brainstorms a design when one is not already given, implements it with parallel file-disjoint agents, opens a PR, runs `pr-review-toolkit` for at least two full rounds fixing findings between rounds, then merges when CI is green. Changes code and merges to the target branch. |
-| [`dark-factory`](dark-factory/SKILL.md) | You want to drive an entire Linear epic (or task) to merged-on-main autonomously - a swarm of implement/review/fix/integrate sub-agents plus a background QA agent, orchestrated under a strict context firewall. Takes a Linear task ID and assumes the orchestrator worktree is already on the user-set epic branch. Changes code and can merge to `main`. |
-| [`topic-research`](topic-research/SKILL.md) | You want to know whether prior art, libraries, or battle-tested software already solve a task before committing to a custom plan. Read-only. |
-| [`architecture-audit`](architecture-audit/SKILL.md) | You want a scoped, multi-agent architectural audit of one subsystem - coupling, boundaries, data flow, dependency direction, testability, complexity. Outputs prioritized, TDD-ready tasks. Read-only. |
-| [`nextjs-code-quality-audit`](nextjs-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of a Next.js codebase - refactoring opportunities, misplaced concerns, DRY violations, missing tests, structural issues. Read-only. |
-| [`elysia-code-quality-audit`](elysia-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of an Elysia (Bun) backend - plugin/scope misuse, missing schema validation, DRY violations, security, tests. Tuned for `apps/` monorepos with Drizzle, Better Auth, pg-boss. Read-only. |
-| [`vite-tauri-code-quality-audit`](vite-tauri-code-quality-audit/SKILL.md) | You want a thorough code-quality audit of a Vite + Tauri codebase - IPC boundary issues, misplaced concerns, DRY violations, bundle/build problems, Tauri security misconfig. Read-only. |
-| [`pr-review-toolkit`](pr-review-toolkit/SKILL.md) | You want a pull-request or git-diff review across comments, tests, error handling, type design, code quality, and simplification opportunities. Read-only unless you explicitly ask for fixes. |
-| [`server-maintenance`](server-maintenance/SKILL.md) | You want maintenance on a named remote server — updates, reboots, disk/service/log checks. Resolves the server to a stable on-disk record (`~/.local/share/server-maintenance/servers/<name>.md`), asks once for connection instructions when missing, reuses verbatim thereafter. |
+### Orchestration
+
+| Skill | Use it when | Effect |
+|-------|-------------|--------|
+| [`pipeline`](pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. | Changes code, merges PR |
+| [`dark-factory`](dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. | Changes code, can merge to `main` |
+
+### Research
+
+| Skill | Use it when | Effect |
+|-------|-------------|--------|
+| [`topic-research`](topic-research/SKILL.md) | Deciding whether prior art, libraries, or battle-tested software already solve a task before committing to a custom plan. | Read-only |
+
+### Audits & review
+
+| Skill | Use it when | Effect |
+|-------|-------------|--------|
+| [`architecture-audit`](architecture-audit/SKILL.md) | A scoped multi-agent audit of one subsystem — coupling, boundaries, data flow, testability, complexity. Outputs prioritized, TDD-ready tasks. | Read-only |
+| [`pr-review-toolkit`](pr-review-toolkit/SKILL.md) | A pull-request or git-diff review across comments, tests, error handling, type design, and simplification. | Read-only unless you ask for fixes |
+| [`nextjs-code-quality-audit`](nextjs-code-quality-audit/SKILL.md) | A thorough quality audit of a Next.js codebase — misplaced concerns, DRY violations, missing tests, structural issues. | Read-only |
+| [`elysia-code-quality-audit`](elysia-code-quality-audit/SKILL.md) | A thorough quality audit of an Elysia (Bun) backend. Tuned for `apps/` monorepos with Drizzle, Better Auth, pg-boss. | Read-only |
+| [`vite-tauri-code-quality-audit`](vite-tauri-code-quality-audit/SKILL.md) | A thorough quality audit of a Vite + Tauri codebase — IPC boundaries, bundle/build, Tauri security misconfig. | Read-only |
+
+### Operations
+
+| Skill | Use it when | Effect |
+|-------|-------------|--------|
+| [`server-maintenance`](server-maintenance/SKILL.md) | Maintenance on a named remote server — updates, reboots, disk/service/log checks. Resolves the server to a stable on-disk record under the canonical home, asks once for connection instructions when missing. | Mutates remote host |
+
+### Meta
+
+| Skill | Use it when | Effect |
+|-------|-------------|--------|
+| [`upgrading-jp-skills`](upgrading-jp-skills/SKILL.md) | Updating jp-skills to the latest version, checking the installed version. Pulls the cached clone, migrates state, relinks harnesses. | Updates clone + symlinks |
+
+## Versioning
+
+`VERSION` at the repo root is the version source of truth (currently 1.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+
+## Stable home
+
+Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (XDG default; Windows `%APPDATA%\jp-skills`): `config.json` (`repo_path`, `installed_version`, `updated_at`), `servers/`, `tmp/<skill>/`. Skills cache state here, never in the repo or cwd. `tmp/` is scratch — the Framework tail (`shared/cleanup.md`, appended to every skill) clears your own scratch and persists record corrections at session end.
+
+## Upgrading
+
+Run the [`upgrading-jp-skills`](upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks all three harness registries, stamps `installed_version`.
 
 ## Dependencies
 
-Most skills here are self-contained. Two are not:
+Most skills are self-contained. Two are not:
 
 | Skill | Requires |
 |-------|----------|
@@ -43,6 +85,18 @@ ln -s "$PWD/<skill-name>" ~/.agents/skills/<skill-name>
 ln -s "$PWD/<skill-name>" ~/.codex/skills/<skill-name>
 ```
 
+## Link Everything
+
+```bash
+for d in */; do
+  skill="${d%/}"
+  [ -f "$skill/SKILL.md" ] || continue
+  ln -s "$PWD/$skill" ~/.claude/skills/$skill 2>/dev/null
+  ln -s "$PWD/$skill" ~/.agents/skills/$skill 2>/dev/null
+  ln -s "$PWD/$skill" ~/.codex/skills/$skill 2>/dev/null
+done
+```
+
 ## Verify A Link
 
 ```bash
@@ -60,6 +114,24 @@ rm ~/.codex/skills/<skill-name>
 ```
 
 Removing a symlink does not remove the source skill directory.
+
+## Repo Layout
+
+```text
+jp-skills/
+  VERSION                 # Version source of truth
+  CHANGELOG.md            # Release record; v1.0.0 logs the breaking changes
+  shared/cleanup.md       # Framework tail appended to every skill
+  <skill-name>/
+    SKILL.md              # Main reference (required), ends with Framework tail
+    <supporting files>    # Only for heavy reference or reusable tools
+  docs/
+    superpowers/          # Upstream reference material
+```
+
+## Adding A Skill
+
+New skills follow the same shape: one directory, one `SKILL.md` with `name` + `description` frontmatter ending in the Framework tail (`../shared/cleanup.md`), supporting files only when the main reference would exceed ~500 words. Add one row to the category table above; breaking changes go in `CHANGELOG.md` with a `VERSION` bump.
 
 ## Harness Notes
 
