@@ -69,7 +69,7 @@ The only required input is the Linear task ID. Everything else has a default; co
 | `AUTO_MERGE` | `false` | `true` -> principal merges each clean child PR in topo order. `false` -> pipelines run with `don't merge`, principal leaves PRs open, pings user, stops. Default safe; opt in explicitly. |
 | `VERIFY_MODE` | `ask` | `local` / `ci-only` / `ask`. `ask` -> principal batches the question once at the gate; the answer propagates to every pipeline via its `verify-mode` override. Never asked per ticket. |
 | `AUTH_TOKEN` | (empty) | Optional session cookie / bearer token for QA. Supplied once (`auth token <value>`), held by the principal, propagated to every pipeline via its `auth token` override. Needed whenever any ticket's proof requires authenticated access - pre-merge preview, post-merge staging/production, or post-deploy. If empty and a pipeline's QA needs one, one question bubbles up; the answer is recorded once and re-propagated. |
-| `WORKTREE_MODE` | `local` | `local` (git worktree) or `vm` (Conductor `{worktree_id: vm_ip}`). Pipelines create their own trees inside it; the orchestrator tree stays bookkeeping-only. |
+| `WORKTREE_MODE` | `local` | `local` (git worktree under `<home>/worktrees/<repo>/<branch>` per the `pipeline` Step 1b contract, where `<home>` is `$JP_SKILLS_HOME` else `$XDG_CONFIG_HOME/jp-skills` else `~/.config/jp-skills`) or `vm` (Conductor `{worktree_id: vm_ip}`). Pipelines create their own trees there; the orchestrator checkout stays bookkeeping-only. |
 
 Dropped from the old bespoke loop, now owned by `pipeline`: `MAX_REVIEW_ROUNDS` (min 3 / cap 5 per
 ticket), `REVIEW_TOOL` / `REVIEW_MODULES`, background `QA_FEEDBACK` (each pipeline QA-proves its
@@ -229,8 +229,7 @@ Reject and re-dispatch anything that does not conform. You read **only** this bl
 
 For each wave, in dependency order:
 - Spin up to `MAX_PARALLEL` sub-orchestrators, one per ticket. Each creates its own pipeline
-  run, which creates its own worktree and supervisor under it (`WORKTREE_MODE` applies to where
-  those trees live). Use each ticket's `gitBranchName` for its work branch.
+  run, which creates its own worktree (`WORKTREE_MODE=local` puts it at `<home>/worktrees/<repo>/<branch>` per the `pipeline` Step 1b contract; `vm` uses Conductor) and supervisor under it. Use each ticket's `gitBranchName` for its work branch.
 - Give each sub-orchestrator the **Sub-orchestrator Brief** (section 6) with the invocation:
   ticket id + `target {{TARGET_BRANCH}}` + `don't merge` (pipelines never merge here - the
   principal owns merges, and QA then runs pre-merge per pipeline Step 9) + `verify-mode
@@ -302,7 +301,7 @@ Runs only when all ledger rows are `MERGED`, post-merge QA passes are in, and th
 
 - Verify every ticket's deck copy-out path exists (absolute paths from the outcome blocks - they
   live outside the worktrees by pipeline contract), then remove every **sub-worktree** the
-  pipelines created (`git worktree remove <path> --force`). Do **not** touch the orchestrator worktree - the user manages that.
+  pipelines created under `<home>/worktrees/<repo>/` (`git worktree remove <home>/worktrees/<repo>/<branch> --force`, then `git worktree prune`). Do **not** touch the orchestrator checkout - the user manages that.
 - Delete merged ticket branches: `git branch -d <branch>` locally (the remote branch is deleted by `--delete-branch` at merge time).
 - Verify `git worktree list` shows only the orchestrator worktree and the tree is clean.
 - In `vm` mode, return Conductor VMs to the pool.

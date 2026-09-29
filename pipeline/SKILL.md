@@ -87,9 +87,9 @@ Optional overrides, stated in plain language inside the prompt:
 | "N review rounds" | Raise the cap above 5. Never lowers it, and nothing you discover mid-loop raises it. |
 | "verify-mode `<local\|ci-only>`" | Preset the Step 4 answer instead of asking. `dark-factory` uses this to propagate one shared answer to every ticket pipeline. |
 | "skip the simplify pass" | Skip Step 7. The per-round `code-simplifier` lens still runs. |
-| "use worktree `<path>`" | Reuse an existing worktree instead of creating one. It must be dedicated to this task and clean. |
+| "use worktree `<path>`" | Reuse an existing worktree instead of creating the default `<home>/worktrees/<repo>/<branch>` one (Step 1b). It must be dedicated to this task and clean. |
 | "skip QA" | NEVER honored. Step 9 always runs. If the prompt asks for it, say so and run QA anyway. |
-| "auth token `<cookie|session>`" | Pre-supply the QA auth token (session cookie, bearer token, authed session value). Held by the supervisor, passed to Step 9 via env, never written to files or logs. Asking is skipped when it works; if it is missing, expired, or lacks scope, the supervisor asks for a fresh one. `dark-factory` propagates one token to every ticket pipeline. |
+| "auth token `<cookie\|session>`" | Pre-supply the QA auth token (session cookie, bearer token, authed session value). Held by the supervisor, passed to Step 9 via env, never written to files or logs. Asking is skipped when it works; if it is missing, expired, or lacks scope, the supervisor asks for a fresh one. `dark-factory` propagates one token to every ticket pipeline. |
 
 ## Process Flow
 
@@ -163,25 +163,15 @@ Resolve exactly what is being built and where it lands. Keep this tight.
 
 This step is not optional. The pipeline runs long, dispatches parallel agents, force-pushes on
 rebase, and merges; none of that belongs in a checkout the user is also using. Isolation is
-what makes those operations safe.
+what makes those operations safe. Every worktree lives under the jp-skills home so trees track by repo in one place.
 
-1. **Prefer the repo's own recipe** when one exists - check the `justfile`, `Makefile`, or
-   contributing guide for a worktree command (warlock, for instance, has
-   `just worktree <name>`, which branches from `origin/main` and runs setup). Such a recipe
-   wires up env files, dependencies, and per-worktree services that a bare `git worktree add`
-   would leave missing.
-2. **Otherwise** invoke `superpowers:using-git-worktrees`, which handles the native-tool path
-   and the `git worktree add` fallback. Branch from the up-to-date target:
-   `git fetch origin && git worktree add -b <work branch> <path> origin/<target>`.
-3. **Name it after the task** - the ticket id or a short slug - so `git worktree list` stays
-   readable and a stale one is identifiable later.
-4. **`cd` into it and confirm** before doing anything else: `git rev-parse --show-toplevel`,
-   `git branch --show-current`, and `git status --short` (must be clean). Every later step -
-   verification commands, sub-agent dispatch, `gh` invocations - runs from this directory.
-5. **Already in a worktree?** Reuse it only when it is dedicated to this task and clean.
-   A worktree carrying unrelated changes is a supervisor-relayed question, not a base to build on.
-6. **Set up the environment** the repo requires in a fresh checkout - dependency install, env
-   files, per-worktree services - before Step 4 needs them.
+1. **Resolve the home once** - `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (same stable home as `config.json`, `servers/`, `tmp/`).
+2. **Derive the path** - `<home>/worktrees/<repo>/<work-branch>`, where `<repo>` is the basename of `git rev-parse --show-toplevel` of the checkout the pipeline started in and `<work-branch>` is the Step 1 branch (ticket `gitBranchName` or short slug). Example: `~/.config/jp-skills/worktrees/myapp/syt-5891`. `mkdir -p <home>/worktrees/<repo>` first, so `git worktree list` stays readable and a stale tree is identifiable per repo.
+3. **Prefer the repo's own recipe** when one exists - check the `justfile`, `Makefile`, or contributing guide for a worktree command (warlock, for instance, has `just worktree <name>`, which branches from `origin/main` and runs setup). When the recipe accepts a target path, pass the derived path. When it hard-codes its own location, prefer a bare `git worktree add` at the derived path instead so tracking stays central; only use the repo-local location when the recipe cannot work elsewhere, and record why in the intake block. Such a recipe wires up env files, dependencies, and per-worktree services that a bare `git worktree add` would leave missing.
+4. **Otherwise** invoke `superpowers:using-git-worktrees`, which handles the native-tool path and the `git worktree add` fallback. Branch from the up-to-date target at the derived path: `git fetch origin && git worktree add -b <work branch> <home>/worktrees/<repo>/<work-branch> origin/<target>`.
+5. **`cd` into it and confirm** before doing anything else: `git rev-parse --show-toplevel`, `git branch --show-current`, and `git status --short` (must be clean). Every later step - verification commands, sub-agent dispatch, `gh` invocations - runs from this directory.
+6. **Already in a worktree?** Reuse it only when it is dedicated to this task and clean. A worktree carrying unrelated changes is a supervisor-relayed question, not a base to build on. A reused tree keeps its own path; new trees always use the derived home path.
+7. **Set up the environment** the repo requires in a fresh checkout - dependency install, env files, per-worktree services - before Step 4 needs them.
 
 Log the intake block to the supervisor ledger, then continue without waiting (no phase-gate approval):
 
@@ -280,7 +270,7 @@ difference:
 3. **The difference is the whole point.** Anything in list 2 absent from list 1 is a check
    nobody runs before merge. Those are the ones this pipeline exists to run.
 4. **Note what each un-CI'd check needs** - a database, an object-store emulator, a built app,
-   browsers - and stand those dependencies up inside the worktree (Step 1b item 6) so the
+   browsers - and stand those dependencies up inside the worktree (Step 1b item 7) so the
    check can actually execute rather than being quietly skipped later.
 Report the surface once, in the intake block, so the run has it on record:
 
