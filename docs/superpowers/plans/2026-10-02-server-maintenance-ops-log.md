@@ -4,7 +4,7 @@
 
 **Goal:** Add a per-server operations log to the `server-maintenance` skill so one-off fixes on a server are recorded as compact entries before the agent finishes.
 
-**Architecture:** Single-file prose edit to `server-maintenance/SKILL.md` (description, When to Use, Stable home, Flow RECORD step, Operations log section, Common mistakes), plus release wiring (README row, CHANGELOG entry, VERSION bump 1.2.0 → 1.3.0). Markdown-only; verification is read-through plus link/shape checks, not tests.
+**Architecture:** Single-file prose edit to `server-maintenance/SKILL.md` (description, When to Use, Stable home, Flow RECORD step, Operations log section, Common mistakes), plus release wiring (README row, CHANGELOG entry, VERSION bump 1.3.0 → 1.4.0). Markdown-only; verification is read-through plus link/shape checks, not tests.
 
 **Tech Stack:** Markdown skill file following the repo's SKILL.md shape (frontmatter `name` + `description`, `##` sections, Framework tail).
 
@@ -110,9 +110,9 @@ git commit -m "feat: record server operations to per-server ops log"
 ### Task 2: Wire README, CHANGELOG, VERSION
 
 **Files:**
-- Modify: `README.md` (Operations table, `server-maintenance` row)
-- Modify: `CHANGELOG.md` (new `## [1.3.0]` entry)
-- Modify: `VERSION` (`1.2.0` → `1.3.0`)
+- Modify: `README.md` (Operations table, `server-maintenance` row + Versioning line)
+- Modify: `CHANGELOG.md` (new `## [1.4.0]` entry on top; sibling `## [1.3.0]` Changed block untouched)
+- Modify: `VERSION` (`1.3.0` → `1.4.0`)
 - Test: `grep -r "ops.md" --include="*.md" .` lists the skill section plus the changelog entry
 
 - [ ] **Step 1: Update the README row**
@@ -123,12 +123,14 @@ In `README.md` line 42, replace the `server-maintenance` row with:
 | [`server-maintenance`](server-maintenance/SKILL.md) | Maintenance on a named remote server — updates, reboots, disk/service/log checks. Resolves the server to a stable on-disk record under the canonical home, asks once for connection instructions when missing. Records completed operations to a per-server log. | Mutates remote host |
 ```
 
+In `README.md` Versioning section (line 52), replace `(currently 1.2.0)` with `(currently 1.4.0)`.
+
 - [ ] **Step 2: Add the CHANGELOG entry**
 
-At the top of `CHANGELOG.md`, after line 3 (the `` `VERSION` ... `` paragraph), insert:
+At the top of `CHANGELOG.md`, after line 3 (the `` `VERSION` ... `` paragraph) and before the sibling `## [1.3.0]` block, insert:
 
 ```markdown
-## [1.3.0] - 2026-10-02
+## [1.4.0] - 2026-10-02
 
 ### Added
 
@@ -140,14 +142,14 @@ At the top of `CHANGELOG.md`, after line 3 (the `` `VERSION` ... `` paragraph), 
 Replace the content of `VERSION` with:
 
 ```text
-1.3.0
+1.4.0
 ```
 
 - [ ] **Step 4: Commit the wiring**
 
 ```bash
 git add README.md CHANGELOG.md VERSION
-git commit -m "Wire server-maintenance ops log release (1.3.0)"
+git commit -m "Wire server-maintenance ops log release (1.4.0)"
 ```
 
 ### Task 3: Verify and link-check
@@ -168,6 +170,6 @@ Run: `tail -3 server-maintenance/SKILL.md` — expect the Framework tail pointin
 
 Run: `grep -r "ops.md" --include="*.md" .` — expect exactly: the skill's Stable home / Flow / Operations log mentions and the CHANGELOG entry. No dangling `<slug>.ops.md` references outside those two files.
 
-- [ ] **Step 3: Verify git state**
+- [ ] **Step 3: Verify git state (scoped — sibling works elsewhere on `main`)**
 
-Run: `git status --short` — expect clean. Run: `git log --oneline -4` — expect the spec commit plus the two build commits on top.
+Run: `git status --short -- server-maintenance/ README.md CHANGELOG.md VERSION docs/superpowers/plans/2026-10-02-server-maintenance-ops-log.md docs/superpowers/specs/2026-10-02-server-maintenance-ops-log-design.md` — expect clean (no output). Do NOT require a fully clean tree: sibling artifacts (`.superpowers/sdd/2026-10-02-ready-pr-pipin-stall/`, `docs/superpowers/plans/2026-10-02-code-quality-architecture-v2.md`) are untracked and out of scope — leave them alone. Run: `git log --oneline -6` — expect the two build commits on top, in order: wiring (`1.4.0`) then skill edit, above the spec/plan commits.
