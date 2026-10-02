@@ -25,8 +25,8 @@ deliberation with the Anti-Consensus Club to consensus, Step 3 is always per-sli
 cross-review and auto-proceed (no walkthrough of the todo list), and Step 6 is always min 3 /
 cap 5 review rounds. Tokens buy rigor so you do not have to.
 
-**Activation.** When this skill activates, open with exactly this line before doing anything
-else: `Oh yeah, it's piping time! 🚀🔧🎉🤖💥`
+**Activation.** When this skill activates, open with exactly this line as a header, in the same turn as the first Step 1 action (git state + worktree + supervisor spawn) — never end a turn on the line alone: `Oh yeah, it's piping time! 🚀🔧🎉🤖💥`
+Stall rule: no user-visible progress within ~2 min of activation → emit the intake block and continue without waiting.
 
 **Non-negotiable constraints:**
 
@@ -357,6 +357,8 @@ those points is push-plus-CI-green instead; never run the local gate to "be safe
 Invoke `commit-and-push`. It splits the work into logical commits by architectural layer,
 re-verifies the committed tree, pushes, and opens the PR with a structured body.
 
+PRs are always opened ready, never --draft; if the repo defaults to drafts, run gh pr ready in the same step.
+
 Confirm the PR exists and capture its number:
 `gh pr view --json number,title,baseRefName,headRefName,url`.
 
@@ -613,6 +615,7 @@ risk:      <=2 lines of residual risk, or none
 - **Running typechecks, tests, builds, or generators locally without asking.** The supervisor asks local-vs-CI once before the first gate run; one answer covers all of them. Running any of them first and asking after breaches permission.
 - **Claiming local proof in ci-only mode.** In ci-only mode every unrun local line says `ci-only mode`, the merge rides on CI green plus clean reviews, and nothing implies a local run happened.
 - **Treating an unrelated dirty working tree as part of the task.** The supervisor relays it as a batched question. Ask through it first.
+- **Opening a draft PR or ending a turn on the activation line alone.** PRs are always ready (`gh pr ready` repair when the repo defaults to drafts); the activation line ships with the first Step 1 action.
 
 $ARGUMENTS
 
