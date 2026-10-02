@@ -98,7 +98,7 @@ reproduce the bug are left untouched and reported as checked-clean.
 1. Repro after: show the same observation passing where it failed before.
 2. Run typecheck/lint scoped to touched files only. No full suite, no review loop,
    no QA deck. A regression test is added only on request.
-3. Report the diff stat plus what was checked-clean. Hand back; the user commits.
+3. Report the diff stat plus what was checked-clean, then continue to SHIP (no handoff — the run ends at the ready PR, not at working-tree edits).
 4. Reuse the Step 1 intake creds first for any authenticated check; ask for a token set (what token, what scope/expiry, where to paste) only when missing, expired, or lacking scope. Missing/insufficient token is a single stop-and-report question — never fake the authenticated path. This is repro-after with auth, not a QA deck.
 
 ### Step 7 - SHIP
