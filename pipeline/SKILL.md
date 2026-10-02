@@ -357,7 +357,7 @@ those points is push-plus-CI-green instead; never run the local gate to "be safe
 Invoke `commit-and-push`. It splits the work into logical commits by architectural layer,
 re-verifies the committed tree, pushes, and opens the PR with a structured body.
 
-PRs are always opened ready, never --draft; if the repo defaults to drafts, run gh pr ready in the same step.
+PRs are always opened ready, never --draft; if the repo defaults to drafts, run `gh pr ready` in the same step.
 
 Confirm the PR exists and capture its number:
 `gh pr view --json number,title,baseRefName,headRefName,url`.
