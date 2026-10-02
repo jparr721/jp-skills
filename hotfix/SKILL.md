@@ -1,6 +1,6 @@
 ---
 name: hotfix
-description: Use when fixing a bug in place on your current branch — stays on the branch you are on, confirms the issue with an opt-in live repro, checks whether the bug pattern is widespread with conditional 1-to-3 issue-spread analysis, then shows a dead-simple plan for approval before fixing every site. Edits the working tree only, never commits, pushes, or merges.
+description: Use when fixing a bug in place on your current branch — stays on the branch you are on, confirms the issue with an opt-in live repro, checks whether the bug pattern is widespread with conditional 1-to-3 issue-spread analysis, then shows a dead-simple plan for approval before fixing every site, verifying with reused session creds, and shipping a ready PR.
 ---
 
 # Hotfix
@@ -8,7 +8,7 @@ description: Use when fixing a bug in place on your current branch — stays on 
 ## Overview
 
 Fast, robust, in-place bug fixes on the branch you are already on. The sequence is fixed:
-**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> VERIFY**.
+**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> VERIFY -> SHIP**.
 SPREAD fans out only when triage justifies it; live repro runs only when you opt in.
 No phase is skipped otherwise.
 
@@ -20,9 +20,8 @@ when a bug is small, its scope is knowable, and you want it fixed where you stan
 **Non-negotiable constraints:**
 
 1. **Never leave the current branch.** No worktree, no new branch, no checkout change.
-   Confirm with `git branch --show-current` at intake and stay there.
-2. **Never commit, push, open a PR, or merge.** Working tree edits only. You inspect
-   the diff and commit it yourself.
+   Confirm with `git branch --show-current` at intake and stay there. SHIP commits on this branch.
+2. **Always ship a ready PR, never merge.** After VERIFY, commit the scoped fix, push, and open the PR ready — never `--draft` (`gh pr ready` in the same step if the repo defaults to drafts). You never merge; the PR owner does. On the target branch itself (e.g. `main`), stop-and-report instead of opening a PR to self.
 3. **Never touch files outside the approved scope.** Unrelated dirty files found at
    intake are off-limits; name them in the plan as explicitly excluded.
 4. **Never plan off a guess.** The confirm gate pins exact source lines first; without
@@ -32,6 +31,7 @@ when a bug is small, its scope is knowable, and you want it fixed where you stan
 6. **Creds stay session-only.** Live-repro credentials are held in memory and passed via
    env, never baked into files, never printed in logs or the report — record only
    `creds: provided (redacted)`. Never persist them to the skill, spec, or scratch.
+   The same hygiene covers the post-fix token set: reuse Step 1 intake creds first; ask only when missing, expired, or lacking scope. Held in memory, passed via env, never in files, logs, report, or PR body — record only `token: provided (redacted)` or `token: not needed`.
 
 ## When to Use
 
@@ -99,6 +99,15 @@ reproduce the bug are left untouched and reported as checked-clean.
 2. Run typecheck/lint scoped to touched files only. No full suite, no review loop,
    no QA deck. A regression test is added only on request.
 3. Report the diff stat plus what was checked-clean. Hand back; the user commits.
+4. Reuse the Step 1 intake creds first for any authenticated check; ask for a token set (what token, what scope/expiry, where to paste) only when missing, expired, or lacking scope. Missing/insufficient token is a single stop-and-report question — never fake the authenticated path. This is repro-after with auth, not a QA deck.
+
+### Step 7 - SHIP
+
+1. Re-check `git status --short` against the approved scope; `git add` approved-scope paths only — unrelated dirty files recorded as excluded at intake are never added.
+2. Commit on the current branch (repo's commit convention per `git log --oneline -10`), push (`--set-upstream` when needed).
+3. `gh pr create` ready, never `--draft`; body carries what/where/risk/repro + `token: provided (redacted)` or `token: not needed`, never the value. If created draft by repo default, run `gh pr ready` immediately.
+4. Guard: on the target branch itself, stop-and-report instead of opening a PR to self.
+5. Report the PR URL line with the diff stat. Done means the ready PR exists, not just working-tree edits.
 
 ## Common mistakes
 
@@ -107,6 +116,7 @@ reproduce the bug are left untouched and reported as checked-clean.
 - Touching unrelated dirty files found at intake.
 - Baking repro creds into files, logs, or the report instead of `provided (redacted)`.
 - Expanding scope mid-fix instead of stopping at the approved plan.
+- Ending at working-tree edits without a ready PR — done means the PR URL is reported.
 
 ## Framework tail
 
