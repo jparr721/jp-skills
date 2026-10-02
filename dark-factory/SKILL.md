@@ -195,7 +195,7 @@ Every sub-orchestrator must end its turn with **exactly** this block and nothing
 === SUB-ORCHESTRATOR OUTCOME ===
 ticket:          SYT-xxx
 status:          DONE | BLOCKED | NEEDS_DECISION
-pr:              <PR URL - REQUIRED; "none" is a protocol violation>
+pr:              <ready PR URL - REQUIRED; "none" is a protocol violation; draft is a protocol violation>
 verify-mode:     <local | ci-only>
 rounds:          <n>/5, min 3
 qa:              <pass | fail + failing proof>
@@ -311,6 +311,7 @@ Runs only when all ledger rows are `MERGED`, post-merge QA passes are in, and th
 
 > You own **{{TICKET}}** end to end. Run the `pipeline` skill on it with exactly these
 > overrides: `target {{TARGET_BRANCH}}`, `don't merge`, `verify-mode {{VERIFY_MODE}}`.
+> Open the PR as ready, never draft (`gh pr ready` in the same step if the repo defaults to drafts). The merge decision is unchanged: `AUTO_MERGE=false` still stops at open PRs (now open-ready).
 > {{AUTH_TOKEN_LINE}}Acceptance criteria: {{AC}}. Work branch: the ticket's Linear `gitBranchName`.
 > (`{{AUTH_TOKEN_LINE}}` is `auth token <value>,` when a token was supplied at the gate and empty otherwise.)
 > 1. **Run the pipeline, do not freelance.** Invoke `pipeline` with the ticket id and the
@@ -421,6 +422,7 @@ transcripts.
 - **Removing worktrees before verifying deck copy-out paths.** Decks live outside the worktrees by pipeline contract - confirm each absolute path first, then remove.
 - **Deleting the orchestrator worktree.** Cleanup only removes pipeline sub-worktrees. The orchestrator worktree is the user's responsibility.
 - **Skipping cleanup on failure.** Cleanup runs always, even on partial failure - leftover worktrees and branches pollute the next run.
+- **Accepting a draft PR as DONE.** Every outcome PR is ready (`gh pr ready` repair when the repo defaults to drafts); draft is a protocol violation like "none".
 
 $ARGUMENTS
 
