@@ -32,6 +32,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 | [`architecture-audit`](skills/architecture-audit/SKILL.md) | A scoped multi-agent audit of one subsystem — coupling, boundaries, data flow, testability, complexity. Outputs prioritized, TDD-ready tasks. | Read-only |
 | [`pr-review-toolkit`](skills/pr-review-toolkit/SKILL.md) | A pull-request or git-diff review across comments, tests, error handling, type design, and simplification. | Read-only unless you ask for fixes |
 | [`code-quality-audit`](skills/code-quality-audit/SKILL.md) | A repeatable intake-driven quality audit — scout detects stack/GUI-ness, you pick UI bugs / code bugs / cleanup / full, six lenses run in parallel. | Read-only |
+| [`smoke-test`](skills/smoke-test/SKILL.md) | Verifying a live deployment — every page loads, console/network clean, read-only flows work against a base URL. | Read-only against live app, non-mutating |
 
 ### Operations
 
