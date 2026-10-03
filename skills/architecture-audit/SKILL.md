@@ -300,4 +300,4 @@ Accept the user's selected IDs. Confirm the prioritized list back to them. Then 
 - **Overspending on the stack scout.** Stack detection is mechanical. Use a fast, cheaper agent and save the strongest reasoning for the architect agents.
 
 ## Framework tail
-Before finishing, read `../shared/cleanup.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/shared/cleanup.md`) and follow it.
+Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.
