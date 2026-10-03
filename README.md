@@ -15,37 +15,35 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
-| [`pipeline`](pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. | Changes code, merges PR |
-| [`dark-factory`](dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. | Changes code, can merge to `main` |
-| [`hotfix`](hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate. | Commits scoped fix on current branch + opens ready PR, never merges |
+| [`pipeline`](skills/pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. | Changes code, merges PR |
+| [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. | Changes code, can merge to `main` |
+| [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate. | Commits scoped fix on current branch + opens ready PR, never merges |
 
 ### Research
 
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
-| [`topic-research`](topic-research/SKILL.md) | Deciding whether prior art, libraries, or battle-tested software already solve a task before committing to a custom plan. | Read-only |
+| [`topic-research`](skills/topic-research/SKILL.md) | Deciding whether prior art, libraries, or battle-tested software already solve a task before committing to a custom plan. | Read-only |
 
 ### Audits & review
 
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
-| [`architecture-audit`](architecture-audit/SKILL.md) | A scoped multi-agent audit of one subsystem — coupling, boundaries, data flow, testability, complexity. Outputs prioritized, TDD-ready tasks. | Read-only |
-| [`pr-review-toolkit`](pr-review-toolkit/SKILL.md) | A pull-request or git-diff review across comments, tests, error handling, type design, and simplification. | Read-only unless you ask for fixes |
-| [`nextjs-code-quality-audit`](nextjs-code-quality-audit/SKILL.md) | A thorough quality audit of a Next.js codebase — misplaced concerns, DRY violations, missing tests, structural issues. | Read-only |
-| [`elysia-code-quality-audit`](elysia-code-quality-audit/SKILL.md) | A thorough quality audit of an Elysia (Bun) backend. Tuned for `apps/` monorepos with Drizzle, Better Auth, pg-boss. | Read-only |
-| [`vite-tauri-code-quality-audit`](vite-tauri-code-quality-audit/SKILL.md) | A thorough quality audit of a Vite + Tauri codebase — IPC boundaries, bundle/build, Tauri security misconfig. | Read-only |
+| [`architecture-audit`](skills/architecture-audit/SKILL.md) | A scoped multi-agent audit of one subsystem — coupling, boundaries, data flow, testability, complexity. Outputs prioritized, TDD-ready tasks. | Read-only |
+| [`pr-review-toolkit`](skills/pr-review-toolkit/SKILL.md) | A pull-request or git-diff review across comments, tests, error handling, type design, and simplification. | Read-only unless you ask for fixes |
+| [`code-quality-audit`](skills/code-quality-audit/SKILL.md) | A repeatable intake-driven quality audit — scout detects stack/GUI-ness, you pick UI bugs / code bugs / cleanup / full, six lenses run in parallel. | Read-only |
 
 ### Operations
 
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
-| [`server-maintenance`](server-maintenance/SKILL.md) | Maintenance on a named remote server — updates, reboots, disk/service/log checks. Resolves the server to a stable on-disk record under the canonical home, asks once for connection instructions when missing. Records completed operations to a per-server log. | Mutates remote host |
+| [`server-maintenance`](skills/server-maintenance/SKILL.md) | Maintenance on a named remote server — updates, reboots, disk/service/log checks. Resolves the server to a stable on-disk record under the canonical home, asks once for connection instructions when missing. Records completed operations to a per-server log. | Mutates remote host |
 
 ### Meta
 
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
-| [`upgrading-jp-skills`](upgrading-jp-skills/SKILL.md) | Updating jp-skills to the latest version, checking the installed version. Pulls the cached clone, migrates state, relinks harnesses. | Updates clone + symlinks |
+| [`upgrading-jp-skills`](skills/upgrading-jp-skills/SKILL.md) | Updating jp-skills to the latest version, checking the installed version. Pulls the cached clone, migrates state, relinks harnesses. | Updates clone + symlinks |
 
 ## Versioning
 
@@ -53,11 +51,11 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 
 ## Stable home
 
-Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (XDG default; Windows `%APPDATA%\jp-skills`): `config.json` (`repo_path`, `installed_version`, `updated_at`), `servers/`, `tmp/<skill>/`, `worktrees/<repo>/<branch>/`. Skills cache state here, never in the repo or cwd. `tmp/` is scratch — the Framework tail (`shared/cleanup.md`, appended to every skill) clears your own scratch and persists record corrections at session end. `pipeline` (and `dark-factory` via `pipeline`) creates isolated git worktrees under `worktrees/` grouped by repo, so `git worktree list` stays traceable in one place.
+Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (XDG default; Windows `%APPDATA%\jp-skills`): `config.json` (`repo_path`, `installed_version`, `updated_at`), `servers/`, `tmp/<skill>/`, `worktrees/<repo>/<branch>/`. Skills cache state here, never in the repo or cwd. `tmp/` is scratch — the Framework tail (`skills/cleanup/SKILL.md`, appended to every skill except `cleanup` itself) clears your own scratch and persists record corrections at session end. `pipeline` (and `dark-factory` via `pipeline`) creates isolated git worktrees under `worktrees/` grouped by repo, so `git worktree list` stays traceable in one place.
 
 ## Upgrading
 
-Run the [`upgrading-jp-skills`](upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks all five harness registries, stamps `installed_version`.
+Run the [`upgrading-jp-skills`](skills/upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks all five harness registries, stamps `installed_version`.
 
 ## Dependencies
 
@@ -83,24 +81,25 @@ Link a skill directory into the registry for each harness you use. Symlinks keep
 ## Link A Skill
 
 ```bash
-ln -s "$PWD/<skill-name>" ~/.claude/skills/<skill-name>
-ln -s "$PWD/<skill-name>" ~/.agents/skills/<skill-name>
-ln -s "$PWD/<skill-name>" ~/.codex/skills/<skill-name>
-ln -s "$PWD/<skill-name>" ~/.pi/agent/skills/<skill-name>
-ln -s "$PWD/<skill-name>" ~/.omp/agent/skills/<skill-name>
+ln -s "$PWD/skills/<skill-name>" ~/.claude/skills/<skill-name>
+ln -s "$PWD/skills/<skill-name>" ~/.agents/skills/<skill-name>
+ln -s "$PWD/skills/<skill-name>" ~/.codex/skills/<skill-name>
+ln -s "$PWD/skills/<skill-name>" ~/.pi/agent/skills/<skill-name>
+ln -s "$PWD/skills/<skill-name>" ~/.omp/agent/skills/<skill-name>
 ```
 
 ## Link Everything
 
 ```bash
-for d in */; do
+for d in skills/*/; do
   skill="${d%/}"
-  [ -f "$skill/SKILL.md" ] || continue
-  ln -s "$PWD/$skill" ~/.claude/skills/$skill 2>/dev/null
-  ln -s "$PWD/$skill" ~/.agents/skills/$skill 2>/dev/null
-  ln -s "$PWD/$skill" ~/.codex/skills/$skill 2>/dev/null
-  ln -s "$PWD/$skill" ~/.pi/agent/skills/$skill 2>/dev/null
-  ln -s "$PWD/$skill" ~/.omp/agent/skills/$skill 2>/dev/null
+  skill="${skill#skills/}"
+  [ -f "skills/$skill/SKILL.md" ] || continue
+  ln -s "$PWD/skills/$skill" ~/.claude/skills/$skill 2>/dev/null
+  ln -s "$PWD/skills/$skill" ~/.agents/skills/$skill 2>/dev/null
+  ln -s "$PWD/skills/$skill" ~/.codex/skills/$skill 2>/dev/null
+  ln -s "$PWD/skills/$skill" ~/.pi/agent/skills/$skill 2>/dev/null
+  ln -s "$PWD/skills/$skill" ~/.omp/agent/skills/$skill 2>/dev/null
 done
 ```
 
@@ -134,8 +133,9 @@ Removing a symlink does not remove the source skill directory.
 jp-skills/
   VERSION                 # Version source of truth
   CHANGELOG.md            # Release record; v1.0.0 logs the breaking changes
-  shared/cleanup.md       # Framework tail appended to every skill
-  <skill-name>/
+  skills/cleanup/SKILL.md # Terminal shared skill, no tail
+  shared/cleanup.md       # Archival pointer only
+  skills/<skill-name>/
     SKILL.md              # Main reference (required), ends with Framework tail
     <supporting files>    # Only for heavy reference or reusable tools
   docs/
@@ -144,7 +144,7 @@ jp-skills/
 
 ## Adding A Skill
 
-New skills follow the same shape: one directory, one `SKILL.md` with `name` + `description` frontmatter ending in the Framework tail (`../shared/cleanup.md`), supporting files only when the main reference would exceed ~500 words. Add one row to the category table above; breaking changes go in `CHANGELOG.md` with a `VERSION` bump.
+New skills follow the same shape: one directory, one `SKILL.md` with `name` + `description` frontmatter ending in the Framework tail (`../cleanup/SKILL.md`), supporting files only when the main reference would exceed ~500 words. Add one row to the category table above; breaking changes go in `CHANGELOG.md` with a `VERSION` bump.
 
 ## Harness Notes
 
