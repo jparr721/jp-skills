@@ -121,11 +121,15 @@ Then ask the user three questions:
 
 Dispatch all five agents in parallel. Each receives the same confirmed file list, the same `stack_specific_concerns` block appended to its lens prompt, and the same severity threshold.
 
+**Functional-unit bias (applies to all five lenses):** Prefer functional units doing one thing well — stateless inner plus stateful wrapper that gathers hooks, hooks as a module behind a provider/adapter, route as thin adapter delegating to a service, Unix-philosophy splits. Flag multi-purpose modules, stateful/stateless mixing, and dependencies that should split.
+
+
 ### Agent 1 - Boundaries and Coupling
 
 > "Where does this subsystem leak into - or leak in from - things it shouldn't?"
 
 Looks for layer violations, leaky abstractions, circular dependencies, oversized public surface, cross-cutting concerns bleeding into core logic.
+Hook: wrapper/component/service split violations, leaky units.
 
 **Prompt the agent with:**
 > You are a senior architect reviewing this subsystem through a single lens: boundaries and coupling. Examine ONLY the files in this confirmed list:
@@ -145,6 +149,7 @@ Looks for layer violations, leaky abstractions, circular dependencies, oversized
 > "Where does state live, where does it mutate, and what's coupled by accident?"
 
 Looks for where state lives vs. where it mutates, hidden side effects, implicit coupling via shared mutable state, request/response shape drift.
+Hook: state lives vs mutates across the wrapper/hook/provider chain.
 
 **Prompt with:** same shell as Agent 1, lens replaced with: "data flow and state. Find where state lives vs. where it mutates, hidden side effects, implicit coupling through shared mutable state, request/response shape drift across the subsystem."
 
@@ -153,6 +158,7 @@ Looks for where state lives vs. where it mutates, hidden side effects, implicit 
 > "Are the high-level modules depending on low-level modules in ways that will hurt?"
 
 Looks for inversion violations, god modules, high-incoming-edges hot spots, stable/volatile mismatch.
+Hook: god modules, high in-edge units, stable/volatile mismatch.
 
 **Prompt with:** same shell, lens replaced with: "dependency direction. Find inversion violations (high-level depending on low-level), god modules, modules with too many incoming edges, and stable-vs-volatile mismatches."
 
@@ -161,6 +167,7 @@ Looks for inversion violations, god modules, high-incoming-edges hot spots, stab
 > "Could a new engineer test this in isolation tomorrow?"
 
 Looks for untestable units, missing seams, hard-to-mock dependencies, branch-coverage gaps inside the subsystem, integration-vs-unit balance.
+Hook: could one unit be tested in isolation tomorrow.
 
 **Prompt with:** same shell, lens replaced with: "testability and seams. Find untestable units, missing seams, hard-to-mock dependencies, branch-coverage gaps inside this subsystem, and integration-vs-unit balance problems. Read the test files in scope to inform your analysis."
 
@@ -169,6 +176,7 @@ Looks for untestable units, missing seams, hard-to-mock dependencies, branch-cov
 > "What in here would surprise a senior engineer reading it for the first time?"
 
 Looks for parallel hierarchies, primitive obsession, feature envy across modules, abstractions that don't earn their weight.
+Hook: parallel hierarchies, feature envy, abstractions not earning weight.
 
 **Prompt with:** same shell, lens replaced with: "complexity and cognition. Find parallel hierarchies, primitive obsession, feature envy across modules, and abstractions that don't earn their cost. Flag subsystem-level smells, not single-line nits."
 
