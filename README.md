@@ -3,11 +3,12 @@
 A portable collection of agent skills. Each skill lives in its own directory with a `SKILL.md`. This repo is the single source of truth — link skills into each harness via symlinks, so editing here updates everywhere.
 
 ## Categories
-
 - **Orchestration** — drive units of work end to end, supervised or autonomous.
 - **Research** — check prior art before committing to a custom plan.
 - **Audits & review** — scoped read-only analysis of architecture, quality, and diffs.
 - **Operations** — stateful remote work with persistent connection memory.
+- **Design & hardening** — sketch the shape before code, then make repeated mistakes impossible.
+- **Disciplines** — path-triggered editing rules applied to the file under hand.
 
 ## Skills
 
@@ -40,6 +41,19 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 |-------|-------------|--------|
 | [`server-maintenance`](skills/server-maintenance/SKILL.md) | Maintenance on a named remote server — updates, reboots, disk/service/log checks. Resolves the server to a stable on-disk record under the canonical home, asks once for connection instructions when missing. Records completed operations to a per-server log. | Mutates remote host |
 
+### Design & hardening
+
+| Skill | Use it when | Effect |
+|-------|-------------|--------|
+| [`architect`](skills/architect/SKILL.md) | Designing before implementing — sketching types, signatures, module shape for non-trivial work. Parallel candidates, red-flag screen, synthesis, implement-against-sketch, scrap-on-friction. | Writes design + code |
+| [`correct`](skills/correct/SKILL.md) | An operator keeps correcting agents for the same repo mistakes — find each class, fix at the highest level (architecture > types > lint > test, docs last), prove each check. | Changes repo to prevent mistakes |
+
+### Disciplines
+
+| Skill | Use it when | Effect |
+|-------|-------------|--------|
+| [`typescript-best-practices`](skills/typescript-best-practices/SKILL.md) | Reading or editing any `.ts`/`.tsx` file — discriminated unions, branded types, constructive modeling, `unknown`-over-`any`, schema-derived types, exhaustiveness. | Editing guidance, read-only effect |
+
 ### Meta
 
 | Skill | Use it when | Effect |
@@ -48,7 +62,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (currently 2.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (currently 2.3.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 

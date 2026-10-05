@@ -2,7 +2,15 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
-## [2.1.0] - 2026-10-03
+## [2.3.0] - 2026-10-04
+
+### Added
+
+- `architect` skill (+ `references/`): design-before-implement — Ground (traced model), Sketch (≥2 parallel candidates, red-flag screen, synthesis), Agree (opt-in checkpoint), Implement-against-sketch, Scrap-on-friction. Cross-references `topic-research`, `code-quality-audit`, `architecture-audit`, `pr-review-toolkit`. Adapted from `cursor/plugins` `pstack/skills/architect` (MIT © 2026 Lauren Tan); Cursor-only deps replaced with repo-native `task` subagents and inline principles.
+- `correct` skill: make repeated operator corrections impossible — find mistake classes (count at 2), fix at the highest level (architecture > types > lint > test, docs last), one commit per class, prove each check fails on a real past mistake. Adapted from `cursor/plugins` `pstack/skills/correct` (MIT © 2026 Lauren Tan).
+- `typescript-best-practices` skill (+ `references/patterns.md`): 16-rule editing discipline for `.ts`/`.tsx` — discriminated unions, branded types, constructive modeling, `unknown`-over-`any`, schemas-before-guards, no-`as`, narrowing hierarchy, exhaustiveness, `satisfies`-over-`as`, boundary validation. Adapted from `cursor/plugins` `pstack/skills/typescript-best-practices` (MIT © 2026 Lauren Tan); Cursor `paths`/`disable-model-invocation` frontmatter dropped per repo convention.
+
+ ## [2.1.0] - 2026-10-03
 
 ### Added
 
