@@ -2,6 +2,12 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [3.0.1] - 2026-10-05
+
+### Fixed
+
+- `hotfix` overview phase list folded to `REVIEW+VERIFY` to match the Step 6 heading; 7-step numbering unchanged.
+- `dark-factory` outcome schema carries the last-round review `verdict` (`APPROVE | FIX-THEN-SHIP-at-cap + must-fix open | BLOCK`); DONE requires APPROVE, at-cap must-fix parks as stop-and-report, BLOCK parks as BLOCKED. COLLECT, FAN-OUT, and sub-orchestrator brief enforce it.
 ## [3.0.0] - 2026-10-05
 
 ### Breaking

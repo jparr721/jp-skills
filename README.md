@@ -62,7 +62,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (currently 3.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (currently 3.0.1). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
