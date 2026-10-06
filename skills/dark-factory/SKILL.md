@@ -200,7 +200,7 @@ status:          DONE | BLOCKED | NEEDS_DECISION
 pr:              <ready PR URL - REQUIRED; "none" is a protocol violation; draft is a protocol violation>
 verify-mode:     <local | ci-only>
 rounds:          <n>/5, min 3
-qa:              <pass | fail + failing proof>
+verdict:         <last-round APPROVE | FIX-THEN-SHIP-at-cap + must-fix open=<m> | BLOCK>
 deck:            <absolute copy-out path>
 followups:       <linear ids filed for out-of-scope work, or none>
 remaining:       <=2 lines: anything not fixed and why
@@ -210,7 +210,8 @@ blocked_on:      <ticket/decision, or none>
 
 **An outcome without a real PR URL, a QA pass, and a deck path is a protocol violation.**
 `pipeline` guarantees all three; a sub-orchestrator missing any of them did not run the
-pipeline. Discard and re-dispatch with the protocol restated.
+pipeline. Discard and re-dispatch with the protocol restated. DONE requires last-round verdict
+APPROVE; FIX-THEN-SHIP-at-cap arrives as stop-and-report with open must-fix, never DONE.
 
 Reject and re-dispatch anything that does not conform. You read **only** this block.
 
@@ -238,7 +239,8 @@ For each wave, in dependency order:
   {{VERIFY_MODE}}` + `auth token {{AUTH_TOKEN}}` when one was supplied (omit the override
   otherwise; pipelines that need one will bubble up a single shared question).
 - Same-wave sub-orchestrators run concurrently. Collect outcome blocks. A ticket is not
-  `PR_OPEN` until its outcome shows a real PR URL, `qa: pass`, and a deck path.
+  `PR_OPEN` until its outcome shows a real PR URL, `qa: pass`, a deck path, and verdict APPROVE
+  (at-cap must-fix-open parks as stop-and-report, BLOCK parks as BLOCKED).
 - `BLOCKED` / `NEEDS_DECISION` -> park the ticket, surface the one-liner to the user, continue
   with the rest. Shared questions (expired token, scope calls affecting siblings) are answered
   once and recorded, not re-asked per ticket.
@@ -257,8 +259,8 @@ happened inside each ticket's pipeline. The principal only verifies the outcome:
 
 - Outcome has `pr: <URL>` (real URL, not "none")
 - Outcome has `qa: pass` and a `deck:` path that exists
-- Rounds line present (`<n>/5, min 3`)
-- CI is green on the PR (check via `gh pr checks <PR>`)
+- Rounds line present (`<n>/5, min 3`) with `verdict: APPROVE` for DONE (at-cap must-fix-open
+  is stop-and-report, BLOCK is BLOCKED — neither merges)
 
 If the outcome is `BLOCKED` / `NEEDS_DECISION`, mark the ticket `BLOCKED` and escalate the
 one-liner to the user. Do not reach into the ticket's pipeline to repair it yourself -
@@ -326,9 +328,9 @@ Runs only when all ledger rows are `MERGED`, post-merge QA passes are in, and th
 >    shared question - never invent, borrow, or log a token yourself. Never let your pipeline
 >    stall silently waiting.
 > 3. **Enforce the outcome.** When the pipeline finishes, collect its final report and convert
->    it to the **Outcome Schema** (section 4): real PR URL, verify-mode, rounds, QA result,
->    absolute deck path, followups. If any of PR / QA-pass / deck-path is missing, that is a
->    protocol violation - say so, do not paper over it.
+>    it to the **Outcome Schema** (section 4): real PR URL, verify-mode, rounds, last-round
+>    verdict, QA result, absolute deck path, followups. If any of PR / QA-pass / deck-path /
+>    verdict is missing, that is a protocol violation - say so, do not paper over it.
 > 4. **File follow-up work in Linear** for anything the pipeline reports as out of scope (extra
 >    refactors, newly found bugs, prerequisite work) that is not already filed. Use `save_issue`
 >    with `parentId = {{EPIC_ID}}`, `team = {{TEAM}}`, `labels = ["follow-up", <severity>]`, and
