@@ -1,208 +1,154 @@
 ---
 name: pr-review-toolkit
-description: Use when reviewing recent code changes, a pull request, or a git diff for comments, tests, error handling, type design, general code quality, or simplification opportunities before commit, PR creation, merge, or after review feedback.
+description: Use when reviewing recent code changes, a pull request, or a git diff for a ship verdict — adversarial review from five angles with a club fight producing APPROVE / FIX-THEN-SHIP / BLOCK plus must-fix list. Canonical review for pipeline, dark-factory, hotfix.
 ---
 
 # PR Review Toolkit
 
-## Overview
+## Outcomes
 
-Run a focused pull-request review with six independent review lenses. Each lens examines the changed files from a different quality angle, then the coordinator merges findings into one severity-ordered report.
+Every run ends with a ship verdict. No verdict block means the review did not happen.
 
-**Non-negotiable constraints:**
-1. Review the changed scope by default: `git diff`, staged changes, or the PR diff the user names.
-2. Keep findings advisory. Do not modify files unless the user explicitly asks for fixes.
-3. Preserve the six-lens structure. Do not collapse a comprehensive review into one generic reviewer.
-4. Run independent lenses in parallel unless the user asks for sequential review or one lens depends on another result.
+```text
+=== REVIEW VERDICT ===
+scope:      <PR URL | branch range | files>
+variant:    <full | light>
+verdict:    APPROVE | FIX-THEN-SHIP | BLOCK
+must-fix:   <n> | none (each: <file:line> <claim> <proof> <fix>)
+followups:  <ticket ids or none>
+dissent:    <<=2 lines per item or none>
+residual risk: <one line>
+=== END ===
+```
+
+Verdict meanings:
+
+- **APPROVE** — zero must-fix. Suggestions and followups never block. The caller may ship once its own gates pass (pipeline still needs round count plus verify/CI).
+- **FIX-THEN-SHIP** — must-fix list non-empty. Fix each item, re-verify, re-review. Nothing ships past an open must-fix.
+- **BLOCK** — the implementation is wrong against its task or plan, needs a design change, or a finding invalidates the approach. Line fixes are the wrong tool: escalate (pipeline stops via supervisor, hotfix hands to pipeline).
+
+Finding ranks:
+
+- **must-fix** — proven ship risk: breaks users, loses data, opens a security hole, fails silently, leaves a risky path unproven, or shapes code so the next change hides a breaker. Every must-fix carries file and line, proof (trace, exploit, or named missing case), user impact, and concrete fix. No proof means no must-fix.
+- **suggestion** — behavior-preserving polish. Never blocks, never re-reviewed.
+- **followup** — real but out of scope. Becomes a ticket id, never an inline expansion.
+- **waived / dissent** — every dropped finding logs its reason; unresolved disagreement logs at most 2 lines per item under dissent.
+
+Completion criterion: the verdict block is printed, every must-fix has location plus proof plus fix, and every dropped finding has a reason or a dissent entry.
 
 ## When to Use
 
-- Before committing code or opening a PR
-- Before marking a PR ready for review
-- After updating a PR in response to feedback
-- When the user asks to review tests, comments, error handling, types, code quality, or simplification opportunities
-- When a completed implementation needs an independent review pass
+- Before commit, PR, merge, or after review feedback — full fight.
+- After FIX in hotfix — light variant, one round, verdict still required.
+- Inside pipeline Step 6 (full fight per review round) and Step 7 (simplify pass only).
+- Against a design sketch in architect Phase C — fight protocol with scope set to the sketch.
 
-## Review Scope
+## Canonical Callers
 
-Resolve the scope before dispatching review lenses:
+- `pipeline` Step 6 runs the full fight every review round; the verdict drives enforce, terminate, and merge. Step 7 runs only the simplify pass below: polish, no fight, no verdict.
+- `dark-factory` never calls this skill directly. Per-ticket verdicts arrive inside pipeline outcome blocks.
+- `hotfix` runs the light variant once after FIX. BLOCK stops SHIP and escalates to pipeline.
+- `architect` Phase C may run the fight protocol against the synthesized sketch before implementing.
 
-1. If the user names a PR, inspect that PR diff.
-2. Else if staged changes exist, inspect staged and unstaged changes unless the user says otherwise.
-3. Else inspect `git diff` against the working tree or the branch base.
-4. If no changed files exist, ask the user for the PR, branch, commit range, or file list.
+## Step 0 - Scope
 
-Use the user's requested aspects when provided. Default to all applicable lenses.
+Resolve scope before dispatching angles:
 
-## Review Lenses
+1. Named PR → that PR diff.
+2. Else staged changes → staged plus unstaged unless the user says otherwise.
+3. Else `git diff` against working tree or branch base. Pipeline rounds review the pushed diff, never a stale local one.
+4. No changed files → ask for PR, branch, commit range, or file list.
 
-| Lens | Use When | Looks For |
-|------|----------|-----------|
-| `comment-analyzer` | Comments, docs, docstrings, README/API docs changed | Inaccurate comments, obsolete TODOs, comments that restate obvious code, missing why-context |
-| `pr-test-analyzer` | Any behavior, tests, validation, integration, or bug fix changed | Missing behavioral coverage, untested edge cases, brittle tests, tests coupled to implementation |
-| `silent-failure-hunter` | Catch blocks, fallbacks, retries, optional/null handling, error messages changed | Silent failures, swallowed errors, unjustified fallbacks, missing context, broad catches |
-| `type-design-analyzer` | Types, schemas, models, DTOs, state machines, domain entities changed | Weak invariants, mutable internals, invalid states, missing construction validation |
-| `code-reviewer` | Always for comprehensive review | Project-rule violations, likely bugs, security issues, race conditions, meaningful quality problems |
-| `code-simplifier` | After the code is behaviorally acceptable or user asks for polish | Unnecessary complexity, redundant abstractions, unclear names, excessive nesting, clever code |
-
-## Workflow
-
-```dot
-digraph pr_review_toolkit {
-  rankdir=LR;
-  scope [label="Resolve\nchanged scope" shape=doublecircle];
-  select [label="Select\napplicable lenses" shape=diamond];
-  comments [label="Comments"];
-  tests [label="Tests"];
-  errors [label="Errors"];
-  types [label="Types"];
-  code [label="Code"];
-  simplify [label="Simplify"];
-  merge [label="Merge\nfindings" shape=box];
-  output [label="Report\nfindings" shape=doublecircle];
-
-  scope -> select;
-  select -> {comments tests errors types code simplify};
-  comments -> merge;
-  tests -> merge;
-  errors -> merge;
-  types -> merge;
-  code -> merge;
-  simplify -> merge;
-  merge -> output;
-}
-```
-
-### Step 1 - Resolve Scope
-
-Identify the files and diff range. Include the exact scope in every lens prompt.
+Resolve the task source alongside scope: Linear ticket acceptance, pipeline consensus slices, or hotfix confirmed pin. The spec angle prosecutes against it; without a task source that angle checks scope-consistency only. Record both in every angle prompt.
 
 Useful commands when available:
+
 - `git status --short`
 - `git diff --name-only`
 - `git diff --cached --name-only`
-- `gh pr view --json number,title,headRefName,baseRefName,files` when reviewing an existing GitHub PR
+- `gh pr view --json number,title,headRefName,baseRefName,files` for an existing PR
 
-### Step 2 - Select Lenses
+## Step 1 - Angles (party, parallel)
 
-Run all requested lenses. For a comprehensive PR review, run all six lenses. For a targeted review, run only the requested or applicable lenses, but keep the same lens definitions.
+Dispatch one read-only agent per applicable angle as fresh sessions with no shared memory, all in parallel. Each prompt carries the scope, the task source, and this contract: return findings only for this scope with file and line each; every finding needs claim, proof, user impact, and concrete fix; no proof means no finding; never modify files.
 
-Default applicability:
-- Always run `code-reviewer` for broad PR review.
-- Run `pr-test-analyzer` for behavior changes, test changes, bug fixes, validation, or new features.
-- Run `silent-failure-hunter` for error handling, catch blocks, fallbacks, retries, nullable paths, or external service calls.
-- Run `comment-analyzer` when comments, docs, examples, or generated documentation changed.
-- Run `type-design-analyzer` when types, schemas, validation models, domain models, or state shapes changed.
-- Run `code-simplifier` after serious issues are absent or when the user asks for clarity/refinement.
+| Angle | Covers | Must prove |
+|-------|--------|------------|
+| `spec` | Task and acceptance match; missing or extra behavior | Which acceptance fails or contradicts, traced to the diff |
+| `breaker` | Bugs, races, security holes, invalid states, type invariants that compile but fail in prod | Exploit or trace to breakage plus user impact |
+| `failure` | Catches, fallbacks, retries, null and optional paths, external calls, user feedback, debug context | The hidden error plus its user impact |
+| `proof` | Tests and verification evidence | Which breaker or failure finding the proof would miss, and the missing edge, negative, async, or boundary case |
+| `shape` | Types, names, structure, comments — ship-relevant only: what breaks the next change or hides a breaker | How the next change breaks or which breaker it conceals |
 
-### Step 3 - Dispatch Review Agents
+Angle briefs:
 
-Dispatch each selected lens as an independent review agent. Use generic, read-only review agents. Each prompt must include:
+- **spec** — Check the diff against the task source. Name each acceptance the diff misses or contradicts, with a trace. Flag extra behavior as followup candidates, never must-fix.
+- **breaker** — Break it. Hunt bugs, races, security holes, invalid states, and invariants that compile but fail in prod. Each finding needs an exploit or trace plus user impact.
+- **failure** — Fail it. Walk every catch, fallback, retry, null path, and external call. Each finding names the hidden error and its user impact.
+- **proof** — Attack the proof. For each risky path, would the added or changed tests catch the breaker and failure findings? Name the missing case and which finding it would have caught.
+- **shape** — Ship-relevant shape only. Flag types, names, structure, or comments that will break the next change or hide a breaker. Pure polish is not must-fix; note it for the simplify pass.
 
-```markdown
-Review scope:
-<files, PR, or diff range>
+Default is all five angles for a comprehensive review. Targeted reviews run the requested subset, and the verdict block notes the narrowed scope. Pure polish requests go straight to the simplify pass, never through the fight.
 
-User-requested focus:
-<requested aspects or "comprehensive PR review">
+## Step 2 - Fight (club, max 2 debate rounds)
 
-Return only findings for this scope. Include file and line references. Do not modify files.
-```
+The club attacks the merged findings. Roles mirror the pipeline party's Anti-Consensus Club minus Wildcard, which proposes problems rather than judging claims:
 
-Use these lens prompts:
+- **Level** — claim checker. Is each proof real? Where are the support gaps? Drop speculation on sight.
+- **Splinter** — consensus challenger. Which easy agreement did the angles skip, which tradeoff got ignored, which angle has a blind spot here?
+- **Killjoy** — stop rule, not a persona. Two debate rounds exist; a third never does. Repetition, fake disagreement, and unsupported speculation die immediately.
 
-**comment-analyzer**
+Protocol:
 
-> Review comments and documentation in the changed scope. Verify factual accuracy against code behavior, completeness of important assumptions, long-term maintainability, misleading or stale TODO/FIXME notes, and comments that merely restate obvious code. Output Critical Issues, Improvement Opportunities, Recommended Removals, and Positive Findings.
+1. Round 1: angles propose in parallel (Step 1).
+2. Merge: deduplicate overlaps, preserve the finding angle on each survivor.
+3. Club attacks the merged list: Level checks every proof, Splinter challenges consensus and coverage.
+4. Round 2: angle owners defend with stronger proof or concede. Exactly one defense round.
+5. Keep rule: a finding becomes must-fix only with its proof standing and the club challenge survived. Everything else drops to suggestion, followup, waived with reason, or dissent.
 
-**pr-test-analyzer**
+A finding that would need a third round is either must-fix on standing proof or dropped for lacking it. Stalemate is dissent, not a further round.
 
-> Review test coverage quality for the changed behavior. Focus on behavioral coverage, critical edge cases, error paths, negative cases, async/concurrency risks, integration boundaries, brittle tests, and tests that assert implementation details. Rate each recommended test 1-10 by bug-prevention value. Output Critical Gaps, Important Improvements, Test Quality Issues, and Positive Observations.
+## Step 3 - Verdict
 
-**silent-failure-hunter**
+Map the survivors:
 
-> Review error handling in the changed scope. Find empty or broad catches, log-and-continue paths, swallowed errors, unjustified fallbacks, missing user feedback, missing debug context, retry exhaustion, optional/null handling that hides failure, and production fallbacks to mocks or stubs. For each issue include Location, Severity, Hidden Errors, User Impact, and Recommendation.
+1. Any survivor invalidating the approach or design → BLOCK. Log surviving must-fix items anyway, then escalate instead of fixing lines.
+2. Else any must-fix → FIX-THEN-SHIP with the full list.
+3. Else → APPROVE.
 
-**type-design-analyzer**
+Print the verdict block first, then the human report: must-fix items with impact and fix, suggestions, followups, dissent, residual risk, and the scope log (angles run, skipped with reasons, debate rounds used).
 
-> Review changed types, schemas, domain models, DTOs, and state shapes. Identify invariants, then rate Encapsulation, Invariant Expression, Invariant Usefulness, and Invariant Enforcement from 1-10. Flag mutable internals, invalid states, missing construction validation, over-broad types, and types that rely on comments or external code to preserve invariants.
+## Light Variant (hotfix)
 
-**code-reviewer**
+One sweep agent covering all five angles in a single pass, then one combined Level plus Splinter challenge, then the verdict. No defense round: the coordinator keeps only proven findings and verdicts. Same verdict block with `variant: light`. BLOCK hands the work to pipeline; FIX-THEN-SHIP clears inside hotfix VERIFY.
 
-> Review changed code against the project's explicit instructions and likely production bugs. Read project instruction files when present. Report only high-confidence issues: explicit rule violations, real bugs, security issues, race conditions, null/undefined hazards, meaningful accessibility issues, or serious maintainability problems. Score confidence 0-100 and report only issues >=80.
+## Simplify Pass (pipeline Step 7 only)
 
-**code-simplifier**
-
-> Review recently changed code for simplification opportunities that preserve exact behavior. Find unnecessary complexity, redundant abstractions, unclear names, excessive nesting, clever compact code, identity transforms, and comments that explain obvious code. Do not propose broad refactors or behavior changes. Output concrete simplification suggestions with file/line references.
-
-### Step 4 - Merge Findings
-
-Merge the lens outputs into one report:
-
-1. Deduplicate overlapping findings across lenses.
-2. Preserve which lens found each issue.
-3. Sort by severity: Critical, Important, Suggestions.
-4. Drop low-confidence nits unless the user requested exhaustive review.
-5. Include skipped lenses and why they were skipped.
-
-## Output
-
-Print directly to the conversation. Use this structure:
-
-```markdown
-# PR Review Summary
-
-## Scope
-- Reviewed: <PR, branch range, or files>
-- Lenses run: <list>
-- Lenses skipped: <list with reasons>
-
-## Critical Issues
-- [<lens>] <issue> - `<file:line>`
-  Impact: <why this can break users or maintainers>
-  Fix: <specific recommended change>
-
-## Important Issues
-- [<lens>] <issue> - `<file:line>`
-  Impact: <why this matters>
-  Fix: <specific recommended change>
-
-## Suggestions
-- [<lens>] <issue> - `<file:line>`
-  Fix: <specific simplification or improvement>
-
-## Strengths
-- <what is well covered or well implemented>
-
-## Recommended Action
-1. Fix critical issues first.
-2. Address important issues.
-3. Consider suggestions if they reduce complexity without changing behavior.
-4. Re-run the affected lenses after fixes.
-```
-
-If no high-confidence issues exist, say so and include the scope, lenses run, and any residual risk.
+One agent over the whole diff: behavior-preserving polish — unnecessary complexity, redundant abstractions, unclear names, excessive nesting, identity transforms, comments restating obvious code. No fight, no verdict, no behavior change, no files outside the diff. Anything larger becomes a followup. Output applied and dropped lists with the re-verify result.
 
 ## Quick Reference
 
-| User Request | Lenses |
-|--------------|--------|
-| "Review this PR" | all applicable, usually all six |
-| "Check tests" | `pr-test-analyzer` |
-| "Review error handling" | `silent-failure-hunter` |
-| "Check comments/docs" | `comment-analyzer` |
-| "Review these types" | `type-design-analyzer` |
-| "Code review before commit" | `code-reviewer`, plus applicable specialized lenses |
-| "Simplify this" | `code-simplifier` after correctness review |
+| User Request | Form |
+|--------------|------|
+| "Review this PR" | Full fight, all five angles, verdict |
+| "Check tests" | Proof angle plus whoever owns the risky paths, club, verdict (narrowed scope noted) |
+| "Review error handling" | Failure angle plus breaker, club, verdict (narrowed scope noted) |
+| "Check comments/docs" | Shape angle, club, verdict (narrowed scope noted) |
+| "Review these types" | Shape plus breaker, club, verdict (narrowed scope noted) |
+| "Code review before commit" | Full fight, all five angles, verdict |
+| "Simplify this" | Simplify pass only, no fight, no verdict |
+| Hotfix after FIX | Light variant, verdict required |
 
 ## Common Mistakes
 
-- **Using one generic reviewer for a comprehensive request.** The toolkit's value is separate lenses with independent focus.
-- **Reviewing the entire repository by default.** Start with the diff or PR scope unless the user asks broader.
-- **Skipping the test lens because tests exist.** Existing tests can still miss the behavior that changed.
-- **Skipping error review because code compiles.** Silent failures are behavioral bugs, not type errors.
-- **Running simplification before serious review findings.** Simplification is polish after correctness and project-rule issues are known.
-- **Leaving Claude-specific commands or frontmatter in portable instructions.** Use generic actions: dispatch agents, inspect diffs, merge findings.
+- **One generic reviewer instead of party plus club.** The fight is the value: single-pass review keeps false positives and misses real breakage.
+- **Findings without proof.** Unproven claims are speculation for Level to drop, not items to debate.
+- **Polishing before the verdict.** Simplification runs after APPROVE, never inside the fight.
+- **Reviewing the whole repository by default.** Scope is the diff unless the user asks broader.
+- **Treating suggestions as must-fix.** Taste never blocks shipping; proven breakage never ships as taste.
+- **Answering BLOCK with line fixes.** BLOCK means the design is wrong: escalate.
+- **Skipping the test lens because tests exist.** Existing tests can still miss exactly the behavior that changed.
+- **Skipping failure review because code compiles.** Silent failures are behavioral bugs, not type errors.
 
 ## Framework tail
 Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.

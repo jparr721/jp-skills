@@ -1,6 +1,6 @@
 ---
 name: dark-factory
-description: Use when you want an entire Linear epic (or multi-ticket task) driven to merged-on-main as one coordinated run. Spawns a principal orchestrator that decomposes the epic and fans out one sub-orchestrator per ticket; each sub-orchestrator runs the full `pipeline` skill on its ticket (party deliberation, min 3 / cap 5 reviews, gated merge, real-data QA + slide deck). Requires the `pipeline` skill - if it is absent the run pauses with the link instead of improvising. Merges PRs in topological order. Changes application code and can merge PRs to main.
+description: Use when you want an entire Linear epic (or multi-ticket task) driven to merged-on-main as one coordinated run. Spawns a principal orchestrator that decomposes the epic and fans out one sub-orchestrator per ticket; each sub-orchestrator runs the full `pipeline` skill on its ticket (party deliberation, pr-review-toolkit fight to APPROVE verdict min 3 / cap 5 rounds, gated merge, real-data QA + slide deck). Requires the `pipeline` skill - if it is absent the run pauses with the link instead of improvising. Merges PRs in topological order. Changes application code and can merge PRs to main.
 ---
 
 # Dark Factory
@@ -14,8 +14,10 @@ topological order and closes the epic.
 
 Scale rule: `pipeline` is one orchestrator managing a swarm of agents toward a **single**
 task with all of its review rounds; Dark Factory is literally that same thing over **many**
-tasks at the same time. All per-ticket rigor - party deliberation, min 3 / cap 5 reviews,
+tasks at the same time. All per-ticket rigor - party deliberation, verdict fight min 3 / cap 5,
 simplify pass, real-data QA + deck - lives inside `pipeline` and is never re-implemented here.
+`pr-review-toolkit` is canonical through `pipeline`: the principal never invokes it, verifies
+verdicts only via outcome blocks.
 
 **`pipeline` is a hard precondition.** Step 0 checks it is available. If it is absent, the run
 pauses and tells the user exactly where to get it - it never substitutes a home-grown
@@ -27,7 +29,7 @@ implement/review loop. No `pipeline`, no factory.
    logs, or full ticket descriptions. Sub-orchestrators read only their pipeline's outcome
    blocks, never code. Everything heavy happens inside pipeline runs.
 3. **Pipelines own quality.** The principal never reviews code, never dispatches implement or
-   fix agents, never re-runs reviews. Per-ticket review loop and QA belong to `pipeline`.
+   fix agents, never runs the fight or re-runs reviews. Per-ticket verdicts and QA belong to `pipeline`.
 4. **Shared questions once.** Anything every ticket would ask - notably local-vs-CI
    verification - is asked once by the principal at the parameter gate and propagated to all
    pipeline calls. Asking it per ticket is a protocol violation. Topic-research delta questions (adopt-X-instead-of-Y) are shared questions: asked once by the principal and propagated, never re-asked per ticket.

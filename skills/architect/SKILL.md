@@ -43,7 +43,7 @@ Default: proceed directly to implementation with the synthesized design. No huma
 
 Opt in to a checkpoint when the invoker explicitly asks ("with checkpoint", "stop and show me before implementing", or similar). Then surface the synthesized design and pause for sign-off.
 
-The synthesis can ship as its own scaffold-first commit either way; planned, scoped breakage during fill-in is fine. For adversarial pressure on the design before implementing, have a fresh subagent attack the synthesized sketch.
+The synthesis can ship as its own scaffold-first commit either way; planned, scoped breakage during fill-in is fine. For adversarial pressure on the design before implementing, run the `pr-review-toolkit` fight protocol with scope set to the sketch (angles plus club to verdict, findings mapped to design risk).
 
 If the human pushes back on the shape (in a checkpoint or after the fact), treat that as Phase A evidence. Re-ground and re-run Phase B before writing more code.
 

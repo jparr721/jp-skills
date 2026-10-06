@@ -1,6 +1,6 @@
 ---
 name: pipeline
-description: Use when you want one unit of work - a Linear ticket, a bug fix, a feature request - driven end to end from idea to merged PR plus proven QA with a slide deck. Always runs in a dedicated git worktree under a spawned supervisor agent that tracks all work and batches questions to you. Always runs BMAD party deliberation with the Anti-Consensus Club to a consensus slice table, per-slice plans with cross-review, parallel file-disjoint implementation, the full local gate (every workspace typecheck, every test suite including CI-skipped lanes, every build), PR, pr-review-toolkit min 3 / cap 5 review rounds, a code-simplifier pass, gated merge, then real-data QA proving the change with a slide deck. Changes application code and merges to the target branch.
+description: Use when you want one unit of work - a Linear ticket, a bug fix, a feature request - driven end to end from idea to merged PR plus proven QA with a slide deck. Always runs in a dedicated git worktree under a spawned supervisor agent that tracks all work and batches questions to you. Always runs BMAD party deliberation with the Anti-Consensus Club to a consensus slice table, per-slice plans with cross-review, parallel file-disjoint implementation, the full local gate (every workspace typecheck, every test suite including CI-skipped lanes, every build), PR, pr-review-toolkit adversarial fight to ship verdict (min 3 / cap 5 review rounds), a simplify pass, gated merge, then real-data QA proving the change with a slide deck. Changes application code and merges to the target branch.
 ---
 
 # Pipeline
@@ -33,14 +33,14 @@ Stall rule: no user-visible progress within ~2 min of activation → emit the in
 1. **Always work in a dedicated worktree.** Every run gets its own git worktree for this task
    and no other. Never implement in the user's primary checkout, never reuse a worktree that
    holds another task's work. Step 1 creates it before any file is touched.
-2. **Never skip the review loop, and never exceed its cap.** `pr-review-toolkit` runs against
-   the pushed diff for **min 3 / cap 5 rounds** (Step 6) - round 6 does not exist. One round is
-   never enough even when it comes back clean, because rigor over speed is the point: after a
-   clean round 1 the loop still runs to round 3. Reaching the cap with findings still open is a
+2. **Never skip the review loop, and never exceed its cap.** `pr-review-toolkit` full fight runs
+   against the pushed diff for **min 3 / cap 5 rounds** (Step 6) - round 6 does not exist. One round is
+   never enough even when it verdicts APPROVE, because rigor over speed is the point: after an
+   APPROVE round 1 the loop still runs to round 3. Reaching the cap with must-fix still open is a
    stop-and-report, not a reason to keep looping.
-3. **Always finish with a simplification pass.** Once the review loop ends, `code-simplifier`
-   runs over the whole PR diff and its behavior-preserving suggestions are applied (Step 7).
-   The loop's per-round simplify lens sees one round's increment; this pass sees the finished
+3. **Always finish with a simplification pass.** Once the review loop ends, the `pr-review-toolkit`
+   simplify pass runs over the whole PR diff and its behavior-preserving suggestions are applied (Step 7).
+   The rounds' shape notes see one round's increment; this pass sees the finished
    change as a whole. It is re-verified against the Step 4b gate in the chosen mode, not re-reviewed -
    that would breach the cap.
 4. **Local verification runs only with permission.** CI runs a deliberately trimmed
@@ -52,8 +52,8 @@ Stall rule: no user-visible progress within ~2 min of activation → emit the in
    ci-only` and governs Steps 4-8. A green PR is a floor, not the bar - in ci-only mode the
    report says so explicitly instead of implying local proof.
 5. **Never merge red.** The gate in the chosen mode green on the final commit, CI green, and zero
-   remaining Critical/Important findings, or no merge. In ci-only mode the merge gate is CI
-   green on the exact commit plus clean reviews; nothing claims local proof that never ran.
+   remaining must-fix items, or no merge. In ci-only mode the merge gate is CI
+   green on the exact commit plus APPROVE verdicts; nothing claims local proof that never ran.
 6. **Never bypass repository hooks.** No `--no-verify`, no `HUSKY=0`, no `core.hooksPath`
    change, no equivalent. If a hook fails, stop and report it.
 7. **No silent scope creep.** Work that grows past the task's scope becomes a follow-up
@@ -86,7 +86,7 @@ Optional overrides, stated in plain language inside the prompt:
 | "skip planning" | Force PARTY PLAN to be skipped. Use only when the plan is genuinely already written (names behavior, affected areas, acceptance criteria). |
 | "N review rounds" | Raise the cap above 5. Never lowers it, and nothing you discover mid-loop raises it. |
 | "verify-mode `<local\|ci-only>`" | Preset the Step 4 answer instead of asking. `dark-factory` uses this to propagate one shared answer to every ticket pipeline. |
-| "skip the simplify pass" | Skip Step 7. The per-round `code-simplifier` lens still runs. |
+| "skip the simplify pass" | Skip Step 7. The per-round shape notes still run. |
 | "use worktree `<path>`" | Reuse an existing worktree instead of creating the default `<home>/worktrees/<repo>/<branch>` one (Step 1b). It must be dedicated to this task and clean. |
 | "skip QA" | NEVER honored. Step 9 always runs. If the prompt asks for it, say so and run QA anyway. |
 | "auth token `<cookie\|session>`" | Pre-supply the QA auth token (session cookie, bearer token, authed session value). Held by the supervisor, passed to Step 9 via env, never written to files or logs. Asking is skipped when it works; if it is missing, expired, or lacks scope, the supervisor asks for a fresh one. `dark-factory` propagates one token to every ticket pipeline. |
@@ -103,10 +103,10 @@ digraph pipeline {
   impl    [label="Step 3\nIMPLEMENT\nfile-disjoint\nparallel agents"];
   verify  [label="Step 4\nVERIFY\nfull local gate:\nall typechecks, all suites\nincl. CI-skipped lanes,\nall builds" shape=box];
   pr      [label="Step 5\nPR\ncommit-and-push"];
-  review  [label="Step 6\nREVIEW ROUND\npr-review-toolkit\nmin 3 / cap 5"];
+  review  [label="Step 6\nREVIEW ROUND\npr-review-toolkit fight\nmin 3 / cap 5"];
   clean   [label="Round clean\nAND rounds >= 3\nOR rounds == 5?" shape=diamond];
   open    [label="Findings still\nopen at the cap?" shape=diamond];
-  simp    [label="Step 7\nSIMPLIFY\ncode-simplifier\nover the whole diff\n(re-verify + push,\nno extra round)"];
+  simp    [label="Step 7\nSIMPLIFY\nsimplify pass\nover the whole diff\n(re-verify + push,\nno extra round)"];
   green   [label="CI green?" shape=diamond];
   merge   [label="Step 8\nMERGE" shape=box];
   qa      [label="Step 9\nQA + DECK\nreal-data proof\n+ slide deck" shape=box];
@@ -370,15 +370,19 @@ clean round 1 still runs to round 3.
 
 For each round:
 
-1. **Review.** Invoke `pr-review-toolkit` scoped to the PR. Run all six lenses in parallel.
-   Review the **pushed diff**, never a stale local one - each round's review must see the
-   previous round's fixes. The supervisor tracks round state.
-2. **Triage** the merged report:
-   - **Critical** - fix. Always.
-   - **Important** - fix, or waive with a stated reason recorded in the round log. Waiving
-     because it is inconvenient is not a reason.
+1. **Review.** Invoke the `pr-review-toolkit` full fight scoped to the PR: all five angles in
+   parallel, club fight, verdict block required. Pass the ticket acceptance plus the consensus
+   slice table as the task source. Review the **pushed diff**, never a stale local one - each
+   round's review must see the previous round's fixes. The supervisor tracks round state.
+   A round without a verdict block is not a round - re-dispatch.
+2. **Enforce** the verdict:
+   - **BLOCK** - stop. Escalate via the supervisor immediately; line fixes are the wrong tool.
+     Do not spend another round.
+   - **FIX-THEN-SHIP must-fix** - fix. Always. Must-fix already survived the club fight, so it
+     is never waived for convenience; a genuine false positive is logged with its reason and
+     counts as dissent, not a waiver.
    - **Suggestions** - apply when cheap and behavior-preserving; otherwise drop with a note.
-   - **Out of scope** - anything that reveals work beyond this task becomes a follow-up ticket.
+   - **Followups** - anything that reveals work beyond this task becomes a follow-up ticket.
      Record the id. Do not grow the PR.
 3. **Fix** the accepted findings. Parallelize the fixes under the same file-disjoint rule
    from Step 3. Fix agents route questions to the supervisor via `hub`, never to you.
@@ -388,40 +392,40 @@ For each round:
 5. **Log the round** to the supervisor ledger:
 
 ```
-round <n>: critical=<a> important=<b> suggestions=<c> | fixed=<x> waived=<y> followups=<ids> | remaining=<a'+b'>
+round <n>: verdict=<APPROVE|FIX-THEN-SHIP|BLOCK> must-fix=<m> suggestions=<c> | fixed=<x> dissent=<y> followups=<ids> | remaining=<m'>
 ```
 
-**Termination - min 3, cap 5.** Stop early only when a round is clean (zero Critical, zero
-Important, no files changed) **and** 3 rounds have completed. Round 6 does not exist. Only an
+**Termination - min 3, cap 5.** Stop early only when a round verdicts APPROVE (zero must-fix,
+no files changed) **and** 3 rounds have completed. Round 6 does not exist. Only an
 explicit "N review rounds" in the prompt raises the cap above 5, and nothing discovered
-mid-loop does. So the loop is: round 1; if clean, still run to round 3; otherwise fix, verify,
-push, keep going; stop at the first clean round at or after round 3, or at round 5. Fixes after
+mid-loop does. So the loop is: round 1; if APPROVE, still run to round 3; otherwise fix, verify,
+push, keep going; stop at the first APPROVE round at or after round 3, or at round 5. Fixes after
 the final round are pushed and gated by Step 4b but are **not** re-reviewed - that trade gets
 stated rather than hidden.
 
-**At the cap with findings still open** - Critical or un-waived Important after round 5 - fix
+**At the cap with must-fix still open** after round 5 - fix
 the accepted ones, re-verify (Step 4b), push, then **stop and report via the supervisor**. It gives
-you the open findings, what the post-last-review fixes changed, and the fact that those fixes are unreviewed;
+you the open must-fix items, what the post-last-review fixes changed, and the fact that those fixes are unreviewed;
 you decide between merging, raising the cap, or handing it back. Do not open a round past the cap on
-your own initiative, and do not merge past open Critical findings.
+your own initiative, and do not merge past open must-fix items.
 
-**Escalate via the supervisor immediately**, without spending another round, if a fix would require a design
-change the consensus plan does not cover, or if round 1's findings show the implementation is
-wrong rather than imperfect. Another review round is not the tool for either.
+**Escalate via the supervisor immediately**, without spending another round, on a BLOCK verdict,
+or if a fix would require a design change the consensus plan does not cover. Another review
+round is not the tool for either.
 
 
 ## Step 7 - SIMPLIFY
 
-The review loop ended clean - reached only via the clean exit in Step 6, never via a stop-and-
+The review loop ended clean - reached only via the APPROVE exit in Step 6, never via a stop-and-
 report at the cap - so the change is correct. This pass asks a different question: is it as
-simple as it could be? Each round's `code-simplifier` lens only ever saw that round's
+simple as it could be? Each round's shape notes only ever saw that round's
 increment; this one sees the finished diff whole, which is where redundant abstractions,
 duplicated helpers, and now-pointless indirection actually become visible.
 
 Skip only if the user said "skip the simplify pass".
 
-1. **Dispatch `code-simplifier` over the entire PR diff** - `git diff origin/<target>...HEAD`,
-   not the last round's changes. Use the lens prompt from `pr-review-toolkit`.
+1. **Run the `pr-review-toolkit` simplify pass over the entire PR diff** - `git diff origin/<target>...HEAD`,
+   not the last round's changes.
 2. **Apply the behavior-preserving suggestions.** Unnecessary complexity, redundant
    abstractions, unclear names, excessive nesting, identity transforms, comments restating
    obvious code. Parallelize under the same file-disjoint rule as Step 3.
@@ -447,8 +451,8 @@ simplify: suggested=<n> applied=<x> dropped=<y> followups=<ids> | re-verify: <mo
 
 Auto-merge, gated. Merge when every one of these holds - no separate approval gate; the supervisor only surfaces batched questions and stop-and-reports:
 
-- the review loop terminated cleanly per Step 6 - the last round left zero Critical and zero
-  un-waived Important findings. Terminating at the cap *with* findings open is not a clean
+- the review loop terminated cleanly per Step 6 - the last round verdicts APPROVE with zero
+  must-fix. Terminating at the cap *with* must-fix open is not a clean
   termination: that path stops and reports instead of merging
 - Step 7 ran (or the user skipped it), and any simplification edits it made were pushed with a
   green Step 4b gate (ci-only mode: pushed plus CI green)
@@ -545,7 +549,7 @@ task:      <ticket id or summary>
 supervisor: <agent id>
 worktree:  <path> (<removed | kept: reason>)
 pr:        <url> (<merged | open>)
-rounds:    <n>/5, min 3 (critical fixed=<a>, important fixed=<b>, waived=<c>, still open=<d>)
+rounds:    <n>/5, min 3 (must-fix fixed=<a>, dissent=<b>, still open=<c>, last verdict=<APPROVE | FIX-THEN-SHIP | BLOCK>)
 simplify:  applied=<x> dropped=<y> (<or: skipped - reason>)
 unreviewed: <what was pushed after the last review round: post-last-review fixes, simplify edits, or none>
 followups: <linear ids, or none>
@@ -570,21 +574,21 @@ risk:      <=2 lines of residual risk, or none
 - **Skipping deliberation for a ticket that is already a spec.** The gate cuts both ways; a well-specified
   ticket goes straight to implementation - state the call and reason.
 - **Running round 2 against the round-1 diff.** Push first. An unpushed fix is an unreviewed fix.
-- **Stopping after round 1 because it was clean.** Min 3 is a floor, not a suggestion. Rigor over
-  speed: a clean round 1 still runs to round 3.
+- **Stopping after round 1 because it verdicts APPROVE.** Min 3 is a floor, not a suggestion. Rigor over
+  speed: an APPROVE round 1 still runs to round 3.
 - **Running a sixth review round.** Five is a hard cap, and "round 5 found real
   issues so the fixes need reviewing" is exactly the reasoning that turns a pipeline into ten
   rounds of diminishing returns. Fix, verify, push, report the fixes as unreviewed, stop.
-- **Running another round against an unchanged diff before round 3.** A clean round ends the loop only when
+- **Running another round against an unchanged diff before round 3.** An APPROVE round ends the loop only when
   min 3 is met; before that, the loop continues even on a byte-identical diff.
 - **Smuggling extra rounds in under another name.** The Step 7 confirming round, the post-rebase
   round, the "quick re-check after fixing CI" - all of these were review rounds, and all of them
   are now the Step 4b gate in the chosen mode instead.
 - **Parallelizing slices that share a file.** Concurrent writes to one file lose work silently.
   Disjoint write sets or different waves - there is no third option.
-- **Letting `code-simplifier` suggestions turn into a refactor.** Suggestions are polish inside
+- **Letting simplify-pass suggestions turn into a refactor.** Suggestions are polish inside
   the existing scope. Anything larger is a follow-up ticket.
-- **Treating the per-round simplify lens as the Step 7 pass.** The lens sees one round's
+- **Treating per-round shape notes as the Step 7 pass.** The angles see one round's
   increment; Step 7 sees the whole diff. Both run.
 - **Letting Step 7 apply something that needs a review to be safe.** Under the cap, the
   simplify pass merges on the strength of the mode gate alone, so anything beyond a
@@ -613,7 +617,7 @@ risk:      <=2 lines of residual risk, or none
 - **Faking the authenticated QA path.** If QA needs a session token you do not have, the supervisor asks for it and QA waits. Never mock what should be a logged-in pass, never bake the token into files, never print it.
 - **Cleaning up the worktree before the deck is delivered.** Step 8 never removes it; Step 9 keeps it until the deck is copied out (always on "don't merge"). A deck that only exists inside a removed worktree was never delivered.
 - **Running typechecks, tests, builds, or generators locally without asking.** The supervisor asks local-vs-CI once before the first gate run; one answer covers all of them. Running any of them first and asking after breaches permission.
-- **Claiming local proof in ci-only mode.** In ci-only mode every unrun local line says `ci-only mode`, the merge rides on CI green plus clean reviews, and nothing implies a local run happened.
+- **Claiming local proof in ci-only mode.** In ci-only mode every unrun local line says `ci-only mode`, the merge rides on CI green plus APPROVE verdicts, and nothing implies a local run happened.
 - **Treating an unrelated dirty working tree as part of the task.** The supervisor relays it as a batched question. Ask through it first.
 - **Opening a draft PR or ending a turn on the activation line alone.** PRs are always ready (`gh pr ready` repair when the repo defaults to drafts); the activation line ships with the first Step 1 action.
 

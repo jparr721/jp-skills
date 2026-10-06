@@ -2,6 +2,14 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [3.0.0] - 2026-10-05
+
+### Breaking
+
+- `pr-review-toolkit` rebuilt as the canonical outcome-driven adversarial review: five angles (spec, breaker, failure, proof, shape) propose in parallel, Level/Splinter club fights max 2 debate rounds, every run ends in a `REVIEW VERDICT` block (`APPROVE | FIX-THEN-SHIP | BLOCK`) with proven must-fix items (file + proof + impact + fix), dissent log, and residual risk. Six-lens Critical/Important/Suggestions taxonomy retired; simplify is a verdict-free polish pass.
+- `pipeline` Step 6 enforces verdicts (BLOCK escalates, must-fix always fixed, APPROVE still runs min 3 rounds), Step 7 runs the simplify pass only, merge/final-report track verdict + must-fix + dissent.
+- `hotfix` gains REVIEW in its sequence: light variant (single sweep + combined challenge, no defense round) before VERIFY; BLOCK hands to `pipeline`, never to SHIP. VERIFY renumbered content unchanged.
+- `dark-factory` routes review canonically through `pipeline` verdicts; principal never invokes the fight, verifies via outcome blocks. `architect` Phase C uses the fight protocol against the sketch.
 ## [2.3.0] - 2026-10-04
 
 ### Added

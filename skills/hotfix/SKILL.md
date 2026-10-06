@@ -8,7 +8,7 @@ description: Use when fixing a bug in place on your current branch — stays on 
 ## Overview
 
 Fast, robust, in-place bug fixes on the branch you are already on. The sequence is fixed:
-**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> VERIFY -> SHIP**.
+**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> REVIEW -> VERIFY -> SHIP**.
 SPREAD fans out only when triage justifies it; live repro runs only when you opt in.
 No phase is skipped otherwise.
 
@@ -93,13 +93,20 @@ Single implementer fixes every scoped site with the same pattern — no drive-by
 refactors, no second convention beside the existing one. Suspected sites that do not
 reproduce the bug are left untouched and reported as checked-clean.
 
-### Step 6 - VERIFY
+### Step 6 - REVIEW + VERIFY
 
-1. Repro after: show the same observation passing where it failed before.
-2. Run typecheck/lint scoped to touched files only. No full suite, no review loop,
+1. **Review.** Run the `pr-review-toolkit` light variant once over the scoped diff: one sweep
+   agent across all five angles, one combined Level plus Splinter challenge, verdict block
+   required. Pass the confirmed pin as the task source. The canonical review, lighter than the
+   pipeline full fight: no defense round, no second attempt. A missing verdict block means no
+   review happened — re-dispatch, never guess.
+2. **Enforce** the verdict: FIX-THEN-SHIP must-fix clears here like any other scoped site;
+   BLOCK stops SHIP and hands the work to `pipeline` with the verdict attached.
+3. Repro after: show the same observation passing where it failed before.
+4. Run typecheck/lint scoped to touched files only. No full suite, no review loop,
    no QA deck. A regression test is added only on request.
-3. Report the diff stat plus what was checked-clean, then continue to SHIP (no handoff — the run ends at the ready PR, not at working-tree edits).
-4. Reuse the Step 1 intake creds first for any authenticated check; ask for a token set (what token, what scope/expiry, where to paste) only when missing, expired, or lacking scope. Missing/insufficient token is a single stop-and-report question — never fake the authenticated path. This is repro-after with auth, not a QA deck.
+5. Report the diff stat, the verdict, plus what was checked-clean, then continue to SHIP (no handoff — the run ends at the ready PR, not at working-tree edits).
+6. Reuse the Step 1 intake creds first for any authenticated check; ask for a token set (what token, what scope/expiry, where to paste) only when missing, expired, or lacking scope. Missing/insufficient token is a single stop-and-report question — never fake the authenticated path. This is repro-after with auth, not a QA deck.
 
 ### Step 7 - SHIP
 
@@ -117,6 +124,8 @@ reproduce the bug are left untouched and reported as checked-clean.
 - Baking repro creds into files, logs, or the report instead of `provided (redacted)`.
 - Expanding scope mid-fix instead of stopping at the approved plan.
 - Ending at working-tree edits without a ready PR — done means the PR URL is reported.
+- Skipping the light review because the fix "is obvious" — obvious fixes still verdict.
+- Shipping past a BLOCK verdict — BLOCK hands to `pipeline`, never to SHIP.
 
 ## Framework tail
 
