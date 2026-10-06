@@ -8,7 +8,7 @@ description: Use when fixing a bug in place on your current branch — stays on 
 ## Overview
 
 Fast, robust, in-place bug fixes on the branch you are already on. The sequence is fixed:
-**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> REVIEW -> VERIFY -> SHIP**.
+**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> REVIEW+VERIFY -> SHIP**.
 SPREAD fans out only when triage justifies it; live repro runs only when you opt in.
 No phase is skipped otherwise.
 
