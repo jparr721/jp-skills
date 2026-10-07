@@ -18,7 +18,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 |-------|-------------|--------|
 | [`pipeline`](skills/pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. | Changes code, merges PR |
 | [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. | Changes code, can merge to `main` |
-| [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate. | Commits scoped fix on current branch + opens ready PR, never merges |
+| [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate, final simplify pass. | Commits scoped fix on current branch + opens ready PR, never merges |
 
 ### Research
 
@@ -32,6 +32,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 |-------|-------------|--------|
 | [`architecture-audit`](skills/architecture-audit/SKILL.md) | A scoped multi-agent audit of one subsystem — coupling, boundaries, data flow, testability, complexity. Outputs prioritized, TDD-ready tasks. | Read-only |
 | [`pr-review-toolkit`](skills/pr-review-toolkit/SKILL.md) | A pull-request or git-diff review ending in a ship verdict — five adversarial angles (spec, breaker, failure, proof, shape) plus Level/Splinter club fight to APPROVE / FIX-THEN-SHIP / BLOCK with proven must-fix. Canonical review for pipeline, dark-factory (via pipeline), hotfix. | Read-only unless you ask for fixes |
+| [`code-simplifier`](skills/code-simplifier/SKILL.md) | A finished, reviewed change should be as simple as it can be — one behavior-preserving pass over the diff against the repo's own conventions, each candidate proven equivalent, reverted on red. Final code pass for pipeline and hotfix. | Edits files in the diff, behavior-preserving |
 | [`code-quality-audit`](skills/code-quality-audit/SKILL.md) | A repeatable intake-driven quality audit — scout detects stack/GUI-ness, you pick UI bugs / code bugs / cleanup / full, six lenses run in parallel. | Read-only |
 | [`smoke-test`](skills/smoke-test/SKILL.md) | Verifying a live deployment — every page loads, console/network clean, read-only flows work against a base URL. | Read-only against live app, non-mutating |
 
@@ -62,7 +63,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (currently 3.0.1). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (currently 3.1.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
@@ -78,7 +79,7 @@ Most skills are self-contained. Two are not:
 
 | Skill | Requires |
 |-------|----------|
-| `pipeline` | `pr-review-toolkit` (this repo, linked), the `superpowers` plugin for `brainstorming` and `writing-plans` (`claude plugin install superpowers@claude-plugins-official`), `gh`, and Linear MCP when the task is given as a ticket id. |
+| `pipeline` | `pr-review-toolkit` and `code-simplifier` (this repo, linked), the `superpowers` plugin for `brainstorming` and `writing-plans` (`claude plugin install superpowers@claude-plugins-official`), `gh`, and Linear MCP when the task is given as a ticket id. |
 | `dark-factory` | Linear MCP, `gh`, and a worktree or VM pool. |
 
 ## Install

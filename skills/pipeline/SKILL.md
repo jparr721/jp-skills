@@ -1,6 +1,6 @@
 ---
 name: pipeline
-description: Use when you want one unit of work - a Linear ticket, a bug fix, a feature request - driven end to end from idea to merged PR plus proven QA with a slide deck. Always runs in a dedicated git worktree under a spawned supervisor agent that tracks all work and batches questions to you. Always runs BMAD party deliberation with the Anti-Consensus Club to a consensus slice table, per-slice plans with cross-review, parallel file-disjoint implementation, the full local gate (every workspace typecheck, every test suite including CI-skipped lanes, every build), PR, pr-review-toolkit adversarial fight to ship verdict (min 3 / cap 5 review rounds), a simplify pass, gated merge, then real-data QA proving the change with a slide deck. Changes application code and merges to the target branch.
+description: Use when you want one unit of work - a Linear ticket, a bug fix, a feature request - driven end to end from idea to merged PR plus proven QA with a slide deck. Always runs in a dedicated git worktree under a spawned supervisor agent that tracks all work and batches questions to you. Always runs BMAD party deliberation with the Anti-Consensus Club to a consensus slice table, per-slice plans with cross-review, parallel file-disjoint implementation, the full local gate (every workspace typecheck, every test suite including CI-skipped lanes, every build), PR, pr-review-toolkit adversarial fight to ship verdict (min 3 / cap 5 review rounds), a final code-simplifier pass, gated merge, then real-data QA proving the change with a slide deck. Changes application code and merges to the target branch.
 ---
 
 # Pipeline
@@ -38,8 +38,8 @@ Stall rule: no user-visible progress within ~2 min of activation → emit the in
    never enough even when it verdicts APPROVE, because rigor over speed is the point: after an
    APPROVE round 1 the loop still runs to round 3. Reaching the cap with must-fix still open is a
    stop-and-report, not a reason to keep looping.
-3. **Always finish with a simplification pass.** Once the review loop ends, the `pr-review-toolkit`
-   simplify pass runs over the whole PR diff and its behavior-preserving suggestions are applied (Step 7).
+3. **Always finish with a simplification pass.** Once the review loop ends, `code-simplifier`
+   runs over the whole PR diff and its proven-equivalent candidates are applied (Step 7).
    The rounds' shape notes see one round's increment; this pass sees the finished
    change as a whole. It is re-verified against the Step 4b gate in the chosen mode, not re-reviewed -
    that would breach the cap.
@@ -106,7 +106,7 @@ digraph pipeline {
   review  [label="Step 6\nREVIEW ROUND\npr-review-toolkit fight\nmin 3 / cap 5"];
   clean   [label="Round clean\nAND rounds >= 3\nOR rounds == 5?" shape=diamond];
   open    [label="Findings still\nopen at the cap?" shape=diamond];
-  simp    [label="Step 7\nSIMPLIFY\nsimplify pass\nover the whole diff\n(re-verify + push,\nno extra round)"];
+  simp    [label="Step 7\nSIMPLIFY\ncode-simplifier\nover the whole diff\n(re-verify + push,\nno extra round)"];
   green   [label="CI green?" shape=diamond];
   merge   [label="Step 8\nMERGE" shape=box];
   qa      [label="Step 9\nQA + DECK\nreal-data proof\n+ slide deck" shape=box];
@@ -424,27 +424,26 @@ duplicated helpers, and now-pointless indirection actually become visible.
 
 Skip only if the user said "skip the simplify pass".
 
-1. **Run the `pr-review-toolkit` simplify pass over the entire PR diff** - `git diff origin/<target>...HEAD`,
-   not the last round's changes.
-2. **Apply the behavior-preserving suggestions.** Unnecessary complexity, redundant
-   abstractions, unclear names, excessive nesting, identity transforms, comments restating
-   obvious code. Parallelize under the same file-disjoint rule as Step 3.
-3. **Drop anything that is not a pure simplification.** A suggestion that changes behavior,
-   touches files outside the PR, or amounts to a refactor becomes a follow-up ticket - record
-   the id. This pass is polish inside the existing scope; it is not a second implementation
-   phase.
-4. **If nothing was applied**, log it and go straight to Step 8.
-5. **If anything was applied**, re-verify (Step 4b in the chosen mode - in local mode the full
-   gate, since simplification is exactly the kind of edit that type-checks in isolation and breaks
-   a consumer; in ci-only mode push plus CI green) and push. **No confirming
-   review round runs**: the round cap covers the whole pipeline, and this pass is restricted
-   to behavior-preserving edits precisely so the mode gate is sufficient evidence for them.
-   That restriction is what makes the cap safe - if a suggestion is large enough that you want
-   it reviewed, it is not a simplification, so drop it per item 3 and file the follow-up.
-   Step 7 runs **once** per pipeline.
+1. **Invoke `code-simplifier`** with `caller: pipeline`, scope `git diff origin/<target>...HEAD`
+   (the entire PR diff, not the last round's changes), and the recorded `verify-mode` as its
+   gate. It derives the bar from the repo's conventions, proves each candidate equivalent,
+   applies file-disjoint, and reverts any candidate that turns the gate red. Its agents route
+   questions to the supervisor via `hub`, never to you.
+2. **Dropped candidates that are real work** - behavior changes, files outside the PR, refactors -
+   become follow-up tickets; record the ids. This pass is polish inside the existing scope; it is
+   not a second implementation phase.
+3. **If nothing was applied**, log it and go straight to Step 8.
+4. **If anything was applied**, push once the Step 4b gate is green on the survivors (in local mode
+   the full gate, since simplification is exactly the kind of edit that type-checks in isolation and
+   breaks a consumer). **No confirming review round runs**: the round cap covers the whole pipeline,
+   and `code-simplifier` admits only proven-equivalent edits precisely so the mode gate is
+   sufficient evidence for them. If a candidate is large enough that you want it reviewed, it is not
+   a simplification - drop it to a follow-up. Step 7 runs **once** per pipeline.
+
+Log the `SIMPLIFY RESULT` block to the supervisor ledger, condensed:
 
 ```
-simplify: suggested=<n> applied=<x> dropped=<y> followups=<ids> | re-verify: <mode gate green | skipped, nothing applied>
+simplify: candidates=<n> applied=<x> dropped=<y> followups=<ids> | re-verify: <mode gate green | skipped, nothing applied>
 ```
 
 ## Step 8 - MERGE
@@ -586,7 +585,7 @@ risk:      <=2 lines of residual risk, or none
   are now the Step 4b gate in the chosen mode instead.
 - **Parallelizing slices that share a file.** Concurrent writes to one file lose work silently.
   Disjoint write sets or different waves - there is no third option.
-- **Letting simplify-pass suggestions turn into a refactor.** Suggestions are polish inside
+- **Letting simplify-pass candidates turn into a refactor.** Candidates are polish inside
   the existing scope. Anything larger is a follow-up ticket.
 - **Treating per-round shape notes as the Step 7 pass.** The angles see one round's
   increment; Step 7 sees the whole diff. Both run.

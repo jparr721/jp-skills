@@ -40,12 +40,12 @@ Completion criterion: the verdict block is printed, every must-fix has location 
 
 - Before commit, PR, merge, or after review feedback — full fight.
 - After FIX in hotfix — light variant, one round, verdict still required.
-- Inside pipeline Step 6 (full fight per review round) and Step 7 (simplify pass only).
+- Inside pipeline Step 6 (full fight per review round).
 - Against a design sketch in architect Phase C — fight protocol with scope set to the sketch.
 
 ## Canonical Callers
 
-- `pipeline` Step 6 runs the full fight every review round; the verdict drives enforce, terminate, and merge. Step 7 runs only the simplify pass below: polish, no fight, no verdict.
+- `pipeline` Step 6 runs the full fight every review round; the verdict drives enforce, terminate, and merge. Polish after APPROVE belongs to `code-simplifier` (pipeline and hotfix Step 7), never to this skill.
 - `dark-factory` never calls this skill directly. Per-ticket verdicts arrive inside pipeline outcome blocks.
 - `hotfix` runs the light variant once after FIX. BLOCK stops SHIP and escalates to pipeline.
 - `architect` Phase C may run the fight protocol against the synthesized sketch before implementing.
@@ -86,9 +86,9 @@ Angle briefs:
 - **breaker** — Break it. Hunt bugs, races, security holes, invalid states, and invariants that compile but fail in prod. Each finding needs an exploit or trace plus user impact.
 - **failure** — Fail it. Walk every catch, fallback, retry, null path, and external call. Each finding names the hidden error and its user impact.
 - **proof** — Attack the proof. For each risky path, would the added or changed tests catch the breaker and failure findings? Name the missing case and which finding it would have caught.
-- **shape** — Ship-relevant shape only. Flag types, names, structure, or comments that will break the next change or hide a breaker. Pure polish is not must-fix; note it for the simplify pass.
+- **shape** — Ship-relevant shape only. Flag types, names, structure, or comments that will break the next change or hide a breaker. Pure polish is not must-fix; note it for `code-simplifier`.
 
-Default is all five angles for a comprehensive review. Targeted reviews run the requested subset, and the verdict block notes the narrowed scope. Pure polish requests go straight to the simplify pass, never through the fight.
+Default is all five angles for a comprehensive review. Targeted reviews run the requested subset, and the verdict block notes the narrowed scope. Pure polish requests go straight to `code-simplifier`, never through the fight.
 
 ## Step 2 - Fight (club, max 2 debate rounds)
 
@@ -122,10 +122,6 @@ Print the verdict block first, then the human report: must-fix items with impact
 
 One sweep agent covering all five angles in a single pass, then one combined Level plus Splinter challenge, then the verdict. No defense round: the coordinator keeps only proven findings and verdicts. Same verdict block with `variant: light`. BLOCK hands the work to pipeline; FIX-THEN-SHIP clears inside hotfix VERIFY.
 
-## Simplify Pass (pipeline Step 7 only)
-
-One agent over the whole diff: behavior-preserving polish — unnecessary complexity, redundant abstractions, unclear names, excessive nesting, identity transforms, comments restating obvious code. No fight, no verdict, no behavior change, no files outside the diff. Anything larger becomes a followup. Output applied and dropped lists with the re-verify result.
-
 ## Quick Reference
 
 | User Request | Form |
@@ -136,14 +132,14 @@ One agent over the whole diff: behavior-preserving polish — unnecessary comple
 | "Check comments/docs" | Shape angle, club, verdict (narrowed scope noted) |
 | "Review these types" | Shape plus breaker, club, verdict (narrowed scope noted) |
 | "Code review before commit" | Full fight, all five angles, verdict |
-| "Simplify this" | Simplify pass only, no fight, no verdict |
+| "Simplify this" | Not this skill — run `code-simplifier` |
 | Hotfix after FIX | Light variant, verdict required |
 
 ## Common Mistakes
 
 - **One generic reviewer instead of party plus club.** The fight is the value: single-pass review keeps false positives and misses real breakage.
 - **Findings without proof.** Unproven claims are speculation for Level to drop, not items to debate.
-- **Polishing before the verdict.** Simplification runs after APPROVE, never inside the fight.
+- **Polishing before the verdict.** `code-simplifier` runs after APPROVE, never inside the fight.
 - **Reviewing the whole repository by default.** Scope is the diff unless the user asks broader.
 - **Treating suggestions as must-fix.** Taste never blocks shipping; proven breakage never ships as taste.
 - **Answering BLOCK with line fixes.** BLOCK means the design is wrong: escalate.

@@ -1,6 +1,6 @@
 ---
 name: hotfix
-description: Use when fixing a bug in place on your current branch — stays on the branch you are on, confirms the issue with an opt-in live repro, checks whether the bug pattern is widespread with conditional 1-to-3 issue-spread analysis, then shows a dead-simple plan for approval before fixing every site, verifying with reused session creds, and shipping a ready PR.
+description: Use when fixing a bug in place on your current branch — stays on the branch you are on, confirms the issue with an opt-in live repro, checks whether the bug pattern is widespread with conditional 1-to-3 issue-spread analysis, then shows a dead-simple plan for approval before fixing every site, verifying with reused session creds, a final code-simplifier pass, and shipping a ready PR.
 ---
 
 # Hotfix
@@ -8,7 +8,7 @@ description: Use when fixing a bug in place on your current branch — stays on 
 ## Overview
 
 Fast, robust, in-place bug fixes on the branch you are already on. The sequence is fixed:
-**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> REVIEW+VERIFY -> SHIP**.
+**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> REVIEW+VERIFY -> SIMPLIFY -> SHIP**.
 SPREAD fans out only when triage justifies it; live repro runs only when you opt in.
 No phase is skipped otherwise.
 
@@ -105,16 +105,25 @@ reproduce the bug are left untouched and reported as checked-clean.
 3. Repro after: show the same observation passing where it failed before.
 4. Run typecheck/lint scoped to touched files only. No full suite, no review loop,
    no QA deck. A regression test is added only on request.
-5. Report the diff stat, the verdict, plus what was checked-clean, then continue to SHIP (no handoff — the run ends at the ready PR, not at working-tree edits).
+5. Report the diff stat, the verdict, plus what was checked-clean, then continue to SIMPLIFY (no handoff — the run ends at the ready PR, not at working-tree edits).
 6. Reuse the Step 1 intake creds first for any authenticated check; ask for a token set (what token, what scope/expiry, where to paste) only when missing, expired, or lacking scope. Missing/insufficient token is a single stop-and-report question — never fake the authenticated path. This is repro-after with auth, not a QA deck.
 
-### Step 7 - SHIP
+### Step 7 - SIMPLIFY
+
+Final code pass, once. Skip only if the user said "skip the simplify pass"; never runs after BLOCK.
+
+1. Invoke `code-simplifier` with `caller: hotfix`, scope = the approved-scope paths' diff, and the Step 6 gate (scoped typecheck/lint on touched files plus the repro-after observation).
+2. It applies only proven-equivalent candidates and reverts any that turn the gate red. Anything bigger is a follow-up, never an inline addition — the approved plan still bounds the diff.
+3. No re-review: the light verdict stands, and simplify edits are reported as unreviewed.
+4. Log one line, then continue to SHIP: `simplify: applied=<x> dropped=<y> | re-verify: <green | skipped, nothing applied>`.
+
+### Step 8 - SHIP
 
 1. Re-check `git status --short` against the approved scope; `git add` approved-scope paths only — unrelated dirty files recorded as excluded at intake are never added.
 2. Commit on the current branch (repo's commit convention per `git log --oneline -10`), push (`--set-upstream` when needed).
 3. `gh pr create` ready, never `--draft`; body carries what/where/risk/repro + `token: provided (redacted)` or `token: not needed`, never the value. If created draft by repo default, run `gh pr ready` immediately.
 4. Guard: on the target branch itself, stop-and-report instead of opening a PR to self.
-5. Report the PR URL line with the diff stat. Done means the ready PR exists, not just working-tree edits.
+5. Report the PR URL line with the diff stat and the simplify line. Done means the ready PR exists, not just working-tree edits.
 
 ## Common mistakes
 
@@ -126,6 +135,7 @@ reproduce the bug are left untouched and reported as checked-clean.
 - Ending at working-tree edits without a ready PR — done means the PR URL is reported.
 - Skipping the light review because the fix "is obvious" — obvious fixes still verdict.
 - Shipping past a BLOCK verdict — BLOCK hands to `pipeline`, never to SHIP.
+- Using SIMPLIFY to widen the fix — it polishes the approved diff only; new sites or refactors are follow-ups.
 
 ## Framework tail
 

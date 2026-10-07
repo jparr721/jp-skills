@@ -2,6 +2,18 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [3.1.0] - 2026-10-07
+
+### Added
+
+- `code-simplifier` skill: final behavior-preserving polish pass over a scoped diff — standards derived from repo guides, lint config, nearest neighbors, and discipline skills (no hard-coded style); every candidate carries an equivalence claim; file-disjoint apply, one edit per candidate; caller's gate re-verifies and red reverts the candidate (never fix forward); no review round; `SIMPLIFY RESULT` block. Adapted from `anthropics/claude-plugins-official` `plugins/code-simplifier/agents/code-simplifier.md` (Apache-2.0 © Anthropic); upstream's project-specific JS/React rules and "proactive, unrequested" activation dropped in favor of caller-invoked scope.
+
+### Changed
+
+- `pipeline` Step 7 invokes `code-simplifier` over the whole PR diff with the recorded `verify-mode` as its gate.
+- `hotfix` gains Step 7 SIMPLIFY (approved-scope diff, Step 6 scoped gate, no re-review); SHIP renumbered to Step 8.
+- `pr-review-toolkit` Simplify Pass section retired; polish routes to `code-simplifier`.
+
 ## [3.0.1] - 2026-10-05
 
 ### Fixed
