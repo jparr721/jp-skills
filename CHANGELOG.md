@@ -2,6 +2,12 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [3.2.0] - 2026-10-07
+
+### Changed
+
+- `hotfix` gains Step 8 FINAL: after REVIEW+VERIFY (pr-review-toolkit light verdict) and SIMPLIFY (code-simplifier pass), the completed fix is presented with verdict + simplify + diff + PR body and waits for a one-word go before SHIP. SHIP renumbered to Step 9 and runs only on go; sequence is now INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> REVIEW+VERIFY -> SIMPLIFY -> FINAL -> SHIP.
+
 ## [3.1.0] - 2026-10-07
 
 ### Added

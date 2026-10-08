@@ -1,6 +1,6 @@
 ---
 name: hotfix
-description: Use when fixing a bug in place on your current branch — stays on the branch you are on, confirms the issue with an opt-in live repro, checks whether the bug pattern is widespread with conditional 1-to-3 issue-spread analysis, then shows a dead-simple plan for approval before fixing every site, verifying with reused session creds, a final code-simplifier pass, and shipping a ready PR.
+description: Use when fixing a bug in place on your current branch — stays on the branch you are on, confirms the issue with an opt-in live repro, checks whether the bug pattern is widespread with conditional 1-to-3 issue-spread analysis, then shows a dead-simple plan for approval before fixing every site, verifying with reused session creds, running pr-review-toolkit light review plus a final code-simplifier pass, and getting final approval before shipping a ready PR.
 ---
 
 # Hotfix
@@ -8,7 +8,7 @@ description: Use when fixing a bug in place on your current branch — stays on 
 ## Overview
 
 Fast, robust, in-place bug fixes on the branch you are already on. The sequence is fixed:
-**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> REVIEW+VERIFY -> SIMPLIFY -> SHIP**.
+**INTAKE -> CONFIRM -> SPREAD -> PLAN -> FIX -> REVIEW+VERIFY -> SIMPLIFY -> FINAL -> SHIP**.
 SPREAD fans out only when triage justifies it; live repro runs only when you opt in.
 No phase is skipped otherwise.
 
@@ -21,7 +21,7 @@ when a bug is small, its scope is knowable, and you want it fixed where you stan
 
 1. **Never leave the current branch.** No worktree, no new branch, no checkout change.
    Confirm with `git branch --show-current` at intake and stay there. SHIP commits on this branch.
-2. **Always ship a ready PR, never merge.** After VERIFY, commit the scoped fix, push, and open the PR ready — never `--draft` (`gh pr ready` in the same step if the repo defaults to drafts). You never merge; the PR owner does. On the target branch itself (e.g. `main`), stop-and-report instead of opening a PR to self.
+2. **Always ship a ready PR, never merge.** After FINAL approval, commit the scoped fix, push, and open the PR ready — never `--draft` (`gh pr ready` in the same step if the repo defaults to drafts). You never merge; the PR owner does. On the target branch itself (e.g. `main`), stop-and-report instead of opening a PR to self.
 3. **Never touch files outside the approved scope.** Unrelated dirty files found at
    intake are off-limits; name them in the plan as explicitly excluded.
 4. **Never plan off a guess.** The confirm gate pins exact source lines first; without
@@ -93,7 +93,7 @@ Single implementer fixes every scoped site with the same pattern — no drive-by
 refactors, no second convention beside the existing one. Suspected sites that do not
 reproduce the bug are left untouched and reported as checked-clean.
 
-### Step 6 - REVIEW + VERIFY
+### Step 6 - REVIEW+VERIFY (pr-review-toolkit light + repro)
 
 1. **Review.** Run the `pr-review-toolkit` light variant once over the scoped diff: one sweep
    agent across all five angles, one combined Level plus Splinter challenge, verdict block
@@ -115,9 +115,22 @@ Final code pass, once. Skip only if the user said "skip the simplify pass"; neve
 1. Invoke `code-simplifier` with `caller: hotfix`, scope = the approved-scope paths' diff, and the Step 6 gate (scoped typecheck/lint on touched files plus the repro-after observation).
 2. It applies only proven-equivalent candidates and reverts any that turn the gate red. Anything bigger is a follow-up, never an inline addition — the approved plan still bounds the diff.
 3. No re-review: the light verdict stands, and simplify edits are reported as unreviewed.
-4. Log one line, then continue to SHIP: `simplify: applied=<x> dropped=<y> | re-verify: <green | skipped, nothing applied>`.
+4. Log one line, then continue to FINAL: `simplify: applied=<x> dropped=<y> | re-verify: <green | skipped, nothing applied>`.
 
-### Step 8 - SHIP
+### Step 8 - FINAL (final approval gate)
+
+Present the completed fix and wait for a one-word go before SHIP. The light review verdict (Step 6) plus the simplify pass (Step 7) are both done at this point — this gate is the last word, not another review round:
+
+```text
+verdict:  <APPROVE | FIX-THEN-SHIP with must-fix cleared>
+simplify: applied=<x> dropped=<y> | re-verify: <green | skipped, nothing applied>
+diff:     <stat + files>
+pr:       <what/where/risk/repro as the PR body will carry>
+```
+
+BLOCK never reaches here (hands to `pipeline` at Step 6). Anything past the approved scope is still a follow-up, never an inline addition. No go → stop: do not commit, push, or open a PR.
+
+### Step 9 - SHIP
 
 1. Re-check `git status --short` against the approved scope; `git add` approved-scope paths only — unrelated dirty files recorded as excluded at intake are never added.
 2. Commit on the current branch (repo's commit convention per `git log --oneline -10`), push (`--set-upstream` when needed).
@@ -135,6 +148,7 @@ Final code pass, once. Skip only if the user said "skip the simplify pass"; neve
 - Ending at working-tree edits without a ready PR — done means the PR URL is reported.
 - Skipping the light review because the fix "is obvious" — obvious fixes still verdict.
 - Shipping past a BLOCK verdict — BLOCK hands to `pipeline`, never to SHIP.
+- Committing, pushing, or opening the PR before FINAL approval — SHIP runs only on go.
 - Using SIMPLIFY to widen the fix — it polishes the approved diff only; new sites or refactors are follow-ups.
 
 ## Framework tail
