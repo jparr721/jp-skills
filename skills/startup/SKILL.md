@@ -12,6 +12,7 @@ Persistent cross-turn queue drained by a singular manager. Enqueue prompts or Li
 | Command | Effect |
 |---|---|
 | `startup <prompt\|SYT-xxx>` | Intake + triage, enqueue, ensure manager running |
+| `startup new <name> [--dir <path>]` | Interactive bound-startup setup (see `skill://startup-intake`), writes `.startup/config.md`, seeds per-name state |
 | `startup status` | Queue + bulletin view (see `skill://startup-status`) |
 | `startup retro` | On-demand retro, same procedure as sprint boundary |
 | `startup stop-doing <rule\|screenshot>` | Standing-rule injection (see `skill://startup-stop-doing`) |
@@ -44,7 +45,9 @@ Every message carries `from`, `to`, `kind`, `item`, body. `update` worker→mana
 
 ## State
 
-Home chain: `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`. Under `<home>/startup/`: `queue.json`, `ledger.md`, `memory.md` (64KB), `standing-instructions.md`, `bulletin.md`, `resources.json`, `creds/`. NEVER `tmp/`. `MAX_PARALLEL` default 6 is a ceiling, not a target.
+State namespaces per named startup: under `<home>/startup/<name>/`: `queue.json`, `ledger.md`, `memory.md` (64KB), `standing-instructions.md`, `bulletin.md`, `resources.json`, `creds/`, `completions/`, plus `binding.json` (`{name, bound_root}`). `queue.json` rows carry `dispatched_at`; `report-handle` points at `completions/<id>.md` (which carries `outcome_at`). Unnamed legacy use resolves to `<home>/startup/default/`. NEVER `tmp/`. `MAX_PARALLEL` default 6 is a ceiling, not a target.
+
+Resolution: `startup <prompt>` inside a bound dir resolves the name via the nearest `.startup/config.md` (walk up); explicit `startup <name> <prompt>` works from anywhere. Canonical clock everywhere: `date -u +%Y-%m-%dT%H:%M:%SZ` (UTC ISO-8601); the PA tick reuses it — no parallel clock path.
 
 ## Framework tail
 
