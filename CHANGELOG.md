@@ -2,6 +2,14 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [4.1.0] - 2026-10-12
+
+### Added
+
+- Worker outcome gains `coding_mins/waited_mins/evidence`; manager stamps `dispatched_at`/`outcome_at`/park intervals, sanity-checks only.
+- Per-item `completions/<id>.md` with `OVERSIZE` flag over 60 coding minutes; retro scans and owns cleanup.
+- `startup new <name>` binds a folder; `.startup/config.md` identity, `.startup/<repo>/<role>.md` overrides inlined into assignments; `stop-doing` routes scoped rules there.
+
 ## [4.0.0] - 2026-10-12
 
 ### Breaking

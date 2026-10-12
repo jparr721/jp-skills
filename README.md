@@ -18,7 +18,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 |-------|-------------|--------|
 | [`pipeline`](skills/pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. | Changes code, merges PR |
 | [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. | Changes code, can merge to `main` |
-| [`startup`](skills/startup/SKILL.md) | A persistent cross-turn queue of disparate prompts/tickets drained by a singular manager — full pipeline rigor per item, standing architect/QA/DevOps roles, count-based sprint retro. | Changes code, merges per item, exits on drain |
+| [`startup`](skills/startup/SKILL.md) | A persistent cross-turn queue of disparate prompts/tickets drained by a singular manager — full pipeline rigor per item, standing architect/QA/DevOps roles, count-based sprint retro. v4.1.0 adds timing reports + named binding. | Changes code, merges per item, exits on drain |
 | [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate, light review + simplify pass, final approval gate. | Commits scoped fix on current branch + opens ready PR, never merges |
 
 Startup family (roles + commands — invoke via `startup`, never directly unless the row says so):
