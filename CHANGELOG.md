@@ -2,6 +2,12 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [4.0.0] - 2026-10-12
+
+### Breaking
+
+- `startup` family goes generic (kind system v2): workers are parameter vessels executing manager-assigned `{kind, procedure, convention-source, acceptance}` for `code | research | docs | ops` — code keeps full `pipeline`, research yields cited synthesis memos (`memo:` handle, no merge), docs writes against the named convention source, ops follows the `server-maintenance` pattern. Every worker pairs with a manager-spawned adversarial buddy (verdict to manager only; width counts pairs). Architect flips advisory → merge-gate: no item closes without `APPROVE | REDO:<file-bounded scope>`; scopeless veto rejected. QA generalizes per-kind proof (Playwright + Storybook stay code-only); DevOps provisions per-kind resources (worktrees code/docs, live-target locks ops, none research). `startup-intake` assigns kind with inference rule; `startup` routes by kind.
+
 ## [3.3.0] - 2026-10-12
 
 ### Added
