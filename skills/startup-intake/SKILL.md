@@ -53,6 +53,16 @@ Three outcomes, no fourth:
 
 No criteria met and no clarifiable shape → one line back to the boss, nothing written. Never enqueue a placeholder row to "fill in later".
 
+## `startup new` interactive setup
+
+`startup new <name> [--dir <path>]` (default dir = cwd). Bounded — never stalls:
+
+1. List repos found in dir; boss confirms/adds/removes.
+2. One confirm per repo for move-or-clone (local path vs remote URL); skip allowed, resume on next invoke.
+3. Ask local-test command + production/CI verify path once; per-repo override only on deviation.
+4. Write `<dir>/.startup/config.md` (name, purpose, repo list, test/verify map) and per-name state `<home>/startup/<name>/` with `binding.json` (`{name, bound_root}`). Seed DevOps `resources.json` locks from the answers.
+5. Never write inside repo dirs; repo `.git` stays clean.
+
 ## Framework tail
 
 Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.
