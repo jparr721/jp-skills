@@ -46,6 +46,36 @@ Commands are first-token: `startup <prompt|SYT-xxx>` enqueue + ensure-running,
 `startup status`, `startup retro`, `startup stop-doing <rule|screenshot>`,
 `startup bulletin wipe`. `startup-sprint` never user-invoked.
 
+Always-on: manager + PA persist across turns via state files; workers are
+ephemeral, spawned only when QUEUED work exists. Idle = manager + PA confer,
+check queue/Linear for new issues, wait. Width is manager-decided 1..cap
+(`MAX_PARALLEL` 6 is ceiling, not target) based on item independence,
+`resources.json` locks, DevOps capacity.
+
+## Loop structure (every manager wake)
+
+1. Load state: `queue.json`, `memory.md` size check (cap 64KB), standing
+   instructions, bulletin, resources.
+2. PA tick: time, next check-in + sub-team, boss priorities, sprint count to
+   boundary, aging parked blockers.
+3. Intake triage: new prompts/tickets → feasibility/doability → enqueue,
+   batched async clarify, or reject-with-reason.
+4. Fan-out at manager-chosen width; workers run full `pipeline`, `don't merge`.
+5. Collect outcomes: schema enforce, merge green per-item immediately, park
+   blocked, record assumptions in `memory.md`.
+6. Sprint boundary: every 5 merged → pause fan-out, `startup-sprint` retro,
+   resume.
+7. Queue empty → standby: workers exit, state persists, manager + PA watch.
+8. Repeat on next wake (new invoke, outcome arrival, command).
+
+## Repeatable intake criteria
+
+Queue-worthy = one unit of work with statable acceptance: Linear id, prompt
+naming behavior + affected area + acceptance, or screenshot + complaint
+(`stop-doing` path interprets into acceptance via QA + architect mesh).
+Triage outcomes only: enqueue / async-clarify / reject-with-reason. No
+criteria → not queued, returned to boss in one line.
+
 Lifecycle: invoke → manager loads state, triages intake, enqueues, ensures
 workers to `MAX_PARALLEL` → drain → workers exit, state persists, standby.
 Next invoke reloads and continues. Workers never survive drain.
