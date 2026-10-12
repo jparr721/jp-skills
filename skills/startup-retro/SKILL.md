@@ -11,12 +11,14 @@ State lives under `<home>/startup/` — `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOM
 
 ## Scan sources
 
-Scan `memory.md` + ledger outcomes since the last retro. Look for:
+Scan `memory.md` + ledger outcomes + `completions/*.md` since the last retro. Look for:
 
 - Repeated review findings (same reviewer flag across items).
 - QA escapes (bugs found after merge, overlap breakage).
 - Stalls (parked blockers, slow wakes, contention on files or resources).
 - Assumption-misses (recorded assumptions that proved wrong).
+- Oversize pattern (`OVERSIZE` reports, high `coding_mins`): repeated single-worker multi-hour coding runs → split future similar intake into peer-collaborated sub-items.
+- Coding-vs-wait split (`coding_mins` vs `waited_mins` + `parked_mins`): long waits are system stalls, not size signal — optimize the system, not the split.
 
 ## Outputs
 
@@ -27,6 +29,7 @@ Scan `memory.md` + ledger outcomes since the last retro. Look for:
 ## 64KB compress
 
 After emitting outputs, compress `memory.md` to 64KB: closed items → 1 line each, decisions → `standing-instructions.md`/`bulletin.md`, truncate head. Keep open items, blockers, and live handles intact.
+Completion cleanup (retro owns it, runs here only): compress each scanned `completions/<id>.md` to 1 line in `memory.md` (id + coding/wait + verdict + handle), then delete the file. Never delete unscanned reports.
 
 ## Bulletin lifecycle
 
