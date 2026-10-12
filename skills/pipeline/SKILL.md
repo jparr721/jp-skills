@@ -67,7 +67,7 @@ Stall rule: no user-visible progress within ~2 min of activation → emit the in
    post-merge per Step 9, and produces a slide deck of the change. No pipeline is done without
    the QA block and deck path in the final report.
 10. **Commit early and often; preserve the trail.** Per completed slice/wave, per review-round fix batch, per green gate — small logical commits per repo convention (`git log --oneline -10`), message states decision/why. Step 5 organizes leftover uncommitted work only, never rewrites existing commits. Squash-merge at merge time does not excuse a single-commit branch during the run — branch history is the debug trail (`git log`, `git bisect`).
-11. **Stack when the caller passes a stack parent.** `target <branch>` may name a parent branch, not the repo default — open with `--base <target>` when it does. On caller instruction after the parent pushes: `git fetch origin <parent> && git rebase origin/<parent>`, force-push the branch only, `gh pr edit --base <parent>`. Single-task direct use stays flat on the repo default.
+11. **Stack when the caller passes a stack parent.** `target <branch>` may name a parent branch, not the repo default — open with `--base <target>` when it does. While the parent is open, on caller instruction after it pushes: `git fetch origin <parent> && git rebase origin/<parent>`, force-push the branch only (base stays `<parent>`). After the parent merges (branch deleted): rebase onto the merge line and `gh pr edit --base <merge-target>` — never retarget onto the deleted parent. Single-task direct use stays flat on the repo default.
 
 ## Arguments
 

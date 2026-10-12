@@ -10,6 +10,8 @@
 - `dark-factory` gains `STACK_MODE` (`auto` default / `stacked` / `flat`) plus a standing stack driver sub-agent (owns retarget/rebase/re-green traffic from FAN-OUT to EPIC CLOSE, never merges); planner emits stack chains along hard DAG deps, principal merges bottom-up, final report carries per-ticket `stack-mode`.
 - Commit-trail discipline in every code prompt: `pipeline` (per wave, per review-round fix batch), `dark-factory` brief, `startup-role-dev`, `hotfix` (per site) — small logical commits with decision/why messages, never one held commit; Step 5 organizes leftovers only.
 
+## [4.1.0] - 2026-10-12
+
 ### Added
 
 - Worker outcome gains `coding_mins/waited_mins/evidence`; manager stamps `dispatched_at`/`outcome_at`/park intervals, sanity-checks only.
