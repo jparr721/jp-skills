@@ -18,6 +18,7 @@ Intake detail lives in `skill://startup-intake`. Three outcomes only: enqueue / 
 ## Assignment block
 
 Every fan-out carries `{kind, procedure, convention-source, acceptance}` — never a bare prompt. The worker executes the assigned kind's procedure (`skill://startup-role-dev`); kind inference happens at intake, never at dispatch. Research acceptance names the decision the memo unblocks; ops acceptance names target plus verify command.
+Stamp `dispatched_at` (`date -u +%Y-%m-%dT%H:%M:%SZ`) on the `queue.json` row at fan-out. Resolve the bound startup's role override for this item's repo+role (`<bound_root>/.startup/<repo>/<role>.md`; missing or whitespace-only = none) and inline it as `role-override` in the assignment block — worker never reads `.startup/` directly. Precedence for the inlined content, last wins: global `standing-instructions.md` → `.startup/config.md` prefs → the role file. On park/unpark record `parked_at`/`unparked_at`; they accumulate to `parked_mins` in the completion report.
 
 ## Buddy spawn
 
@@ -26,6 +27,7 @@ Spawn one buddy per worker. The buddy runs the kind's adversarial review and rep
 ## Outcome schema enforcement
 
 Every worker ends with an outcome block carrying exactly `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/remaining/blocked_on`. Research carries the `memo:` handle in `pr:`. Required: ready PR URL or memo handle, `rounds n/5 min 3`, verdict APPROVE, qa + deck path. Missing or off-schema = reject with one-line `feedback` citing the violated cap, re-dispatch; the worker re-sends compact.
+Timing enforcement: outcome must carry `coding_mins/waited_mins/evidence` (2 lines). Sanity-check only: `coding_mins` ≤ dispatched→outcome wall clock and evidence plausible; mismatch → flag in the completion report, never recompute. `coding_mins > 60` → flag the report `OVERSIZE` and append an open bulletin item `{item, source: oversize, status: open}` at collection time. Never read code/diffs/logs to verify — deep replay is the buddy's job.
 
 ## Gate enforcement
 
