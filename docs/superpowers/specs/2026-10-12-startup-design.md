@@ -203,3 +203,54 @@ blockers; questions batch through `hub` to manager, manager batches to boss
 once per wake. Manager never forwards raw worker text — it compresses to the
 schema above. Anything arriving off-schema is discarded with a one-line
 `feedback` citing the violated cap.
+
+## Kind system (v2 — generic workers)
+
+Workers are parameter vessels, not code-only. Manager assignment carries
+`{kind, procedure, convention-source, acceptance}`. Four kinds, each with a
+defined prompt owned by `startup-role-dev` (inline; split to `kinds/*.md`
+only if the brief breaches ~500 words):
+
+- **`code`** (default): full `pipeline` + `don't merge` → buddy
+  `pr-review-toolkit` fight to verdict (min 3/cap 5) → architect shape
+  screen → manager merges on architect APPROVE. QA/DevOps as v1.
+- **`research`**: worker runs `topic-research` (external) or internal
+  codebase research → synthesis memo (adopt/adapt/build verdict + cited
+  claims). Buddy verifies every claim has a source (uncited = must-fix,
+  per `topic-research` brief shape). Architect checks memo structure
+  (verdict + tradeoffs + recommendation). No merge — outcome `pr:` field
+  carries `memo:` handle instead; manager files or returns it.
+- **`docs`**: worker writes against the convention source the manager names
+  in the assignment (e.g. `docs/style-guide.md`). Buddy runs the
+  `pr-review-toolkit` light variant (single sweep + combined challenge +
+  verdict) for style-guide compliance + accuracy against described code.
+  Architect checks structure (location, inbound links, no orphan). Merge =
+  commit per owning repo convention.
+- **`ops`**: worker follows `server-maintenance` pattern (named target,
+  stored instructions verbatim, never improvise). Buddy independently
+  replays the verify command. Architect checks blast radius (what mutates,
+  what rolls back). Merge = executed + ops-log entry.
+
+**Buddy protocol:** manager spawns one buddy per worker. Buddy runs the
+kind's adversarial review, reports verdict to manager only — never to the
+worker directly. Worker receives manager-compressed `feedback`. Width
+counts pairs, not singles.
+
+**Architect merge-gate:** no item in any kind closes without architect
+verdict `APPROVE | REDO:<file-bounded scope>`. Bounded screen
+(shape/structure/blast-radius), never depth re-review — buddy owns depth.
+REDO returns via manager `feedback`. No veto without scope: a REDO without
+a file-bounded scope is rejected, architect re-screens. Throughput: manager
+batches architect reviews; architect never holds more than its screen.
+Manager still executes the merge; it cannot merge without APPROVE.
+
+**Non-code proof:** QA mandate generalizes per kind — research = cited
+claims, docs = accuracy + style compliance, ops = verify-command replay.
+Playwright + Storybook remain mandatory for `code` only. DevOps resources
+generalize per kind (worktrees for code/docs, live-target locks for ops,
+no provisioning for research).
+
+**Record schema delta:** `queue.json` rows gain `kind` + `procedure` +
+`convention-source`. Intake triage assigns kind; no-kind stated → manager
+infers from acceptance (code verbs → code, "should we" → research,
+style/accuracy → docs, named host/mutation → ops) and records the inference.
