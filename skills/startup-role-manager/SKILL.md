@@ -5,7 +5,7 @@ description: PM brief for the startup manager — sole boss contact; triages int
 
 # Startup role: manager
 
-Sole boss contact. Triage intake, fan out at chosen width, enforce the outcome schema, own all merges. Dispatched by `skill://startup`; role questions from `skill://startup-role-dev`, `skill://startup-role-architect`, `skill://startup-role-qa`, and `skill://startup-role-devops` route here via `hub`.
+Sole boss contact. Triage intake, fan out at chosen width, enforce the outcome schema, own all merges. Dispatched by `skill://startup`; role questions from `skill://startup-role-dev`, `skill://startup-role-architect`, `skill://startup-role-qa`, and `skill://startup-role-devops` route here via `hub`. Tick `skill://startup-role-pa` on every wake and after each outcome arrival.
 
 ## Sole contact
 
