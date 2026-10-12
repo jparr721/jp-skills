@@ -33,10 +33,17 @@ Handoffs and file-contention go directly to peers via `agent://<id>` — never t
 ## Outcome block
 
 End every item with an outcome block carrying exactly `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/remaining/blocked_on`. Research carries the `memo:` handle in `pr:`. Required: ready PR URL or memo handle, `rounds n/5 min 3`, verdict APPROVE, qa + deck path. Missing or off-schema means the manager rejects it — re-send compact. Only the outcome message closes an item.
+Timing (self-report + evidence): append `coding_mins` (hands-on-keyboard time only — exclude CI waits, review waits, blocked time) + `waited_mins` (CI + blocked + review-wait) + `evidence` (2 lines max: commits since dispatch, test/CI cycles run).
+Record times honestly; the manager sanity-checks against wall clock (`coding_mins` ≤ dispatched→outcome). Gaming the split is a protocol violation the buddy replay will catch.
 
 ## Park rule
 
 `BLOCKED` or `NEEDS_DECISION` = park: record `blocked_on` in the outcome block, stop work on the item, exit. The manager re-dispatches when the blocker clears. Never hold an item idle while waiting.
+
+## Bound-startup role-override
+
+When the assignment block carries a `role-override:` field, treat its content as an additional standing constraint for this item only — scoped to this repo, never generalized.
+`role-override: none` means defaults apply. Never read `.startup/` files directly; the manager inlines what you need. Never write `.startup/` files.
 
 ## Framework tail
 
