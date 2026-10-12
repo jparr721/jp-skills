@@ -65,9 +65,8 @@ wake primitive exists and live-wait burns context. Width is manager-decided
 5. Collect outcomes: schema enforce, merge green per-item immediately, park
    blocked, record assumptions in `memory.md`.
 6. Sprint boundary: every 5 merged → pause fan-out, `startup-sprint` retro,
-7. Queue empty → standby: ALL agents exit (manager, PA, workers), state files persist, zero live-spin. Next `startup` invoke — including a new message in the SAME chat session after walk-away — reloads state and resumes. Revival is reload, never resume: no prior agent context carries over.
+7. Queue empty → standby: workers + PA exit, state files persist, zero live-spin. Manager persists: same-chat revival reloads `memory.md` + long-term recall (`xd://recall` for decisions/preferences) and continues with context intact — manager memory is the feature, the worker firewall is what stays fresh. Cross-session (new chat) = cold reload from files only.
 8. Repeat on next wake (new invoke, same-chat revival message, outcome arrival, command).
-
 ## Repeatable intake criteria
 
 Queue-worthy = one unit of work with statable acceptance: Linear id, prompt
@@ -172,7 +171,7 @@ carries per-item repo). `resources.json` lock before any provision —
 `MAX_PARALLEL` workers race otherwise. Deck copy-out verified before any
 worktree removal (inherits `dark-factory` §5.6 failure mode).
 
-PA (`startup-role-pa`): reminder loop, not one-shot, lives only while manager lives. Each tick (every manager wake + after each outcome): current time, next check-in + which sub-team (dev/QA/DevOps/architect), open priorities from boss, sprint count to retro boundary, aging parked blockers. Owns no work, merges nothing, asks boss nothing — prompts only. Prevents stall-blindness. On drain PA exits with manager — never watches an empty queue.
+PA (`startup-role-pa`): reminder loop, not one-shot, lives while work is in flight. Each tick (every manager wake + after each outcome): current time, next check-in + which sub-team (dev/QA/DevOps/architect), open priorities from boss, sprint count to retro boundary, aging parked blockers. Owns no work, merges nothing, asks boss nothing — prompts only. Prevents stall-blindness. On drain PA exits; manager persists with files + recall.
 
 ## Open risks
 
@@ -182,3 +181,25 @@ PA (`startup-role-pa`): reminder loop, not one-shot, lives only while manager li
 - `startup-sprint` boundary check relies on manager wake; long-idle queue
   with < SPRINT_SIZE unmerged items never retros — acceptable, retro fires on
   next drain or on-demand.
+
+## Message schema (all inter-agent traffic)
+
+Sizes are caps; shorter is better. Every message carries `from`, `to`,
+`kind`, `item`, body. No prose dumps — oversize is rejected, sender
+re-dispatches compact.
+
+| Kind | Direction | Cap | Shape |
+|------|-----------|-----|-------|
+| `update` | worker → manager | 5 lines | `status + next-milestone + blocked?` Heartbeat only; no findings, no logs. |
+| `outcome` | worker → manager | §2 block | Verbatim outcome schema (pr, rounds, verdict, qa+deck, followups, remaining, blocked_on). Only message that closes an item. |
+| `question` | worker → manager | 3 lines | `decision-needed + options (≤3) + recommendation`. Batched by manager to boss; never worker→boss. |
+| `feedback` | manager → worker | 5 lines | `verdict ACCEPT|REDO:<scope> + reason (1 line) + must-fix (≤3, file:line each)`. REDO scope is file-bounded, never "try again". |
+| `handoff` | worker → worker | 8 lines | `what-landed (handles only: branch, files, commit) + contract (signatures) + caveat (≤2 lines)`. Handles, never content — recipient reads the code, not the message. |
+| `escalate` | manager → boss | 3 lines | `blocker + impact (≤12 words) + ask (one question, ≤3 options)`. Only true blockers; assumptions go to `memory.md`, never here. |
+| `report` | manager → boss | 10 lines/item | Final report per item: PR, rounds+verdict, QA+deck, followups, residual risk ≤12 words. |
+
+Anti-bombardment: workers send `update` at most on wave boundaries and
+blockers; questions batch through `hub` to manager, manager batches to boss
+once per wake. Manager never forwards raw worker text — it compresses to the
+schema above. Anything arriving off-schema is discarded with a one-line
+`feedback` citing the violated cap.
