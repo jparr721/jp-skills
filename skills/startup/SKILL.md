@@ -1,6 +1,6 @@
 ---
 name: startup
-description: Persistent cross-turn work queue — enqueue prompts or Linear tickets across turns, a singular manager drains each item through full pipeline rigor with standing architect/QA/DevOps roles, merges per item, retros every 5. All agents exit on drain; state files persist.
+description: Persistent cross-turn work queue — enqueue prompts or Linear tickets across turns, a singular manager drains each item through full pipeline rigor with standing architect/QA/DevOps roles, merges per item, retros every 5. Workers exit on drain; manager persists same-chat, state files persist.
 ---
 
 # Startup
