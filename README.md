@@ -80,7 +80,7 @@ Startup family (roles + commands — invoke via `startup`, never directly unless
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (currently 3.1.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (currently 4.1.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
