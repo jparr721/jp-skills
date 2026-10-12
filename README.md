@@ -18,7 +18,24 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 |-------|-------------|--------|
 | [`pipeline`](skills/pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. | Changes code, merges PR |
 | [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. | Changes code, can merge to `main` |
+| [`startup`](skills/startup/SKILL.md) | A persistent cross-turn queue of disparate prompts/tickets drained by a singular manager — full pipeline rigor per item, standing architect/QA/DevOps roles, count-based sprint retro. | Changes code, merges per item, exits on drain |
 | [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate, light review + simplify pass, final approval gate. | Commits scoped fix on current branch + opens ready PR, never merges |
+
+Startup family (roles + commands — invoke via `startup`, never directly unless the row says so):
+
+| Skill | Use it when |
+|-------|-------------|
+| [`startup-role-manager`](skills/startup-role-manager/SKILL.md) | The manager needs its PM brief — sole boss contact, triage, fan-out, outcome enforcement, merges. |
+| [`startup-role-pa`](skills/startup-role-pa/SKILL.md) | The manager needs its reminder tick — time, check-ins, priorities, sprint count, aging blockers. |
+| [`startup-role-dev`](skills/startup-role-dev/SKILL.md) | A worker drains one queue item through the full pipeline with don't-merge and an outcome block. |
+| [`startup-role-architect`](skills/startup-role-architect/SKILL.md) | Items share shape or repeat friction — standing design review, advisory only. |
+| [`startup-role-qa`](skills/startup-role-qa/SKILL.md) | Cross-item QA proof is needed — Playwright usability plus Storybook edge states. |
+| [`startup-role-devops`](skills/startup-role-devops/SKILL.md) | Env or resources are contested — provision adjudication, resources.json lock, creds cache. |
+| [`startup-intake`](skills/startup-intake/SKILL.md) | Triaging a new prompt, Linear id, or screenshot complaint into a queue.json row. |
+| [`startup-sprint`](skills/startup-sprint/SKILL.md) | INTERNAL — every 5 merged items pause fan-out, retro, compress memory, resume. |
+| [`startup-retro`](skills/startup-retro/SKILL.md) | An on-demand retro is wanted — same procedure as the sprint boundary. |
+| [`startup-stop-doing`](skills/startup-stop-doing/SKILL.md) | A text rule or screenshot complaint must become a standing instruction now. |
+| [`startup-status`](skills/startup-status/SKILL.md) | The queue, bulletin, sprint count, or parked blockers need rendering (or explicit wipe). |
 
 ### Research
 

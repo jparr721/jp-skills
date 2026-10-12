@@ -2,6 +2,13 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [3.3.0] - 2026-10-12
+
+### Added
+
+- `startup` skill family (12 dirs): persistent cross-turn queue (`<home>/startup/queue.json`, never `tmp/`), singular manager as sole boss contact, full `pipeline` per item with manager-owned merges, standing architect/QA (Playwright + Storybook mandate)/DevOps/PA-loop roles, `startup-intake` repeatable criteria, internal `startup-sprint` + `startup-retro` count-based retro with 64KB memory compress, `startup-stop-doing` text/screenshot rule injection, `startup-status` queue/bulletin view. Zero live agents on drain; next invoke reloads.
+
+
 ## [3.2.0] - 2026-10-07
 
 ### Changed
