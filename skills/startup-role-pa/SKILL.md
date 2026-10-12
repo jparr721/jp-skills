@@ -31,9 +31,9 @@ Three rules, no exceptions:
 - Merges nothing — merge authority stays with the manager.
 - Asks the boss nothing — no `escalate`, no direct boss contact; route through the manager.
 
-## Exit with manager
+## Exit on drain
 
-On drain the PA exits; it never watches an empty queue. State files persist under `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` — never under `tmp/`.
+On drain the PA exits; it never watches an empty queue. The manager persists same-chat — PA respawns on next wake with work in flight. State files persist under `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` — never under `tmp/`.
 
 ## Framework tail
 
