@@ -18,6 +18,8 @@ State lives under `<home>/startup/` — `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOM
 
 Append the interpreted rule to `standing-instructions.md`. Propagate to live workers via `agent://` handles; each live worker confirms in one line. Workers spawned later load it from the file at spawn — no extra push needed.
 
+Repo+role scope: when the rule names a repo and role in a bound startup (e.g. `stop-doing "QA: no local typecheck in repoA"`), append to `<bound_root>/.startup/<repo>/<role>.md` (create dirs as needed) instead of global `standing-instructions.md`. Global rules keep the existing path. Report names the file (e.g. `Scoped: .startup/repoA/qa.md — no local typecheck`).
+
 ## Report
 
 Return a 1-line report to the boss: the rule plus its scope (e.g. `Standing: no footer CTAs in marketing pages`).
