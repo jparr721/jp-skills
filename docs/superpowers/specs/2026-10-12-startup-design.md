@@ -46,10 +46,11 @@ Commands are first-token: `startup <prompt|SYT-xxx>` enqueue + ensure-running,
 `startup status`, `startup retro`, `startup stop-doing <rule|screenshot>`,
 `startup bulletin wipe`. `startup-sprint` never user-invoked.
 
-Always-on: manager + PA persist across turns via state files; workers are
-ephemeral, spawned only when QUEUED work exists. Idle = manager + PA confer,
-check queue/Linear for new issues, wait. Width is manager-decided 1..cap
-(`MAX_PARALLEL` 6 is ceiling, not target) based on item independence,
+Always-on via state files, not live agents: nothing survives an empty queue.
+Manager + PA + workers all exit on drain; state files persist; next `startup`
+invoke reloads and continues. Idle = exit to standby, never spin-wait — no
+wake primitive exists and live-wait burns context. Width is manager-decided
+1..cap (`MAX_PARALLEL` 6 is ceiling, not target) based on item independence,
 `resources.json` locks, DevOps capacity.
 
 ## Loop structure (every manager wake)
@@ -65,7 +66,7 @@ check queue/Linear for new issues, wait. Width is manager-decided 1..cap
    blocked, record assumptions in `memory.md`.
 6. Sprint boundary: every 5 merged → pause fan-out, `startup-sprint` retro,
    resume.
-7. Queue empty → standby: workers exit, state persists, manager + PA watch.
+7. Queue empty → standby: ALL agents exit (manager, PA, workers), state files persist, zero live-spin. Next `startup` invoke reloads state and resumes.
 8. Repeat on next wake (new invoke, outcome arrival, command).
 
 ## Repeatable intake criteria
@@ -76,15 +77,12 @@ naming behavior + affected area + acceptance, or screenshot + complaint
 Triage outcomes only: enqueue / async-clarify / reject-with-reason. No
 criteria → not queued, returned to boss in one line.
 
-Lifecycle: invoke → manager loads state, triages intake, enqueues, ensures
-workers to `MAX_PARALLEL` → drain → workers exit, state persists, standby.
-Next invoke reloads and continues. Workers never survive drain.
+Lifecycle: invoke → manager loads state, triages intake, enqueues, fans out at manager-chosen width → drain → ALL agents exit, state persists, standby.
+Next invoke reloads and continues. No agent survives drain.
 
 ## §2 Roles + comms
 
-Manager: sole boss contact. Loads queue + standing-instructions, triages
-feasibility/doability, clarifies batched when ambiguous, enforces outcome
-schema, owns all merges, powers down on drain.
+Manager: sole boss contact. Loads queue + standing-instructions, triages feasibility/doability, clarifies batched when ambiguous, enforces outcome schema, owns all merges, exits on drain (no survivors).
 
 Worker (dev brief): one item, full `pipeline` with `don't merge` + per-item
 `verify-mode`/`target` overrides. Questions/blockers → manager via `hub`
@@ -175,11 +173,7 @@ carries per-item repo). `resources.json` lock before any provision —
 `MAX_PARALLEL` workers race otherwise. Deck copy-out verified before any
 worktree removal (inherits `dark-factory` §5.6 failure mode).
 
-PA (`startup-role-pa`): reminder loop, not one-shot. Each tick (every manager
-wake + after each outcome): current time, next check-in + which sub-team
-(dev/QA/DevOps/architect), open priorities from boss, sprint count to retro
-boundary, aging parked blockers. Owns no work, merges nothing, asks boss
-nothing — prompts only. Prevents stall-blindness.
+PA (`startup-role-pa`): reminder loop, not one-shot, lives only while manager lives. Each tick (every manager wake + after each outcome): current time, next check-in + which sub-team (dev/QA/DevOps/architect), open priorities from boss, sprint count to retro boundary, aging parked blockers. Owns no work, merges nothing, asks boss nothing — prompts only. Prevents stall-blindness. On drain PA exits with manager — never watches an empty queue.
 
 ## Open risks
 
