@@ -93,9 +93,8 @@ Expected: `1`
 
 Run: `grep -c "OVERSIZE" skills/startup-role-manager/SKILL.md`
 Expected: `1`
-
 Run: `grep -c "role-override" skills/startup-role-manager/SKILL.md`
-Expected: `2`
+Expected: `1` (single backticked occurrence; repo+role uses `repo+role` and path forms)
 
 - [ ] **Step 4: Commit**
 
