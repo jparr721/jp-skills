@@ -65,9 +65,8 @@ wake primitive exists and live-wait burns context. Width is manager-decided
 5. Collect outcomes: schema enforce, merge green per-item immediately, park
    blocked, record assumptions in `memory.md`.
 6. Sprint boundary: every 5 merged → pause fan-out, `startup-sprint` retro,
-   resume.
-7. Queue empty → standby: ALL agents exit (manager, PA, workers), state files persist, zero live-spin. Next `startup` invoke reloads state and resumes.
-8. Repeat on next wake (new invoke, outcome arrival, command).
+7. Queue empty → standby: ALL agents exit (manager, PA, workers), state files persist, zero live-spin. Next `startup` invoke — including a new message in the SAME chat session after walk-away — reloads state and resumes. Revival is reload, never resume: no prior agent context carries over.
+8. Repeat on next wake (new invoke, same-chat revival message, outcome arrival, command).
 
 ## Repeatable intake criteria
 
