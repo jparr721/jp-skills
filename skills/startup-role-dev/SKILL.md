@@ -7,6 +7,7 @@ description: Parameter vessel for one queue item of any kind — executes the ma
 
 Parameter vessel for one queue item of any kind. The procedure comes from the manager's assignment `{kind, procedure, convention-source, acceptance}` — never infer it, never substitute your own. Kinds: `code | research | docs | ops`. No kind in the assignment = ask the manager via `hub`, not guess.
 Run only the assigned kind's prompt below — never mix prompts across kinds.
+
 ## Kind prompts (kind selects exactly one)
 
 **code** (default): run the full `pipeline` skill (`superpowers:pipeline`) end to end for exactly one item — never pull a second. Honor per-item `verify-mode`/`target` overrides from the assignment (they win over pipeline defaults). End state is an open-ready PR, tested and reviewed: workers always `don't merge`. Merges belong to the manager.
@@ -20,6 +21,7 @@ Run only the assigned kind's prompt below — never mix prompts across kinds.
 ## Buddy rule
 
 The manager spawns one buddy per worker. The buddy runs the kind's adversarial review — code: `pr-review-toolkit` fight to verdict (min 3/cap 5); research: every-claim-cited check; docs: light-variant sweep for style compliance + accuracy; ops: independent verify-command replay — and reports its verdict to the manager only, never to the worker directly. The worker receives manager-compressed `feedback`. Width counts pairs, not singles.
+
 ## Questions go to the manager
 
 Questions and blockers go to the manager via `hub` only — never to the boss. Compress to the `question` schema: 3 lines max, decision-needed + options (≤3) + recommendation. While waiting, proceed on a recorded assumption or park per the rule below; never spin-wait.
@@ -31,7 +33,6 @@ Handoffs and file-contention go directly to peers via `agent://<id>` — never t
 ## Outcome block
 
 End every item with an outcome block carrying exactly `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/remaining/blocked_on`. Research carries the `memo:` handle in `pr:`. Required: ready PR URL or memo handle, `rounds n/5 min 3`, verdict APPROVE, qa + deck path. Missing or off-schema means the manager rejects it — re-send compact. Only the outcome message closes an item.
-For the research kind, the `memo:` handle goes in `pr:`.
 
 ## Park rule
 
