@@ -66,6 +66,8 @@ Stall rule: no user-visible progress within ~2 min of activation → emit the in
 9. **Always prove it with real data and a deck.** Step 9 QA runs on every pipeline, pre- or
    post-merge per Step 9, and produces a slide deck of the change. No pipeline is done without
    the QA block and deck path in the final report.
+10. **Commit early and often; preserve the trail.** Per completed slice/wave, per review-round fix batch, per green gate — small logical commits per repo convention (`git log --oneline -10`), message states decision/why. Step 5 organizes leftover uncommitted work only, never rewrites existing commits. Squash-merge at merge time does not excuse a single-commit branch during the run — branch history is the debug trail (`git log`, `git bisect`).
+11. **Stack when the caller passes a stack parent.** `target <branch>` may name a parent branch, not the repo default — open with `--base <target>` when it does. On caller instruction after the parent pushes: `git fetch origin <parent> && git rebase origin/<parent>`, force-push the branch only, `gh pr edit --base <parent>`. Single-task direct use stays flat on the repo default.
 
 ## Arguments
 
@@ -239,7 +241,7 @@ Parallelize as much as the file graph allows, and not one step further.
    wave and batches any questions to you.
 4. **Between waves**, confirm the write sets held: `git status --short` should show nothing
    outside the wave's declared files. A stray file means a slice exceeded its brief - review it
-   before continuing.
+   before continuing. Commit each landed wave before dispatching the next (constraint 10: small logical commits, message states decision/why) — never batch the whole implementation into one commit at Step 5.
 5. **A single-slice task is a single agent, or just do it yourself.** Do not manufacture
    parallelism that the work does not contain.
 
@@ -355,7 +357,7 @@ those points is push-plus-CI-green instead; never run the local gate to "be safe
 ## Step 5 - PR
 
 Invoke `commit-and-push`. It splits the work into logical commits by architectural layer,
-re-verifies the committed tree, pushes, and opens the PR with a structured body.
+re-verifies the committed tree, pushes, and opens the PR with a structured body. When `target` names a stack-parent branch (constraint 11), the PR opens with `--base <target>` so the chain is visible to CI and reviewers.
 
 PRs are always opened ready, never --draft; if the repo defaults to drafts, run `gh pr ready` in the same step.
 
@@ -388,7 +390,7 @@ For each round:
    from Step 3. Fix agents route questions to the supervisor via `hub`, never to you.
 4. **Re-verify** (Step 4b in the chosen mode - in local mode at minimum full typecheck, the
    complete test suite, and the builds for what the round touched; in ci-only mode push plus CI
-   green) and **push**.
+   green), commit the round's green fixes first (constraint 10: small logical commits, message states decision/why — never squash the run into one commit), and **push**.
 5. **Log the round** to the supervisor ledger:
 
 ```

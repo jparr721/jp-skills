@@ -2,7 +2,13 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
-## [4.1.0] - 2026-10-12
+## [4.2.0] - 2026-10-12
+
+### Added
+
+- Stacked PRs everywhere CI bottlenecks bite: `startup` chains same-repo/same-target code items as `--base` stacks (flat on any other kind/repo/target, flat fallback with reason on stacking failure), merges bottom-up with `gh pr edit --base` child retarget; `queue.json` rows + outcome blocks carry `base/stack-mode`, `startup status` renders them.
+- `dark-factory` gains `STACK_MODE` (`auto` default / `stacked` / `flat`) plus a standing stack driver sub-agent (owns retarget/rebase/re-green traffic from FAN-OUT to EPIC CLOSE, never merges); planner emits stack chains along hard DAG deps, principal merges bottom-up, final report carries per-ticket `stack-mode`.
+- Commit-trail discipline in every code prompt: `pipeline` (per wave, per review-round fix batch), `dark-factory` brief, `startup-role-dev`, `hotfix` (per site) — small logical commits with decision/why messages, never one held commit; Step 5 organizes leftovers only.
 
 ### Added
 

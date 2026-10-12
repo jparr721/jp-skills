@@ -11,7 +11,7 @@ State lives under `<home>/startup/` — `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOM
 
 ## Render
 
-1. **Queue rows** — each `queue.json` row with `id, source, status, repo, target, branch`; open first, then in-flight, then blocked, then merged-closed (1 line each).
+1. **Queue rows** — each `queue.json` row with `id, source, status, repo, target, branch, base, stack-mode`; open first, then in-flight, then blocked, then merged-closed (1 line each).
 2. **Bulletin open items** — every `bulletin.md` item with `status: open`, with its source (`retro N` or intake handle).
 3. **Sprint count** — merged count since last retro as N/5 to the `skill://startup-sprint` boundary.
 4. **Parked blockers** — each `BLOCKED`/`NEEDS_DECISION` item with age since park and what it is blocked on.

@@ -90,7 +90,7 @@ after approval is a follow-up, not an inline addition.
 ### Step 5 - FIX
 
 Single implementer fixes every scoped site with the same pattern — no drive-by
-refactors, no second convention beside the existing one. Suspected sites that do not
+refactors, no second convention beside the existing one. Commit per site/fix unit as you go (repo convention, message states decision/why) — never hold the whole fix uncommitted until SHIP. Suspected sites that do not
 reproduce the bug are left untouched and reported as checked-clean.
 
 ### Step 6 - REVIEW+VERIFY (pr-review-toolkit light + repro)

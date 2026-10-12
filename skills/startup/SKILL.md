@@ -1,6 +1,6 @@
 ---
 name: startup
-description: Persistent cross-turn work queue — enqueue prompts or Linear tickets across turns, a singular manager drains each item through full pipeline rigor with standing architect/QA/DevOps roles, merges per item, retros every 5. Workers exit on drain; manager persists same-chat, state files persist.
+description: Persistent cross-turn work queue — enqueue prompts or Linear tickets across turns, a singular manager drains each item through full pipeline rigor with standing architect/QA/DevOps roles, chains same-repo code items as stacked PRs (flat fallback), merges per item bottom-up, retros every 5. Workers exit on drain; manager persists same-chat, state files persist.
 ---
 
 # Startup
@@ -29,15 +29,15 @@ Always-on via files, not live agents. Workers and the PA exit on drain; the mana
 1. Load state: `queue.json`, `memory.md` (64KB cap check), standing instructions, bulletin, resources.
 2. PA tick: time, next check-in + sub-team, boss priorities, sprint count to boundary, aging parked blockers.
 3. Triage intake: enqueue / batched async-clarify / reject-with-reason.
-4. Fan out at manager-chosen width 1..cap (width counts worker+buddy pairs); each worker gets `{kind, procedure, convention-source, acceptance}`, runs its kind procedure, `don't merge`. Consult DevOps capacity and `resources.json` locks.
-5. Collect outcomes: enforce schema, merge green per item immediately, park blocked, record assumptions in `memory.md`.
+4. Fan out at manager-chosen width 1..cap (width counts worker+buddy pairs); each worker gets `{kind, procedure, convention-source, acceptance, base, stack-mode}`, runs its kind procedure, `don't merge`. Same-repo/same-target code items chain (first on target, each next on prior branch); all else flat. Consult DevOps capacity and `resources.json` locks.
+5. Collect outcomes: enforce schema, merge green in stack order (flat items immediately; stacked chains bottom-up with child retarget after each parent merge), park blocked, record assumptions in `memory.md`.
 6. Sprint boundary: every `SPRINT_SIZE` (default 5) merged → pause fan-out, run `startup-sprint` retro, resume.
 7. Queue empty → standby: workers + PA exit, state persists, zero live-spin.
 8. Repeat on next wake (new invoke, same-chat revival, outcome arrival, command).
 
 ## Merge authority + async boss
 
-Workers always `don't merge`; PRs sit open-ready. The manager verifies outcome schema + CI green + QA/deck + architect APPROVE (required for all kinds), then `gh pr merge` per item immediately using that item's repo/remote/target from `queue.json` — no topo sort, no shared target. Research closes by filing/returning the memo. The boss is async by default: ambiguity → record assumption, proceed; only true blockers (`escalate`: scope calls, missing auth, rebase conflicts) bubble synchronously. Feedback becomes new queue items, never inline rework.
+Workers always `don't merge`; PRs sit open-ready. The manager verifies outcome schema + CI green + QA/deck + architect APPROVE (required for all kinds), then `gh pr merge` in stack order using that item's repo/remote/base from `queue.json` — flat items immediately, stacked chains bottom-up (parent first, then `gh pr edit --base` retarget of the child, re-green, merge); on stacking failure fall back to the flat target and record the reason. Research closes by filing/returning the memo. The boss is async by default: ambiguity → record assumption, proceed; only true blockers (`escalate`: scope calls, missing auth, rebase conflicts) bubble synchronously. Feedback becomes new queue items, never inline rework.
 
 ## Message schema (caps; shorter is better)
 

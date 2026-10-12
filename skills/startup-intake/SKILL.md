@@ -32,9 +32,9 @@ Ambiguous across two kinds = async-clarify, never guess silently.
 
 Each enqueued item is one row in `<home>/startup/queue.json` (home chain: `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`; NEVER `tmp/`) with exactly:
 
-`id, source, status, repo, remote, target, merge-strategy, branch, worktree, report-handle, kind, procedure, convention-source`
+`id, source, status, repo, remote, target, merge-strategy, branch, worktree, base, stack-mode, report-handle, kind, procedure, convention-source`
 
-`merge-strategy: squash|merge per repo convention` — record the repo's convention at intake; the manager merges with it. `branch`/`worktree` are assigned at dispatch; `report-handle` at outcome. `procedure` names the worker procedure for the kind; `convention-source` names the repo convention or doc source the worker writes against (empty only for research/ops with no convention).
+`merge-strategy: squash|merge per repo convention` — record the repo's convention at intake; the manager merges with it. `branch`/`worktree`/`base`/`stack-mode` are assigned at dispatch (`base`: stack-parent branch when chained, else target; `stack-mode: stacked|flat (+ reason)`); `report-handle` at outcome. `procedure` names the worker procedure for the kind; `convention-source` names the repo convention or doc source the worker writes against (empty only for research/ops with no convention).
 
 Per-kind acceptance shape:
 

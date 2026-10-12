@@ -16,10 +16,10 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
-| [`pipeline`](skills/pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. | Changes code, merges PR |
-| [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. | Changes code, can merge to `main` |
-| [`startup`](skills/startup/SKILL.md) | A persistent cross-turn queue of disparate prompts/tickets drained by a singular manager — full pipeline rigor per item, standing architect/QA/DevOps roles, count-based sprint retro. v4.1.0 adds timing reports + named binding. | Changes code, merges per item, exits on drain |
-| [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate, light review + simplify pass, final approval gate. | Commits scoped fix on current branch + opens ready PR, never merges |
+| [`pipeline`](skills/pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. Commits early and often; stacks when the caller passes a parent base. | Changes code, merges PR |
+| [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. Dependent tickets stack as `--base` chains (STACK_MODE auto/stacked/flat) with a standing stack driver; merges bottom-up with child retarget. | Changes code, can merge to `main` |
+| [`startup`](skills/startup/SKILL.md) | A persistent cross-turn queue of disparate prompts/tickets drained by a singular manager — full pipeline rigor per item, standing architect/QA/DevOps roles, same-repo code items chained as stacked PRs (flat fallback), count-based sprint retro. v4.1.0 adds timing reports + named binding. | Changes code, merges per item, exits on drain |
+| [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate, light review + simplify pass, final approval gate. Commits per site as it goes. | Commits scoped fix on current branch + opens ready PR, never merges |
 
 Startup family (roles + commands — invoke via `startup`, never directly unless the row says so):
 
@@ -80,7 +80,7 @@ Startup family (roles + commands — invoke via `startup`, never directly unless
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (currently 4.1.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (currently 4.2.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 

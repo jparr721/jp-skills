@@ -1,6 +1,6 @@
 ---
 name: dark-factory
-description: Use when you want an entire Linear epic (or multi-ticket task) driven to merged-on-main as one coordinated run. Spawns a principal orchestrator that decomposes the epic and fans out one sub-orchestrator per ticket; each sub-orchestrator runs the full `pipeline` skill on its ticket (party deliberation, pr-review-toolkit fight to APPROVE verdict min 3 / cap 5 rounds, gated merge, real-data QA + slide deck). Requires the `pipeline` skill - if it is absent the run pauses with the link instead of improvising. Merges PRs in topological order. Changes application code and can merge PRs to main.
+description: Use when you want an entire Linear epic (or multi-ticket task) driven to merged-on-main as one coordinated run. Spawns a principal orchestrator that decomposes the epic and fans out one sub-orchestrator per ticket; each sub-orchestrator runs the full `pipeline` skill on its ticket (party deliberation, pr-review-toolkit fight to APPROVE verdict min 3 / cap 5 rounds, gated merge, real-data QA + slide deck). Dependent tickets stack as `--base` chains along DAG edges (STACK_MODE auto/stacked/flat), a standing stack driver keeps chains merge-ready, principal merges bottom-up with child retarget. Requires the `pipeline` skill - if it is absent the run pauses with the link instead of improvising. Changes application code and can merge PRs to main.
 ---
 
 # Dark Factory
@@ -72,6 +72,7 @@ The only required input is the Linear task ID. Everything else has a default; co
 | `VERIFY_MODE` | `ask` | `local` / `ci-only` / `ask`. `ask` -> principal batches the question once at the gate; the answer propagates to every pipeline via its `verify-mode` override. Never asked per ticket. |
 | `AUTH_TOKEN` | (empty) | Optional session cookie / bearer token for QA. Supplied once (`auth token <value>`), held by the principal, propagated to every pipeline via its `auth token` override. Needed whenever any ticket's proof requires authenticated access - pre-merge preview, post-merge staging/production, or post-deploy. If empty and a pipeline's QA needs one, one question bubbles up; the answer is recorded once and re-propagated. |
 | `WORKTREE_MODE` | `local` | `local` (git worktree under `<home>/worktrees/<repo>/<branch>` per the `pipeline` Step 1b contract, where `<home>` is `$JP_SKILLS_HOME` else `$XDG_CONFIG_HOME/jp-skills` else `~/.config/jp-skills`) or `vm` (Conductor `{worktree_id: vm_ip}`). Pipelines create their own trees there; the orchestrator checkout stays bookkeeping-only. |
+| `STACK_MODE` | `auto` | `auto` (stack along DAG edges with `--base` chains, fall back to flat with reason) / `stacked` (fail loudly instead of falling back) / `flat` (current behavior: every PR targets `TARGET_BRANCH`). |
 
 Dropped from the old bespoke loop, now owned by `pipeline`: `MAX_REVIEW_ROUNDS` (min 3 / cap 5 per
 ticket), `REVIEW_TOOL` / `REVIEW_MODULES`, background `QA_FEEDBACK` (each pipeline QA-proves its
@@ -134,6 +135,7 @@ Before any pipeline is dispatched, confirm the high-consequence parameters with 
    question, answered once and re-propagated.
 5. **Linear team** - the team under which sub-orchestrators file `follow-up` / `qa-found`
    tickets (resolve via `list_issue_labels`/team metadata if not obvious from the task).
+6. **`STACK_MODE`** - `auto` (stack along DAG edges, flat fallback) vs `stacked` (no fallback — stacking failure stops and escalates) vs `flat` (every PR targets `TARGET_BRANCH`, pre-patch behavior). Default `auto`.
 
 Do not start planning until these are confirmed.
 
@@ -224,7 +226,8 @@ Reject and re-dispatch anything that does not conform. You read **only** this bl
    - per-ticket acceptance criteria distilled to <=3 bullets,
    - per-ticket `gitBranchName` (the work branch for that ticket),
    - a **dependency DAG** (hard deps from Linear `blocks`/`blockedBy` + soft deps from predicted shared-file contention),
-   - a **wave assignment** (topological layers) honoring `MAX_PARALLEL`.
+   - a **wave assignment** (topological layers) honoring `MAX_PARALLEL`,
+   - a **stack chain** along hard deps (same repo): each blocked ticket's work branch bases on its blocker parent's branch; independent tickets stay flat on `TARGET_BRANCH`. Record per-ticket `stack-mode: stacked|flat (+ reason)` in the ledger.
    The Planner returns this as a compact structured block - not prose. You ingest **only** the DAG + waves + branch names.
 3. Populate the ledger.
 
@@ -234,7 +237,7 @@ For each wave, in dependency order:
 - Spin up to `MAX_PARALLEL` sub-orchestrators, one per ticket. Each creates its own pipeline
   run, which creates its own worktree (`WORKTREE_MODE=local` puts it at `<home>/worktrees/<repo>/<branch>` per the `pipeline` Step 1b contract; `vm` uses Conductor) and supervisor under it. Use each ticket's `gitBranchName` for its work branch.
 - Give each sub-orchestrator the **Sub-orchestrator Brief** (section 6) with the invocation:
-  ticket id + `target {{TARGET_BRANCH}}` + `don't merge` (pipelines never merge here - the
+  ticket id + `target {{STACK_PARENT}}` (stack-parent branch when this ticket is chained, else `{{TARGET_BRANCH}}`) + `don't merge` (pipelines never merge here - the
   principal owns merges, and QA then runs pre-merge per pipeline Step 9) + `verify-mode
   {{VERIFY_MODE}}` + `auth token {{AUTH_TOKEN}}` when one was supplied (omit the override
   otherwise; pipelines that need one will bubble up a single shared question).
@@ -276,6 +279,7 @@ one-line result.
 Merge ticket PRs in topological order (no PR is merged before all its `blocks`/`blockedBy` deps are `MERGED`):
 
 1. For each eligible PR: verify CI is green, then run `gh pr merge <PR> --squash --delete-branch` (or `--merge` per repo convention). Abort and surface the failure if red.
+  **Stacked children:** after each parent merge, retarget each direct child onto the merged line (`gh pr edit <child> --base {{TARGET_BRANCH}}`), re-green in its `verify-mode`, then merge it. Stacking failure (base unsupported, protection blocks it) → flat fallback for that child: rebase onto `{{TARGET_BRANCH}}`, record the reason, continue.
 2. **Conflict on merge:** if `gh pr merge` fails due to conflict (the PR branch is behind `TARGET_BRANCH` after previous merges):
    - Dispatch a **Rebase agent**. The rebase is mechanical: on that ticket's worktree run
      `git fetch origin {{TARGET_BRANCH}} && git rebase origin/{{TARGET_BRANCH}}`, resolve
@@ -292,6 +296,13 @@ Merge ticket PRs in topological order (no PR is merged before all its `blocks`/`
    sub-orchestrator to run that ticket pipeline's Step 9 against the merged `TARGET_BRANCH`
    with `auth token {{AUTH_TOKEN}}` (asking once if it was never supplied). A post-merge QA
    failure becomes a `follow-up` ticket under the epic, never a silent patch to main.
+### 5.4b STACK DRIVER (standing merge-accelerator)
+
+One dedicated sub-agent per run whose whole mission is getting code merged faster. Dispatched at FAN-OUT, alive until EPIC CLOSE. It checks in with the principal and the sub-orchestrators via `hub` on every outcome arrival and every merge — never implements, never reviews, never merges itself.
+
+- Owns all stack traffic: verifies each chained PR's base, retargets children after parent merges (`gh pr edit --base`), rebases stale branches, re-greens in the ticket's `verify-mode`, and pushes branch-only force-pushes.
+- Owns the flat fallback: when stacking is unavailable (host lacks `--base` chains, protection rules block it), drops that child to flat on `{{TARGET_BRANCH}}` and records the reason in the ledger — never stalls the run waiting for stack support.
+- Reports per-ticket `stack-mode` + merge-readiness to the principal in ≤5 lines; the principal still issues every `gh pr merge`.
 
 ### 5.5 EPIC CLOSE
 
@@ -318,6 +329,7 @@ Runs only when all ledger rows are `MERGED`, post-merge QA passes are in, and th
 > Open the PR as ready, never draft (`gh pr ready` in the same step if the repo defaults to drafts). The merge decision is unchanged: `AUTO_MERGE=false` still stops at open PRs (now open-ready).
 > {{AUTH_TOKEN_LINE}}Acceptance criteria: {{AC}}. Work branch: the ticket's Linear `gitBranchName`.
 > (`{{AUTH_TOKEN_LINE}}` is `auth token <value>,` when a token was supplied at the gate and empty otherwise.)
+> Stacking: `target` above names the stack-parent branch when the principal chains this ticket (open the PR with `--base <parent>`), else `{{TARGET_BRANCH}}`. Commit early and often (per slice/wave, per fix batch — small logical commits, message states decision/why); push promptly so stacked children can base on real commits.
 > 1. **Run the pipeline, do not freelance.** Invoke `pipeline` with the ticket id and the
 >    overrides above. Never implement, review, or QA anything yourself - the pipeline's swarm
 >    does that. Your job is invocation, question-routing, and outcome enforcement.
@@ -382,11 +394,13 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
 - **Escalation:** anything `BLOCKED` after re-dispatch, or any structural rebase conflict, stops
   and pings the user with a one-line summary - do not grind.
 - **Context:** if any outcome block exceeds the schema, discard and re-dispatch. Protect your context.
+- **Stack driver owns stack traffic, principal owns merges.** The driver retargets, rebases, and re-greens; it never runs `gh pr merge` itself. No second driver per run.
+- **Flat is always a valid fallback.** Stacking failure records a reason and continues flat — never a stall, never a silent unstacked merge of a chained child (retarget first, then merge).
 
 ## 9. Final Report (to the user)
 
 A single compact summary: epic id, `verify-mode` used for all tickets, `token: provided
-(redacted)` or `token: none`, tickets shipped vs blocked, all PR URLs (merged or open),
+(redacted)` or `token: none`, per-ticket `stack-mode: stacked|flat (+ reason)`, tickets shipped vs blocked, all PR URLs (merged or open),
 per-ticket rounds + QA (pre/post-merge) + deck path, follow-up tickets filed/scheduled, epic
 closed in Linear (y/n), sub-worktrees cleaned (y/n), and any escalations needing a decision. No
 transcripts.
@@ -396,12 +410,12 @@ transcripts.
 | Phase | Who runs | What the principal keeps |
 |-------|----------|-----------------------------|
 | Step 0 precondition + branch | Main thread (skill check + git + Linear MCP) | pipeline-present boolean, epic id, title, current branch |
-| Step 1 param gate | Main thread + user | `AUTO_MERGE`, `MAX_PARALLEL`, `VERIFY_MODE`, `AUTH_TOKEN` (redacted), team |
-| PLAN | Planner agent | DAG + waves + per-ticket branches |
-| FAN-OUT | Sub-orchestrators (parallel, each runs `pipeline`) | Outcome blocks + PR URLs |
+| Step 1 param gate | Main thread + user | `AUTO_MERGE`, `MAX_PARALLEL`, `VERIFY_MODE`, `AUTH_TOKEN` (redacted), team, `STACK_MODE` |
+| PLAN | Planner agent | DAG + waves + stack chains + per-ticket branches |
+| FAN-OUT | Sub-orchestrators (parallel, each runs `pipeline`) + stack driver | Outcome blocks + PR URLs + per-ticket stack-mode |
 | Epic re-poll | Main thread (Linear MCP) | new ticket ids -> Backfill queue |
 | COLLECT | Main thread (schema check + `gh pr checks`) | per-ticket done/blocked state |
-| PR MERGE | Main thread (`gh pr merge`, topo order) | PR merge status + post-merge QA passes |
+| PR MERGE | Stack driver preps, principal issues `gh pr merge` (topo order) | PR merge status + retargets + post-merge QA passes |
 | EPIC CLOSE | Main thread (Linear MCP) | closure confirmation |
 | CLEANUP | Main thread | sub-worktree-clean boolean + deck paths |
 
@@ -427,6 +441,8 @@ transcripts.
 - **Deleting the orchestrator worktree.** Cleanup only removes pipeline sub-worktrees. The orchestrator worktree is the user's responsibility.
 - **Skipping cleanup on failure.** Cleanup runs always, even on partial failure - leftover worktrees and branches pollute the next run.
 - **Accepting a draft PR as DONE.** Every outcome PR is ready (`gh pr ready` repair when the repo defaults to drafts); draft is a protocol violation like "none".
+- **Merging a stacked child before its parent.** Merge bottom-up; retarget the child (`gh pr edit --base`) + re-green before merging it.
+- **Stacking tickets that share no dep edge.** Independent tickets stay flat on `TARGET_BRANCH`; chains follow hard DAG deps only.
 
 $ARGUMENTS
 

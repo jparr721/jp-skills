@@ -10,7 +10,7 @@ Run only the assigned kind's prompt below — never mix prompts across kinds.
 
 ## Kind prompts (kind selects exactly one)
 
-**code** (default): run the full `pipeline` skill (`superpowers:pipeline`) end to end for exactly one item — never pull a second. Honor per-item `verify-mode`/`target` overrides from the assignment (they win over pipeline defaults). End state is an open-ready PR, tested and reviewed: workers always `don't merge`. Merges belong to the manager.
+**code** (default): run the full `pipeline` skill (`superpowers:pipeline`) end to end for exactly one item — never pull a second. Honor per-item `verify-mode`/`target`/`base` overrides from the assignment (they win over pipeline defaults; `base` may be a stack-parent branch — open with `--base`, push early so children can stack). Commit early and often (per slice/wave, per fix batch — small logical commits, message states decision/why); never hold the item to one commit. End state is an open-ready PR, tested and reviewed: workers always `don't merge`. Merges belong to the manager.
 
 **research**: run `topic-research` (external) or internal codebase research per the assignment, then write a synthesis memo: adopt/adapt/build verdict + tradeoffs + recommendation, every claim cited. No uncited assertions. No merge — the outcome `pr:` field carries the `memo:` handle instead; the manager files or returns it.
 
@@ -32,7 +32,7 @@ Handoffs and file-contention go directly to peers via `agent://<id>` — never t
 
 ## Outcome block
 
-End every item with an outcome block carrying exactly `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/remaining/blocked_on`. Research carries the `memo:` handle in `pr:`. Required: ready PR URL or memo handle, `rounds n/5 min 3`, verdict APPROVE, qa + deck path. Missing or off-schema means the manager rejects it — re-send compact. Only the outcome message closes an item.
+End every item with an outcome block carrying exactly `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/remaining/blocked_on` plus `base/stack-mode` (mirrors the assignment). Research carries the `memo:` handle in `pr:`. Required: ready PR URL or memo handle, `rounds n/5 min 3`, verdict APPROVE, qa + deck path. Missing or off-schema means the manager rejects it — re-send compact. Only the outcome message closes an item.
 Timing (self-report + evidence): append `coding_mins` (hands-on-keyboard time only — exclude CI waits, review waits, blocked time) + `waited_mins` (CI + blocked + review-wait) + `evidence` (2 lines max: commits since dispatch, test/CI cycles run).
 Record times honestly; the manager sanity-checks against wall clock (`coding_mins` ≤ dispatched→outcome). Gaming the split is a protocol violation the buddy replay will catch.
 
