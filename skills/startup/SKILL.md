@@ -17,7 +17,7 @@ Persistent cross-turn queue drained by a singular manager. Enqueue prompts or Li
 | `startup stop-doing <rule\|screenshot>` | Standing-rule injection (see `skill://startup-stop-doing`) |
 | `startup bulletin wipe` | Archive done items, clear them; explicit only |
 
-`startup-sprint` is internal — never user-invoked; the manager calls it at the boundary. Intake detail lives in `skill://startup-intake`.
+`startup-sprint` is internal — never user-invoked; the manager calls it at the boundary. Intake (`skill://startup-intake`) assigns kind (code/research/docs/ops), inferring when the boss states none.
 
 ## Manager persists, workers don't
 
@@ -28,7 +28,7 @@ Always-on via files, not live agents. Workers and the PA exit on drain; the mana
 1. Load state: `queue.json`, `memory.md` (64KB cap check), standing instructions, bulletin, resources.
 2. PA tick: time, next check-in + sub-team, boss priorities, sprint count to boundary, aging parked blockers.
 3. Triage intake: enqueue / batched async-clarify / reject-with-reason.
-4. Fan out at manager-chosen width 1..cap; workers run full `pipeline`, `don't merge`. Consult DevOps capacity and `resources.json` locks.
+4. Fan out at manager-chosen width 1..cap (width counts worker+buddy pairs); each worker gets `{kind, procedure, convention-source, acceptance}`, runs its kind procedure, `don't merge`. Consult DevOps capacity and `resources.json` locks.
 5. Collect outcomes: enforce schema, merge green per item immediately, park blocked, record assumptions in `memory.md`.
 6. Sprint boundary: every `SPRINT_SIZE` (default 5) merged → pause fan-out, run `startup-sprint` retro, resume.
 7. Queue empty → standby: workers + PA exit, state persists, zero live-spin.
@@ -36,11 +36,11 @@ Always-on via files, not live agents. Workers and the PA exit on drain; the mana
 
 ## Merge authority + async boss
 
-Workers always `don't merge`; PRs sit open-ready. The manager verifies outcome schema + CI green + QA/deck, then `gh pr merge` per item immediately using that item's repo/remote/target from `queue.json` — no topo sort, no shared target. The boss is async by default: ambiguity → record assumption, proceed; only true blockers (`escalate`: scope calls, missing auth, rebase conflicts) bubble synchronously. Feedback becomes new queue items, never inline rework.
+Workers always `don't merge`; PRs sit open-ready. The manager verifies outcome schema + CI green + QA/deck + architect APPROVE (required for all kinds), then `gh pr merge` per item immediately using that item's repo/remote/target from `queue.json` — no topo sort, no shared target. Research closes by filing/returning the memo. The boss is async by default: ambiguity → record assumption, proceed; only true blockers (`escalate`: scope calls, missing auth, rebase conflicts) bubble synchronously. Feedback becomes new queue items, never inline rework.
 
 ## Message schema (caps; shorter is better)
 
-Every message carries `from`, `to`, `kind`, `item`, body. `update` worker→manager 5 lines (heartbeat only); `outcome` verbatim schema block (only message that closes an item); `question` 3 lines (≤3 options + recommendation, via `hub`); `feedback` manager→worker 5 lines (`ACCEPT|REDO:<scope>`); `handoff` worker→worker 8 lines (handles only, never content); `escalate` manager→boss 3 lines; `report` manager→boss 10 lines/item. Off-schema or oversize is rejected with a one-line `feedback`; workers re-dispatch compact. `update` only on wave boundaries and blockers.
+Every message carries `from`, `to`, `kind`, `item`, body. `update` worker→manager 5 lines (heartbeat only); `outcome` verbatim schema block (only message that closes an item; research carries `memo:` handle in `pr:` field); `question` 3 lines (≤3 options + recommendation, via `hub`); `feedback` manager→worker 5 lines (`ACCEPT|REDO:<scope>`); `handoff` worker→worker 8 lines (handles only, never content); `escalate` manager→boss 3 lines; `report` manager→boss 10 lines/item. Off-schema or oversize is rejected with a one-line `feedback`; workers re-dispatch compact. `update` only on wave boundaries and blockers.
 
 ## State
 
