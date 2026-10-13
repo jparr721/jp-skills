@@ -65,8 +65,11 @@ def run(args, evidence) -> int:
         process = subprocess.Popen(command,env=env,cwd=cwd,stdin=subprocess.PIPE,stdout=stdout,stderr=stderr,text=True)
         try:
             if args.scenario=='input':
+                for number in range(100):
+                    process.stdin.write(json.dumps({'id':f'history-{number}','type':'prompt','message':'/startup-fixture-status HISTORY_BLOB '+('retained '*512)})+'\n')
+                process.stdin.flush()
                 for number,message in enumerate(['status fixture input','also investigate fixture']):
-                    process.stdin.write(json.dumps({'id':f'input-{number}','type':'prompt','message':message})+'\n')
+                    process.stdin.write(json.dumps({'id':f'input-{number}','type':'prompt','message':message,'images':[] if number==0 else [{'type':'image','mimeType':'image/png','data':'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII='}]})+'\n')
                     process.stdin.flush()
                     deadline=time.monotonic()+35
                     while process.poll() is None and time.monotonic()<deadline:
@@ -111,13 +114,13 @@ def run(args, evidence) -> int:
     if report['status']=='COMPLETE' and args.scenario=='input':
         proof=next(event for event in events if event['kind']=='native-input-proof')
         initial=proof['initial']
-        inputs=initial['inputs']
-        status=next(receipt for receipt in inputs if receipt['raw']['text']=='status fixture input')
-        work=next(receipt for receipt in inputs if receipt['raw']['text']=='also investigate fixture')
+        inputs=[event['details'] for event in events if event['kind']=='tool' and event['name']=='startup_route' and not event['error']]
+        status=next(receipt for receipt in inputs if receipt['textPreview']=='status fixture input')
+        work=next(receipt for receipt in inputs if receipt['textPreview']=='also investigate fixture')
         providers=[event['context'] for event in events if event['kind']=='provider']
         denied=[message for context in providers for message in context['messages'] if message['role']=='toolResult' and message.get('isError') and message.get('toolCallId','').startswith('fixture-input-read') and 'Route received input' in str(message['content'])]
         guards=[message for context in providers for message in context['messages'] if 'Route received input' in str(message.get('content')) and message['role']!='toolResult']
-        checks={'native_completion':exit_code==0,'human_input_captured_before_lookup':len(denied)>=2,'no_idle_with_unrouted_input':bool(guards),'status_routed_without_work':status['disposition']['kind']=='status' and all(team['eventId']!=status['id'] for team in initial['teams']),'additional_input_fresh_complete_team':work['disposition']['kind']=='work' and any(team['eventId']==work['id'] and team['state']=='active' and len(team['devs'])==1 for team in initial['teams']),'registered_command_control_receipt':any(receipt['raw']['text']=='/startup-input-proof-report' and receipt['disposition']['kind']=='control' for receipt in inputs),'internal_manager_wake_excluded':any('Fixture internal wake exclusion' in str(context['messages']) for context in providers) and initial['inputs']==proof['after']['inputs'] and all(receipt['raw']['text']!='Fixture internal wake exclusion' for receipt in inputs)}
+        checks={'native_completion':exit_code==0,'human_input_captured_before_lookup':len(denied)>=2,'no_idle_with_unrouted_input':bool(guards),'status_routed_without_work':status['disposition']['kind']=='status' and all(team['eventId']!=status['id'] for team in initial['teams']),'additional_input_fresh_complete_team':work['disposition']['kind']=='work' and any(team['eventId']==work['id'] and team['state']=='active' and len(team['devs'])==1 for team in initial['teams']),'registered_command_control_receipt':any(event['kind']=='native-input' and event['text']=='/startup-input-proof-report' for event in events) and initial['inputCounts']['unclassified']==0,'internal_manager_wake_excluded':any('Fixture internal wake exclusion' in str(context['messages']) for context in providers) and initial['inputs']==proof['after']['inputs'] and initial['inputCounts']==proof['after']['inputCounts'],'bounded_history_and_projection':initial['inputCounts']['total']==103 and 'HISTORY_BLOB' not in json.dumps(initial) and len(json.dumps(initial))<24000 and all('iVBORw0KGgo' not in message['content'] for context in providers for message in context['messages'] if message['role']=='developer' and isinstance(message['content'],str)),'scoped_native_image_retrieval':any(message['role']=='toolResult' and message.get('toolName')=='startup_image' and not message.get('isError') and any(part.get('type')=='image' and part.get('mimeType')=='image/png' for part in message['content']) for context in providers for message in context['messages'])}
     if report['status']=='COMPLETE' and args.scenario=='refresh':
         refreshed=next(event for event in events if event['kind']=='native-refresh')
         providers=[event['context'] for event in events if event['kind']=='provider']

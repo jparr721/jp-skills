@@ -1080,3 +1080,85 @@ test("employee-limit uses exact reusable staff and requested multi-developer tea
     }),
   ).rejects.toThrow("conflicts");
 });
+test("raw images/history stay durable while projected current input is bounded and image retrieval is scoped", async (): Promise<void> => {
+  const f = fixture();
+  const image = {
+    type: "image",
+    mimeType: "image/png",
+    data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=",
+  };
+  for (let index = 0; index < 100; index += 1) {
+    const received = f.adapter.receiveInput(f.ctx, {
+      source: "rpc",
+      text: `Historical ${index} ` + "retained ".repeat(1024),
+      images: [image],
+    })!;
+    f.adapter.routeInput(f.ctx, {
+      inputId: received.id,
+      disposition: "status",
+      reason: "Retained historical status",
+      amendItemIds: [],
+    });
+  }
+  const received = f.adapter.receiveInput(f.ctx, {
+    source: "rpc",
+    text: "Relevant current image " + "request ".repeat(2048),
+    images: [image],
+  })!;
+  const projection = (await f.adapter.projection(f.ctx))!;
+  expect(projection).not.toContain(image.data);
+  expect(projection.length).toBeLessThan(8192);
+  expect(JSON.stringify(f.adapter.staff(f.ctx))).not.toContain("Historical");
+  expect(JSON.stringify(f.adapter.staff(f.ctx))).not.toContain(image.data);
+  expect(f.adapter.store.snapshot().inputs).toHaveLength(101);
+  expect(
+    f.adapter.image(f.ctx, { inputId: received.id, index: 0 }).content,
+  ).toEqual([image]);
+  const page = f.adapter.readInput(f.ctx, { inputId: received.id, offset: 0 });
+  expect(page.text.length).toBe(4096);
+  expect(page.nextOffset).toBe(4096);
+  expect(() =>
+    f.adapter.readInput(f.ctx, { inputId: received.id, offset: 999999 }),
+  ).toThrow("offset");
+  const routed = f.adapter.routeInput(f.ctx, {
+    inputId: received.id,
+    disposition: "work",
+    reason: "Raw image work",
+    amendItemIds: [],
+  });
+  expect(JSON.stringify(routed)).not.toContain(image.data);
+  const team = await f.adapter.delegate(f.ctx, {
+    startup: "delegate",
+    eventId: received.id,
+    developers: 1,
+  });
+  const contexts = new Map<string, NativeContext>();
+  for (const id of [team.architect, team.qa, ...team.devs])
+    contexts.set(
+      id,
+      await f.project(
+        f.adapter.store
+          .snapshot()
+          .employees.find((employee) => employee.id === id)!,
+      ),
+    );
+  const architect = contexts.get(team.architect)!;
+  expect((await f.adapter.projection(architect))!).not.toContain(image.data);
+  expect(
+    f.adapter.image(architect, { inputId: received.id, index: 0 }).content,
+  ).toEqual([image]);
+  expect(
+    f.adapter.image(contexts.get(team.qa)!, { inputId: received.id, index: 0 })
+      .content,
+  ).toEqual([image]);
+  expect(() =>
+    f.adapter.image(contexts.get(team.qa)!, {
+      inputId: "foreign-input",
+      index: 0,
+    }),
+  ).toThrow();
+  const historical = f.adapter.store.snapshot().inputs[0]!;
+  expect(() =>
+    f.adapter.image(f.ctx, { inputId: historical.id, index: 0 }),
+  ).toThrow();
+});

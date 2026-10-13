@@ -53,7 +53,7 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
         id: "offline",
         name: "Startup adapter offline fixture",
         reasoning: false,
-        input: ["text"],
+        input: ["text", "image"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: 262144,
         maxTokens: 8192,
@@ -156,7 +156,7 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
                     request:
                       typeof cue.payload.raw === "string"
                         ? cue.payload.raw
-                        : cue.payload.raw.text,
+                        : (cue.payload.raw.text ?? cue.payload.raw.textPreview),
                     acceptance: ["fixture complete"],
                     blocked_on: [],
                     status: "QUEUED",
@@ -223,7 +223,20 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
                 part.text === `INPUT_UNROUTED_FINAL_${received.id}`,
             ),
         );
+        const imageRead = context.messages.some(
+          (message) =>
+            message.role === "toolResult" &&
+            message.toolCallId === `fixture-input-image-${received.id}` &&
+            !message.isError,
+        );
         if (!finalAttempt) call = null;
+        else if (received.attachmentCount > 0 && !imageRead)
+          call = {
+            type: "toolCall",
+            id: `fixture-input-image-${received.id}`,
+            name: "startup_image",
+            arguments: { inputId: received.id, index: 0 },
+          };
         else if (!previousAttempt)
           call = {
             type: "toolCall",
@@ -238,7 +251,7 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
             name: "startup_route",
             arguments: {
               inputId: received.id,
-              disposition: received.raw.text.includes("also")
+              disposition: received.textPreview.includes("also")
                 ? "work"
                 : "status",
               reason: "Fixture high-level user disposition",
@@ -383,6 +396,10 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
       stream.end();
       return stream;
     },
+  });
+  pi.registerCommand("startup-fixture-status", {
+    description: "Fixture native status/control command",
+    handler: async () => {},
   });
   pi.registerCommand("startup-input-proof-report", {
     description: "Finish actual human input proof",

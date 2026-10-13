@@ -333,6 +333,24 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
       adapter(ctx).routeInput(ctx, routeInputSchema.parse(params)),
   );
   tool(
+    "startup_input",
+    "Read a bounded 4096-character page of a scoped saved input; offsets are host-validated. Only the selected manager input or its active assigned team may retrieve it.",
+    builder.object({ inputId: builder.string(), offset: builder.number() }),
+    (ctx, params) => adapter(ctx).readInput(ctx, params),
+  );
+  pi.registerTool({
+    name: "startup_image",
+    label: "Startup image",
+    description:
+      "Retrieve an actual native image block by scoped saved input ID and attachment index. No model paths or raw base64 text echoes.",
+    parameters: builder.object({
+      inputId: builder.string(),
+      index: builder.number(),
+    }),
+    execute: async (_id, params, _signal, _update, ctx) =>
+      adapter(ctx).image(ctx, params),
+  });
+  tool(
     "startup_intake",
     "Persist raw requests and high-level amendment IDs. Delegate the event immediately through native task startup=delegate.",
     builder.object({

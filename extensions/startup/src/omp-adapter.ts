@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
@@ -26,6 +26,7 @@ import {
   type StartupStore,
   type HireReceipt,
   type Snapshot,
+  type ReceivedInput,
 } from "./store";
 import {
   loadProfile,
@@ -219,6 +220,67 @@ const nativeWakeSchema = z
   .passthrough();
 export type StartupAdapter = ReturnType<typeof createAdapter>;
 
+const rawInputSchema = z.object({
+  text: z.string(),
+  images: z.array(jsonSchema),
+});
+const imageSchema = z.object({
+  type: z.literal("image"),
+  data: z.string().min(1),
+  mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+});
+function inputSummary(inputId: string, raw: Json) {
+  const parsed = rawInputSchema.safeParse(raw);
+  const text = parsed.success
+    ? parsed.data.text
+    : typeof raw === "string"
+      ? raw
+      : encode(raw);
+  const images = parsed.success ? parsed.data.images : [];
+  return {
+    inputId,
+    textPreview: text.slice(0, 512),
+    textLength: text.length,
+    attachmentCount: images.length,
+    attachments: images.slice(0, 8).map((raw, index) => {
+      const image = imageSchema.parse(raw);
+      return {
+        inputId,
+        index,
+        mimeType: image.mimeType,
+        bytes: Buffer.from(image.data, "base64").length,
+        sha256: createHash("sha256").update(image.data).digest("hex"),
+        tool: "startup_image",
+      };
+    }),
+    textTool: "startup_input",
+  };
+}
+function inputMetadata(received: ReceivedInput) {
+  return {
+    id: received.id,
+    receivedAt: received.receivedAt,
+    source: received.source,
+    disposition: received.disposition,
+    ...inputSummary(received.id, jsonSchema.parse(received.raw)),
+  };
+}
+function projectedCue(message: Message | null): Json {
+  if (message === null) return null;
+  const parsed = z
+    .object({ kind: z.literal("architect-intake"), raw: jsonSchema })
+    .passthrough()
+    .safeParse(message.payload);
+  return parsed.success
+    ? jsonSchema.parse({
+        ...message,
+        payload: {
+          ...parsed.data,
+          raw: inputSummary(message.correlation, parsed.data.raw),
+        },
+      })
+    : jsonSchema.parse(message);
+}
 function reusableStaff(
   snapshot: Snapshot,
   role: Employee["role"],
@@ -640,18 +702,22 @@ export function createAdapter(
         profile: managerProfile,
         checkpoint: snapshotEmployee("manager").checkpoint,
         cue: managerReady
-          ? (store
-              .snapshot()
-              .messages.find(
-                (entry) =>
-                  entry.recipient === "manager" &&
-                  entry.status !== "acknowledged",
-              ) ?? null)
+          ? projectedCue(
+              store
+                .snapshot()
+                .messages.find(
+                  (entry) =>
+                    entry.recipient === "manager" &&
+                    entry.status !== "acknowledged",
+                ) ?? null,
+            )
           : null,
         team: {
           receivedInputs: store
             .snapshot()
-            .inputs.filter((entry) => entry.disposition === null),
+            .inputs.filter((entry) => entry.disposition === null)
+            .slice(0, 8)
+            .map(inputMetadata),
           mode: managerReady ? "ready" : "recovery",
           unresolvedManagerClaims: store
             .snapshot()
@@ -733,7 +799,7 @@ export function createAdapter(
     return projectEmployee({
       profile: receipt.profile,
       checkpoint: employee.checkpoint,
-      cue: team?.state === "reserved" ? null : pending,
+      cue: team?.state === "reserved" ? null : projectedCue(pending),
       team:
         team === null
           ? null
@@ -1043,21 +1109,101 @@ export function createAdapter(
   }
   function routeInput(ctx: NativeContext, request: unknown) {
     const parsed = routeInputSchema.parse(request);
-    return store.routeInput({
-      manager: rootAdmin(ctx),
-      inputId: parsed.inputId,
-      disposition: {
-        kind: parsed.disposition,
-        reason: parsed.reason,
-        amendItemIds: parsed.amendItemIds,
+    return inputMetadata(
+      store.routeInput({
+        manager: rootAdmin(ctx),
+        inputId: parsed.inputId,
+        disposition: {
+          kind: parsed.disposition,
+          reason: parsed.reason,
+          amendItemIds: parsed.amendItemIds,
+        },
+      }),
+    );
+  }
+  function scopedInput(ctx: NativeContext, inputId: string): Json {
+    const snapshot = store.snapshot();
+    const binding = ctx.agent.id === rootId ? rootAdmin(ctx) : caller(ctx);
+    const received = snapshot.inputs.find((entry) => entry.id === inputId);
+    const intake = snapshot.intakes.find(
+      (entry) => entry.request.eventId === inputId,
+    );
+    const assigned =
+      intake?.teamId === null || intake?.teamId === undefined
+        ? null
+        : snapshot.teams.find((team) => team.id === intake.teamId);
+    const allowed =
+      binding.employeeId === "manager"
+        ? received?.disposition === null ||
+          (assigned !== null &&
+            assigned !== undefined &&
+            assigned.state !== "finished")
+        : assigned !== null &&
+          assigned !== undefined &&
+          ["ready", "active", "waiting", "reconciliation"].includes(
+            assigned.state,
+          ) &&
+          [assigned.architect, assigned.qa, ...assigned.devs].includes(
+            binding.employeeId,
+          ) &&
+          snapshotEmployee(binding.employeeId).assignment === assigned.id;
+    if (!allowed)
+      throw new StoreAuthorityError(
+        "Input retrieval requires a selected current manager input or the active owning team",
+      );
+    const raw = received?.raw ?? intake?.request.input;
+    if (raw === undefined)
+      throw new StoreAuthorityError("Scoped input is unavailable");
+    return jsonSchema.parse(raw);
+  }
+  function readInput(ctx: NativeContext, request: unknown) {
+    const parsed = z
+      .strictObject({
+        inputId: idSchema,
+        offset: z.number().int().nonnegative().safe(),
+      })
+      .parse(request);
+    const raw = scopedInput(ctx, parsed.inputId);
+    const input = rawInputSchema.safeParse(raw);
+    const text = input.success
+      ? input.data.text
+      : typeof raw === "string"
+        ? raw
+        : encode(raw);
+    if (parsed.offset > text.length)
+      throw new StoreAuthorityError("Input offset exceeds stored text length");
+    return {
+      ...inputSummary(parsed.inputId, raw),
+      offset: parsed.offset,
+      text: text.slice(parsed.offset, parsed.offset + 4096),
+      nextOffset:
+        parsed.offset + 4096 < text.length ? parsed.offset + 4096 : null,
+    };
+  }
+  function image(ctx: NativeContext, request: unknown): NativeResult {
+    const parsed = z
+      .strictObject({
+        inputId: idSchema,
+        index: z.number().int().nonnegative().safe(),
+      })
+      .parse(request);
+    const raw = rawInputSchema.parse(scopedInput(ctx, parsed.inputId));
+    const image = imageSchema.parse(raw.images[parsed.index]);
+    return {
+      content: [image],
+      details: {
+        inputId: parsed.inputId,
+        index: parsed.index,
+        mimeType: image.mimeType,
       },
-    });
+    };
   }
   function recordIntake(ctx: NativeContext, event: unknown) {
-    return store.recordIntake({
+    const saved = store.recordIntake({
       manager: manager(ctx),
       event: intakeInputSchema.parse(event),
     });
+    return { ...saved, input: inputSummary(saved.eventId, saved.input) };
   }
   async function delegate(ctx: NativeContext, request: unknown): Promise<Team> {
     const binding: Binding = manager(ctx);
@@ -1417,6 +1563,8 @@ export function createAdapter(
           ![
             "startup_staff",
             "startup_route",
+            "startup_input",
+            "startup_image",
             "startup_reconcile",
             "startup_resolve",
             "startup_release_reconciled",
@@ -1479,6 +1627,8 @@ export function createAdapter(
     activate,
     receiveInput,
     routeInput,
+    readInput,
+    image,
     recordIntake,
     delegate,
     send,
@@ -1631,7 +1781,17 @@ export function createAdapter(
             (grant) =>
               grant.employeeId === "manager" && grant.state !== "released",
           ),
-        inputs: store.snapshot().inputs,
+        inputs: store
+          .snapshot()
+          .inputs.filter((entry) => entry.disposition === null)
+          .slice(0, 8)
+          .map(inputMetadata),
+        inputCounts: {
+          total: store.snapshot().inputs.length,
+          unclassified: store
+            .snapshot()
+            .inputs.filter((entry) => entry.disposition === null).length,
+        },
         employees: store.snapshot().employees,
         teams: store.snapshot().teams,
         capacity: capacity(),
