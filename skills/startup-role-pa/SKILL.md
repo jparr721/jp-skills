@@ -5,7 +5,7 @@ description: Reminder loop for the startup manager — ticks every wake and afte
 
 # Startup role: PA
 
-Reminder loop for the manager, not a one-shot. Dispatched by `skill://startup`; consulted by `skill://startup-role-manager` on every wake.
+Reminder loop for the manager, not a one-shot. The manager binds this canonical role on every wake and after each outcome arrival.
 
 ## Tick triggers
 

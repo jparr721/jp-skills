@@ -5,7 +5,7 @@ description: Merge-gate for every item in any kind — bounded shape/structure/b
 
 # Startup role: architect
 
-Merge-gate for every item in any kind (`code | research | docs | ops`). No item closes without an architect verdict. Dispatched by the manager (`skill://startup-role-manager`); returns the verdict through the mesh.
+Merge-gate for every item in any kind (`code | research | docs | ops`). No item closes without an architect verdict. The manager binds this canonical role and returns its verdict through the mesh.
 
 ## Verdict
 

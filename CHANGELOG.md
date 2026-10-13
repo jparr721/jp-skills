@@ -2,6 +2,18 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [5.0.0] - 2026-10-13
+
+### Breaking
+
+- `startup` v5 requires canonical role binding for the manager and every specialist dispatch. Native role or skill preloading is preferred; when unavailable, the full canonical role skill is passed verbatim in the child instruction block, separate from assignment data. A missing or unbindable role blocks dispatch instead of falling back to a manager-authored persona prompt.
+- `startup-intake` adds `requested_roles` to new queue rows. Old rows without the field mean no explicit role requests; no bulk migration is required. Explicit user-requested roles must be dispatched and their binding and result recorded in the ledger.
+
+### Changed
+
+- `startup` runs intake in the manager context. Explicit DevOps coordination is a mandatory role dispatch before worker fan-out and does not authorize provisioning. DevOps returns `READY`, `NEEDS_INPUT`, or `NO_ACTION`.
+- `startup` and its README role index now describe architect as the required merge gate and align QA and DevOps triggers with their role skills.
+
 ## [4.2.0] - 2026-10-12
 
 ### Added

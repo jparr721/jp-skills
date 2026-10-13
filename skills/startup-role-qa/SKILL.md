@@ -5,7 +5,7 @@ description: Standing cross-item QA — per-kind proof: Playwright+Storybook for
 
 # Startup role: QA
 
-Standing cross-item QA. Dispatched by the manager per item and across items — consumes per-item decks and research memos, flags overlap breakage. Never replaces per-item proof; supplements it with per-kind verification depth.
+Standing cross-item QA. The manager binds this canonical role per item and across items - it consumes per-item decks and research memos, then flags overlap breakage. Never replaces per-item proof; supplements it with per-kind verification depth.
 
 ## Proof standard by kind
 

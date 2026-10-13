@@ -1,11 +1,11 @@
 ---
 name: startup-intake
-description: Intake protocol — feasibility/doability triage for prompts, Linear ids, and screenshot complaints; writes per-item repo/remote/target/merge-strategy rows to queue.json; only enqueue, async-clarify, or reject-with-reason; assigns kind (code/research/docs/ops) with per-kind acceptance.
+description: Intake procedure - feasibility/doability triage for prompts, Linear ids, and screenshot complaints; writes per-item repo/remote/target/merge-strategy rows to queue.json; only enqueue, async-clarify, or reject-with-reason; assigns kind (code/research/docs/ops) with per-kind acceptance and preserves explicit role requests.
 ---
 
 # Startup intake
 
-Repeatable front door for the queue. Every prompt, Linear id, or screenshot complaint passes feasibility/doability triage before it becomes a `queue.json` row. Dispatched from `skill://startup`; rows consumed by `skill://startup-role-manager`.
+Repeatable manager-owned procedure for the queue. Every prompt, Linear id, or screenshot complaint passes feasibility/doability triage before it becomes a `queue.json` row. The manager runs this procedure in its own context; it does not spawn a separate intake persona. Rows are consumed by `skill://startup-role-manager`.
 
 ## Queue-worthy criteria
 
@@ -32,9 +32,11 @@ Ambiguous across two kinds = async-clarify, never guess silently.
 
 Each enqueued item is one row in `<home>/startup/queue.json` (home chain: `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`; NEVER `tmp/`) with exactly:
 
-`id, source, status, repo, remote, target, merge-strategy, branch, worktree, base, stack-mode, report-handle, kind, procedure, convention-source`
+`id, source, status, repo, remote, target, merge-strategy, branch, worktree, base, stack-mode, report-handle, kind, procedure, convention-source, requested_roles`
 
-`merge-strategy: squash|merge per repo convention` — record the repo's convention at intake; the manager merges with it. `branch`/`worktree`/`base`/`stack-mode` are assigned at dispatch (`base`: stack-parent branch when chained, else target; `stack-mode: stacked|flat (+ reason)`); `report-handle` at outcome. `procedure` names the worker procedure for the kind; `convention-source` names the repo convention or doc source the worker writes against (empty only for research/ops with no convention).
+`merge-strategy: squash|merge per repo convention` - record the repo's convention at intake; the manager merges with it. `branch`/`worktree`/`base`/`stack-mode` are assigned at dispatch (`base`: stack-parent branch when chained, else target; `stack-mode: stacked|flat (+ reason)`); `report-handle` at outcome. `procedure` names the worker procedure for the kind; `convention-source` names the repo convention or doc source the worker writes against (empty only for research/ops with no convention). `requested_roles` is an array of canonical built-in specialist IDs explicitly requested by the user; use `[]` when none. Include `startup-role-devops` when the user asks for DevOps coordination. Do not infer role requests from resource needs; those use the normal manager trigger.
+
+Older rows without `requested_roles` remain valid and are treated as having `[]`. Do not bulk rewrite them.
 
 Per-kind acceptance shape:
 
