@@ -1421,3 +1421,73 @@ test("failed read-only duty can be reclaimed after replacement without inventing
   });
   f.store.close();
 });
+
+test("failed manager recovery requires a newer fenced owner and preserves failure history", (): void => {
+  const f = fixture();
+  f.store.recordBindingFailure({
+    manager: f.store.managerBinding,
+    employeeId: "manager",
+    error: "Native root failed",
+  });
+  f.store.close();
+  const sameGeneration = openStore({
+    path: f.path,
+    scope: f.scope,
+    owner: { ...f.owner, id: "same-generation-owner" },
+    now: (): number => 101,
+  });
+  expect(() =>
+    sameGeneration.recoverManager({ evidence: "No new native generation" }),
+  ).toThrow();
+  sameGeneration.close();
+  const recovered = openStore({
+    path: f.path,
+    scope: f.scope,
+    owner: { ...f.owner, id: "replacement-owner", managerGeneration: 2 },
+    now: (): number => 102,
+  });
+  expect(() =>
+    recovered.bindEmployee({
+      manager: recovered.managerBinding,
+      binding: {
+        ...recovered.managerBinding,
+        assignment: null,
+        source: source("manager"),
+      },
+    }),
+  ).toThrow();
+  expect(
+    recovered.recoverManager({
+      evidence:
+        "Verified replacement root generation 2 through native owner evidence",
+    }).error,
+  ).toBeNull();
+  expect(() =>
+    recovered.recordIntake({
+      manager: f.store.managerBinding,
+      event: { eventId: "stale-manager", input: "Denied", amendItemIds: [] },
+    }),
+  ).toThrow();
+  expect(() => f.store.renewLease()).toThrow();
+  recovered.bindEmployee({
+    manager: recovered.managerBinding,
+    binding: {
+      ...recovered.managerBinding,
+      assignment: null,
+      source: source("manager"),
+    },
+  });
+  recovered.recordIntake({
+    manager: recovered.managerBinding,
+    event: { eventId: "new-manager", input: "Accepted", amendItemIds: [] },
+  });
+  const database = new Database(f.path);
+  const failures = database
+    .query(
+      "SELECT payload FROM audit WHERE kind='employee' AND id='manager' AND json_extract(payload,'$.error')='Native root failed'",
+    )
+    .all();
+  expect(failures.length).toBeGreaterThan(0);
+  database.close();
+  recovered.close();
+});

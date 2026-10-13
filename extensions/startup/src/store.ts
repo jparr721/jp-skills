@@ -294,6 +294,12 @@ export function openStore(args: {
           "manager",
           employeeSchema,
         );
+        if (
+          manager !== null &&
+          manager.error !== null &&
+          read("managerFailure", "manager", employeeSchema) === null
+        )
+          put("managerFailure", "manager", manager);
         if (manager === null)
           put(
             "employee",
@@ -638,6 +644,39 @@ export function openStore(args: {
     renewLease(): void {
       tx((): void => {});
     },
+    recoverManager(input: { readonly evidence: Json }): Employee {
+      return tx((): Employee => {
+        const current: Employee = employee("manager");
+        const failure: Employee | null = read(
+          "managerFailure",
+          "manager",
+          employeeSchema,
+        );
+        const evidence: Json = jsonSchema.parse(input.evidence);
+        if (
+          evidence === null ||
+          failure === null ||
+          current.error === null ||
+          failure.generation >= owner.managerGeneration ||
+          current.generation !== owner.managerGeneration ||
+          current.nativeHandle !== scope.managerSession
+        )
+          throw new StoreRecoveryError(
+            "Manager recovery requires a failed prior generation, current owner/root evidence and a newer native generation",
+          );
+        const recovered: Employee = { ...current, error: null, source: null };
+        put("managerRecovery", String(epoch), {
+          ownerEpoch: epoch,
+          ownerId: owner.id,
+          managerSession: scope.managerSession,
+          generation: owner.managerGeneration,
+          failure,
+          evidence,
+        });
+        put("employee", "manager", recovered);
+        return recovered;
+      });
+    },
     reserveHire(input: {
       readonly authority: Authority;
       readonly request: Hire;
@@ -858,6 +897,8 @@ export function openStore(args: {
           ...current,
           error: z.string().min(1).parse(input.error),
         });
+        if (current.role === "manager")
+          put("managerFailure", "manager", { ...current, error: input.error });
         for (const claim of all("claim", claimSchema).filter(
           (entry): boolean =>
             entry.employeeId === current.id && entry.status === "active",
