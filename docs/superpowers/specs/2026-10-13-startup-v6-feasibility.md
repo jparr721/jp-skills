@@ -31,12 +31,12 @@
 
 | Native fact | Observed value |
 |---|---|
-| Root session | `01a13721-4ce0-73ae-a09e-2318fc4cf078` |
-| Child revived | `gate-6` |
-| Child session before and after revival | `01a13721-4d5c-7668-952e-757be1997449` |
+| Root session | `01a1372f-3203-779e-ad6a-b5eae9c90798` |
+| Child revived | `gate-2` |
+| Child session before and after revival | `01a1372f-328c-76d1-9d6b-6d24915c5dbe` |
 | Revival object identity | New live AgentSession, same native AgentRef |
-| Native children | `gate-6`, `gate-1`, `gate-4`, `gate-3`, `gate-2`, `gate-5` |
-| Provider requests | 39 offline requests; zero network model requests |
+| Native children | `gate-2`, `gate-3`, `gate-5`, `gate-1`, `gate-6`, `gate-4` |
+| Provider requests | 41 offline requests; zero network model requests |
 | Role source SHA-256 | `61a151335978a596415ffa16c8f3c8d1ba7defc8184fd90641fdee4b17df1d2d` |
 | Shared loop SHA-256 | `161269e951d0e63fccddda75641f2abc89a429faa17dd037cb51a90188395bad` |
 
@@ -57,7 +57,7 @@ python3 extensions/startup/probes/run-native-probe.py \
 ## Evidence
 
 - [Complete captured evidence](../../../extensions/startup/probes/native-feasibility-evidence.json.gz): gzip JSON containing command, checks, full provider contexts, registry events, tool results, six native JSONL transcripts, transcript hashes/headers, and RPC output.
-- Evidence SHA-256: `3949052d7f690060ea0049e8bba9eda0c09e878834566e1e41a35d502341bb64`
+- Evidence SHA-256: `a68b743acafc3ac7f301549484897ea3b144225d34c814102291fb7610365b5b`
 - The actual child session headers reference the actual root transcript through `parentSession`; native `parentId` agrees with the runtime actor.
 - Registry identity is established by injected `pi.pi.AgentRegistry.global()` plus `AgentLifecycleManager.global().manages(registry) === true`.
 - Managed timeouts execute; a managed interval ticks at least twice and is cleared. `bun:sqlite` executes `select 1 as value` and returns `{"value":1}` inside the compiled runtime.

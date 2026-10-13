@@ -11,6 +11,10 @@ import subprocess
 import time
 
 
+class NativeProbeDataError(ValueError):
+    pass
+
+
 def acceptance_checks(events: list[dict], report: dict, exit_code: int, role: str, loop: str, denied: bool, health_unchanged: bool, transcripts: list[dict]) -> dict[str, bool]:
     roots = [event for event in events if event["kind"] == "root"]
     batches = [event for event in events if event["kind"] == "batch_settled"]
@@ -31,7 +35,7 @@ def acceptance_checks(events: list[dict], report: dict, exit_code: int, role: st
         return projection == f'STARTUP_NATIVE_ACTOR={event["id"]}\n{role}\n{loop}' and event["roleHash"] == hashlib.sha256(role.encode()).hexdigest() and event["loopHash"] == hashlib.sha256(loop.encode()).hexdigest()
     return {
         "native_completion": report["status"] == "COMPLETE" and exit_code == 0,
-        "ordinary_batch_delegation": sum(event["kind"] == "task_wrapper" for event in events) == 1 and any(event["kind"] == "task_delegate_result" and len(event["result"]["details"]["progress"]) == 6 for event in events),
+        "ordinary_batch_delegation": sum(event["kind"] == "task_wrapper" for event in events) == 1 and any(event["kind"] == "task_delegate_result" and not event["result"].get("isError", False) and isinstance(event["result"].get("details"), dict) and isinstance(event["result"]["details"].get("progress"), list) and len(event["result"]["details"]["progress"]) == 6 for event in events),
         "six_actual_child_bindings": len(ids) == 6 and all(child["sessionId"] and child["sessionFile"] and child["lifecycle"].get("acceptedAt") for child in children),
         "native_root_correlation": len(roots) == 1 and roots[0]["sessionId"] == roots[0]["registrySessionId"] and len(children) == 6 and all(child["parentId"] == roots[0]["actor"]["id"] for child in children) and len(transcripts) == 6 and all(transcript["header"].get("parentSession") == roots[0]["sessionFile"] for transcript in transcripts),
         "canonical_initial_preload": len(initial) == 6 and all(projected(event) and role.strip() in "\n".join(event["context"]["systemPrompt"]) for event in initial),
@@ -115,39 +119,67 @@ def main() -> int:
         except subprocess.TimeoutExpired:
             process.kill()
             exit_code = process.wait()
-    events_path = workspace / "events.jsonl"
-    events = [json.loads(line) for line in events_path.read_text().splitlines()] if events_path.exists() else []
-    report_path = workspace / "report.json"
-    report = json.loads(report_path.read_text()) if report_path.exists() else {"status": "FAIL", "error": "Native report missing"}
-    transcripts = []
-    for event in events:
-        if event["kind"] == "batch_settled":
-            for child in event["children"]:
-                native_file = Path(child["sessionFile"])
-                content = native_file.read_bytes()
-                records = [json.loads(line) for line in content.splitlines()]
-                header = next(record for record in records if record["type"] == "session")
-                transcripts.append({"id": child["id"], "header": header,
-                                    "sha256": hashlib.sha256(content).hexdigest(), "records": records})
-    denied = (cwd / "denied-mutation.txt").exists()
-    health_unchanged = health_path.read_text() == '{"target":"local-health","healthy":true,"revision":1}\n'
-    checks = acceptance_checks(events, report, exit_code, role, loop, denied, health_unchanged, transcripts)
-    status = "PASS" if all(checks.values()) and version == "omp/18.8.9" else "FAIL"
     evidence = {
-        "gateVersion": 1, "status": status, "checks": checks, "installedVersion": version, "executable": omp,
+        "gateVersion": 1, "status": "FAIL", "checks": {}, "installedVersion": version, "executable": omp,
         "officialSourceCommit": "fa5ff4a3a977a28b93d025f4cf50f046e019f18c",
         "command": command, "exitCode": exit_code, "stderr": (workspace / "stderr.txt").read_text(),
-        "report": report, "roleSource": "skills/startup-role-devops/SKILL.md",
+        "report": None, "reportRaw": None, "eventsRaw": None, "events": [], "nativeTranscripts": [],
+        "roleSource": "skills/startup-role-devops/SKILL.md",
         "roleSha256": hashlib.sha256(role.encode()).hexdigest(), "loopSha256": hashlib.sha256(loop.encode()).hexdigest(),
         "deniedMutationExists": (cwd / "denied-mutation.txt").exists(),
         "healthUnchanged": health_path.read_text() == '{"target":"local-health","healthy":true,"revision":1}\n',
-        "events": events, "nativeTranscripts": transcripts, "rpcOutput": (workspace / "stdout.jsonl").read_text(),
+        "rpcOutput": (workspace / "stdout.jsonl").read_text(),
     }
-    args.evidence.parent.mkdir(parents=True, exist_ok=True)
-    args.evidence.write_bytes(gzip.compress((json.dumps(evidence, ensure_ascii=True) + "\n").encode(), mtime=0))
-    print(json.dumps({"status": status, "checks": checks, "installedVersion": version, "exitCode": exit_code, "report": report,
-                      "eventCount": len(events), "evidence": str(args.evidence)}))
-    return 0 if status == "PASS" else 1
+    try:
+        events_path = workspace / "events.jsonl"
+        if events_path.exists():
+            evidence["eventsRaw"] = events_path.read_text()
+            evidence["events"] = [json.loads(line) for line in evidence["eventsRaw"].splitlines()]
+        report_path = workspace / "report.json"
+        if not report_path.exists():
+            raise NativeProbeDataError(f"Native report missing: {report_path}; process exit code: {exit_code}")
+        evidence["reportRaw"] = report_path.read_text()
+        report = json.loads(evidence["reportRaw"])
+        evidence["report"] = report
+        if not isinstance(report, dict) or not isinstance(report.get("status"), str) or report["status"] not in {"COMPLETE", "FAIL"}:
+            raise NativeProbeDataError(f"Native report must contain status COMPLETE or FAIL: {report_path}; report: {report!r}")
+        if report["status"] == "COMPLETE":
+            children = report.get("children")
+            if not isinstance(report.get("nativeId"), str) or not report["nativeId"] or not isinstance(children, list) or len(children) != 6 or not all(isinstance(child, str) and child for child in children) or len(set(children)) != 6 or report["nativeId"] not in children:
+                raise NativeProbeDataError(f"Complete native report lacks six distinct child identities and nativeId: {report_path}; report: {report!r}")
+        elif not isinstance(report.get("error"), str) or not report["error"]:
+            raise NativeProbeDataError(f"Failed native report lacks its error: {report_path}; report: {report!r}")
+        for event in evidence["events"]:
+            if not isinstance(event, dict) or not isinstance(event.get("kind"), str):
+                raise NativeProbeDataError(f"Malformed native event in {events_path}: {event!r}")
+            if event["kind"] == "batch_settled":
+                for child in event["children"]:
+                    native_file = Path(child["sessionFile"])
+                    content = native_file.read_bytes()
+                    records = [json.loads(line) for line in content.splitlines()]
+                    headers = [record for record in records if record["type"] == "session"]
+                    if len(headers) != 1:
+                        raise NativeProbeDataError(f"Native transcript must have one session header: {native_file}; count: {len(headers)}")
+                    evidence["nativeTranscripts"].append({"id": child["id"], "header": headers[0],
+                                                         "sha256": hashlib.sha256(content).hexdigest(), "records": records})
+        evidence["checks"] = acceptance_checks(evidence["events"], report, exit_code, role, loop,
+                                               evidence["deniedMutationExists"], evidence["healthUnchanged"], evidence["nativeTranscripts"])
+        if all(evidence["checks"].values()) and version == "omp/18.8.9":
+            evidence["status"] = "PASS"
+    except (NativeProbeDataError, json.JSONDecodeError, OSError) as error:
+        evidence["failure"] = {"type": type(error).__name__, "message": str(error), "stage": "native_evidence_validation", "workspace": str(workspace)}
+    except Exception as error:
+        evidence["failure"] = {"type": type(error).__name__, "message": str(error), "stage": "native_evidence_validation", "workspace": str(workspace)}
+        raise
+    finally:
+        args.evidence.parent.mkdir(parents=True, exist_ok=True)
+        temporary_evidence = args.evidence.with_name(f"{args.evidence.name}.{os.getpid()}.tmp")
+        temporary_evidence.write_bytes(gzip.compress((json.dumps(evidence, ensure_ascii=True) + "\n").encode(), mtime=0))
+        temporary_evidence.replace(args.evidence)
+        print(json.dumps({"status": evidence["status"], "checks": evidence["checks"], "installedVersion": version,
+                          "exitCode": exit_code, "report": evidence["report"], "failure": evidence.get("failure"),
+                          "eventCount": len(evidence["events"]), "evidence": str(args.evidence)}))
+    return 0 if evidence["status"] == "PASS" else 1
 
 
 if __name__ == "__main__":
