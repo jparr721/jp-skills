@@ -1,4 +1,9 @@
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  appendFileSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -379,6 +384,40 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
       };
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "start", partial: message });
+      const heldPath = process.env.STARTUP_ADAPTER_CAPACITY_RELEASE;
+      if (
+        cue?.payload.kind === "capacity-hold" &&
+        heldPath &&
+        !existsSync(heldPath)
+      ) {
+        record({
+          kind: "capacity-provider-held",
+          employeeId: marker?.employeeId,
+        });
+        void (async () => {
+          while (!existsSync(heldPath)) await Bun.sleep(20);
+          if (call) {
+            stream.push({
+              type: "toolcall_start",
+              contentIndex: 0,
+              partial: message,
+            });
+            stream.push({
+              type: "toolcall_end",
+              contentIndex: 0,
+              toolCall: call,
+              partial: message,
+            });
+          }
+          stream.push({
+            type: "done",
+            reason: call ? "toolUse" : "stop",
+            message,
+          });
+          stream.end();
+        })();
+        return stream;
+      }
       if (call) {
         stream.push({
           type: "toolcall_start",
@@ -395,6 +434,126 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
       stream.push({ type: "done", reason: call ? "toolUse" : "stop", message });
       stream.end();
       return stream;
+    },
+  });
+  pi.registerCommand("startup-capacity-proof", {
+    description:
+      "Prove root-scoped explicit execution admission on native wakes",
+    handler: async (_args, ctx) => {
+      let unsubscribe: (() => void) | null = null;
+      try {
+        const root = registry.get(ctx.agent.id);
+        if (!root?.session) throw new Error("Capacity root missing");
+        const task = root.session.getToolByName("task");
+        const send = root.session.getToolByName("startup_send");
+        const staff = root.session.getToolByName("startup_staff");
+        if (!task || !send || !staff) throw new Error("Capacity tools missing");
+        const employees = [];
+        for (let index = 0; index < 2; index += 1) {
+          await task.execute(`cap-hire-${index}`, {
+            startup: "hire",
+            requestId: `cap-hire-${index}`,
+            role: "devops",
+            additional: 1,
+          });
+          const deadline = Date.now() + 10000;
+          while (true) {
+            const snapshot = (await staff.execute("cap-staff", {})).details;
+            const employee = snapshot.employees.find(
+              (employee) =>
+                employee.role === "devops" &&
+                !employees.some((prior) => prior.id === employee.id),
+            );
+            if (employee?.nativeHandle && snapshot.capacity.available === 1) {
+              employees.push(employee);
+              break;
+            }
+            if (Date.now() > deadline)
+              throw new Error("Capacity employee did not idle/bind");
+            await pause(ctx);
+          }
+        }
+        const activeCounts: number[] = [];
+        unsubscribe = registry.onChange(() => {
+          activeCounts.push(
+            registry
+              .list()
+              .filter(
+                (ref) =>
+                  ref.parentId === root.id &&
+                  ["running", "working", "starting", "pending"].includes(
+                    ref.status,
+                  ),
+              ).length,
+          );
+        });
+        await send.execute("cap-start", {
+          id: "capacity-held",
+          recipient: employees[0].id,
+          kind: "assignment",
+          correlation: "capacity",
+          payload: { kind: "capacity-hold" },
+        });
+        const holdDeadline = Date.now() + 10000;
+        while (
+          !readFileSync(env("STARTUP_ADAPTER_EVENTS"), "utf8").includes(
+            "capacity-provider-held",
+          )
+        ) {
+          if (Date.now() > holdDeadline)
+            throw new Error("Capacity provider not held");
+          await pause(ctx);
+        }
+        await Promise.all(
+          ["capacity-blocked-one", "capacity-blocked-two"].map((id) =>
+            send.execute(id, {
+              id,
+              recipient: employees[1].id,
+              kind: "assignment",
+              correlation: "capacity",
+              payload: { kind: "capacity-later" },
+            }),
+          ),
+        );
+        await send.execute("cap-inject", {
+          id: "capacity-injected",
+          recipient: employees[0].id,
+          kind: "report",
+          correlation: "capacity",
+          payload: { kind: "capacity-update" },
+        });
+        const blocked = (await staff.execute("cap-blocked", {})).details;
+        writeFileSync(env("STARTUP_ADAPTER_CAPACITY_RELEASE"), "release");
+        const finishDeadline = Date.now() + 10000;
+        let final;
+        while (true) {
+          final = (await staff.execute("cap-finish", {})).details;
+          if (
+            final.employees.find((employee) => employee.id === employees[1].id)
+              ?.checkpoint?.assignment === "capacity-blocked-two"
+          )
+            break;
+          if (Date.now() > finishDeadline)
+            throw new Error("Pending capacity mail did not resume");
+          await pause(ctx);
+        }
+        record({ kind: "native-capacity-proof", blocked, final, activeCounts });
+        writeFileSync(
+          env("STARTUP_ADAPTER_REPORT"),
+          JSON.stringify({ status: "COMPLETE", version: pi.pi.VERSION }),
+        );
+      } catch (error: unknown) {
+        writeFileSync(
+          env("STARTUP_ADAPTER_REPORT"),
+          JSON.stringify({
+            status: "FAIL",
+            error: error instanceof Error ? error.stack : String(error),
+          }),
+        );
+      } finally {
+        unsubscribe?.();
+        ctx.shutdown();
+      }
     },
   });
   pi.registerCommand("startup-fixture-status", {

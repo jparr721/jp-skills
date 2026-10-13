@@ -112,6 +112,7 @@ export type Capacity = Readonly<{
   nativeLimit: number | null;
   explicitLimit: number | null;
   active: number;
+  reserved: number;
   available: number | null;
   employees: number;
   employeeLimit: number | null;
@@ -454,6 +455,7 @@ export function createAdapter(
       sessionId: token.sessionId,
     });
   }
+  const admissions: Map<string, number> = new Map();
   const blockers: Map<string, Json> = new Map();
   const deliveries: Map<string, Json> = new Map();
   const pendingWakes: Set<string> = new Set();
@@ -466,7 +468,14 @@ export function createAdapter(
           .messages.find(
             (entry) => entry.id === id && entry.status === "pending",
           );
-        if (message) await wake(message);
+        if (message) {
+          const result = await wake(message);
+          if (
+            z.object({ kind: z.literal("capacity-blocked") }).safeParse(result)
+              .success
+          )
+            continue;
+        }
         pendingWakes.delete(id);
       }
     },
@@ -594,14 +603,28 @@ export function createAdapter(
           changed = true;
         }
     }
-    const active: number = registry
+    const activeIds: readonly string[] = registry
       .list()
       .filter(
         (ref) =>
           ref.id !== rootId &&
           descendants.has(ref.id) &&
           ["running", "working", "starting", "pending"].includes(ref.status),
-      ).length;
+      )
+      .map((ref) => ref.id);
+    const active: number = activeIds.length;
+    const reserved: number = [...admissions.keys()].filter((id) => {
+      const expectedId = expected.get(id)?.nativeId;
+      const employee = store
+        .snapshot()
+        .employees.find((employee) => employee.id === id);
+      const nativeId =
+        expectedId ??
+        (employee?.nativeHandle
+          ? decodeHandle(employee.nativeHandle).id
+          : null);
+      return nativeId === null || !activeIds.includes(nativeId);
+    }).length;
     const employees: number = store
       .snapshot()
       .employees.filter((entry) => entry.employment === "hired").length;
@@ -609,10 +632,27 @@ export function createAdapter(
       nativeLimit,
       explicitLimit: config.executionLimit,
       active,
-      available: limit === null ? null : Math.max(0, limit - active),
+      reserved,
+      available: limit === null ? null : Math.max(0, limit - active - reserved),
       employees,
       employeeLimit: config.employeeLimit,
     };
+  }
+  function admit(
+    employeeId: string,
+    generation: number,
+    nativeId: string | null,
+  ): "running" | "existing" | "reserved" | "blocked" {
+    const ref = nativeId === null ? undefined : registry.get(nativeId);
+    if (
+      ref &&
+      ["running", "working", "starting", "pending"].includes(ref.status)
+    )
+      return "running";
+    if (admissions.get(employeeId) === generation) return "existing";
+    if (capacity().available === 0) return "blocked";
+    admissions.set(employeeId, generation);
+    return "reserved";
   }
   function reserve(ctx: NativeContext, request: unknown): HireReceipt {
     const managerBinding: Binding = manager(ctx);
@@ -661,6 +701,8 @@ export function createAdapter(
         "Source-loaded native session changed before dispatch binding",
       );
     verifyProfile(receipt.profile);
+    if (!["running", "working", "starting", "pending"].includes(ref.status))
+      admissions.delete(receipt.profile.employeeId);
     const employee = snapshotEmployee(receipt.profile.employeeId);
     store.bindEmployee({
       manager: store.managerBinding,
@@ -867,29 +909,54 @@ export function createAdapter(
     if (employee.id === "manager") {
       return notifyManager(message);
     } else {
+      const decision = admit(employee.id, employee.generation, handle.id);
+      if (decision === "blocked") {
+        const reason: Json = {
+          kind: "capacity-blocked",
+          messageId: message.id,
+          employeeId: employee.id,
+        };
+        deliveries.set(message.id, reason);
+        blockers.set(employee.id, { kind: "capacity" });
+        pendingWakes.add(message.id);
+        return reason;
+      }
+
       const write = registry.get(rootId)?.session?.getToolByName("write");
       if (!write)
         throw new StoreAuthorityError(
           "Native agent:// write wake transport is unavailable",
         );
-      result = await write.execute(`startup-wake-${message.id}`, {
-        path: `agent://${handle.id}`,
-        content,
-      });
+      try {
+        result = await write.execute(`startup-wake-${message.id}`, {
+          path: `agent://${handle.id}`,
+          content,
+        });
+      } catch (error: unknown) {
+        if (decision === "reserved") admissions.delete(employee.id);
+        throw error;
+      }
     }
-    if (result.isError)
+    if (result.isError) {
+      admissions.delete(employee.id);
       throw new StoreAuthorityError(
         `Native wake failed: ${encode(jsonSchema.parse(result))}`,
       );
+    }
     const details: unknown = z
       .object({ message: z.unknown() })
       .parse(result.details).message;
     const parsed = nativeWakeSchema.parse(details);
     const receipt = parsed.receipts.find((entry) => entry.to === handle.id);
-    if (!receipt || !["injected", "woken", "revived"].includes(receipt.outcome))
+    if (
+      !receipt ||
+      !["injected", "woken", "revived"].includes(receipt.outcome)
+    ) {
+      admissions.delete(employee.id);
       throw new StoreAuthorityError(
         `Native wake was not accepted: ${encode(jsonSchema.parse(result.details))}`,
       );
+    }
     const restored = registry.get(handle.id);
     if (
       !restored?.session ||
@@ -916,7 +983,13 @@ export function createAdapter(
         (entry) => entry.teamId === team.id && entry.status === "pending",
       );
     for (const message of messages)
-      if (!deliveries.has(message.id)) await wake(message);
+      if (
+        !deliveries.has(message.id) ||
+        z
+          .object({ kind: z.literal("capacity-blocked") })
+          .safeParse(deliveries.get(message.id)).success
+      )
+        await wake(message);
   }
   async function activate(
     ctx: NativeContext,
@@ -985,6 +1058,15 @@ export function createAdapter(
       "Startup canonical employee activation. Raw intake remains in each employee own durable inbox. Wait for full team binding before scoped intake.";
     const batch: boolean = input.nativeBatch();
     const dispatched: NativeResult[] = [];
+    for (const employee of selected) {
+      const profile = expected.get(employee.id)?.profile;
+      if (!profile)
+        throw new StoreAuthorityError("Activation source reservation missing");
+      if (admit(employee.id, profile.generation, null) === "blocked")
+        throw new StoreAuthorityError(
+          "Activation lost reserved execution capacity",
+        );
+    }
     try {
       if (batch) dispatched.push(await ctx.invokeTool({ context, tasks }));
       else
@@ -998,6 +1080,7 @@ export function createAdapter(
     } catch (error: unknown) {
       for (const employee of selected) {
         expected.delete(employee.id);
+        admissions.delete(employee.id);
         store.recordBindingFailure({
           manager: store.managerBinding,
           employeeId: employee.id,
@@ -1030,12 +1113,14 @@ export function createAdapter(
           };
     const parsed = nativeDispatchSchema.safeParse(native.details);
     if (native.isError || !parsed.success) {
-      for (const employee of selected)
+      for (const employee of selected) {
+        admissions.delete(employee.id);
         store.recordBindingFailure({
           manager: store.managerBinding,
           employeeId: employee.id,
           error: `Native dispatch rejected activation: ${JSON.stringify(native)}`,
         });
+      }
       return { employees: ids.map(snapshotEmployee), native };
     }
     for (const [index, employee] of selected.entries()) {
@@ -1044,6 +1129,7 @@ export function createAdapter(
       );
       const reservation = expected.get(employee.id);
       if (!progress || !reservation) {
+        admissions.delete(employee.id);
         store.recordBindingFailure({
           manager: store.managerBinding,
           employeeId: employee.id,
@@ -1075,6 +1161,12 @@ export function createAdapter(
         nativeId: progress.id,
         sessionId: reservation.sessionId,
       });
+      if (
+        ["failed", "aborted", "error", "idle", "completed"].includes(
+          progress.status,
+        )
+      )
+        admissions.delete(employee.id);
       const failedReason = nativeFailures.get(progress.id);
       const sourceReceipt = loaded.get(progress.id);
       if (
@@ -1548,8 +1640,20 @@ export function createAdapter(
     if (
       event.type === "status_changed" &&
       ["idle", "aborted"].includes(event.ref.status)
-    )
+    ) {
+      for (const [employeeId, generation] of admissions) {
+        const association = expected.get(employeeId);
+        const receipt = receipts.get(event.ref.id);
+        if (
+          (association?.nativeId === event.ref.id &&
+            association.profile.generation === generation) ||
+          (receipt?.profile.employeeId === employeeId &&
+            receipt.profile.generation === generation)
+        )
+          admissions.delete(employeeId);
+      }
       nativeEnded(event.ref.id, event.ref.status);
+    }
   });
   return {
     store,

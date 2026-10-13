@@ -14,7 +14,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--workspace', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
-    parser.add_argument('--scenario', choices=['full','refresh','input'], required=True)
+    parser.add_argument('--scenario', choices=['full','refresh','input','capacity'], required=True)
     args = parser.parse_args()
     evidence = {'version':1,'status':'FAIL','checks':{},'failure':None}
     def save():
@@ -56,6 +56,8 @@ def run(args, evidence) -> int:
     config.write_text('task:\n  batch: true\n  agentIdleTtlMs: 0\n  speculativeLaunch: false\n  enableEffort: true\n  isolation:\n    enabled: true\nasync:\n  enabled: true\nproviders:\n  cacheWarming: false\nmemories:\n  enabled: false\nmcp:\n  enableProjectConfig: false\n')
     env = {key: value for key, value in os.environ.items() if key in {'PATH','HOME','TMPDIR','LANG','LC_ALL','TERM','SHELL','USER','LOGNAME'}}
     env.update({'PI_CODING_AGENT_DIR': str(workspace / 'profile'), 'STARTUP_NAME': 'adapter-proof', 'JP_SKILLS_HOME': str(workspace / 'home'), 'STARTUP_SKILLS_ROOT': str(sources), 'STARTUP_ADAPTER_HOME': str(workspace / 'home'), 'STARTUP_ADAPTER_SOURCES': str(sources), 'STARTUP_ADAPTER_EVENTS': str(workspace / 'events.jsonl'), 'STARTUP_ADAPTER_REPORT': str(workspace / 'report.json'), 'STARTUP_ADAPTER_DENIED_PATH': str(cwd / 'stale-denied.txt')})
+    if args.scenario=='capacity':
+        env.update({'STARTUP_EXECUTION_LIMIT':'1','STARTUP_ADAPTER_CAPACITY_RELEASE':str(workspace/'capacity-release')})
     omp = shutil.which('omp')
     if omp is None:
         raise FileNotFoundError('Installed compiled OMP is required')
@@ -85,7 +87,7 @@ def run(args, evidence) -> int:
                         raise RuntimeError('Actual human input did not route and finish')
                 process.stdin.write(json.dumps({'id':'input-report','type':'prompt','message':'/startup-input-proof-report'})+'\n')
             else:
-                process.stdin.write(json.dumps({'id':'adapter-proof','type':'prompt','message':'/startup-adapter-refresh-proof' if args.scenario=='refresh' else '/startup-adapter-proof'})+'\n')
+                process.stdin.write(json.dumps({'id':'adapter-proof','type':'prompt','message':'/startup-capacity-proof' if args.scenario=='capacity' else '/startup-adapter-refresh-proof' if args.scenario=='refresh' else '/startup-adapter-proof'})+'\n')
             process.stdin.flush()
             deadline=time.monotonic()+110
             while not (workspace/'report.json').exists() and process.poll() is None and time.monotonic()<deadline:
@@ -111,6 +113,9 @@ def run(args, evidence) -> int:
     report=json.loads((workspace/'report.json').read_text()) if (workspace/'report.json').exists() else {'status':'FAIL','error':'No native adapter report'}
     evidence.update({'report':report,'events':events,'exitCode':exit_code,'stderr':(workspace/'stderr.txt').read_text(),'stdout':(workspace/'stdout.jsonl').read_text()})
     checks={}
+    if report['status']=='COMPLETE' and args.scenario=='capacity':
+        proof=next(event for event in events if event['kind']=='native-capacity-proof')
+        checks={'native_completion':exit_code==0,'native32_explicit1':proof['blocked']['capacity']['nativeLimit']==32 and proof['blocked']['capacity']['explicitLimit']==1,'idle_wakes_blocked':all(proof['blocked']['deliveries'][key]['kind']=='capacity-blocked' for key in ['capacity-blocked-one','capacity-blocked-two']),'running_injection_accepted':proof['blocked']['deliveries']['capacity-injected']['outcome']=='injected','aggregate_native_turn_limit':bool(proof['activeCounts']) and max(proof['activeCounts'])<=1,'pending_cues_resume':any(employee['checkpoint'] and employee['checkpoint'].get('assignment')=='capacity-blocked-two' for employee in proof['final']['employees'])}
     if report['status']=='COMPLETE' and args.scenario=='input':
         proof=next(event for event in events if event['kind']=='native-input-proof')
         initial=proof['initial']

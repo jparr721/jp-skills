@@ -79,6 +79,8 @@ function configuredFixture(
 ): Readonly<{
   adapter: StartupAdapter;
   managerNotifications: string[];
+  wakePaths: string[];
+  setStatus: (id: string, status: string) => void;
 
   ctx: NativeContext;
   refs: Map<string, NativeRef>;
@@ -104,23 +106,30 @@ function configuredFixture(
     JSON.stringify({ type: "session", id: "root-session" }) + "\n",
   );
   const refs: Map<string, NativeRef> = new Map();
+  const listeners: Set<
+    (event: Readonly<{ type: string; ref: NativeRef }>) => void
+  > = new Set();
 
+  const wakePaths: string[] = [];
   const wake = async (
     _id: string,
     params: Record<string, unknown>,
-  ): Promise<NativeResult> => ({
-    content: [],
-    details: {
-      message: {
-        receipts: [
-          {
-            to: z.string().parse(params.path).replace("agent://", ""),
-            outcome: "woken",
-          },
-        ],
+  ): Promise<NativeResult> => {
+    wakePaths.push(z.string().parse(params.path));
+    return {
+      content: [],
+      details: {
+        message: {
+          receipts: [
+            {
+              to: z.string().parse(params.path).replace("agent://", ""),
+              outcome: "woken",
+            },
+          ],
+        },
       },
-    },
-  });
+    };
+  };
   const rootRef: NativeRef = {
     id: "Main",
     kind: "main",
@@ -180,7 +189,12 @@ function configuredFixture(
     registry: {
       get: (id) => refs.get(id),
       list: () => [...refs.values()],
-      onChange: () => () => {},
+      onChange: (listener) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
     },
     config: {
       name: "fixture",
@@ -239,7 +253,24 @@ function configuredFixture(
     await adapter.projection(child);
     return child;
   };
-  return { adapter, ctx, refs, root, activate, project, managerNotifications };
+  return {
+    adapter,
+    ctx,
+    refs,
+    root,
+    activate,
+    project,
+    managerNotifications,
+    wakePaths,
+    setStatus: (id, status) => {
+      const current = refs.get(id);
+      if (!current) throw new Error("Fixture native ref missing");
+      const ref = { ...current, status };
+      refs.set(id, ref);
+      for (const listener of listeners)
+        listener({ type: "status_changed", ref });
+    },
+  };
 }
 
 function fixture() {
@@ -1161,4 +1192,176 @@ test("raw images/history stay durable while projected current input is bounded a
   expect(() =>
     f.adapter.image(f.ctx, { inputId: historical.id, index: 0 }),
   ).toThrow();
+});
+test("wake admission reserves explicit capacity across sends and dispatch while allowing running injection", async (): Promise<void> => {
+  const f = configuredFixture({ employeeLimit: null, executionLimit: 1 });
+  const contexts: NativeContext[] = [];
+  for (let index = 0; index < 3; index += 1) {
+    const hire = f.adapter.reserve(f.ctx, {
+      startup: "hire",
+      requestId: `wake-cap-${index}`,
+      role: "devops",
+      additional: 1,
+    });
+    await f.adapter.activate(
+      f.ctx,
+      hire.employees.map((employee) => employee.id),
+    );
+    contexts.push(await f.project(hire.employees[0]!));
+  }
+  const employees = f.adapter.store
+    .snapshot()
+    .employees.filter((employee) => employee.role === "devops");
+  const running = f.refs.get(contexts[0]!.agent.id)!;
+  f.refs.set(running.id, { ...running, status: "running" });
+  await f.adapter.send(f.ctx, {
+    id: "blocked-send",
+    recipient: employees[1]!.id,
+    kind: "assignment",
+    correlation: "later",
+    payload: {},
+  });
+  expect(f.wakePaths).toHaveLength(0);
+  expect(
+    f.adapter.store
+      .snapshot()
+      .messages.find((message) => message.id === "blocked-send")?.status,
+  ).toBe("pending");
+  expect(f.adapter.staff(f.ctx).deliveries["blocked-send"]).toMatchObject({
+    kind: "capacity-blocked",
+  });
+  await f.adapter.send(f.ctx, {
+    id: "running-injection",
+    recipient: employees[0]!.id,
+    kind: "report",
+    correlation: "current",
+    payload: {},
+  });
+  expect(f.wakePaths).toHaveLength(1);
+  f.refs.set(running.id, { ...running, status: "idle" });
+  f.adapter.store.sendCue({
+    sender: f.adapter.store.managerBinding,
+    cue: {
+      id: "parallel-second",
+      recipient: employees[2]!.id,
+      kind: "assignment",
+      correlation: "later",
+      payload: {},
+    },
+  });
+  const deliveries = await f.adapter.dispatch(f.ctx, [
+    "blocked-send",
+    "parallel-second",
+  ]);
+  expect(f.wakePaths).toHaveLength(2);
+  expect(deliveries[1]).toMatchObject({ kind: "capacity-blocked" });
+});
+
+test("activation and wake share one in-flight execution reservation", async () => {
+  const f = configuredFixture({ employeeLimit: null, executionLimit: 1 });
+  const first = f.adapter.reserve(f.ctx, {
+    startup: "hire",
+    requestId: "admitted-idle",
+    role: "devops",
+    additional: 1,
+  });
+  await f.adapter.activate(f.ctx, [first.employees[0]!.id]);
+  await f.project(first.employees[0]!);
+  const next = f.adapter.reserve(f.ctx, {
+    startup: "hire",
+    requestId: "activation-held",
+    role: "devops",
+    additional: 1,
+  });
+  const releaseCallbacks: (() => void)[] = [];
+  const held = new Promise<void>((resolve) => {
+    releaseCallbacks.push(resolve);
+  });
+  const ctx: NativeContext = {
+    ...f.ctx,
+    invokeTool: async (params) => {
+      await held;
+      return f.activate(params);
+    },
+  };
+  const activation = f.adapter.activate(ctx, [next.employees[0]!.id]);
+  await f.adapter.send(f.ctx, {
+    id: "during-activation",
+    recipient: first.employees[0]!.id,
+    kind: "assignment",
+    correlation: "test",
+    payload: {},
+  });
+  expect(f.wakePaths).toHaveLength(0);
+  expect(f.adapter.capacity().reserved).toBe(1);
+  const release = releaseCallbacks[0];
+  if (!release) throw new Error("Fixture release missing");
+  release();
+  await activation;
+  await f.project(next.employees[0]!);
+  expect(f.adapter.capacity().available).toBe(1);
+});
+test("complete-team and outgoing settlement wakes keep excess cues pending", async () => {
+  const f = configuredFixture({ employeeLimit: null, executionLimit: 1 });
+  f.adapter.recordIntake(f.ctx, {
+    eventId: "team-cap",
+    input: "raw",
+    amendItemIds: [],
+  });
+  const team = await f.adapter.delegate(f.ctx, {
+    startup: "delegate",
+    eventId: "team-cap",
+    developers: 1,
+  });
+  const contexts = new Map<string, NativeContext>();
+  for (const id of [team.architect, team.qa, ...team.devs]) {
+    await f.adapter.activate(f.ctx, [id]);
+    contexts.set(
+      id,
+      await f.project(
+        f.adapter.store
+          .snapshot()
+          .employees.find((employee) => employee.id === id)!,
+      ),
+    );
+  }
+  expect(f.wakePaths).toHaveLength(1);
+  expect(
+    Object.values(f.adapter.staff(f.ctx).deliveries).filter(
+      (delivery) =>
+        z.object({ kind: z.literal("capacity-blocked") }).safeParse(delivery)
+          .success,
+    ),
+  ).toHaveLength(2);
+  f.setStatus(contexts.get(team.architect)!.agent.id, "idle");
+  f.setStatus(contexts.get(team.qa)!.agent.id, "running");
+  const dev = contexts.get(team.devs[0]!)!;
+  const claimed = f.adapter.claim(dev)!;
+  await f.adapter.settle(dev, {
+    claimId: claimed.claim.id,
+    result: {
+      id: "capacity-settlement",
+      kind: "completed",
+      output: {},
+      checkpoint: {},
+      outgoing: [
+        {
+          id: "capacity-report",
+          recipient: team.architect,
+          kind: "report",
+          correlation: "team-cap",
+          payload: {},
+        },
+      ],
+    },
+  });
+  expect(
+    f.adapter.store
+      .snapshot()
+      .messages.find((message) => message.id === "capacity-report")?.status,
+  ).toBe("pending");
+  expect(f.adapter.staff(f.ctx).deliveries["capacity-report"]).toMatchObject({
+    kind: "capacity-blocked",
+  });
+  expect(f.wakePaths).toHaveLength(1);
 });

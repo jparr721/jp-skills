@@ -599,6 +599,22 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
       adapters.delete(ownedAdapter.rootSession);
   });
 }
+export function parseExecutionLimit(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  return z
+    .number()
+    .int()
+    .positive()
+    .safe()
+    .parse(
+      Number(
+        z
+          .string()
+          .regex(/^[1-9][0-9]*$/)
+          .parse(value),
+      ),
+    );
+}
 export default function startup(pi: HostAPI): void {
   const name: string | undefined = process.env.STARTUP_NAME;
   if (name === undefined) return;
@@ -611,7 +627,7 @@ export default function startup(pi: HostAPI): void {
       process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."),
     ),
     employeeLimit: null,
-    executionLimit: null,
+    executionLimit: parseExecutionLimit(process.env.STARTUP_EXECUTION_LIMIT),
     leaseMs: 60000,
   });
 }

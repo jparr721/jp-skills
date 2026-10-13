@@ -1,5 +1,11 @@
 import { afterEach, expect, mock, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -29,7 +35,11 @@ mock.module("@oh-my-pi/pi-coding-agent/task/spawn-policy", () => ({
 mock.module("@oh-my-pi/pi-coding-agent/config/registry", () => ({
   lookup: () => setting,
 }));
-const { installStartup } = await import("../index");
+const {
+  installStartup,
+  parseExecutionLimit,
+  default: startupEntry,
+} = await import("../index");
 const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0))
@@ -124,10 +134,11 @@ function entryFixture() {
       executionLimit: null,
       leaseMs: 60000,
     });
-    return { handlers, tools };
+    return { handlers, tools, api };
   }
   return {
     ctx,
+    root,
     factory,
     advance: () => {
       native = { ...native, createdAt: native.createdAt + 1 };
@@ -233,5 +244,46 @@ test("recovery classifies human input before wait/final without resolving unrela
     );
   } finally {
     next.handlers.get("session_shutdown")!({}, ctx);
+  }
+});
+
+test("host execution limit rejects invalid input before entry or store side effects", () => {
+  const { root, factory } = entryFixture();
+  const host = factory();
+  const old = {
+    name: process.env.STARTUP_NAME,
+    limit: process.env.STARTUP_EXECUTION_LIMIT,
+    home: process.env.JP_SKILLS_HOME,
+  };
+  try {
+    process.env.STARTUP_NAME = "fixture";
+    process.env.JP_SKILLS_HOME = join(root, "home");
+    for (const invalid of [
+      "",
+      "0",
+      "-1",
+      "1.2",
+      " 1",
+      "oops",
+      "9007199254740992",
+    ]) {
+      process.env.STARTUP_EXECUTION_LIMIT = invalid;
+      expect(() => startupEntry(host.api)).toThrow();
+      expect(
+        existsSync(join(root, "home", "startup", "fixture", "staff.sqlite")),
+      ).toBe(false);
+    }
+    expect(parseExecutionLimit(undefined)).toBeNull();
+    expect(parseExecutionLimit("1")).toBe(1);
+    expect(parseExecutionLimit("32")).toBe(32);
+  } finally {
+    for (const [key, value] of Object.entries({
+      STARTUP_NAME: old.name,
+      STARTUP_EXECUTION_LIMIT: old.limit,
+      JP_SKILLS_HOME: old.home,
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });
