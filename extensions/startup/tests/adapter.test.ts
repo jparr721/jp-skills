@@ -1078,5 +1078,5 @@ test("employee-limit uses exact reusable staff and requested multi-developer tea
       eventId: "two-devs",
       developers: 1,
     }),
-  ).rejects.toThrow("Conflicting");
+  ).rejects.toThrow("conflicts");
 });
