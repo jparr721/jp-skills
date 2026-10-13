@@ -23,6 +23,8 @@ The hire receipt reports `requested`, `reserved`, `ready`, `starting`, and `fail
 
 For ready independent work, the manager reuses available employees or hires additional canonical role capacity and dispatches immediately. Prefer more parallelism whenever native execution slots, resource grants, budgets, and dependencies permit it. Existing explicit capacity limits still apply; an absent limit derives from the supported harness's available execution capacity, including buddy/review turns. Durable intake still records every request before dispatch. Queue waiting is for unresolved inputs, dependencies, target contention, or actual capacity limits, not the default substitute for hiring.
 
+Intake capture is a short durability step, not a batch-completion barrier. After capture, dispatch each ready independent team while other requests are still undergoing lookup, clarification, or feasibility work. A running build, CI job, review, or another item's intake is not a dependency unless the item explicitly requires its result. Before any manager wait, standby, or final return, drain all currently dispatchable independent work into complete teams or record the concrete limiting resource/dependency. Runtime guards prevent idle/final transitions with free dispatch capacity and ready unassigned work; prompt-only mode follows the same procedure without claiming runtime enforcement.
+
 ## Canonical task team
 
 Every task dispatch fields one complete team: exactly one QA employee, exactly one architect employee, and one or more dev employees. This applies to every task kind. Assign the whole team before task execution so QA and architectural analysis begin with the developers' work; final proof and merge gates still apply. Each member receives its own role-bound cue and checkpoint. Parallel teams consume distinct available staff; a hired identity is not simultaneously committed to competing teams.
@@ -69,7 +71,7 @@ Proposed implementation package: `extensions/startup/`, with one registration en
 
 ## Startup boot guidance
 
-Every Startup boot ensures `<bound_root>/AGENTS.md` exists beside `<bound_root>/.startup/`. It belongs at the Startup folder root, never inside `.startup/` or the runtime state directory. Include explicit guidance for manager intake, canonical role binding, hiring, the shared loop, supported runtime tools, and the active-harness fallback so the coding harness can discover them on later turns.
+Every Startup boot ensures `<bound_root>/AGENTS.md` exists beside `<bound_root>/.startup/` before asynchronous intake, worker dispatch, or build work. Boot guidance is deterministic initialization, not a queued docs task or a PR/review pipeline. It belongs at the Startup folder root, never inside `.startup/` or the runtime state directory. Include explicit guidance for manager intake, canonical role binding, hiring, the shared loop, supported runtime tools, and the active-harness fallback so the coding harness can discover them on later turns.
 
 Preserve existing AGENTS.md instructions. Add or update one clearly marked Startup section idempotently; unrelated content stays intact. Link canonical installed skill sources and the actual runtime contract instead of copying personas. Include the hire-and-dispatch parallelism policy, complete task teams, and manager-owned DevOps scaling. Child guidance loads its assigned role; it does not turn every child into the manager. New and existing bound Startup folders receive this guidance during boot.
 
@@ -211,6 +213,7 @@ Stage 0 is partially investigated: an isolated probe with zero model calls demon
 - `hire devops 6` adds exactly six identities; existing staff remain; retry adds zero; a new deliberate request adds six more.
 - A hire cannot report six ready employees without six source-verified native bindings. Partial launches retain their original IDs and reasons.
 - Every managed persona survives task queue drain logically, accepts later assigned cues, and routes questions upward.
+- Independent ready teams fan out during other items' intake and execution. Regression case: a ready AGENTS docs task starts while unrelated BUILD intake remains unresolved; required boot AGENTS.md is created before either asynchronous workflow.
 - Durable cues cannot be acknowledged solely by transport delivery; crashes and late-generation results do not silently lose or duplicate completed work.
 - Monitoring uses real scheduled wakes, records health evidence, resumes after authorized repair, and serializes admitted same-target mutations.
 - Context snapshots preserve role identity without copying the whole manager/team history into every wake.
