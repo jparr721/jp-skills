@@ -1288,3 +1288,136 @@ test("invalid additive counts cannot allocate staff or corrupt request receipts"
   expect(f.store.snapshot().hires).toHaveLength(0);
   f.store.close();
 });
+
+test("manager reconciles a failed employee's held grant before native replacement", (): void => {
+  const f = fixture();
+  const id = first(hire(f, "devops", "hire", 1));
+  const binding = bind(f, id, "devops", 1, null);
+  f.store.importResources({ manager: f.store.managerBinding });
+  f.store.authorizeTarget({
+    manager: f.store.managerBinding,
+    authorization: {
+      id: "auth",
+      employeeId: id,
+      target: "production",
+      authority: "Approved deploy",
+    },
+  });
+  f.store.acquireTarget({
+    employee: binding,
+    grantId: "grant",
+    authorizationId: "auth",
+  });
+  f.store.recordBindingFailure({
+    manager: f.store.managerBinding,
+    employeeId: id,
+    error: "Native handle hard-aborted during mutation",
+  });
+  expect(f.store.snapshot().grants[0]?.state).toBe("reconciliation");
+  expect(() =>
+    f.store.reserveReplacement({
+      manager: f.store.managerBinding,
+      employeeId: id,
+      evidence: "Replace",
+    }),
+  ).toThrow();
+  expect(
+    f.store.verifyAndReleaseTarget({
+      employee: f.store.managerBinding,
+      grantId: "grant",
+      verification:
+        "Inspected deployment externally and verified the intended version is healthy",
+    }).state,
+  ).toBe("released");
+  expect(
+    f.store.reserveReplacement({
+      manager: f.store.managerBinding,
+      employeeId: id,
+      evidence: "Grant reconciled, native handle terminal",
+    }),
+  ).toBe(2);
+  bind(f, id, "devops", 2, null);
+  f.store.close();
+});
+
+test("native failure retains claimed inbox work for explicit manager reconciliation", (): void => {
+  const f = fixture();
+  const id = first(hire(f, "devops", "hire", 1));
+  const binding = bind(f, id, "devops", 1, null);
+  f.store.sendCue({
+    sender: f.store.managerBinding,
+    cue: cue("assign", id, "assignment"),
+  });
+  const claim = f.store.claimNext({ employee: binding });
+  if (claim === null) throw new Error("Missing assignment");
+  f.store.recordBindingFailure({
+    manager: f.store.managerBinding,
+    employeeId: id,
+    error: "Unexpected native exit",
+  });
+  expect(f.store.snapshot().claims[0]?.status).toBe("reconciliation");
+  expect(f.store.snapshot().messages[0]?.status).toBe("claimed");
+  f.store.reconcileClaim({
+    manager: f.store.managerBinding,
+    claimId: claim.claim.id,
+    evidence: "Transcript inspected; no external mutation",
+  });
+  expect(
+    f.store.reserveReplacement({
+      manager: f.store.managerBinding,
+      employeeId: id,
+      evidence: "Continue in new context",
+    }),
+  ).toBe(2);
+  f.store.close();
+});
+
+test("failed read-only duty can be reclaimed after replacement without inventing an observation", (): void => {
+  const f = fixture();
+  const id = first(hire(f, "devops", "hire", 1));
+  const binding = bind(f, id, "devops", 1, null);
+  f.store.setDuty({
+    manager: f.store.managerBinding,
+    duty: {
+      id: "poll",
+      employeeId: id,
+      assignment: "Read health",
+      target: "production",
+      probe: "GET health",
+      acceptance: "200",
+      repairAuthority: null,
+      cadenceMs: 60,
+      nextDue: 1,
+    },
+  });
+  const occurrence = f.store.claimDue({ employee: binding });
+  if (occurrence === null) throw new Error("Missing due poll");
+  f.store.recordBindingFailure({
+    manager: f.store.managerBinding,
+    employeeId: id,
+    error: "Native exit before probe returned",
+  });
+  expect(
+    f.store.reserveReplacement({
+      manager: f.store.managerBinding,
+      employeeId: id,
+      evidence: "Retry read-only observation in new context",
+    }),
+  ).toBe(2);
+  const replacement = bind(f, id, "devops", 2, null);
+  expect(f.store.snapshot().occurrences[0]?.observedAt).toBeNull();
+  expect(f.store.claimDue({ employee: replacement })?.id).toBe(occurrence.id);
+  expect(() =>
+    f.store.observeDuty({
+      employee: binding,
+      occurrenceId: occurrence.id,
+      observation: "late",
+    }),
+  ).toThrow();
+  f.store.observeDuty({
+    employee: replacement,
+    occurrenceId: occurrence.id,
+    observation: "Fresh HTTP 200",
+  });
+  f.store.close();
+});

@@ -818,15 +818,10 @@ export function openStore(args: {
           all("grant", grantSchema).some(
             (grant): boolean =>
               grant.employeeId === current.id && grant.state !== "released",
-          ) ||
-          all("occurrence", occurrenceSchema).some(
-            (occurrence): boolean =>
-              occurrence.employeeId === current.id &&
-              occurrence.observedAt === null,
           )
         )
           throw new StoreRecoveryError(
-            "Reconcile claims, target grants and duty occurrences before replacing the native context",
+            "Reconcile claims and target grants before replacing the native context",
           );
         const generation: number = timeSchema.parse(current.generation + 1);
         put(
@@ -863,6 +858,16 @@ export function openStore(args: {
           ...current,
           error: z.string().min(1).parse(input.error),
         });
+        for (const claim of all("claim", claimSchema).filter(
+          (entry): boolean =>
+            entry.employeeId === current.id && entry.status === "active",
+        ))
+          put("claim", claim.id, { ...claim, status: "reconciliation" });
+        for (const grant of all("grant", grantSchema).filter(
+          (entry): boolean =>
+            entry.employeeId === current.id && entry.state === "held",
+        ))
+          put("grant", grant.id, { ...grant, state: "reconciliation" });
         if (current.assignment !== null)
           put("team", current.assignment, {
             ...team(current.assignment),
@@ -1658,11 +1663,13 @@ export function openStore(args: {
         const grant = read("grant", idSchema.parse(input.grantId), grantSchema);
         if (
           grant === null ||
-          grant.employeeId !== current.id ||
-          grant.generation !== current.generation
+          (current.role !== "manager" &&
+            (grant.employeeId !== current.id ||
+              grant.generation !== current.generation)) ||
+          (current.role === "manager" && grant.state === "held")
         )
           throw new StoreAuthorityError(
-            "Target grant belongs to another employee generation",
+            "Target grant requires its owning employee generation or manager reconciliation",
           );
         const verification = jsonSchema.parse(input.verification);
         if (verification === null)
