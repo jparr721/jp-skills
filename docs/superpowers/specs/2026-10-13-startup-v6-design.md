@@ -21,6 +21,8 @@ Each new employee has a distinct ID, inbox partition, canonical role binding, na
 
 The hire receipt reports `requested`, `reserved`, `ready`, `starting`, and `failed`, with individual IDs and errors. It says all six are operational only after six actual native bindings and complete source-load receipts exist. A pending activation remains visible and recoverable. Roster size and concurrently running turns are separate limits.
 
+For ready independent work, the manager reuses available employees or hires additional canonical role capacity and dispatches immediately. Prefer more parallelism whenever native execution slots, resource grants, budgets, and dependencies permit it. Existing explicit capacity limits still apply; an absent limit derives from the supported harness's available execution capacity, including buddy/review turns. Durable intake still records every request before dispatch. Queue waiting is for unresolved inputs, dependencies, target contention, or actual capacity limits, not the default substitute for hiring.
+
 The manager can then assign a standing duty:
 
 ```text
@@ -61,7 +63,7 @@ Proposed implementation package: `extensions/startup/`, with one registration en
 
 Every Startup boot ensures `<bound_root>/AGENTS.md` exists beside `<bound_root>/.startup/`. It belongs at the Startup folder root, never inside `.startup/` or the runtime state directory. Include explicit guidance for manager intake, canonical role binding, hiring, the shared loop, supported runtime tools, and the active-harness fallback so the coding harness can discover them on later turns.
 
-Preserve existing AGENTS.md instructions. Add or update one clearly marked Startup section idempotently; unrelated content stays intact. Link canonical installed skill sources and the actual runtime contract instead of copying personas. Child guidance loads its assigned role; it does not turn every child into the manager. New and existing bound Startup folders receive this guidance during boot.
+Preserve existing AGENTS.md instructions. Add or update one clearly marked Startup section idempotently; unrelated content stays intact. Link canonical installed skill sources and the actual runtime contract instead of copying personas. Include the hire-and-dispatch parallelism policy. Child guidance loads its assigned role; it does not turn every child into the manager. New and existing bound Startup folders receive this guidance during boot.
 
 ```text
 myfolder/
