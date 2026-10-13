@@ -57,6 +57,18 @@ flowchart LR
 
 Proposed implementation package: `extensions/startup/`, with one registration entry, one state owner, one OMP adapter, and generated native profiles. Native profiles select existing canonical skills; they do not contain handwritten persona copies. The package uses OMP's extension-package mechanism. Skills-only installation cannot report persistent staffing as available.
 
+## Startup boot guidance
+
+Every Startup boot ensures `<bound_root>/AGENTS.md` exists beside `<bound_root>/.startup/`. It belongs at the Startup folder root, never inside `.startup/` or the runtime state directory. Include explicit guidance for manager intake, canonical role binding, hiring, the shared loop, supported runtime tools, and the active-harness fallback so the coding harness can discover them on later turns.
+
+Preserve existing AGENTS.md instructions. Add or update one clearly marked Startup section idempotently; unrelated content stays intact. Link canonical installed skill sources and the actual runtime contract instead of copying personas. Child guidance loads its assigned role; it does not turn every child into the manager. New and existing bound Startup folders receive this guidance during boot.
+
+```text
+myfolder/
+  .startup/
+  AGENTS.md
+```
+
 ## Canonical inbox primitive
 
 Proposed domain operations, not existing OMP APIs:
@@ -175,7 +187,7 @@ Managed timers operate while the canonical OMP host is running. After host exit,
 |---|---|
 | 0: Native feasibility | On the installed binary, prove task schema wrapping/delegation, actual role preload including synthetic wakes, root-bound metadata, native yield/park/wake, and shared registry singleton. Prove the restricted tool/connector path needed by the chosen duty. Stop dependent implementation if these fail. |
 | 1: Runtime primitives | One owner and transaction store for employees, hire receipts, inbox claims/results, context references, execution grants, and due occurrences. No model-owned mailbox rewrites. |
-| 2: Canonical skills | Add `hire` and `startup-loop`; update manager and every role's lifetime contract, dispatch reference, status, PA reminders, and installer. Generated OMP profiles bind canonical source; remove contradictory V5 exit-on-drain text. |
+| 2: Canonical skills | Add `hire` and `startup-loop`; update manager and every role's lifetime contract, dispatch reference, status, PA reminders, and installer. Boot creates root AGENTS.md beside .startup and preserves existing guidance. Generated OMP profiles bind canonical source; remove contradictory V5 exit-on-drain text. |
 | 3: Behavioral proof | Demonstrate add-six with existing staff, exact retry recovery, queue-drain persistence, a second assignment, periodic health duty, context isolation, crash recovery, partial hiring, and serialized target repairs. |
 | 4: V6 release | Package/link the OMP companion, preserve/migrate V5 state, publish the tested capability/version boundary, then bump VERSION/changelog and release V6.0.0. |
 
