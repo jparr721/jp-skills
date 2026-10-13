@@ -142,7 +142,7 @@ Example proposed transport shape, **not stock OMP syntax**:
 
 The selected Startup and caller authority are runtime-bound; they are not selectable fields in this request. Internally, hiring, native task conversion, and ordinary native delegation are separate single-purpose functions. The extra task schema arm is an accepted integration cost that must be demonstrated compatible before release.
 
-Use the running build's injected namespace for native registry identity. The proposed parked wake path restores the scoped persisted roster, ensures the actual native handle is live, and delivers a native monitored cue. Registry subpath imports must be proven to share the compiled binary's singleton. Directly importing the global 17.4.1 package is not that proof.
+Use the running build's injected namespace for native registry identity. The proposed parked wake path restores the scoped persisted roster, ensures the actual native handle is live, and delivers a native monitored cue. The isolated installed-binary probe confirmed that the registry subpath lifecycle manager shares OMP 18.8.9's native registry and exposes park/revival functions. Actual parked revival remains a release gate. Directly importing the global 17.4.1 package is not that proof.
 
 The delegate exists only in the task tool handler; do not retain it for a timer callback. Pending employees without native handles remain pending after restart until another authorized native dispatch completes their existing hire receipt. Fully automatic activation of such employees requires a supported host dispatch seam and its own release gate. Do not silently substitute a second SDK runner or invent `ctx.agents.spawn`.
 
@@ -181,6 +181,8 @@ Managed timers operate while the canonical OMP host is running. After host exit,
 
 The first supported target is the installed OMP 18.8.9, subject to Stage 0. Upstream 18.10.4 is comparison evidence, not an assumed installed upgrade. Other harnesses need a proven adapter before persistent mode is reported available; no silent one-shot substitution.
 
+Stage 0 is partially investigated: an isolated probe with zero model calls demonstrated same-name task delegation into native validation, root-session correlation, shared lifecycle registry, and managed timer execution. Valid task compatibility, complete canonical role loading, synthetic wakes, actual yield/park/revival, and the chosen duty's restricted operation path remain open. [Installed-interface evidence](2026-10-13-startup-v6-research.md#installed-interface-probe-2026-10-13)
+
 ## Acceptance and honest guarantees
 
 - `hire devops 6` adds exactly six identities; existing staff remain; retry adds zero; a new deliberate request adds six more.
@@ -196,4 +198,4 @@ The first supported target is the installed OMP 18.8.9, subject to Stage 0. Upst
 
 The companion extension adds packaging and local state in exchange for mechanically accountable staffing and mail. Bounded native turns allow idle/parked employees; they do not keep an exited process alive. The task schema wrapper preserves native dispatch but creates a compatibility obligation. A separate SDK supervisor would expose more native execution policy to maintain and is not selected.
 
-First implementation step: perform the Stage 0 compatibility spike on OMP 18.8.9 before writing the runtime or shipping the new skills. No code, runtime installation, model probe, version bump, or V6 release occurred during this scoping work.
+First implementation step: finish the Stage 0 operational compatibility spike on OMP 18.8.9 before writing the runtime or shipping the new skills. The temporary interface probe was removed after its evidence was recorded. No persistent runtime code, installation, model-backed probe, version bump, or V6 release occurred during this scoping work.

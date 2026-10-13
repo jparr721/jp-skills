@@ -1,6 +1,6 @@
 # Startup V6: Oh My Pi research
 
-**Status:** Source research for a proposed V6 scope. No runtime implementation, installation, upgrade, or model-backed probe was performed.
+**Status:** Source research and an isolated interface probe on installed OMP 18.8.9. No persistent runtime implementation, installation, upgrade, or model-backed probe was performed.
 
 ## Answer
 
@@ -17,7 +17,63 @@ Use an OMP companion extension for durable staffing, inboxes, scheduling, and li
 | Separate global npm source package | `@oh-my-pi/pi-coding-agent` 17.4.1 |
 | jp-skills baseline | V5.0.1, `c9b89bd6e4fc4bd06feaad747ddddbf121b3e8bc` |
 
-The global npm package is not evidence for the compiled binary's API. Extensions can access the running build's injected namespace through their factory argument's `pi.pi`. A future implementation should pin type dependencies and verify runtime singleton identity, rather than import a second package version. [Extension API type](https://github.com/can1357/oh-my-pi/blob/fa5ff4a3a977a28b93d025f4cf50f046e019f18c/packages/coding-agent/src/extensibility/extensions/types.ts#L1377), [loader injection](https://github.com/can1357/oh-my-pi/blob/fa5ff4a3a977a28b93d025f4cf50f046e019f18c/packages/coding-agent/src/extensibility/extensions/loader.ts#L451)
+The global npm package is not evidence for the compiled binary's API. Extensions can access the running build's injected namespace through their factory argument's `pi.pi`. The probe below confirmed that the imported lifecycle manager uses the running build's registry. A future implementation should pin type dependencies and retain this compatibility check. [Extension API type](https://github.com/can1357/oh-my-pi/blob/fa5ff4a3a977a28b93d025f4cf50f046e019f18c/packages/coding-agent/src/extensibility/extensions/types.ts#L1377), [loader injection](https://github.com/can1357/oh-my-pi/blob/fa5ff4a3a977a28b93d025f4cf50f046e019f18c/packages/coding-agent/src/extensibility/extensions/loader.ts#L451)
+
+## Installed interface probe: 2026-10-13
+
+The installed CLI exposes embedded documentation through `omp read omp://tools/task.md`, `omp read omp://tools/wait.md`, and `omp read omp://extensions.md`. `omp agents` exposes agent-definition unpacking, not a dedicated hiring command. No custom profiles were found in this repository's `.omp/agent/agents` directory.
+
+Read-only `omp config get <key> --json` returned:
+
+| Setting | Installed value | Meaning |
+|---|---|---|
+| `task.batch` | `true` | One native call can create multiple agents, one per task item. |
+| `async.enabled` | `true` | Task agents can run in the background. |
+| `task.maxConcurrency` | `32` | Execution capacity, not a durable staff count. |
+| `task.agentIdleTtlMs` | `420000` | Idle agents park after seven minutes and can revive when messaged/resumed. Zero disables idle parking; it does not survive host exit. |
+
+An isolated RPC process loaded a temporary extension with an offline custom provider whose stream function throws on any model request. It used a separate agent-data directory and empty working directory, disabled automatic extensions, skills, rules, LSP, memory, cache warming, and titles, and did not modify the normal OMP profile. The probe invoked its own slash command instead of asking a model to act.
+
+Inside that command, the extension accessed the real root session through injected `pi.pi.AgentRegistry`. It executed its registered `task` wrapper, which delegated through `ctx.invokeTool` with an intentionally invalid empty batch. Native validation rejected the batch before spawning. It then awaited a managed timeout and two interval ticks, cleared the interval, wrote the report, and requested shutdown. The driver kept RPC stdin open until the report existed, then closed it. The final process exited with code 0 and empty stderr.
+
+Observed report:
+
+```json
+{
+  "version": "18.8.9",
+  "actor": {"kind": "main", "id": "Main", "name": "main", "depth": 0},
+  "ctxSessionId": "01a136fa-5d69-76a8-9cca-af7bd15c04cf",
+  "registrySessionId": "01a136fa-5d69-76a8-9cca-af7bd15c04cf",
+  "namespace": {
+    "AgentRegistry": "function",
+    "TaskTool": "function",
+    "createAgentSession": "function",
+    "runSubprocess": "function",
+    "runSubagentFollowUpTurn": "function"
+  },
+  "lifecycle": {
+    "ensureLive": "function",
+    "park": "function",
+    "ensurePersistedRoster": "function",
+    "usesNativeRegistry": true
+  },
+  "context": {
+    "setInterval": "function",
+    "setTimeout": "function",
+    "rootAgentsSpawn": "undefined",
+    "timerFired": true,
+    "intervalTicks": 2
+  },
+  "nativeTaskWrapper": {
+    "wrapperExecuted": true,
+    "delegateAvailable": true,
+    "nativeValidation": "Missing `tasks`. Provide at least one task item ({ name?, agent?, task })."
+  },
+  "modelCalls": 0
+}
+```
+
+This proves that the compiled binary exposes the proposed integration seam and that same-name delegation, managed timers, and native registry identity work in a running extension. It does not prove valid task-schema compatibility, six successful hires, canonical role loading, actual yield/park/revival, crash recovery, or a deployment monitoring duty. Stage 0 remains open for those operational checks. The temporary extension and isolated profile were removed after recording this evidence.
 
 ## Runtime findings
 
@@ -49,7 +105,7 @@ The two independent architect candidates agreed on durable employee IDs, bounded
 
 ## The hiring integration seam
 
-`ctx.invokeTool` delegates only to the native tool with the same name as the extension tool being executed. A new tool named `hire` cannot use it to invoke `task`. A proposed native integration can re-register `task`, accept a typed Startup hire request, derive ordinary native batch parameters, and delegate to the original task implementation. Existing task requests must remain compatible. This is a source-supported candidate, not a tested feature. [Same-tool delegation](https://github.com/can1357/oh-my-pi/blob/fa5ff4a3a977a28b93d025f4cf50f046e019f18c/docs/extensions.md#delegating-to-a-native-built-in-ctxinvoketool)
+`ctx.invokeTool` delegates only to the native tool with the same name as the extension tool being executed. A new tool named `hire` cannot use it to invoke `task`. A proposed native integration can re-register `task`, accept a typed Startup hire request, derive ordinary native batch parameters, and delegate to the original task implementation. Existing task requests must remain compatible. The installed interface probe demonstrated delegation into native task validation; a complete hire request and ordinary valid task compatibility remain untested. [Same-tool delegation](https://github.com/can1357/oh-my-pi/blob/fa5ff4a3a977a28b93d025f4cf50f046e019f18c/docs/extensions.md#delegating-to-a-native-built-in-ctxinvoketool)
 
 The cleaner dedicated extension spawn facade, `ctx.agents.spawn`, is still an open upstream proposal. Do not write a V6 prompt as though it exists. [OMP issue 2574](https://github.com/can1357/oh-my-pi/issues/2574)
 
@@ -66,9 +122,9 @@ After a crash, activating an employee that never obtained a native handle requir
 
 ## Research record and scope deltas
 
-- Providers: `web__run` search, official GitHub source retrieval through `curl`, and read-only `gh api` metadata.
+- Providers: `web__run` search, official GitHub source retrieval through `curl`, read-only `gh api` metadata, installed `omp read`/`config`, and an isolated compiled-extension interface probe.
 - Queries: `oh-my-pi persistent agents inbox loop task background`; `site:github.com/can1357/oh-my-pi extensions createAgentSession before_subagent_spawn task`; `site:github.com/can1357/oh-my-pi swarm team inbox agent resume`.
-- Confidence: high for inspected versioned source behavior; medium for proposed compiled extension integration; runtime compatibility is unproved until the feasibility gates run.
+- Confidence: high for inspected versioned source and observed installed interfaces; operational hiring, role binding, and persistent-duty compatibility remain unproved until the remaining feasibility gates run.
 - Required delta from skills-only V5: an OMP companion extension and transactional local state. No additional agent framework is proposed.
 - Scope boundary: initial V6 targets the existing OMP execution host. Monitoring after that host exits requires an explicitly operated host service; the prompts and extension alone cannot supply it.
 
