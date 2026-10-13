@@ -27,9 +27,11 @@ Intake capture is a short durability step, not a batch-completion barrier. After
 
 ## Canonical task team
 
-Every task dispatch fields one complete team: exactly one QA employee, exactly one architect employee, and one or more dev employees. This applies to every task kind. Assign the whole team before task execution so QA and architectural analysis begin with the developers' work; final proof and merge gates still apply. Each member receives its own role-bound cue and checkpoint. Parallel teams consume distinct available staff; a hired identity is not simultaneously committed to competing teams.
+Every distinct intake invocation creates and dispatches a new complete team: exactly one QA employee, exactly one architect employee, and one or more dev employees. This applies to every task kind, including clarifications and successive calls while other teams run. A retry of the same intake event returns its original team; a new intentional call creates another team. Assign the whole team before intake/task execution. Each member receives its own role-bound cue and checkpoint. Parallel teams consume distinct staff and fresh assignment contexts; a hired identity is not simultaneously committed to competing teams.
 
-The manager reuses available staff or hires missing team roles, records team membership against the queue item/revision, and dispatches the entire unit. Partial team activation remains visible and prevents reporting the unit ready. DevOps is a shared standing pool that coordinates resources, deployment health, and authorized landing operations with each team; it is not an omitted task responsibility or a fixed extra member count.
+The architect leads that sub-team, runs the canonical intake procedure, handles technical detail and assignment decomposition, coordinates the devs/QA and shared DevOps, and reports only to the manager. Team members report through their architect. The manager receives requests, fields new teams, makes high-level decisions, relays explicit authorization, and collects compact leader reports. It never runs intake or core implementation procedures itself. Final proof/review gates remain required and the manager retains final merge authority.
+
+The manager reuses eligible idle staff with fresh native assignment contexts or hires missing roles, records new team membership against the intake event and resulting queue items/revisions, and dispatches the entire unit. Partial team activation remains visible and prevents reporting the unit ready. DevOps is a shared standing pool that coordinates resources, deployment health, and authorized landing operations with each team; it is not an omitted task responsibility or a fixed extra member count.
 
 The manager can hire DevOps capacity up and retire idle DevOps capacity down as workload changes. Retirement preserves identity/history and requires no active claim, held target grant, pending assignment, or untransferred duty/mail. Busy employees finish or undergo explicit cancellation/reconciliation before retirement. Scale-down never drops work or repeats an uncertain deployment mutation.
 
@@ -99,7 +101,8 @@ Store the new runtime state in `<home>/startup/<name>/staff.sqlite`. One seriali
 |---|---|
 | Host lease | One current owner per named Startup and manager root; owner epochs fence a superseded process. |
 | Employee | Stable employee ID, canonical role/revision, manager scope, employment state, native generation and handle. |
-| Task team | Queue item/revision, one QA, one architect, one or more devs, readiness, and active membership grants. |
+| Intake event | Immutable incoming request and invocation identity, team dispatch receipt, architect-owned capture/progress, and replay state. |
+| Task team | Intake event and resulting queue item/revisions, one QA, one architect leader, one or more devs, readiness, and active membership grants. |
 | Hire request | Unique request ID; role and additive count immutable; allocated employee IDs retained across retries. |
 | Message | Unique message ID; sender authority, recipient, kind, correlation, payload/artifact references, and sequence. |
 | Claim | One active claim per employee; owner epoch and native generation fence stale results. |
@@ -110,7 +113,7 @@ Save each cue before notifying or waking its recipient. Native IRC is a wake tra
 
 Delivery may replay after a crash. Inspect saved results and the native transcript before retrying. A question acknowledges its delivery while leaving the assignment waiting for the manager. An external mutation with an unknown outcome enters reconciliation; expiry alone does not authorize repeating it.
 
-`queue.json` remains the manager-owned task source. Mail carries an immutable assignment snapshot plus queue item ID and revision; employees cannot edit a competing task queue. The manager records a dispatch ID before enqueueing that assignment and reconciles interrupted handoffs using that ID. Completion collection is idempotent by result ID. Preserve V5 pending requests, IDs, unknown fields, and receipts.
+`queue.json` remains the canonical task source. The runtime owns its serialized writes; only the scoped team architect runs intake/capture/amendment procedures for its delegated event. The manager can make high-level scheduling/merge decisions but does not perform intake. Other employees cannot edit a competing queue or another team's work. Mail carries immutable assignment snapshots plus queue item IDs/revisions. Record an intake/team dispatch ID before delegation and reconcile interrupted handoffs by that ID. Completion collection is idempotent by result ID. Preserve V5 pending requests, IDs, unknown fields, and receipts.
 
 ## Canonical loop primitive
 
@@ -127,7 +130,7 @@ while employee is hired and Startup is active:
     wait, idle or park until the next cue
 ```
 
-An empty work queue changes activity to `WAITING`, not employment to `RETIRED`. Every managed persona uses this contract: dev, DevOps, QA, architect, and PA; the singular manager consumes human intake and staff outcomes through its corresponding loop. A result completes an assignment or cycle, not the employee's career.
+An empty work queue changes activity to `WAITING`, not employment to `RETIRED`. Every managed persona uses this contract: dev, DevOps, QA, architect, and PA; the singular manager delegates incoming requests to fresh architect-led teams and consumes their reports through its corresponding loop. A result completes an assignment or cycle, not the employee's career.
 
 **Canonical prompt text to add through the shared loop skill:**
 
