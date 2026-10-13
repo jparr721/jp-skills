@@ -179,7 +179,7 @@ Managed timers operate while the canonical OMP host is running. After host exit,
 | 3: Behavioral proof | Demonstrate add-six with existing staff, exact retry recovery, queue-drain persistence, a second assignment, periodic health duty, context isolation, crash recovery, partial hiring, and serialized target repairs. |
 | 4: V6 release | Package/link the OMP companion, preserve/migrate V5 state, publish the tested capability/version boundary, then bump VERSION/changelog and release V6.0.0. |
 
-The first supported target is the installed OMP 18.8.9, subject to Stage 0. Upstream 18.10.4 is comparison evidence, not an assumed installed upgrade. Other harnesses need a proven adapter before persistent mode is reported available; no silent one-shot substitution.
+The first supported target is the installed OMP 18.8.9, subject to Stage 0. Upstream 18.10.4 is comparison evidence, not an assumed installed upgrade. Other or unidentified harnesses use a disclosed prompt-only fallback with canonical role instructions and their supported subagent tools; persistent agents and scheduled monitoring require a proven adapter.
 
 Stage 0 is partially investigated: an isolated probe with zero model calls demonstrated same-name task delegation into native validation, root-session correlation, shared lifecycle registry, and managed timer execution. Valid task compatibility, complete canonical role loading, synthetic wakes, actual yield/park/revival, and the chosen duty's restricted operation path remain open. [Installed-interface evidence](2026-10-13-startup-v6-research.md#installed-interface-probe-2026-10-13)
 

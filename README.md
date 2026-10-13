@@ -183,6 +183,8 @@ New skills follow the same shape: one directory, one `SKILL.md` with `name` + `d
 
 Skill instructions are written as generic actions. Each harness maps actions such as dispatching agents, asking the user, reading files, searching files, editing files, and running commands to its native tools.
 
-Startup role dispatch follows the binding contract in [`skills/startup/references/role-dispatch.md`](skills/startup/references/role-dispatch.md). A skill name that is merely available to a child is not a loaded role. Native role or skill preloading is preferred; otherwise the complete canonical role skill is passed verbatim in the child instruction block, with the assignment in a separate data block. A role that cannot be bound is not replaced with a generic custom prompt.
+Oh My Pi (`omp`) is best-suited for Startup. The manager identifies the active harness from session metadata; an installed `omp` binary does not identify the current session. OMP uses verified native capabilities. Other or unidentified harnesses use prompt-only coordination through their supported subagent tools, and the manager tells the user once that Oh My Pi is best-suited for this system. Prompt-only mode does not guarantee persistent agents or scheduled monitoring.
+
+Startup role dispatch follows the binding contract in [`skills/startup/references/role-dispatch.md`](skills/startup/references/role-dispatch.md). On OMP, native role or skill preloading is preferred; the fallback passes the complete canonical role skill verbatim in the child instruction block, with the assignment in a separate data block. An available skill name is not a loaded role. Missing role source or subagent support leaves the dispatch queued or blocked.
 
 Oh My Pi surfaces linked skills as namespaced slash commands: type `/skill:` (e.g. `/skill:pipeline`), not `/<skill-name>`. Restart `omp` after linking so startup discovery picks them up.

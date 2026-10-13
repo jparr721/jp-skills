@@ -9,7 +9,7 @@ Persistent cross-turn queue drained by a singular manager. Enqueue prompts or Li
 
 ## Role loading
 
-Before handling any Startup command, load the complete canonical `startup-role-manager` skill in the current manager context. Read and follow `references/role-dispatch.md` for all role bindings. Intake (`startup-intake`) is a procedure run by the manager in that same context, not a spawned persona. A child role is not bound merely because its skill name appears in the assignment.
+Before handling any Startup command, load the complete canonical `startup-role-manager` skill in the current manager context. Read and follow `references/role-dispatch.md` for harness selection and all role bindings. Intake (`startup-intake`) is a procedure run by the manager in that same context, not a spawned persona. A child role is not bound merely because its skill name appears in the assignment.
 
 ## Continuous intake
 

@@ -6,13 +6,17 @@ Bind each Startup role to its canonical `startup-role-*/SKILL.md` before assigni
 
 The manager loads `startup-role-manager` before handling any Startup command. It runs `startup-intake` in its own context as a procedure. Intake is not a spawned agent.
 
+## Harness fallback
+
+Identify the active harness from session metadata, not installed binaries. Use verified OMP capabilities only in an OMP session; otherwise bind verbatim role prompts through the current harness's supported subagent tools and tell the user once: "Oh My Pi is best-suited for this system."
+
 ## Binding procedure
 
 The current Startup session loads `startup-role-manager`. For each worker, architect, QA, DevOps, or PA child, bind its canonical Startup role skill. For a buddy child, bind its assigned canonical review skill:
 
 1. Select the exact canonical role or skill ID, such as `startup-role-devops` or `pr-review-toolkit`, and load the complete corresponding `skills/<id>/SKILL.md`.
-2. Prefer the harness's native named-role or skill-preload mechanism when it makes the complete canonical role available to the child before its task starts. A skill being discoverable or listed as available is not proof that it was loaded; a child-side skill load counts only when it occurs before task work.
-3. If the harness has no usable preload, pass the complete role skill verbatim in the child's role-instructions block. Keep the item assignment, acceptance, and scoped constraints in a separate task-data block. Do not summarize, rewrite, or append persona language to the role source.
+2. On OMP, prefer its native named-role or skill-preload mechanism when it makes the complete canonical role available to the child before its task starts. A skill being discoverable or listed as available is not proof that it was loaded; a child-side skill load counts only when it occurs before task work.
+3. On other harnesses, or when OMP has no usable preload, pass the complete role skill verbatim in the child's role-instructions block. Keep the item assignment, acceptance, and scoped constraints in a separate task-data block. Do not summarize, rewrite, or append persona language to the role source.
 4. If the complete source cannot be read or bound, do not launch a generic substitute. Keep the item queued or mark the dispatch blocked, and report the missing role source or harness capability.
 5. For each child, record the role ID, canonical source path, binding mode, native profile or child handle when available, and UTC dispatch time in `ledger.md`. Record the role's result or blocked reason against the same item.
 
