@@ -518,21 +518,29 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
     const fenced = current.guardTurn(ctx, parsed.toolName);
     if (fenced) return { block: true, reason: fenced };
     if (ctx.agent.kind !== "main") return;
-    if (
-      current.staff(ctx).mode === "recovery" &&
-      ![
-        "startup_staff",
-        "startup_reconcile",
-        "startup_resolve",
-        "startup_release_reconciled",
-        "startup_bind_manager",
-      ].includes(parsed.toolName)
-    )
-      return {
-        block: true,
-        reason:
-          "Resolve saved manager claims/grants through current-owner recovery admin tools before inbox, hire, intake or technical work.",
-      };
+    if (current.staff(ctx).mode === "recovery") {
+      if (
+        ![
+          "startup_staff",
+          "startup_route",
+          "startup_reconcile",
+          "startup_resolve",
+          "startup_release_reconciled",
+          "startup_bind_manager",
+          "wait",
+          "yield",
+        ].includes(parsed.toolName)
+      )
+        return {
+          block: true,
+          reason:
+            "Resolve saved manager claims/grants through current-owner recovery admin tools before inbox, hire, intake or technical work.",
+        };
+      const reason = current.waitGuard();
+      if ((parsed.toolName === "wait" || parsed.toolName === "yield") && reason)
+        return { block: true, reason };
+      return;
+    }
     if (parsed.toolName === "wait" || parsed.toolName === "yield") {
       const reason: string | null = current.waitGuard();
       if (reason) return { block: true, reason };

@@ -1009,7 +1009,7 @@ export function createAdapter(
   function routeInput(ctx: NativeContext, request: unknown) {
     const parsed = routeInputSchema.parse(request);
     return store.routeInput({
-      manager: manager(ctx),
+      manager: rootAdmin(ctx),
       inputId: parsed.inputId,
       disposition: {
         kind: parsed.disposition,
@@ -1349,13 +1349,13 @@ export function createAdapter(
   }
   function waitGuard(): string | null {
     const snapshot = store.snapshot();
-    if (!managerReady) return null;
     const unrouted = snapshot.inputs.find(
       (entry) => entry.disposition === null,
     );
     if (unrouted)
       return `Route received input ${unrouted.id} through startup_route before lookup, waiting or ending.`;
 
+    if (!managerReady) return null;
     const available: number | null = capacity().available;
     if (available !== null && available === 0) return null;
     const raw = snapshot.intakes.find(

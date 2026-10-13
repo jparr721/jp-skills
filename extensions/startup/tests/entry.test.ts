@@ -2,6 +2,7 @@ import { afterEach, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import type { HostAPI } from "../index";
 import type {
   NativeContext,
@@ -35,7 +36,7 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
 });
 
-test("old root shutdown cannot close a newer root's same-session adapter", async () => {
+function entryFixture() {
   const root = mkdtempSync(join(tmpdir(), "startup-entry-"));
   directories.push(root);
   for (const name of ["startup-role-manager", "startup-loop"]) {
@@ -112,7 +113,7 @@ test("old root shutdown cannot close a newer root's same-session adapter", async
       registerTool: (tool) => {
         tools.set(tool.name, tool);
       },
-      getCommands: () => [],
+      getCommands: () => [{ name: "fixture-status" }],
       getAllTools: () => [],
     };
     installStartup(api, {
@@ -125,10 +126,21 @@ test("old root shutdown cannot close a newer root's same-session adapter", async
     });
     return { handlers, tools };
   }
+  return {
+    ctx,
+    factory,
+    advance: () => {
+      native = { ...native, createdAt: native.createdAt + 1 };
+    },
+  };
+}
+
+test("old root shutdown cannot close a newer root's same-session adapter", async () => {
+  const { ctx, factory, advance } = entryFixture();
   const first = factory();
   await first.handlers.get("session_start")!({}, ctx);
   first.handlers.get("session_shutdown")!({}, ctx);
-  native = { ...native, createdAt: 2 };
+  advance();
   const second = factory();
   await second.handlers.get("session_start")!({}, ctx);
   try {
@@ -140,5 +152,86 @@ test("old root shutdown cannot close a newer root's same-session adapter", async
     expect(staff.details).toMatchObject({ mode: "ready" });
   } finally {
     second.handlers.get("session_shutdown")!({}, ctx);
+  }
+});
+
+test("recovery classifies human input before wait/final without resolving unrelated claims", async () => {
+  const { ctx, factory, advance } = entryFixture();
+  const first = factory();
+  await first.handlers.get("session_start")!({}, ctx);
+  const tool = async (
+    host: ReturnType<typeof factory>,
+    name: string,
+    params: unknown,
+  ) => host.tools.get(name)!.execute(name, params, undefined, undefined, ctx);
+  await tool(first, "startup_send", {
+    id: "prior-mail",
+    recipient: "manager",
+    kind: "report",
+    correlation: "prior",
+    payload: {},
+  });
+  await tool(first, "startup_claim", {});
+  first.handlers.get("session_shutdown")!({}, ctx);
+  advance();
+  const next = factory();
+  await next.handlers.get("session_start")!({}, ctx);
+  try {
+    expect((await tool(next, "startup_staff", {})).details).toMatchObject({
+      mode: "recovery",
+    });
+    for (const disposition of ["status", "control", "decision", "work"]) {
+      await next.handlers.get("input")!(
+        { text: disposition, source: "rpc", images: [] },
+        ctx,
+      );
+      expect(next.handlers.get("session_stop")!({}, ctx)).toMatchObject({
+        continue: true,
+      });
+      const snapshot = (await tool(next, "startup_staff", {})).details;
+      const inputId = z
+        .object({
+          inputs: z.array(
+            z.object({ id: z.string(), disposition: z.unknown() }),
+          ),
+        })
+        .parse(snapshot)
+        .inputs.find((entry) => entry.disposition === null)!.id;
+      expect(
+        next.handlers.get("tool_call")!(
+          { toolName: "startup_route", input: {} },
+          ctx,
+        ),
+      ).toBeUndefined();
+      await tool(next, "startup_route", {
+        inputId,
+        disposition,
+        reason: "High-level recovery disposition",
+        amendItemIds: [],
+      });
+      expect(
+        next.handlers.get("tool_call")!({ toolName: "wait", input: {} }, ctx),
+      ).toBeUndefined();
+      expect(next.handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+      expect(
+        next.handlers.get("tool_call")!({ toolName: "task", input: {} }, ctx),
+      ).toMatchObject({ block: true });
+    }
+    await expect(
+      Promise.resolve(
+        next.handlers.get("input")!(
+          { text: "/fixture-status", source: "rpc", images: [] },
+          ctx,
+        ),
+      ),
+    ).resolves.toBeUndefined();
+    expect((await tool(next, "startup_staff", {})).details).toMatchObject({
+      mode: "recovery",
+    });
+    await expect(tool(next, "startup_claim", {})).rejects.toThrow(
+      "reconciliation",
+    );
+  } finally {
+    next.handlers.get("session_shutdown")!({}, ctx);
   }
 });
