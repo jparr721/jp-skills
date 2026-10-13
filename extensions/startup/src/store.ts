@@ -33,6 +33,7 @@ import {
   resultSchema,
   rowSchema,
   scopeSchema,
+  sourceSchema,
   teamRequestSchema,
   teamSchema,
   timeSchema,
@@ -56,6 +57,7 @@ import {
   type Owner,
   type Result,
   type Scope,
+  type Source,
   type Team,
   type TeamRequest,
 } from "./contracts";
@@ -82,6 +84,23 @@ const hireRecordSchema = z
 const intakeRecordSchema = z
   .strictObject({ request: intakeSchema, teamId: idSchema.nullable() })
   .readonly();
+const inputDispositionSchema = z
+  .strictObject({
+    kind: z.enum(["work", "status", "control", "conversation", "decision"]),
+    reason: z.string().trim().min(1),
+    amendItemIds: z.array(idSchema),
+  })
+  .readonly();
+const receivedInputSchema = z
+  .strictObject({
+    id: idSchema,
+    receivedAt: timeSchema,
+    source: z.enum(["interactive", "rpc"]),
+    raw: z.strictObject({ text: z.string(), images: z.array(jsonSchema) }),
+    disposition: inputDispositionSchema.nullable(),
+  })
+  .readonly();
+export type ReceivedInput = z.infer<typeof receivedInputSchema>;
 const resultRecordSchema = z
   .strictObject({
     claimId: idSchema,
@@ -171,6 +190,7 @@ export type Snapshot = Readonly<{
   grants: readonly Grant[];
   legacyLocks: readonly LegacyLock[];
   intakes: readonly IntakeRecord[];
+  inputs: readonly ReceivedInput[];
   assignments: readonly Assignment[];
 }>;
 
@@ -885,6 +905,86 @@ export function openStore(args: {
         return generation;
       });
     },
+    refreshCanonical(input: {
+      readonly manager: Binding;
+      readonly employeeId: string;
+      readonly source: Source;
+      readonly evidence: Json;
+    }): number {
+      return tx((): number => {
+        manager(input.manager);
+        const current: Employee = employee(input.employeeId);
+        const source: Source = sourceSchema.parse(input.source);
+        if (current.role === "manager" || current.employment !== "hired")
+          throw new StoreAuthorityError(
+            "Canonical refresh requires an employed non-manager; manager refresh requires a newer native owner context",
+          );
+        if (
+          !source.rolePath.endsWith(`/startup-role-${current.role}/SKILL.md`) ||
+          !source.loopPath.endsWith("/startup-loop/SKILL.md") ||
+          input.evidence === null
+        )
+          throw new StoreAuthorityError(
+            "Canonical refresh requires role-matched host source and explicit evidence",
+          );
+        if (
+          current.assignment !== null ||
+          all("claim", claimSchema).some(
+            (entry) =>
+              entry.employeeId === current.id && entry.status !== "settled",
+          ) ||
+          all("grant", grantSchema).some(
+            (entry) =>
+              entry.employeeId === current.id && entry.state !== "released",
+          ) ||
+          all("assignment", assignmentSchema).some(
+            (entry) =>
+              entry.employeeId === current.id &&
+              entry.state !== "complete" &&
+              !(
+                entry.state === "pending" &&
+                all("message", messageSchema).some(
+                  (message) =>
+                    message.id === entry.id &&
+                    message.recipient === current.id &&
+                    message.status === "pending",
+                )
+              ),
+          ) ||
+          all("message", messageSchema).some(
+            (entry) =>
+              entry.recipient === current.id && entry.status === "claimed",
+          ) ||
+          all("occurrence", occurrenceSchema).some(
+            (entry) =>
+              entry.employeeId === current.id && entry.observedAt === null,
+          )
+        )
+          throw new StoreRecoveryError(
+            "Canonical refresh requires an idle boundary with resolved claims, started assignments, claimed incoming mail, grants and active duty occurrences",
+          );
+        const generation: number = timeSchema.parse(current.generation + 1);
+        put("canonicalRefresh", `${current.id}/${generation}`, {
+          previous: current,
+          source,
+          generation,
+          evidence: jsonSchema.parse(input.evidence),
+        });
+        put("replacement", `${current.id}/${generation}`, {
+          kind: "canonical-refresh",
+          source,
+          evidence: jsonSchema.parse(input.evidence),
+        });
+        put("employee", current.id, {
+          ...current,
+          nativeHandle: null,
+          source: null,
+          error: null,
+          canonicalRevision: source.roleRevision,
+        });
+        return generation;
+      });
+    },
     recordBindingFailure(input: {
       readonly manager: Binding;
       readonly employeeId: string;
@@ -914,6 +1014,68 @@ export function openStore(args: {
             ...team(current.assignment),
             state: "reserved",
           });
+      });
+    },
+    receiveInput(input: ReceivedInput): ReceivedInput {
+      return tx((): ReceivedInput => {
+        const received: ReceivedInput = receivedInputSchema.parse(input);
+        if (received.disposition !== null)
+          throw new StoreAuthorityError(
+            "Native ingress must begin unclassified",
+          );
+        const previous = read(
+          "receivedInput",
+          received.id,
+          receivedInputSchema,
+        );
+        if (previous !== null) {
+          assertReplay(
+            { ...previous, disposition: null },
+            received,
+            received.id,
+          );
+          return previous;
+        }
+        put("receivedInput", received.id, received);
+        return received;
+      });
+    },
+    routeInput(input: {
+      readonly manager: Binding;
+      readonly inputId: string;
+      readonly disposition: z.infer<typeof inputDispositionSchema>;
+    }): ReceivedInput {
+      return tx((): ReceivedInput => {
+        manager(input.manager);
+        const id: string = idSchema.parse(input.inputId);
+        const received = read("receivedInput", id, receivedInputSchema);
+        if (received === null)
+          throw new StoreAuthorityError("Native received input does not exist");
+        const disposition = inputDispositionSchema.parse(input.disposition);
+        if (
+          disposition.kind !== "work" &&
+          disposition.amendItemIds.length !== 0
+        )
+          throw new StoreAuthorityError(
+            "Only work disposition may reference amended items",
+          );
+        if (received.disposition !== null) {
+          assertReplay(received.disposition, disposition, id);
+          return received;
+        }
+        if (disposition.kind === "work") {
+          const event: Intake = intakeSchema.parse({
+            eventId: id,
+            input: received.raw,
+            amendItemIds: disposition.amendItemIds,
+          });
+          const previous = read("intake", id, intakeRecordSchema);
+          if (previous !== null) assertReplay(previous.request, event, id);
+          else put("intake", id, { request: event, teamId: null });
+        }
+        const routed: ReceivedInput = { ...received, disposition };
+        put("receivedInput", id, routed);
+        return routed;
       });
     },
     recordIntake(input: {
@@ -1886,6 +2048,7 @@ export function openStore(args: {
             grants: all("grant", grantSchema),
             legacyLocks: all("legacyLock", legacyLockSchema),
             intakes: all("intake", intakeRecordSchema),
+            inputs: all("receivedInput", receivedInputSchema),
             assignments: all("assignment", assignmentSchema),
           }),
         )
