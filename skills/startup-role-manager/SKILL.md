@@ -1,6 +1,6 @@
 ---
 name: startup-role-manager
-description: PM brief for the startup manager - sole boss contact; runs intake in its own context, binds canonical specialist roles before fan-out, enforces outcome schema, owns all merges bottom-up, exits on drain; assigns {kind, procedure, convention-source, base, stack-mode}, spawns buddy pairs, merges only on architect APPROVE.
+description: Use when acting as the Startup manager, including receiving additional requests while workers run or the queue is on standby.
 ---
 
 # Startup role: manager
@@ -13,11 +13,11 @@ Workers route via `hub`, never to the boss. The manager batches worker questions
 
 ## Triage
 
-Run the canonical `startup-intake` procedure in this manager context; do not spawn a generic intake child. Three outcomes only: enqueue / async-clarify (batched, proceed on assumptions recorded in `memory.md`) / reject-with-reason (one line back to boss). On enqueue, persist explicit built-in specialist requests in the row's `requested_roles`; missing on an older row means `[]`.
+Run `startup-intake` in this manager context for every incoming human message and unfinished intake receipt, including while workers run or the queue is on standby. Capture all actionable requests before assessing readiness; missing details remain visible as `NEEDS_DECISION` rows. Intake owns splitting, amendments, event replay, state selection, and preserve/write/read-back verification. Resume dispatch or collection only after its receipt maps every work intent to an ID and outcome. Batch pending questions and continue other ready items. The manager is the sole queue writer.
 
 ## Assignment block
 
-Every fan-out carries a canonical role ID and `{kind, procedure, convention-source, acceptance, base, stack-mode}` as task data - never a bare prompt and never manager-authored persona text. Bind the exact `startup-role-dev` skill for workers; the worker executes the assigned kind's procedure. Kind inference happens at intake, never at dispatch. Research acceptance names the decision the memo unblocks; ops acceptance names target plus verify command. The assignment and source-tagged role overrides are separate from the canonical role instructions. A role override adds item-scoped constraints only and cannot replace the role's identity, authority, procedure, or required output.
+Dispatch only ready `QUEUED` rows with a reconstructable durable `request`, kind, procedure, acceptance, and required context. Derive the assignment from the saved row; recover missing legacy payload through intake before dispatch. Every fan-out carries a canonical role ID plus `{request, kind, procedure, convention-source, acceptance, base, stack-mode}` as task data. Bind the exact `startup-role-dev` skill for workers; the worker executes the assigned kind's procedure. Kind inference happens at intake, never at dispatch. Research acceptance names the decision the memo unblocks; ops acceptance names target plus verify command. The assignment and source-tagged role overrides are separate from the canonical role instructions. An override adds item-scoped constraints and preserves the role's identity, authority, procedure, and required output.
 
 Before worker fan-out, fulfill every ID in `requested_roles` using the dispatch procedure. An explicit user request to coordinate with DevOps requires a `startup-role-devops` dispatch even when no resource contention is apparent. Collect its `READY`, `NEEDS_INPUT`, or `NO_ACTION` result before deciding whether workers can start. `NEEDS_INPUT` parks that item until the named blocker is resolved; do not start its worker. Coordination does not grant provisioning authorization. Dispatch `startup-role-architect` for every item merge gate; dispatch `startup-role-qa` for its per-item proof and cross-item overlap duties; dispatch DevOps on environment, resource, or operation needs. Record the role source, binding mode, dispatch handle, and timestamp in `ledger.md`, then record each result or blocked reason.
 Stamp `dispatched_at` (`date -u +%Y-%m-%dT%H:%M:%SZ`) on the `queue.json` row at fan-out. Resolve the bound startup's role override for this item's repo+role (`<bound_root>/.startup/<repo>/<role>.md`; missing or whitespace-only = none) and inline it as `role-override` in the assignment block — worker never reads `.startup/` directly. Precedence for the inlined content, last wins: global `standing-instructions.md` → `.startup/config.md` prefs → the role file. Assign `base` per code item (stack-parent branch when chained, else target) and record `stack-mode: stacked|flat (+ reason)` on the row. On park/unpark record `parked_at`/`unparked_at`; they accumulate to `parked_mins` in the completion report.
@@ -41,7 +41,7 @@ Schema valid plus buddy clean plus architect APPROVE plus CI green plus QA/deck 
 
 ## Firewall
 
-Read outcome blocks + ledger only — never code, diffs, or logs. Tokens via env only; ledger records `provided (redacted)`. Reuses `pipeline` constraint 8 and `dark-factory` §3 verbatim.
+Read queue payloads, intake receipts, outcome blocks, and the ledger. Execution code, diffs, and logs stay behind the worker/buddy firewall. Tokens via env only; ledger records `provided (redacted)`. Reuses `pipeline` constraint 8 and `dark-factory` section 3 verbatim.
 
 ## Exit on drain
 

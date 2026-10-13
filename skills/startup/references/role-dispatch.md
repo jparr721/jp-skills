@@ -39,7 +39,7 @@ Do not add a `persona`, `role prompt`, or replacement `instructions` field. `kin
 
 For a user-requested built-in specialist, intake stores its canonical ID in the new row's `requested_roles` array. Missing `requested_roles` on an older row means an empty array. Do not rewrite old queue rows just to add the field.
 
-The manager must dispatch every requested role before it reports that request fulfilled. When the request is `coordinate with DevOps`, dispatch `startup-role-devops` after intake records the item and before worker fan-out. `NO_ACTION` is a valid completed coordination result. A coordination request alone is not authorization to provision or mutate resources.
+The manager must dispatch every requested role before it reports that request fulfilled. Pending intake rows retain their role requests until ready. For ready `QUEUED` items requesting `coordinate with DevOps`, dispatch `startup-role-devops` after intake and before worker fan-out. `NO_ACTION` is a valid completed coordination result. A coordination request alone is not authorization to provision or mutate resources.
 
 Record requested role dispatch and result in the ledger so a manager revival can distinguish completed coordination from work still pending. If the role needs a decision or authorization, follow the existing async boss and park rules; do not silently skip the requested role.
 
@@ -71,7 +71,7 @@ For a blocked dispatch, record `status=blocked` and a specific reason. Do not re
 
 ## Conformance scenarios
 
-- `startup "Queue the cache fix, do intake, and coordinate with DevOps."` creates an item with `requested_roles: ["startup-role-devops"]`, binds that role, records its result, then fans out the worker if no blocker remains.
+- `startup "Queue the cache fix, do intake, and coordinate with DevOps."` captures an item with `requested_roles: ["startup-role-devops"]`. Missing context leaves it pending. Once ready, the manager binds that role, records its result, then fans out the worker if no blocker remains.
 - A task with no explicit role request and no resource trigger does not gain an inferred DevOps request.
 - An explicit coordination request can complete with `NO_ACTION`; it cannot provision without separate authorization.
 - An unavailable role source or unsupported binding produces a blocked dispatch, never a generic child with a newly authored role prompt.

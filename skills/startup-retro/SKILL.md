@@ -7,7 +7,7 @@ description: On-demand retro — same procedure as the sprint boundary: scan out
 
 Same procedure as the sprint boundary (`skill://startup-sprint`), run on demand: `startup retro` mid-sprint, or at drain when fewer than `SPRINT_SIZE` items merged since the last retro.
 
-State lives under `<home>/startup/` — `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`. Never under `tmp/`.
+Resolve the selected Startup through `startup` State. Read and write its files under `<home>/startup/<name>/`; reuse the manager's selection.
 
 ## Scan sources
 

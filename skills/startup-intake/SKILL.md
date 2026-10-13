@@ -1,63 +1,37 @@
 ---
 name: startup-intake
-description: Intake procedure - feasibility/doability triage for prompts, Linear ids, and screenshot complaints; writes per-item repo/remote/target/merge-strategy rows to queue.json; only enqueue, async-clarify, or reject-with-reason; assigns kind (code/research/docs/ops) with per-kind acceptance and preserves explicit role requests.
+description: Use when receiving new tasks, multiple requests, follow-up work, clarifications, or incomplete instructions in an active Startup conversation, including repeated intake calls while workers run or the manager is on standby.
 ---
 
 # Startup intake
 
-Repeatable manager-owned procedure for the queue. Every prompt, Linear id, or screenshot complaint passes feasibility/doability triage before it becomes a `queue.json` row. The manager runs this procedure in its own context; it does not spawn a separate intake persona. Rows are consumed by `skill://startup-role-manager`.
+Capture every actionable request durably before assessing readiness. A request with missing details is a pending queue item. The manager runs intake in its own context.
 
-## Queue-worthy criteria
+## Every incoming turn
 
-An item is queue-worthy when it meets one path:
+Apply intake to each later human message in an active Startup, including "also", "another thing", and additional requests during ongoing work. A direct intake invocation loads `startup-role-manager` in the current context and resolves the selected Startup first.
 
-- **Linear id** (e.g. `SYT-xxx`): fetch the ticket; acceptance criteria come from the ticket.
-- **Prompt**: must name the behavior + affected area + acceptance (what done looks like). Vague prompts fail triage, not the worker.
-- **Screenshot + complaint**: not intake — route to the `stop-doing` interpret path (see `skill://startup-stop-doing`): mesh QA + architect to derive repro, scope, rule.
+## Intake procedure
 
-Feasibility check: repo exists and is reachable, target is known, merge strategy follows that repo's convention. Doability check: acceptance is testable within one pipeline run.
+1. Before writing, read `references/queue-records.md`. Resolve the selected state, reload the latest queue, and identify this incoming event or its retry.
+2. Enumerate every actionable passage. Independent deliverables get separate IDs. Clarifications and amendments to an identified undispatched item keep its ID; feedback on dispatched/completed work becomes a linked follow-up. Status questions and conversation without requested work create no row. Route explicit Startup control commands to their command procedure and acknowledge its result.
+3. Record the incoming text and event reference, then persist each new work request as `NEEDS_DECISION`, with its `request`, `acceptance`, `blocked_on`, `intake_refs`, and explicit `requested_roles`. Unknown fields may be `null`. Capture all passages before ticket lookup, feasibility checks, or questions. A screenshot complaint requesting a fix is captured before any `startup-stop-doing` interpretation.
+4. Triage each captured item using the table below. Use established conversation, binding, repo, and ticket context to resolve shorthand and derive acceptance. Record assumptions. Missing scope, access, target, kind, or acceptance keeps the item pending; capture remains complete.
+5. Preserve and verify the queue using the record procedure. Finish a durable receipt mapping every passage to its item ID and outcome. Confirm queued IDs, pending IDs plus missing details, rejected IDs plus reasons, and amendments. Intake is complete only when all passages are accounted for in saved state; then the manager may resume work.
 
-## Kind assignment
+## Readiness outcomes
 
-Assign exactly one kind per item: `code | research | docs | ops`. Use the boss's stated kind when given. When the boss states no kind, infer from the request and record the inference in the row:
+| Outcome | Saved state | Condition |
+|---|---|---|
+| `enqueue` | `QUEUED` | Kind, procedure, and per-kind acceptance are resolved; required repo/target/convention or operation authorization is known. |
+| `async-clarify` | `NEEDS_DECISION` | Missing information or access. Name it in `blocked_on`, batch questions, and continue other items. |
+| `reject-with-reason` | `REJECTED` | Demonstrably infeasible or outside the authorized scope. Preserve the request and explicit reason. |
 
-- code verbs (fix, build, add, refactor, implement) → `code`.
-- "should we" / prior-art / options questions → `research`.
-- style / accuracy / wording corrections against a named source → `docs`.
-- named host / mutation (deploy, restart, migrate, rotate) → `ops`.
-
-Ambiguous across two kinds = async-clarify, never guess silently.
-
-## Per-item record
-
-Each enqueued item is one row in `<home>/startup/queue.json` (home chain: `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`; NEVER `tmp/`) with exactly:
-
-`id, source, status, repo, remote, target, merge-strategy, branch, worktree, base, stack-mode, report-handle, kind, procedure, convention-source, requested_roles`
-
-`merge-strategy: squash|merge per repo convention` - record the repo's convention at intake; the manager merges with it. `branch`/`worktree`/`base`/`stack-mode` are assigned at dispatch (`base`: stack-parent branch when chained, else target; `stack-mode: stacked|flat (+ reason)`); `report-handle` at outcome. `procedure` names the worker procedure for the kind; `convention-source` names the repo convention or doc source the worker writes against (empty only for research/ops with no convention). `requested_roles` is an array of canonical built-in specialist IDs explicitly requested by the user; use `[]` when none. Include `startup-role-devops` when the user asks for DevOps coordination. Do not infer role requests from resource needs; those use the normal manager trigger.
-
-Older rows without `requested_roles` remain valid and are treated as having `[]`. Do not bulk rewrite them.
-
-Per-kind acceptance shape:
-
-- code: behavior + affected area + acceptance.
-- research: question + decision it unblocks.
-- docs: scope + convention source.
-- ops: target + mutation + verify command.
-
-## Triage outcomes only
-
-Three outcomes, no fourth:
-
-- **enqueue** — criteria met, kind assigned; write the row, confirm in one line.
-- **async-clarify** — near-miss or kind-ambiguous; park the item, ask the boss in one batched message, proceed with the rest of the queue.
-- **reject-with-reason** — fails feasibility/doability; one line: what was asked, why it fails, what would make it queue-worthy.
-
-No criteria met and no clarifiable shape → one line back to the boss, nothing written. Never enqueue a placeholder row to "fill in later".
+Kind is `code`, `research`, `docs`, or `ops`: infer from the requested deliverable and record the inference; unresolved ambiguity remains pending. Acceptance names code behavior and area, the research question and decision, docs scope and convention, or ops target, mutation, and verify command. Resolve execution readiness after capture; each incomplete request stays visible.
 
 ## `startup new` interactive setup
 
-`startup new <name> [--dir <path>]` (default dir = cwd). Bounded — never stalls:
+`startup new <name> [--dir <path>]` (default dir = cwd). Bounded - never stalls:
 
 1. List repos found in dir; boss confirms/adds/removes.
 2. One confirm per repo for move-or-clone (local path vs remote URL); skip allowed, resume on next invoke.

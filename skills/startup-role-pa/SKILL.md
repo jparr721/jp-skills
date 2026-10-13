@@ -18,6 +18,7 @@ Each tick prompts the manager with exactly:
 - Current time.
 - Next check-in + which sub-team (`dev` / `qa` / `devops` / `architect`).
 - Open priorities from the boss.
+- Received work events without a completed intake receipt, plus unresolved legacy queue recovery.
 - Sprint count to the retro boundary (merged-count mod `SPRINT_SIZE` 5).
 - Aging parked blockers (`BLOCKED` / `NEEDS_DECISION` items waiting longest).
 

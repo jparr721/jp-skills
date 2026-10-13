@@ -7,7 +7,7 @@ description: Runtime rule injection — text rule or screenshot plus complaint b
 
 `startup stop-doing <rule|screenshot+complaint>` — either form becomes a standing instruction in `standing-instructions.md`, loaded at every spawn.
 
-State lives under `<home>/startup/` — `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`. Never under `tmp/`.
+Resolve the selected Startup through `startup` State. Read and write its files under `<home>/startup/<name>/`; reuse the manager's selection.
 
 ## Input paths
 

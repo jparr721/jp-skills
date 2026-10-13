@@ -31,7 +31,7 @@ Startup family (roles + commands — invoke via `startup`, never directly unless
 | [`startup-role-architect`](skills/startup-role-architect/SKILL.md) | Every item needs the required merge-gate verdict; shared shape, repeated friction, or structural intake ambiguity also invokes its deeper consult. |
 | [`startup-role-qa`](skills/startup-role-qa/SKILL.md) | Per-item proof or cross-item overlap checks are needed, using the proof standard for the item's kind. |
 | [`startup-role-devops`](skills/startup-role-devops/SKILL.md) | The user explicitly requests DevOps coordination, or an item needs environment, resource, or operation adjudication. |
-| [`startup-intake`](skills/startup-intake/SKILL.md) | The manager needs the intake procedure for a prompt, Linear id, or screenshot complaint. Intake runs in the manager context; it is not a spawned persona. |
+| [`startup-intake`](skills/startup-intake/SKILL.md) | New or successive requests arrive in a Startup, including multiple tasks, shorthand, missing details, and clarifications. Every work intent receives a durable queue record and receipt before readiness checks. |
 | [`startup-sprint`](skills/startup-sprint/SKILL.md) | INTERNAL — every 5 merged items pause fan-out, retro, compress memory, resume. |
 | [`startup-retro`](skills/startup-retro/SKILL.md) | An on-demand retro is wanted — same procedure as the sprint boundary. |
 | [`startup-stop-doing`](skills/startup-stop-doing/SKILL.md) | A text rule or screenshot complaint must become a standing instruction now. |
@@ -80,7 +80,7 @@ Startup family (roles + commands — invoke via `startup`, never directly unless
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (currently 5.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (currently 5.0.1). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 

@@ -2,6 +2,15 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [5.0.1] - 2026-10-13
+
+### Fixed
+
+- Intake captures every actionable request before readiness checks, including additional tasks across turns and incomplete requests. Missing details remain visible as `NEEDS_DECISION` queue rows; explicit rejection preserves its reason.
+- New rows retain task text, acceptance, blockers, and intake event references. Complete receipts account for every intent; repeated intake preserves existing rows and fields, verifies saved state, and recognizes event retries without duplicating work. Clarifications to undispatched items retain their IDs.
+- Intake, status, retro, and standing-rule updates use the manager's selected Startup namespace. Legacy root queues are surfaced for recovery with ownership and ID conflict checks.
+- Manager dispatch uses the durable task payload and only ready rows; PA and status expose unfinished intake receipts. Existing rows remain compatible without a bulk rewrite.
+
 ## [5.0.0] - 2026-10-13
 
 ### Breaking
