@@ -71,9 +71,15 @@ test("missing canonical source blocks profiles honestly", (): void => {
 
 const adapters: StartupAdapter[] = [];
 
-function fixture(): Readonly<{
+function configuredFixture(
+  limits: Readonly<{
+    employeeLimit: number | null;
+    executionLimit: number | null;
+  }>,
+): Readonly<{
   adapter: StartupAdapter;
   managerNotifications: string[];
+
   ctx: NativeContext;
   refs: Map<string, NativeRef>;
   root: string;
@@ -98,6 +104,7 @@ function fixture(): Readonly<{
     JSON.stringify({ type: "session", id: "root-session" }) + "\n",
   );
   const refs: Map<string, NativeRef> = new Map();
+
   const wake = async (
     _id: string,
     params: Record<string, unknown>,
@@ -179,8 +186,8 @@ function fixture(): Readonly<{
       name: "fixture",
       home,
       skillsRoot: root,
-      employeeLimit: null,
-      executionLimit: null,
+      employeeLimit: limits.employeeLimit,
+      executionLimit: limits.executionLimit,
       leaseMs: 60000,
     },
     nativeLimit: () => 32,
@@ -233,6 +240,10 @@ function fixture(): Readonly<{
     return child;
   };
   return { adapter, ctx, refs, root, activate, project, managerNotifications };
+}
+
+function fixture() {
+  return configuredFixture({ employeeLimit: null, executionLimit: null });
 }
 
 test("adapter additive reservations preserve retry IDs and source-loaded readiness", async (): Promise<void> => {
@@ -1011,4 +1022,61 @@ test("duplicate pending-activation lifecycle failures do not trigger repeated ma
       .snapshot()
       .messages.filter((message) => message.kind === "alert"),
   ).toHaveLength(1);
+});
+
+test("employee-limit uses exact reusable staff and requested multi-developer team count", async (): Promise<void> => {
+  const f = configuredFixture({ employeeLimit: 5, executionLimit: null });
+  for (const [role, additional] of [
+    ["architect", 1],
+    ["qa", 1],
+    ["dev", 2],
+  ] as const) {
+    const hire = f.adapter.reserve(f.ctx, {
+      startup: "hire",
+      requestId: `existing-${role}`,
+      role,
+      additional,
+    });
+    await f.adapter.activate(
+      f.ctx,
+      hire.employees.map((employee) => employee.id),
+    );
+    for (const employee of hire.employees) await f.project(employee);
+  }
+  const dev = f.adapter.store
+    .snapshot()
+    .employees.find((employee) => employee.role === "dev")!;
+  f.adapter.store.sendCue({
+    sender: f.adapter.store.managerBinding,
+    cue: {
+      id: "outstanding",
+      recipient: dev.id,
+      kind: "assignment",
+      correlation: "other-work",
+      payload: {},
+    },
+  });
+  f.adapter.recordIntake(f.ctx, {
+    eventId: "two-devs",
+    input: "raw work",
+    amendItemIds: [],
+  });
+  await expect(
+    f.adapter.delegate(f.ctx, {
+      startup: "delegate",
+      eventId: "two-devs",
+      developers: 2,
+    }),
+  ).rejects.toThrow("employee capacity");
+  expect(() =>
+    f.adapter.block(f.ctx, "two-devs", { kind: "employee-limit" }),
+  ).not.toThrow();
+  expect(f.adapter.waitGuard()).toContain("outstanding");
+  await expect(
+    f.adapter.delegate(f.ctx, {
+      startup: "delegate",
+      eventId: "two-devs",
+      developers: 1,
+    }),
+  ).rejects.toThrow("Conflicting");
 });

@@ -91,6 +91,12 @@ const inputDispositionSchema = z
     amendItemIds: z.array(idSchema),
   })
   .readonly();
+const teamRequirementSchema = z
+  .strictObject({
+    eventId: idSchema,
+    developers: z.number().int().positive().safe(),
+  })
+  .readonly();
 const receivedInputSchema = z
   .strictObject({
     id: idSchema,
@@ -189,6 +195,7 @@ export type Snapshot = Readonly<{
   occurrences: readonly Occurrence[];
   grants: readonly Grant[];
   legacyLocks: readonly LegacyLock[];
+  teamRequirements: readonly z.infer<typeof teamRequirementSchema>[];
   intakes: readonly IntakeRecord[];
   inputs: readonly ReceivedInput[];
   assignments: readonly Assignment[];
@@ -1090,6 +1097,26 @@ export function openStore(args: {
           assertReplay(previous.request, event, event.eventId);
         else put("intake", event.eventId, { request: event, teamId: null });
         return event;
+      });
+    },
+    recordTeamRequirement(input: {
+      readonly manager: Binding;
+      readonly request: z.infer<typeof teamRequirementSchema>;
+    }): void {
+      tx(() => {
+        manager(input.manager);
+        const request = teamRequirementSchema.parse(input.request);
+        if (read("intake", request.eventId, intakeRecordSchema) === null)
+          throw new StoreAuthorityError(
+            "Team requirements require saved intake",
+          );
+        const previous = read(
+          "teamRequirement",
+          request.eventId,
+          teamRequirementSchema,
+        );
+        if (previous !== null) assertReplay(previous, request, request.eventId);
+        else put("teamRequirement", request.eventId, request);
       });
     },
     reserveTeam(input: {
@@ -2047,6 +2074,7 @@ export function openStore(args: {
             occurrences: all("occurrence", occurrenceSchema),
             grants: all("grant", grantSchema),
             legacyLocks: all("legacyLock", legacyLockSchema),
+            teamRequirements: all("teamRequirement", teamRequirementSchema),
             intakes: all("intake", intakeRecordSchema),
             inputs: all("receivedInput", receivedInputSchema),
             assignments: all("assignment", assignmentSchema),

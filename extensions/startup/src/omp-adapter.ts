@@ -21,7 +21,12 @@ import {
   StoreAuthorityError,
   StoreFenceError,
 } from "./contracts";
-import { openStore, type StartupStore, type HireReceipt } from "./store";
+import {
+  openStore,
+  type StartupStore,
+  type HireReceipt,
+  type Snapshot,
+} from "./store";
 import {
   loadProfile,
   profileText,
@@ -214,6 +219,36 @@ const nativeWakeSchema = z
   .passthrough();
 export type StartupAdapter = ReturnType<typeof createAdapter>;
 
+function reusableStaff(
+  snapshot: Snapshot,
+  role: Employee["role"],
+): readonly Employee[] {
+  return snapshot.employees.filter(
+    (employee) =>
+      employee.role === role &&
+      employee.employment === "hired" &&
+      employee.assignment === null &&
+      employee.error === null &&
+      !snapshot.messages.some(
+        (message) =>
+          message.recipient === employee.id &&
+          message.status !== "acknowledged",
+      ) &&
+      !snapshot.claims.some(
+        (claim) =>
+          claim.employeeId === employee.id && claim.status !== "settled",
+      ) &&
+      !snapshot.assignments.some(
+        (assignment) =>
+          assignment.employeeId === employee.id &&
+          assignment.state !== "complete",
+      ) &&
+      !snapshot.grants.some(
+        (grant) =>
+          grant.employeeId === employee.id && grant.state !== "released",
+      ),
+  );
+}
 export function createAdapter(
   input: Readonly<{
     ctx: NativeContext;
@@ -1027,6 +1062,10 @@ export function createAdapter(
   async function delegate(ctx: NativeContext, request: unknown): Promise<Team> {
     const binding: Binding = manager(ctx);
     const parsed = delegateInputSchema.parse(request);
+    store.recordTeamRequirement({
+      manager: binding,
+      request: { eventId: parsed.eventId, developers: parsed.developers },
+    });
     const event = store
       .snapshot()
       .intakes.find((entry) => entry.request.eventId === parsed.eventId);
@@ -1047,42 +1086,10 @@ export function createAdapter(
     const members: string[] = [];
     for (const role of ["architect", "qa", "dev"] as const) {
       const count: number = role === "dev" ? parsed.developers : 1;
-      const eligible: readonly Employee[] = store
-        .snapshot()
-        .employees.filter(
-          (entry) =>
-            entry.role === role &&
-            entry.employment === "hired" &&
-            entry.assignment === null &&
-            entry.error === null &&
-            !store
-              .snapshot()
-              .messages.some(
-                (message) =>
-                  message.recipient === entry.id &&
-                  message.status !== "acknowledged",
-              ) &&
-            !store
-              .snapshot()
-              .claims.some(
-                (claim) =>
-                  claim.employeeId === entry.id && claim.status !== "settled",
-              ) &&
-            !store
-              .snapshot()
-              .assignments.some(
-                (assignment) =>
-                  assignment.employeeId === entry.id &&
-                  assignment.state !== "complete",
-              ) &&
-            !store
-              .snapshot()
-              .grants.some(
-                (grant) =>
-                  grant.employeeId === entry.id && grant.state !== "released",
-              ),
-        )
-        .slice(0, count);
+      const eligible: readonly Employee[] = reusableStaff(
+        store.snapshot(),
+        role,
+      ).slice(0, count);
       members.push(...eligible.map((entry) => entry.id));
       if (eligible.length < count) {
         const hire = reserve(ctx, {
@@ -1290,19 +1297,20 @@ export function createAdapter(
         );
       case "employee-limit": {
         if (config.employeeLimit === null) return false;
-        const existingRoles = new Set(
-          snapshot.employees
-            .filter(
-              (employee) =>
-                employee.employment === "hired" &&
-                employee.assignment === null &&
-                employee.error === null,
-            )
-            .map((employee) => employee.role),
+        const requirement = snapshot.teamRequirements.find(
+          (entry) => entry.eventId === key,
         );
-        const missing: number = ["architect", "qa", "dev"].filter(
-          (role) => !existingRoles.has(roleSchema.parse(role)),
-        ).length;
+        if (!requirement) return false;
+        const missing: number = (["architect", "qa", "dev"] as const).reduce(
+          (total, role) =>
+            total +
+            Math.max(
+              0,
+              (role === "dev" ? requirement.developers : 1) -
+                reusableStaff(snapshot, role).length,
+            ),
+          0,
+        );
         return capacity().employees + missing > config.employeeLimit;
       }
       case "dependency": {
