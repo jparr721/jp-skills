@@ -267,7 +267,10 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
       if (!ctx.invokeTool)
         throw new Error("Native same-name task delegate unavailable");
       const shape = z.record(z.string(), z.unknown()).parse(params);
-      if (!("startup" in shape)) return ctx.invokeTool(shape);
+      if (!("startup" in shape)) {
+        const current = rootAdapter(registry, ctx);
+        return current ? current.ordinary(ctx, shape) : ctx.invokeTool(shape);
+      }
       const current: StartupAdapter = adapter(ctx);
       switch (shape.startup) {
         case "hire": {

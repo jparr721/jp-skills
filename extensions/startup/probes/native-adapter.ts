@@ -321,6 +321,29 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
             },
           };
       }
+      if (
+        cue?.payload.kind === "capacity-hold" &&
+        !context.messages.some(
+          (message) =>
+            message.role === "toolResult" &&
+            message.toolCallId === "fixture-capacity-helper",
+        )
+      )
+        call = {
+          type: "toolCall",
+          id: "fixture-capacity-helper",
+          name: "task",
+          arguments: {
+            context: "Canonical bounded buddy fixture",
+            tasks: [
+              {
+                agent: "task",
+                task: "Perform bounded read-only review",
+                solutionSpace: "Fixture only",
+              },
+            ],
+          },
+        };
       const nativeDefaultParent: boolean = context.systemPrompt.some((prompt) =>
         prompt.includes("NATIVE_DEFAULT_AGENT_PROBE"),
       );
@@ -530,14 +553,47 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
           final = (await staff.execute("cap-finish", {})).details;
           if (
             final.employees.find((employee) => employee.id === employees[1].id)
-              ?.checkpoint?.assignment === "capacity-blocked-two"
+              ?.checkpoint?.assignment === "capacity-blocked-two" &&
+            final.capacity.available === 1
           )
             break;
           if (Date.now() > finishDeadline)
             throw new Error("Pending capacity mail did not resume");
           await pause(ctx);
         }
-        record({ kind: "native-capacity-proof", blocked, final, activeCounts });
+        const batch = await task
+          .execute("capacity-batch", {
+            context: "Explicit-cap batch",
+            tasks: [{ task: "one" }, { task: "two" }],
+          })
+          .then(
+            (result) => ({ rejected: result.isError === true, result }),
+            (error) => ({
+              rejected: true,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        const rejected = await task.execute("capacity-native-reject", {
+          context: "Native rejection remains exact",
+          tasks: [
+            {
+              agent: "does-not-exist",
+              task: "Rejected",
+              solutionSpace: "Fixture",
+            },
+          ],
+        });
+        const afterRejected = (await staff.execute("after-native-reject", {}))
+          .details;
+        record({
+          kind: "native-capacity-proof",
+          blocked,
+          final,
+          activeCounts,
+          batch,
+          rejected,
+          afterRejected,
+        });
         writeFileSync(
           env("STARTUP_ADAPTER_REPORT"),
           JSON.stringify({ status: "COMPLETE", version: pi.pi.VERSION }),

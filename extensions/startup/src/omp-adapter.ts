@@ -456,6 +456,7 @@ export function createAdapter(
     });
   }
   const admissions: Map<string, number> = new Map();
+  const ordinaryAdmissions: Map<string, string | null> = new Map();
   const blockers: Map<string, Json> = new Map();
   const deliveries: Map<string, Json> = new Map();
   const pendingWakes: Set<string> = new Set();
@@ -613,18 +614,22 @@ export function createAdapter(
       )
       .map((ref) => ref.id);
     const active: number = activeIds.length;
-    const reserved: number = [...admissions.keys()].filter((id) => {
-      const expectedId = expected.get(id)?.nativeId;
-      const employee = store
-        .snapshot()
-        .employees.find((employee) => employee.id === id);
-      const nativeId =
-        expectedId ??
-        (employee?.nativeHandle
-          ? decodeHandle(employee.nativeHandle).id
-          : null);
-      return nativeId === null || !activeIds.includes(nativeId);
-    }).length;
+    const reserved: number =
+      [...ordinaryAdmissions.values()].filter(
+        (id) => id === null || !activeIds.includes(id),
+      ).length +
+      [...admissions.keys()].filter((id) => {
+        const expectedId = expected.get(id)?.nativeId;
+        const employee = store
+          .snapshot()
+          .employees.find((employee) => employee.id === id);
+        const nativeId =
+          expectedId ??
+          (employee?.nativeHandle
+            ? decodeHandle(employee.nativeHandle).id
+            : null);
+        return nativeId === null || !activeIds.includes(nativeId);
+      }).length;
     const employees: number = store
       .snapshot()
       .employees.filter((entry) => entry.employment === "hired").length;
@@ -653,6 +658,137 @@ export function createAdapter(
     if (capacity().available === 0) return "blocked";
     admissions.set(employeeId, generation);
     return "reserved";
+  }
+  async function ordinary(
+    ctx: NativeContext,
+    params: Record<string, unknown>,
+  ): Promise<NativeResult> {
+    if (!ctx.invokeTool)
+      throw new StoreAuthorityError(
+        "Ordinary native task requires the actual same-name handler",
+      );
+    const ref = registry.get(ctx.agent.id);
+    if (
+      !ref?.session ||
+      ref.session.sessionManager.getSessionId() !==
+        ctx.sessionManager.getSessionId()
+    )
+      throw new StoreAuthorityError(
+        "Ordinary native caller differs from registry evidence",
+      );
+    let ancestor: NativeRef | undefined = ref;
+    const seen: Set<string> = new Set();
+    while (ancestor?.parentId) {
+      if (seen.has(ancestor.id))
+        throw new StoreAuthorityError("Native registry parent cycle");
+      seen.add(ancestor.id);
+      ancestor = registry.get(ancestor.parentId);
+    }
+    if (
+      ancestor?.id !== rootId ||
+      ancestor.session?.sessionManager.getSessionId() !== rootSession
+    )
+      throw new StoreAuthorityError(
+        "Ordinary task caller is outside the bound root",
+      );
+    if (ref.id === rootId) manager(ctx);
+    else {
+      const reason = guardOrdinaryCaller(ctx);
+      if (reason) throw new StoreFenceError(reason);
+    }
+    store.renewLease();
+    const count = Array.isArray(params.tasks) ? params.tasks.length : 1;
+    const available = capacity().available;
+    if (available !== null && count > available)
+      throw new StoreAuthorityError(
+        "Aggregate Startup execution capacity prevents this bounded native task launch",
+      );
+    const reservations = Array.from({ length: count }, () => randomUUID());
+    for (const token of reservations) ordinaryAdmissions.set(token, null);
+    let result: NativeResult;
+    try {
+      result = await ctx.invokeTool(params);
+    } catch (error: unknown) {
+      for (const token of reservations) ordinaryAdmissions.delete(token);
+      throw error;
+    }
+    const parsed = nativeDispatchSchema.safeParse(result.details);
+    const settled = z
+      .object({
+        results: z.array(
+          z
+            .object({
+              index: timeSchema,
+              id: idSchema,
+              exitCode: z.number().int(),
+            })
+            .passthrough(),
+        ),
+      })
+      .passthrough()
+      .safeParse(result.details);
+    if (
+      settled.success &&
+      reservations.every((_token, index) =>
+        settled.data.results.some((result) => result.index === index),
+      )
+    ) {
+      for (const token of reservations) ordinaryAdmissions.delete(token);
+    } else if (parsed.success) {
+      for (const [index, token] of reservations.entries()) {
+        const progress = parsed.data.progress.find(
+          (progress) => progress.index === index,
+        );
+        if (!progress) {
+          ordinaryAdmissions.delete(token);
+          continue;
+        }
+        const actual = registry.get(progress.id);
+        if (
+          ["idle", "completed", "failed", "aborted", "error"].includes(
+            progress.status,
+          ) ||
+          (actual && ["idle", "aborted"].includes(actual.status))
+        )
+          ordinaryAdmissions.delete(token);
+        else ordinaryAdmissions.set(token, progress.id);
+      }
+    } else if (
+      z
+        .object({
+          projectAgentsDir: z.null(),
+          results: z.array(z.unknown()).length(0),
+          totalDurationMs: z.literal(0),
+        })
+        .safeParse(result.details).success
+    ) {
+      for (const token of reservations) ordinaryAdmissions.delete(token);
+    } else if (
+      result.isError ||
+      z.object({ error: z.string() }).safeParse(result.details).success
+    ) {
+      for (const token of reservations) ordinaryAdmissions.delete(token);
+    } else
+      throw new StoreAuthorityError(
+        "Native task returned no correlated progress or rejection; execution admission remains reserved pending native evidence",
+      );
+    return result;
+  }
+  function guardOrdinaryCaller(ctx: NativeContext): string | null {
+    if (!/(?:^|\n)STARTUP_BINDING=/.test(ctx.getSystemPrompt().join("\n")))
+      return null;
+    try {
+      caller(ctx);
+      return null;
+    } catch (error: unknown) {
+      if (
+        error instanceof StoreFenceError ||
+        error instanceof StoreAuthorityError ||
+        error instanceof ProfileSourceError
+      )
+        return error.message;
+      throw error;
+    }
   }
   function reserve(ctx: NativeContext, request: unknown): HireReceipt {
     const managerBinding: Binding = manager(ctx);
@@ -1419,6 +1555,9 @@ export function createAdapter(
     return settlement;
   }
   function nativeEnded(nativeId: string, reason: string): void {
+    if (["idle", "completed", "failed", "aborted"].includes(reason))
+      for (const [token, id] of ordinaryAdmissions)
+        if (id === nativeId) ordinaryAdmissions.delete(token);
     const receipt = receipts.get(nativeId);
     if (!receipt) {
       if (reason === "idle") return;
@@ -1728,6 +1867,7 @@ export function createAdapter(
     manager,
     projection,
     reserve,
+    ordinary,
     activate,
     receiveInput,
     routeInput,

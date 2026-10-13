@@ -1365,3 +1365,156 @@ test("complete-team and outgoing settlement wakes keep excess cues pending", asy
   });
   expect(f.wakePaths).toHaveLength(1);
 });
+test("ordinary bounded launches cannot bypass active explicit capacity and batch reservations", async () => {
+  const f = configuredFixture({ employeeLimit: null, executionLimit: 1 });
+  const hire = f.adapter.reserve(f.ctx, {
+    startup: "hire",
+    requestId: "ordinary-parent",
+    role: "devops",
+    additional: 1,
+  });
+  await f.adapter.activate(f.ctx, [hire.employees[0]!.id]);
+  const child = await f.project(hire.employees[0]!);
+  f.setStatus(child.agent.id, "running");
+  let calls = 0;
+  const parent: NativeContext = {
+    ...child,
+    invokeTool: async (params) => {
+      calls += 1;
+      return f.activate(params);
+    },
+  };
+  await expect(
+    f.adapter.ordinary(parent, {
+      context: "buddy",
+      tasks: [{ task: "review", solutionSpace: "bounded" }],
+    }),
+  ).rejects.toThrow("capacity");
+  expect(calls).toBe(0);
+  f.setStatus(child.agent.id, "idle");
+  await expect(
+    f.adapter.ordinary(f.ctx, {
+      context: "batch",
+      tasks: [{ task: "one" }, { task: "two" }],
+    }),
+  ).rejects.toThrow("capacity");
+  const original = {
+    task: "single",
+    solutionSpace: "bounded",
+    outputSchema: { type: "object" },
+  };
+  const seen: Record<string, unknown>[] = [];
+  const ctx: NativeContext = {
+    ...f.ctx,
+    invokeTool: async (params) => {
+      seen.push(params);
+      return { content: [], details: { error: "Native validation rejection" } };
+    },
+  };
+  expect((await f.adapter.ordinary(ctx, original)).details).toEqual({
+    error: "Native validation rejection",
+  });
+  expect(seen[0]).toBe(original);
+  expect(f.adapter.capacity().available).toBe(1);
+});
+
+test("concurrent root and sibling ordinary launches reserve aggregate slots and release on native evidence", async () => {
+  const f = configuredFixture({ employeeLimit: null, executionLimit: 2 });
+  const main = f.refs.get("Main")!;
+  const path = join(f.root, "ordinary-parent.jsonl");
+  writeFileSync(
+    path,
+    JSON.stringify({
+      type: "session",
+      id: "ordinary-parent-session",
+      parentSession: f.ctx.sessionManager.getSessionFile(),
+    }) + "\n",
+  );
+  const sibling: NativeContext = {
+    ...f.ctx,
+    agent: { id: "ordinary-parent", kind: "sub", parentId: "Main" },
+    sessionManager: {
+      getSessionId: () => "ordinary-parent-session",
+      getSessionFile: () => path,
+    },
+  };
+  f.refs.set("ordinary-parent", {
+    ...main,
+    id: "ordinary-parent",
+    kind: "sub",
+    parentId: "Main",
+    status: "idle",
+    sessionFile: path,
+    session: { ...main.session!, sessionManager: sibling.sessionManager },
+  });
+  const releases: (() => void)[] = [];
+  const invoke = async (
+    params: Record<string, unknown>,
+  ): Promise<NativeResult> => {
+    const index = releases.length;
+    await new Promise<void>((resolve) => releases.push(resolve));
+    const id = `ordinary-result-${index}`;
+    f.refs.set(id, {
+      ...main,
+      id,
+      kind: "sub",
+      parentId: index === 0 ? "Main" : "ordinary-parent",
+      status: "running",
+    });
+    return {
+      content: [],
+      details: {
+        progress: [
+          {
+            index: 0,
+            id,
+            status: "running",
+            agent: "task",
+            assignment: JSON.stringify(params),
+          },
+        ],
+      },
+    };
+  };
+  const first = f.adapter.ordinary(
+    { ...f.ctx, invokeTool: invoke },
+    { task: "one" },
+  );
+  const second = f.adapter.ordinary(
+    { ...sibling, invokeTool: invoke },
+    { tasks: [{ task: "two" }] },
+  );
+  await expect(f.adapter.ordinary(f.ctx, { task: "third" })).rejects.toThrow(
+    "capacity",
+  );
+  expect(f.adapter.capacity().reserved).toBe(2);
+  for (const release of releases) release();
+  await Promise.all([first, second]);
+  expect(f.adapter.capacity().available).toBe(0);
+  f.setStatus("ordinary-result-0", "idle");
+  expect(f.adapter.capacity().available).toBe(1);
+  f.setStatus("ordinary-result-1", "aborted");
+  expect(f.adapter.capacity().available).toBe(2);
+  const completed: NativeContext = {
+    ...f.ctx,
+    invokeTool: async () => ({
+      content: [],
+      details: { results: [{ index: 0, id: "sync-done", exitCode: 0 }] },
+    }),
+  };
+  await f.adapter.ordinary(completed, { task: "sync" });
+  expect(f.adapter.capacity().available).toBe(2);
+});
+
+test("exact native preflight error shape releases ordinary admission unchanged", async () => {
+  const f = configuredFixture({ employeeLimit: null, executionLimit: 1 });
+  const result: NativeResult = {
+    content: [{ type: "text", text: "Task failed preflight" }],
+    details: { projectAgentsDir: null, results: [], totalDurationMs: 0 },
+  };
+  const ctx: NativeContext = { ...f.ctx, invokeTool: async () => result };
+  expect(await f.adapter.ordinary(ctx, { task: "native invalid" })).toBe(
+    result,
+  );
+  expect(f.adapter.capacity().available).toBe(1);
+});
