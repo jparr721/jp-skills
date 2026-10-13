@@ -1491,3 +1491,167 @@ test("failed manager recovery requires a newer fenced owner and preserves failur
   database.close();
   recovered.close();
 });
+
+test("standing staff with unreleased grants cannot be reserved into a team", (): void => {
+  for (const role of ["architect", "qa", "dev"]) {
+    for (const state of ["held", "reconciliation"]) {
+      const f = fixture();
+      const architect = first(hire(f, "architect", "architect", 1));
+      const qa = first(hire(f, "qa", "qa", 1));
+      const dev = first(hire(f, "dev", "dev", 1));
+      const member =
+        role === "architect" ? architect : role === "qa" ? qa : dev;
+      const binding = bind(f, member, role, 1, null);
+      f.store.importResources({ manager: f.store.managerBinding });
+      f.store.authorizeTarget({
+        manager: f.store.managerBinding,
+        authorization: {
+          id: "auth",
+          employeeId: member,
+          target: "target",
+          authority: "Authorized operation",
+        },
+      });
+      f.store.acquireTarget({
+        employee: binding,
+        grantId: "grant",
+        authorizationId: "auth",
+      });
+      if (state === "reconciliation")
+        f.store.recordBindingFailure({
+          manager: f.store.managerBinding,
+          employeeId: member,
+          error: "Unknown native outcome",
+        });
+      f.store.recordIntake({
+        manager: f.store.managerBinding,
+        event: { eventId: "event", input: "New task", amendItemIds: [] },
+      });
+      const request = {
+        eventId: "event",
+        architect,
+        qa,
+        devs: [dev],
+        cues: [architect, qa, dev].map((recipient) => ({
+          ...cue(`assignment-${recipient}`, recipient, "assignment"),
+          correlation: "event",
+        })),
+      };
+      const before = f.store.snapshot();
+      expect(() =>
+        f.store.reserveTeam({ manager: f.store.managerBinding, request }),
+      ).toThrow();
+      expect(f.store.snapshot()).toEqual(before);
+      f.store.verifyAndReleaseTarget({
+        employee: state === "held" ? binding : f.store.managerBinding,
+        grantId: "grant",
+        verification: "Verified the target and resolved the operation",
+      });
+      expect(
+        f.store.reserveTeam({ manager: f.store.managerBinding, request }).state,
+      ).toBe("reserved");
+      f.store.close();
+    }
+  }
+});
+
+test("team completion and finished-team reuse preserve unreleased target grants", (): void => {
+  const f = fixture();
+  const t = active(f, "one", []);
+  f.store.captureIntake({
+    architect: t.architectBinding,
+    capture: {
+      captureId: "capture",
+      eventId: "one",
+      rows: [],
+      receipt: "No remaining rows",
+    },
+  });
+  for (const binding of [t.architectBinding, t.qaBinding, t.devBinding]) {
+    const claimed = f.store.claimNext({ employee: binding });
+    if (claimed === null) throw new Error("Missing assignment");
+    f.store.settleClaim({
+      employee: binding,
+      claimId: claimed.claim.id,
+      result: completed(`done-${binding.employeeId}`),
+    });
+  }
+  f.store.importResources({ manager: f.store.managerBinding });
+  f.store.authorizeTarget({
+    manager: f.store.managerBinding,
+    authorization: {
+      id: "auth",
+      employeeId: t.dev,
+      target: "target",
+      authority: "Authorized operation",
+    },
+  });
+  f.store.acquireTarget({
+    employee: t.devBinding,
+    grantId: "grant",
+    authorizationId: "auth",
+  });
+  const beforeFinish = f.store.snapshot();
+  expect(() =>
+    f.store.finishTeam({
+      manager: f.store.managerBinding,
+      teamId: t.team.id,
+      evidence: "Completed assignments",
+    }),
+  ).toThrow();
+  expect(f.store.snapshot()).toEqual(beforeFinish);
+  f.store.verifyAndReleaseTarget({
+    employee: t.devBinding,
+    grantId: "grant",
+    verification: "Operation verified",
+  });
+  expect(
+    f.store.finishTeam({
+      manager: f.store.managerBinding,
+      teamId: t.team.id,
+      evidence: "Work and grant complete",
+    }).state,
+  ).toBe("finished");
+  f.store.authorizeTarget({
+    manager: f.store.managerBinding,
+    authorization: {
+      id: "standing-auth",
+      employeeId: t.dev,
+      target: "target",
+      authority: "Authorized subsequent operation",
+    },
+  });
+  f.store.acquireTarget({
+    employee: t.devBinding,
+    grantId: "standing-grant",
+    authorizationId: "standing-auth",
+  });
+  f.store.recordIntake({
+    manager: f.store.managerBinding,
+    event: { eventId: "two", input: "Next task", amendItemIds: [] },
+  });
+  const request = {
+    ...t.request,
+    eventId: "two",
+    cues: t.request.cues.map((value) => ({
+      ...value,
+      id: `two-${value.id}`,
+      correlation: "two",
+    })),
+  };
+  const beforeReuse = f.store.snapshot();
+  expect(() =>
+    f.store.reserveTeam({ manager: f.store.managerBinding, request }),
+  ).toThrow();
+  expect(f.store.snapshot()).toEqual(beforeReuse);
+  f.store.verifyAndReleaseTarget({
+    employee: t.devBinding,
+    grantId: "standing-grant",
+    verification: "Subsequent operation verified",
+  });
+  expect(
+    f.store.reserveTeam({ manager: f.store.managerBinding, request })
+      .generations[t.dev],
+  ).toBe(2);
+  f.store.close();
+});

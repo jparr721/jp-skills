@@ -981,6 +981,10 @@ export function openStore(args: {
               (claim): boolean =>
                 claim.employeeId === member.id && claim.status !== "settled",
             ) ||
+            all("grant", grantSchema).some(
+              (grant): boolean =>
+                grant.employeeId === member.id && grant.state !== "released",
+            ) ||
             all("assignment", assignmentSchema).some(
               (assignment): boolean =>
                 assignment.employeeId === member.id &&
@@ -993,7 +997,7 @@ export function openStore(args: {
             )
           )
             throw new StoreConflictError(
-              `Employee ${member.id} has unfinished work or mail`,
+              `Employee ${member.id} has unfinished work, mail or target grants`,
             );
         }
         if (
@@ -1250,6 +1254,10 @@ export function openStore(args: {
           );
         for (const id of members(current)) {
           if (
+            all("grant", grantSchema).some(
+              (grant): boolean =>
+                grant.employeeId === id && grant.state !== "released",
+            ) ||
             all("claim", claimSchema).some(
               (claim): boolean =>
                 claim.employeeId === id && claim.status !== "settled",
@@ -1265,7 +1273,7 @@ export function openStore(args: {
             )
           )
             throw new StoreConflictError(
-              `Team member ${id} has unresolved work or mail`,
+              `Team member ${id} has unresolved work, mail or target grants`,
             );
           put("employee", id, { ...employee(id), assignment: null });
         }
