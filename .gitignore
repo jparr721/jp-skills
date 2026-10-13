@@ -1,2 +1,4 @@
 .serena/
 .superpowers/
+node_modules/
+extensions/startup/coverage/
