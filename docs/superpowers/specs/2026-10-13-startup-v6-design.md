@@ -23,6 +23,14 @@ The hire receipt reports `requested`, `reserved`, `ready`, `starting`, and `fail
 
 For ready independent work, the manager reuses available employees or hires additional canonical role capacity and dispatches immediately. Prefer more parallelism whenever native execution slots, resource grants, budgets, and dependencies permit it. Existing explicit capacity limits still apply; an absent limit derives from the supported harness's available execution capacity, including buddy/review turns. Durable intake still records every request before dispatch. Queue waiting is for unresolved inputs, dependencies, target contention, or actual capacity limits, not the default substitute for hiring.
 
+## Canonical task team
+
+Every task dispatch fields one complete team: exactly one QA employee, exactly one architect employee, and one or more dev employees. This applies to every task kind. Assign the whole team before task execution so QA and architectural analysis begin with the developers' work; final proof and merge gates still apply. Each member receives its own role-bound cue and checkpoint. Parallel teams consume distinct available staff; a hired identity is not simultaneously committed to competing teams.
+
+The manager reuses available staff or hires missing team roles, records team membership against the queue item/revision, and dispatches the entire unit. Partial team activation remains visible and prevents reporting the unit ready. DevOps is a shared standing pool that coordinates resources, deployment health, and authorized landing operations with each team; it is not an omitted task responsibility or a fixed extra member count.
+
+The manager can hire DevOps capacity up and retire idle DevOps capacity down as workload changes. Retirement preserves identity/history and requires no active claim, held target grant, pending assignment, or untransferred duty/mail. Busy employees finish or undergo explicit cancellation/reconciliation before retirement. Scale-down never drops work or repeats an uncertain deployment mutation.
+
 The manager can then assign a standing duty:
 
 ```text
@@ -63,7 +71,7 @@ Proposed implementation package: `extensions/startup/`, with one registration en
 
 Every Startup boot ensures `<bound_root>/AGENTS.md` exists beside `<bound_root>/.startup/`. It belongs at the Startup folder root, never inside `.startup/` or the runtime state directory. Include explicit guidance for manager intake, canonical role binding, hiring, the shared loop, supported runtime tools, and the active-harness fallback so the coding harness can discover them on later turns.
 
-Preserve existing AGENTS.md instructions. Add or update one clearly marked Startup section idempotently; unrelated content stays intact. Link canonical installed skill sources and the actual runtime contract instead of copying personas. Include the hire-and-dispatch parallelism policy. Child guidance loads its assigned role; it does not turn every child into the manager. New and existing bound Startup folders receive this guidance during boot.
+Preserve existing AGENTS.md instructions. Add or update one clearly marked Startup section idempotently; unrelated content stays intact. Link canonical installed skill sources and the actual runtime contract instead of copying personas. Include the hire-and-dispatch parallelism policy, complete task teams, and manager-owned DevOps scaling. Child guidance loads its assigned role; it does not turn every child into the manager. New and existing bound Startup folders receive this guidance during boot.
 
 ```text
 myfolder/
@@ -89,6 +97,7 @@ Store the new runtime state in `<home>/startup/<name>/staff.sqlite`. One seriali
 |---|---|
 | Host lease | One current owner per named Startup and manager root; owner epochs fence a superseded process. |
 | Employee | Stable employee ID, canonical role/revision, manager scope, employment state, native generation and handle. |
+| Task team | Queue item/revision, one QA, one architect, one or more devs, readiness, and active membership grants. |
 | Hire request | Unique request ID; role and additive count immutable; allocated employee IDs retained across retries. |
 | Message | Unique message ID; sender authority, recipient, kind, correlation, payload/artifact references, and sequence. |
 | Claim | One active claim per employee; owner epoch and native generation fence stale results. |
