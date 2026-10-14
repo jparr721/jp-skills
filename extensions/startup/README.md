@@ -93,4 +93,4 @@ The cold probe uses this exact `--resume` form; the installed boot probe also ve
 
 Generated technical employee profiles declare native `spawns: [task]` for bounded procedure supervisors/reviewers. Native recursion, disabled-agent policy, budgets and aggregate capacity still apply. Ordinary helpers receive no Startup employee identity or inbox/hiring authority; PA retains no child-spawn permission.
 
-[V6 acceptance](probes/v6-acceptance.md) contains reproducible owned-fixture commands, fingerprints, current proofs and reused component boundaries. VERSION 6.0.0 is a local candidate. Final review, publication and normal-profile installation remain separate actions.
+[V6 acceptance](probes/v6-acceptance.md) contains reproducible owned-fixture commands, fingerprints, current proofs and reused component boundaries. VERSION 6.0.0 is a reviewed local candidate. Publication and normal-profile installation remain separate actions.

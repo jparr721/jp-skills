@@ -3,7 +3,7 @@
 - Candidate: 6.0.0. Final fix product head: `09250bb`. Publication is separate; 5.0.1 remains the previously released version.
 - Current verification: 157 behavioral tests, 894 assertions, TypeScript check and 6 Python driver tests passed. Expected negative diagnostics are captured and asserted. Raw output is [v6-checks.txt](v6-checks.txt).
 - The sixteen original artifacts retain 158 passing baseline checks at `b08c4b1`; their bytes and historical fingerprints are unchanged. Five final-fix native artifacts cover the affected paths on current sources. [v6-manifest.json](v6-manifest.json) records exact bytes, SHA256, checks, baseline reuse and actual fingerprint mismatches; historical artifacts are not labeled current runs.
-- Required final independent candidate/whole-branch review remains controller-owned. No shared push, release, normal-profile install or production mutation occurred.
+- Final independent review passed for `b08c4b1..de754e8`: I1-I5 and M1 are addressed, with no new findings. The complete scoped report and all controller rulings are preserved in [v6-manifest.json](v6-manifest.json). The controller reran the full suite, typecheck and six driver tests on reviewed `de754e8`; all passed. No shared push, release, normal-profile install or production mutation occurred.
 
 ## Final fix deltas
 
@@ -93,4 +93,4 @@ Prompt-only evidence is a separate controller-run actual Codex collaboration fix
 - Generated generic task capability proves the required supervisor primitive. Actual application pipeline execution, external integrations and production deployment are outside this acceptance fixture.
 - Original cold nested-read, partial-activation, ordinary root/child admission and canonical-helper FAIL artifacts are retained unchanged. Standalone fixes: `8a153c8`, `07980b0`, `551cff5`, `eaa3626`.
 - A transient host ENOSPC interrupted three attempted probe starts before native launch. Two owned intermediate raw event logs were compressed without loss; all final listed artifacts subsequently passed. No unrelated host files were removed.
-- Manual remaining actions: controller-owned scoped final rereview of I1-I5/M1 fixes, then separate publication authorization. The implementer does not self-declare reviewed. Release/tag/push and normal-profile installation have not occurred.
+- Remaining release actions: separate publication authorization and normal-profile installation. Independent scoped rereview is complete; release/tag/push and normal-profile installation have not occurred.
