@@ -3035,6 +3035,7 @@ for (const failure of ["returned", "thrown"]) {
     const ctx: NativeContext = { ...f.ctx, invokeTool: async (params) => {
       calls += 1;
       if (calls === 2) {
+        expect(f.adapter.store.snapshot().employees.find((entry) => entry.id === hire.employees[0]!.id)?.nativeHandle).toContain("child-1");
         if (failure === "thrown") throw new Error("native preflight refused");
         return { content: [], isError: true };
       }
@@ -3050,7 +3051,7 @@ for (const failure of ["returned", "thrown"]) {
     expect(sibling.nativeHandle).toContain("child-1");
     const retryAgents: unknown[] = [];
     await f.adapter.activate({ ...ctx, invokeTool: async (params) => { retryAgents.push(params.agent); return f.activate({ tasks: [params] }); } }, ids);
-    expect(retryAgents).toHaveLength(failure === "thrown" ? 2 : 0 + 1);
+    expect(retryAgents).toHaveLength(failure === "thrown" ? 2 : 1);
     expect(f.adapter.store.snapshot().employees.find((entry) => entry.id === ids[0])?.nativeHandle).toBe(sibling.nativeHandle);
   });
 }
@@ -3082,6 +3083,10 @@ test("manager discovers interrupted child claim and pending delivery IDs without
   await f.adapter.send(f.ctx, { id: "public-active", recipient: hire.employees[0]!.id, kind: "assignment", correlation: "public", payload: "PRIVATE_TASK_BODY" });
   const claim = f.adapter.claim(child)!;
   await f.adapter.send(f.ctx, { id: "public-pending", recipient: hire.employees[0]!.id, kind: "assignment", correlation: "public", payload: "PRIVATE_TASK_BODY" });
+  const bound = f.adapter.store.snapshot().employees.find((employee) => employee.id === hire.employees[0]!.id)!;
+  f.adapter.store.importResources({ manager: f.adapter.store.managerBinding });
+  f.adapter.store.authorizeTarget({ manager: f.adapter.store.managerBinding, authorization: { id: "public-authority", employeeId: bound.id, target: "fixture-target", authority: "PRIVATE_AUTHORITY" } });
+  f.adapter.store.acquireTarget({ employee: { employeeId: bound.id, generation: bound.generation, nativeHandle: bound.nativeHandle! }, grantId: "public-grant", authorizationId: "public-authority" });
   f.adapter.nativeEnded(child.agent.id, "aborted");
   const recovery = z.object({ recovery: z.object({ claims: z.array(z.object({ id: z.string(), messageId: z.string(), status: z.string() })), assignments: z.array(z.object({ id: z.string() })), pendingMessages: z.array(z.object({ id: z.string() })) }) }).parse(f.adapter.staff(f.ctx)).recovery;
   expect(recovery.claims).toContainEqual(expect.objectContaining({ id: claim.claim.id, messageId: "public-active", status: "reconciliation" }));
@@ -3090,6 +3095,9 @@ test("manager discovers interrupted child claim and pending delivery IDs without
   expect(JSON.stringify(recovery)).not.toContain("PRIVATE_TASK_BODY");
   const alert = f.adapter.store.snapshot().messages.find((message) => message.kind === "alert")!;
   expect(alert.payload).toMatchObject({ claimIds: [claim.claim.id], messageIds: ["public-active"] });
+  const grants = z.object({ recovery: z.object({ grants: z.array(z.object({ id: z.string(), state: z.string() })) }) }).parse(f.adapter.staff(f.ctx)).recovery.grants;
+  expect(grants).toContainEqual({ id: "public-grant", state: "reconciliation" });
+  expect(JSON.stringify(f.adapter.staff(f.ctx).recovery)).not.toContain("PRIVATE_AUTHORITY");
   expect(() => f.adapter.staff(child)).toThrow();
 });
 
@@ -3124,3 +3132,36 @@ for (const phase of ["before-rename", "after-rename"]) {
     });
   }
 }
+
+test("public recovery pages stay bounded and contain only metadata", () => {
+  const f = fixture();
+  for (let index = 0; index < 65; index += 1)
+    f.adapter.store.sendCue({ sender: f.adapter.store.managerBinding, cue: { id: `paged-${index}`, recipient: "manager", kind: "report", correlation: "bounded", payload: "PRIVATE_BODY" } });
+  const first = f.adapter.staff(f.ctx).recovery;
+  expect(first.pendingMessages).toHaveLength(64);
+  expect(first.nextOffset).toBe(64);
+  expect(first.counts.pendingMessages).toBe(65);
+  const second = f.adapter.staff(f.ctx, first.nextOffset!).recovery;
+  expect(second.pendingMessages).toHaveLength(1);
+  expect(second.nextOffset).toBeNull();
+  expect(new Set([...first.pendingMessages, ...second.pendingMessages].map((message) => message.id)).size).toBe(65);
+  expect(JSON.stringify(first)).not.toContain("PRIVATE_BODY");
+  expect(() => f.adapter.staff(f.ctx, -1)).toThrow();
+});
+
+test("failed preparation preserves a legitimate earlier in-flight activation", async () => {
+  const f = fixture();
+  const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "in-flight", role: "devops", additional: 3 });
+  await f.adapter.activate(f.ctx, [hire.employees[0]!.id]);
+  const profile = loadProfile({ skillsRoot: f.root, role: "devops", employeeId: hire.employees[2]!.id, generation: 1 });
+  const conflict = join(f.ctx.cwd, ".omp/agents", profile.name + ".md");
+  writeFileSync(conflict, "Owned fixture conflict");
+  const ids = hire.employees.map((employee) => employee.id);
+  await expect(f.adapter.activate(f.ctx, ids)).rejects.toThrow("ownership conflict");
+  rmSync(conflict);
+  const retried = await f.adapter.activate(f.ctx, ids);
+  const progress = z.object({ progress: z.array(z.object({ id: z.string() })) }).parse(retried.native?.details).progress;
+  expect(progress.map((entry) => entry.id)).toEqual(["child-2", "child-3"]);
+  await f.project(hire.employees[0]!);
+  expect(f.adapter.store.snapshot().employees.find((entry) => entry.id === ids[0])?.nativeHandle).toContain("child-1");
+});

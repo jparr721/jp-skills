@@ -2637,6 +2637,7 @@ export function createAdapter(
       const offset = timeSchema.parse(recoveryOffset ?? 0);
       const snapshot = store.snapshot();
       const claims = snapshot.claims.filter((claim) => claim.status !== "settled");
+      const grants = snapshot.grants.filter((grant) => grant.state !== "released");
       const assignments = snapshot.assignments.filter((assignment) => assignment.state !== "complete");
       const pendingMessages = snapshot.messages.filter((message) => message.status === "pending");
       const employeeMetadata = (id: string) => {
@@ -2647,8 +2648,9 @@ export function createAdapter(
       return {
         recovery: {
           offset,
-          nextOffset: Math.max(claims.length, assignments.length, pendingMessages.length) > offset + 64 ? offset + 64 : null,
-          counts: { claims: claims.length, assignments: assignments.length, pendingMessages: pendingMessages.length },
+          nextOffset: Math.max(claims.length, assignments.length, pendingMessages.length, grants.length) > offset + 64 ? offset + 64 : null,
+          counts: { grants: grants.length, claims: claims.length, assignments: assignments.length, pendingMessages: pendingMessages.length },
+          grants: grants.slice(offset, offset + 64).map((grant) => ({ ...employeeMetadata(grant.employeeId), id: grant.id, authorizationId: grant.authorizationId, generation: grant.generation, state: grant.state })),
           claims: claims.slice(offset, offset + 64).map((claim) => ({ ...employeeMetadata(claim.employeeId), ...claim })),
           assignments: assignments.slice(offset, offset + 64).map((assignment) => ({ ...employeeMetadata(assignment.employeeId), ...assignment })),
           pendingMessages: pendingMessages.slice(offset, offset + 64).map((message) => ({ ...employeeMetadata(message.recipient), id: message.id, sender: message.sender, recipient: message.recipient, teamId: message.teamId, kind: message.kind, status: message.status })),
