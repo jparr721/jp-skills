@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  lstatSync,
   readFileSync,
   realpathSync,
   writeFileSync,
@@ -91,13 +92,16 @@ export function writeProfile(
   input: Readonly<{ root: string; profile: Profile }>,
 ): string {
   const directory: string = join(input.root, ".omp", "agents");
+  for (const candidate of [join(input.root, ".omp"), directory])
+    if (existsSync(candidate) && lstatSync(candidate).isSymbolicLink())
+      throw new ProfileSourceError(`Generated profile directory ownership conflict: ${candidate}`);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const path: string = join(directory, `${input.profile.name}.md`);
-  writeFileSync(
-    path,
-    `---\nname: ${input.profile.name}\ndescription: Canonical Startup employee context\nblocking: false\nread-summarize: false\n---\n${profileText(input.profile)}\n`,
-    { mode: 0o600 },
-  );
+  const content = `---\nname: ${input.profile.name}\ndescription: Canonical Startup employee context\nblocking: false\nread-summarize: false\n---\n${profileText(input.profile)}\n`;
+  if (existsSync(path)) {
+    if (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile() || readFileSync(path, "utf8") !== content)
+      throw new ProfileSourceError(`Generated profile ownership conflict: ${path}`);
+  } else writeFileSync(path, content, { mode: 0o600, flag: "wx" });
   return path;
 }
 export function projectEmployee(
