@@ -3038,3 +3038,22 @@ for (const failure of ["returned", "thrown"]) {
     expect(f.adapter.store.snapshot().employees.find((entry) => entry.id === ids[0])?.nativeHandle).toBe(sibling.nativeHandle);
   });
 }
+
+for (const projected of [true, false]) {
+  test(`native synchronous results require actual source receipt projected=${projected}`, async () => {
+    const f = fixture();
+    const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "sync", role: "devops", additional: 1 });
+    const employee = hire.employees[0]!;
+    const ctx: NativeContext = { ...f.ctx, invokeTool: async (params) => {
+      const result = await f.activate(params);
+      const progress = z.object({ progress: z.array(z.object({ index: z.number(), id: z.string(), agent: z.string(), assignment: z.string() })) }).parse(result.details).progress;
+      if (projected) await f.project(employee);
+      return { content: [], details: { results: progress.map((row) => ({ ...row, exitCode: 0, aborted: false })) } };
+    } };
+    await f.adapter.activate(ctx, [employee.id]);
+    const current = f.adapter.store.snapshot().employees.find((entry) => entry.id === employee.id)!;
+    if (projected) { expect(current.error).toBeNull(); expect(current.nativeHandle).toContain("child-1"); }
+    else { expect(current.nativeHandle).toBeNull(); expect(current.error).toContain("without verified source binding"); }
+    expect(f.adapter.capacity().reserved).toBe(0);
+  });
+}

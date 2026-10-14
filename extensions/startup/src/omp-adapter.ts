@@ -205,6 +205,22 @@ const nativeDispatchSchema = z
     ),
   })
   .passthrough();
+const nativeActivationSchema = z.union([
+  nativeDispatchSchema,
+  z.object({ results: z.array(z.object({
+    index: timeSchema,
+    id: idSchema,
+    agent: z.string(),
+    assignment: z.string().optional(),
+    exitCode: z.number().int(),
+    aborted: z.boolean().optional(),
+  }).passthrough()) }).passthrough().transform((details) => ({
+    progress: details.results.map((result) => ({
+      ...result,
+      status: result.aborted ? "aborted" : result.exitCode === 0 ? "completed" : "failed",
+    })),
+  })),
+]);
 const nativeJobSchema = z
   .object({
     id: idSchema,
@@ -1484,8 +1500,8 @@ export function createAdapter(
         );
     }
     function correlate(native: NativeResult, selected: readonly Employee[]): void {
-    const parsed = nativeDispatchSchema.safeParse(native.details);
-    if (native.isError || !parsed.success) {
+    const parsed = nativeActivationSchema.safeParse(native.details);
+    if (!parsed.success) {
       for (const employee of selected) {
         admissions.delete(employee.id);
         store.recordBindingFailure({
@@ -1549,6 +1565,8 @@ export function createAdapter(
       )
         bindLoaded(sourceReceipt);
       if (failedReason !== undefined) nativeEnded(progress.id, failedReason);
+      if (progress.status === "completed" && snapshotEmployee(employee.id).nativeHandle === null)
+        nativeEnded(progress.id, "completed without verified source binding");
       if (["failed", "aborted", "error"].includes(progress.status))
         store.recordBindingFailure({
           manager: store.managerBinding,
@@ -1643,10 +1661,10 @@ export function createAdapter(
     const native: NativeResult = dispatched.length === 1 ? dispatched[0]! : {
       content: dispatched.flatMap((entry) => entry.content),
       details: { progress: dispatched.flatMap((entry, index) => {
-        const parsed = nativeDispatchSchema.safeParse(entry.details);
+        const parsed = nativeActivationSchema.safeParse(entry.details);
         return parsed.success ? parsed.data.progress.map((progress) => ({ ...progress, index })) : [];
       }) },
-      isError: dispatched.some((entry) => entry.isError || !nativeDispatchSchema.safeParse(entry.details).success),
+      isError: dispatched.some((entry) => entry.isError || !nativeActivationSchema.safeParse(entry.details).success),
     };
     for (const team of store.snapshot().teams) await wakeTeam(team);
     return { employees: ids.map(snapshotEmployee), native };
