@@ -1298,7 +1298,7 @@ for (const field of ["ownerId", "type", "agentId"] as const) {
     const a = asyncActivationFixture();
     a.job[field] = "unrelated";
     await expect(a.f.adapter.activate(a.ctx, a.ids)).rejects.toThrow(
-      "correlated root-owned task job",
+      "correlated caller-owned task job",
     );
     expect(a.f.managerNotifications).toHaveLength(0);
   });
@@ -1387,6 +1387,214 @@ test("already-completed native job preserves source receipt awaiting dispatch co
   expect(bound?.error).toBeNull();
   expect(bound?.nativeHandle).toContain("child-1");
   expect(a.f.managerNotifications).toHaveLength(0);
+});
+
+test("ordinary terminal preflight failure releases its actual native admission", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  await a.f.adapter.ordinary(a.ctx, {
+    context: "Bounded helper",
+    tasks: [{ agent: "scout", task: "Return checkpoint" }],
+  });
+  expect(a.f.adapter.capacity().reserved).toBe(1);
+  a.job.status = "failed";
+  for (const progress of a.job.latestDetails.progress)
+    progress.status = "failed";
+  a.terminal.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(a.f.adapter.capacity().reserved).toBe(0);
+});
+
+for (const state of [
+  "live",
+  "parked",
+  "completed",
+  "wrong-parent",
+  "wrong-header",
+]) {
+  test(`ordinary child-owned terminal admission validates ${state} caller`, async (): Promise<void> => {
+    const a = asyncActivationFixture();
+    const sessionFile = join(a.f.root, "ordinary-parent.jsonl");
+    writeFileSync(
+      sessionFile,
+      JSON.stringify({
+        type: "session",
+        id: "ordinary-session",
+        parentSession: a.root.sessionFile,
+      }) + "\n",
+    );
+    const sessionManager = {
+      getSessionId: () => "ordinary-session",
+      getSessionFile: () => sessionFile,
+    };
+    const owner: NativeRef = {
+      ...a.root,
+      id: "ordinary-parent",
+      kind: "sub",
+      parentId: "Main",
+      createdAt: 2,
+      sessionFile,
+      session: { ...a.session, sessionManager },
+    };
+    a.f.refs.set(owner.id, owner);
+    a.job.ownerId = owner.id;
+    const ctx: NativeContext = {
+      ...a.ctx,
+      agent: { id: owner.id, kind: "sub", parentId: "Main" },
+      sessionManager,
+      getSystemPrompt: () => [],
+    };
+    await a.f.adapter.ordinary(ctx, {
+      context: "Bounded helper",
+      tasks: [{ agent: "scout", task: "Return checkpoint" }],
+    });
+    if (state !== "live")
+      a.f.refs.set(owner.id, { ...owner, status: state, session: null });
+    if (state === "wrong-parent")
+      a.f.refs.set(owner.id, {
+        ...owner,
+        status: "parked",
+        session: null,
+        parentId: "Other",
+      });
+    if (state === "wrong-header") {
+      a.f.refs.set(owner.id, { ...owner, status: "parked", session: null });
+      writeFileSync(
+        sessionFile,
+        JSON.stringify({
+          type: "session",
+          id: "other-session",
+          parentSession: a.root.sessionFile,
+        }) + "\n",
+      );
+    }
+    a.job.status = "failed";
+    for (const progress of a.job.latestDetails.progress)
+      progress.status = "failed";
+    a.terminal.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(a.f.adapter.capacity().reserved).toBe(
+      state.startsWith("wrong") ? 1 : 0,
+    );
+    expect(a.f.managerNotifications).toHaveLength(0);
+  });
+}
+
+for (const fence of ["owner", "session", "source", "running"]) {
+  test(`ordinary terminal admission retains slot on ${fence} mismatch`, async (): Promise<void> => {
+    const a = asyncActivationFixture();
+    await a.f.adapter.ordinary(a.ctx, {
+      context: "Bounded helper",
+      tasks: [{ agent: "scout", task: "Return checkpoint" }],
+    });
+    a.job.status = "failed";
+    for (const progress of a.job.latestDetails.progress)
+      progress.status = "failed";
+    if (fence === "owner") a.job.ownerId = "Other";
+    if (fence === "session")
+      a.f.refs.set("Main", {
+        ...a.root,
+        session: {
+          ...a.session,
+          sessionManager: {
+            getSessionId: () => "wrong-session",
+            getSessionFile: () => a.root.sessionFile ?? undefined,
+          },
+        },
+      });
+    if (fence === "source")
+      writeFileSync(
+        join(a.f.root, "skills/startup-role-manager/SKILL.md"),
+        "changed",
+      );
+    if (fence === "running") a.job.status = "running";
+    a.terminal.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(a.f.adapter.capacity().reserved).toBe(1);
+  });
+}
+
+test("late ordinary job cannot release a different token reusing its native ID", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  const params = {
+    context: "Bounded helper",
+    tasks: [{ agent: "scout", task: "Return checkpoint" }],
+  };
+  await a.f.adapter.ordinary(a.ctx, params);
+  a.f.adapter.nativeEnded("child-1", "idle");
+  const ctx: NativeContext = {
+    ...a.f.ctx,
+    invokeTool: async () => ({
+      content: [],
+      details: { progress: a.job.latestDetails.progress },
+    }),
+  };
+  await a.f.adapter.ordinary(ctx, params);
+  a.job.status = "failed";
+  for (const progress of a.job.latestDetails.progress)
+    progress.status = "failed";
+  a.terminal.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(a.f.adapter.capacity().reserved).toBe(1);
+});
+
+test("closed ordinary observer never inspects its eventual terminal job", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  await a.f.adapter.ordinary(a.ctx, {
+    context: "Bounded helper",
+    tasks: [{ agent: "scout", task: "Return checkpoint" }],
+  });
+  a.f.adapter.close();
+  let reads = 0;
+  Object.defineProperty(a.job, "status", {
+    get: () => {
+      reads += 1;
+      return "failed";
+    },
+  });
+  a.terminal.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(reads).toBe(0);
+});
+
+test("ordinary batch terminal failure releases only its own token", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  const other = Promise.withResolvers<void>();
+  const job = {
+    ...a.job,
+    id: "job-2",
+    agentId: "child-2",
+    promise: other.promise,
+  };
+  const invoke = a.ctx.invokeTool;
+  if (!invoke) throw new Error("Expected fixture dispatcher");
+  const ctx: NativeContext = {
+    ...a.ctx,
+    invokeTool: async (params) => {
+      const result = await invoke(params);
+      a.jobs.push(job);
+      return result;
+    },
+  };
+  await a.f.adapter.ordinary(ctx, {
+    context: "Independent bounded helpers",
+    tasks: [
+      { agent: "scout", task: "First" },
+      { agent: "scout", task: "Second" },
+    ],
+  });
+  a.job.status = "failed";
+  const first = a.job.latestDetails.progress[0];
+  const second = a.job.latestDetails.progress[1];
+  if (!first || !second) throw new Error("Expected batch progress");
+  first.status = "failed";
+  a.terminal.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(a.f.adapter.capacity().reserved).toBe(1);
+  second.status = "completed";
+  job.status = "completed";
+  other.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(a.f.adapter.capacity().reserved).toBe(0);
 });
 
 test("old terminal attempt cannot poison retry reusing a native ID", async (): Promise<void> => {

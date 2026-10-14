@@ -216,6 +216,26 @@ const nativeJobSchema = z
     latestDetails: z.unknown(),
   })
   .passthrough();
+type NativeJobObservation = Readonly<{
+  ownerId: string;
+  nativeId: string;
+  agent: string;
+  jobs: NonNullable<NativeSession["asyncJobManager"]>;
+  previousIds: ReadonlySet<string>;
+  current: () => boolean;
+  authorize: () => void;
+  settle: (status: "completed" | "failed" | "cancelled") => void;
+}>;
+function nativeJobIds(
+  jobs: NativeSession["asyncJobManager"],
+  ownerId: string,
+): ReadonlySet<string> {
+  return new Set(
+    jobs
+      ?.getAllJobs({ ownerId })
+      .map((job) => z.object({ id: idSchema }).parse(job).id) ?? [],
+  );
+}
 export const nativeHandleSchema = z.strictObject({
   version: z.literal(1),
   id: idSchema,
@@ -478,7 +498,7 @@ export function createAdapter(
       sessionId: token.sessionId,
     });
   }
-  const activationObservers: Set<ActivationReservation> = new Set();
+  const nativeJobObservers: Set<NativeJobObservation> = new Set();
   const admissions: Map<string, number> = new Map();
   const ordinaryAdmissions: Map<string, string | null> = new Map();
   const blockers: Map<string, Json> = new Map();
@@ -556,7 +576,9 @@ export function createAdapter(
     return ref;
   }
   function caller(ctx: NativeContext): Binding {
-    const ref: NativeRef = nativeRef(ctx);
+    return boundCaller(ctx, nativeRef(ctx));
+  }
+  function boundCaller(ctx: NativeContext, ref: NativeRef): Binding {
     if (ref.id === rootId) {
       verifyProfile(managerProfile);
       if (!managerReady)
@@ -686,19 +708,88 @@ export function createAdapter(
     admissions.set(employeeId, generation);
     return "reserved";
   }
-  async function ordinary(
-    ctx: NativeContext,
-    params: Record<string, unknown>,
-  ): Promise<NativeResult> {
-    if (!ctx.invokeTool)
+  function observeNativeJob(observation: NativeJobObservation): void {
+    const matches = observation.jobs
+      .getAllJobs({ ownerId: observation.ownerId })
+      .filter((job) => {
+        const identity = z
+          .object({
+            id: idSchema,
+            type: z.string(),
+            ownerId: z.string().optional(),
+            agentId: z.string().optional(),
+          })
+          .parse(job);
+        return (
+          !observation.previousIds.has(identity.id) &&
+          identity.ownerId === observation.ownerId &&
+          identity.type === "task" &&
+          identity.agentId === observation.nativeId
+        );
+      })
+      .map((job) => ({ raw: job, parsed: nativeJobSchema.parse(job) }));
+    if (matches.length !== 1)
       throw new StoreAuthorityError(
-        "Ordinary native task requires the actual same-name handler",
+        "Native async task requires one correlated caller-owned task job",
       );
+    const match = matches[0];
+    if (!match)
+      throw new StoreAuthorityError("Native task job correlation missing");
+    nativeJobObservers.add(observation);
+    void match.parsed.promise
+      .then(() => {
+        if (!nativeJobObservers.has(observation) || !observation.current())
+          return;
+        const terminal = nativeJobSchema.parse(match.raw);
+        if (
+          terminal.id !== match.parsed.id ||
+          terminal.ownerId !== observation.ownerId ||
+          terminal.type !== "task" ||
+          terminal.agentId !== observation.nativeId
+        )
+          throw new StoreAuthorityError("Native terminal job identity changed");
+        if (terminal.status === "running") return;
+        const progress = nativeDispatchSchema
+          .parse(terminal.latestDetails)
+          .progress.find((entry) => entry.id === observation.nativeId);
+        if (
+          !progress ||
+          progress.agent !== observation.agent ||
+          !(terminal.status === "completed"
+            ? progress.status === "completed"
+            : ["failed", "aborted"].includes(progress.status))
+        )
+          throw new StoreAuthorityError(
+            "Native terminal progress does not match its task job",
+          );
+        rootAdmin(input.ctx);
+        observation.authorize();
+        observation.settle(terminal.status);
+      })
+      .catch((error: unknown) => {
+        process.stderr.write(
+          JSON.stringify({
+            level: "warning",
+            component: "startup-native-task",
+            ownerId: observation.ownerId,
+            nativeId: observation.nativeId,
+            jobId: match.parsed.id,
+            error: error instanceof Error ? error.message : String(error),
+          }) + "\n",
+        );
+      })
+      .finally(() => nativeJobObservers.delete(observation));
+  }
+  function ordinaryAuthority(ctx: NativeContext): NativeRef {
     const ref = registry.get(ctx.agent.id);
+    const parked =
+      ref?.session === null &&
+      ["parked", "idle", "completed", "aborted"].includes(ref.status);
     if (
-      !ref?.session ||
-      ref.session.sessionManager.getSessionId() !==
-        ctx.sessionManager.getSessionId()
+      !ref ||
+      (!parked &&
+        ref.session?.sessionManager.getSessionId() !==
+          ctx.sessionManager.getSessionId())
     )
       throw new StoreAuthorityError(
         "Ordinary native caller differs from registry evidence",
@@ -718,12 +809,53 @@ export function createAdapter(
       throw new StoreAuthorityError(
         "Ordinary task caller is outside the bound root",
       );
-    if (ref.id === rootId) manager(ctx);
-    else {
-      const reason = guardOrdinaryCaller(ctx);
-      if (reason) throw new StoreFenceError(reason);
+    if (parked) {
+      if (
+        !ref.sessionFile ||
+        ref.sessionFile !== ctx.sessionManager.getSessionFile()
+      )
+        throw new StoreAuthorityError(
+          "Parked ordinary caller transcript differs from retained native evidence",
+        );
+      const headers = readFileSync(ref.sessionFile, "utf8")
+        .split("\n")
+        .filter((line) => line.trim())
+        .map((line) =>
+          z.object({ type: z.string() }).passthrough().parse(JSON.parse(line)),
+        )
+        .filter((entry) => entry.type === "session");
+      if (headers.length !== 1)
+        throw new StoreAuthorityError(
+          "Parked ordinary caller requires one retained session header",
+        );
+      const header = headerSchema.parse(headers[0]);
+      if (
+        header.id !== ctx.sessionManager.getSessionId() ||
+        header.parentSession !== registry.get(ref.parentId ?? "")?.sessionFile
+      )
+        throw new StoreAuthorityError(
+          "Parked ordinary caller session ancestry changed",
+        );
     }
+    if (
+      ref.id === rootId ||
+      /(?:^|\n)STARTUP_BINDING=/.test(ctx.getSystemPrompt().join("\n"))
+    )
+      boundCaller(ctx, ref);
     store.renewLease();
+    return ref;
+  }
+  async function ordinary(
+    ctx: NativeContext,
+    params: Record<string, unknown>,
+  ): Promise<NativeResult> {
+    if (!ctx.invokeTool)
+      throw new StoreAuthorityError(
+        "Ordinary native task requires the actual same-name handler",
+      );
+    const ref = ordinaryAuthority(ctx);
+    const jobs = ref.session?.asyncJobManager;
+    const previousJobs = nativeJobIds(jobs, ref.id);
     const count = Array.isArray(params.tasks) ? params.tasks.length : 1;
     const available = capacity().available;
     if (available !== null && count > available)
@@ -799,23 +931,39 @@ export function createAdapter(
       throw new StoreAuthorityError(
         "Native task returned no correlated progress or rejection; execution admission remains reserved pending native evidence",
       );
-    return result;
-  }
-  function guardOrdinaryCaller(ctx: NativeContext): string | null {
-    if (!/(?:^|\n)STARTUP_BINDING=/.test(ctx.getSystemPrompt().join("\n")))
-      return null;
-    try {
-      caller(ctx);
-      return null;
-    } catch (error: unknown) {
-      if (
-        error instanceof StoreFenceError ||
-        error instanceof StoreAuthorityError ||
-        error instanceof ProfileSourceError
-      )
-        return error.message;
-      throw error;
+    if (
+      z
+        .object({ async: z.object({ type: z.literal("task") }).passthrough() })
+        .safeParse(result.details).success &&
+      parsed.success
+    ) {
+      if (!jobs)
+        throw new StoreAuthorityError(
+          "Native async task requires terminal job observation capability",
+        );
+      for (const [index, token] of reservations.entries()) {
+        const progress = parsed.data.progress.find(
+          (entry) => entry.index === index,
+        );
+        if (!progress || ordinaryAdmissions.get(token) !== progress.id)
+          continue;
+        observeNativeJob({
+          ownerId: ref.id,
+          nativeId: progress.id,
+          agent: progress.agent,
+          jobs,
+          previousIds: previousJobs,
+          current: () => ordinaryAdmissions.get(token) === progress.id,
+          authorize: () => {
+            ordinaryAuthority(ctx);
+          },
+          settle: () => {
+            ordinaryAdmissions.delete(token);
+          },
+        });
+      }
     }
+    return result;
   }
   function reserve(ctx: NativeContext, request: unknown): HireReceipt {
     const managerBinding: Binding = manager(ctx);
@@ -1263,11 +1411,7 @@ export function createAdapter(
         "Activation must execute inside the same-name native task handler",
       );
     const jobs = nativeRef(ctx).session?.asyncJobManager;
-    const previousJobs = new Set(
-      jobs
-        ?.getAllJobs({ ownerId: rootId })
-        .map((job) => z.object({ id: idSchema }).parse(job).id) ?? [],
-    );
+    const previousJobs = nativeJobIds(jobs, rootId);
     const staff: readonly Employee[] = ids.map(snapshotEmployee);
     const unbound: readonly Employee[] = staff.filter((entry) => {
       const prior = expected.get(entry.id);
@@ -1466,72 +1610,26 @@ export function createAdapter(
         throw new StoreAuthorityError(
           "Native async activation requires terminal job observation capability",
         );
-      const currentJobs = jobs.getAllJobs({ ownerId: rootId });
       for (const employee of selected) {
         const reservation = expected.get(employee.id);
-        if (!reservation || snapshotEmployee(employee.id).nativeHandle !== null)
+        if (
+          !reservation?.nativeId ||
+          snapshotEmployee(employee.id).nativeHandle !== null
+        )
           continue;
-        const matches = currentJobs
-          .filter((job) => {
-            const identity = z
-              .object({
-                id: idSchema,
-                type: z.string(),
-                ownerId: z.string().optional(),
-                agentId: z.string().optional(),
-              })
-              .parse(job);
-            return (
-              !previousJobs.has(identity.id) &&
-              identity.ownerId === rootId &&
-              identity.type === "task" &&
-              identity.agentId === reservation.nativeId
-            );
-          })
-          .map((job) => ({ raw: job, parsed: nativeJobSchema.parse(job) }));
-        if (matches.length !== 1)
-          throw new StoreAuthorityError(
-            "Native async activation requires one correlated root-owned task job",
-          );
-        const match = matches[0];
-        if (!match)
-          throw new StoreAuthorityError(
-            "Native activation job correlation missing",
-          );
-        activationObservers.add(reservation);
-        void match.parsed.promise
-          .then(() => {
-            if (
-              !activationObservers.has(reservation) ||
-              expected.get(employee.id) !== reservation
-            )
-              return;
-            const terminal = nativeJobSchema.parse(match.raw);
-            if (
-              terminal.id !== match.parsed.id ||
-              terminal.ownerId !== rootId ||
-              terminal.type !== "task" ||
-              terminal.agentId !== reservation.nativeId
-            )
-              throw new StoreAuthorityError(
-                "Native activation terminal job identity changed",
-              );
-            if (terminal.status === "running") return;
-            const progress = nativeDispatchSchema
-              .parse(terminal.latestDetails)
-              .progress.find((entry) => entry.id === reservation.nativeId);
-            if (
-              !progress ||
-              progress.agent !== reservation.profile.name ||
-              !(terminal.status === "completed"
-                ? progress.status === "completed"
-                : ["failed", "aborted"].includes(progress.status))
-            )
-              throw new StoreAuthorityError(
-                "Native activation terminal progress does not match the failed job",
-              );
+        const nativeId = reservation.nativeId;
+        observeNativeJob({
+          ownerId: rootId,
+          nativeId,
+          agent: reservation.profile.name,
+          jobs,
+          previousIds: previousJobs,
+          current: () => expected.get(employee.id) === reservation,
+          authorize: () => {
             rootAdmin(ctx);
             verifyProfile(reservation.profile);
+          },
+          settle: (status) => {
             const pending = snapshotEmployee(employee.id);
             if (
               pending.nativeHandle !== null ||
@@ -1539,29 +1637,17 @@ export function createAdapter(
             )
               return;
             nativeEnded(
-              terminal.agentId,
-              terminal.status === "completed"
+              nativeId,
+              status === "completed"
                 ? "completed without verified source binding"
-                : terminal.status === "cancelled"
+                : status === "cancelled"
                   ? "aborted"
                   : "failed",
             );
             if (admissions.get(employee.id) === reservation.profile.generation)
               admissions.delete(employee.id);
-          })
-          .catch((error: unknown) => {
-            process.stderr.write(
-              JSON.stringify({
-                level: "warning",
-                component: "startup-activation",
-                employeeId: employee.id,
-                nativeId: reservation.nativeId,
-                jobId: match.parsed.id,
-                error: error instanceof Error ? error.message : String(error),
-              }) + "\n",
-            );
-          })
-          .finally(() => activationObservers.delete(reservation));
+          },
+        });
       }
     }
     for (const team of store.snapshot().teams) await wakeTeam(team);
@@ -2322,7 +2408,7 @@ export function createAdapter(
     duties,
     dutyBinding,
     shutdown: async (): Promise<void> => {
-      activationObservers.clear();
+      nativeJobObservers.clear();
       try {
         await duties.stop();
       } finally {
@@ -2564,7 +2650,7 @@ export function createAdapter(
     },
     waitGuard,
     close: (): void => {
-      activationObservers.clear();
+      nativeJobObservers.clear();
       duties.close();
       input.ctx.clearTimer(timer);
       unsubscribe();
