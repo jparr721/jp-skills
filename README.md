@@ -82,7 +82,7 @@ Startup family (roles + procedures):
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (local candidate 6.0.0; previously released 5.0.1). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (6.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
@@ -185,6 +185,6 @@ New skills follow the same shape: one directory, one `SKILL.md` with `name` + `d
 
 Skill instructions are written as generic actions. Each harness maps actions such as dispatching agents, asking the user, reading files, searching files, editing files, and running commands to its native tools.
 
-The [V6 local candidate acceptance record](extensions/startup/probes/v6-acceptance.md) records current proof and publication boundaries. Startup requires the companion for runtime persistence on supported OMP 18.8.9. Linking skills alone does not install it. See [companion install, boot and public tool contracts](extensions/startup/README.md), including an explicit named-profile installer and ownership-checked uninstall. The single active-harness and full-source binding contract is [role-dispatch](skills/startup/references/role-dispatch.md).
+The [V6 acceptance record](extensions/startup/probes/v6-acceptance.md) records proof and operating limits. Startup requires the companion for runtime persistence on supported OMP 18.8.9. Linking skills alone does not install it. See [companion install, boot and public tool contracts](extensions/startup/README.md), including an explicit named-profile installer and ownership-checked uninstall. The single active-harness and full-source binding contract is [role-dispatch](skills/startup/references/role-dispatch.md).
 
 Oh My Pi surfaces linked skills as namespaced slash commands: type `/skill:` (e.g. `/skill:pipeline`), not `/<skill-name>`. Restart `omp` after linking so startup discovery picks them up.

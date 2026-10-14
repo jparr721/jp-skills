@@ -4,7 +4,7 @@
 
 ## [6.0.0] - 2026-10-14
 
-Reviewed V6 implementation for `main`. Release tagging/publication and machine-specific installation are separate actions; 5.0.1 remains the previously released version.
+Startup V6 adds durable staff, architect-led teams and native OMP inbox/loop support. Machine-specific companion installation remains an explicit separate action.
 
 ### Breaking changes
 

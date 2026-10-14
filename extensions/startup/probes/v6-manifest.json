@@ -287,11 +287,11 @@
     "native-canonical-helper-failure.json.gz"
   ],
   "finalSourceHashes": {
-    "CHANGELOG.md": "94d249a0bb431289ca5e799b4eb25f06f3ea33b40e6d78adeac5e2c5ece1ea19",
-    "README.md": "3ca59f719f01fc9c3f1a002a8df7da1c2a6e208922d2b0f0beae309e06b00992",
+    "CHANGELOG.md": "9ba460546a79a33b821a7dee82a9af2275a5ac6210ab0a310d162835a555bec3",
+    "README.md": "9480ec3feced1d6da4e04ee1a0f272c9e9bc51fe8e145be3324d0a018a7a8d77",
     "VERSION": "54ef76332b31df830699e9d4138396885ab72bae260a034a81ff02bf32d8e90a",
     "docs/superpowers/specs/2026-10-13-startup-v6-design.md": "c83bf58f997999b202250f4f021da2e840a7b549e9adc88a1041fe8e0d8574b5",
-    "extensions/startup/README.md": "e8e963239ac91ed8052e9ed6c93ea5837255a0a98e597c300d5c67b46821013e",
+    "extensions/startup/README.md": "d81d6a793088312e1459c8bcd0007d525779625688b9595f9c8d209716fd8d19",
     "extensions/startup/index.ts": "3d8e018be2ab8cb9d87a54162b2d72af8c3a14b9524fe87d41bc572d2a34f03a",
     "extensions/startup/install.ts": "e282a293b9dafa0dc4cf9ca320884c137603b89768c79ea48ef80a10c80eb857",
     "extensions/startup/probes/native-adapter.ts": "ac0cf2c590306dce33f604104bd20cb63a0f2e213ca23de158f39726d8f1bf9b",
@@ -310,7 +310,7 @@
     "extensions/startup/probes/test_adapter_probe_driver.py": "20099602c7ed0473492c8e6d31dc721ebe193b90d4d178b6281acde3249b77f4",
     "extensions/startup/probes/test_boot_probe_driver.py": "2c3ecc6e04a9839d8861dd75f0ef87353bbf7d4fbae08d6092521b9eb5fd0a1a",
     "extensions/startup/probes/test_native_probe_driver.py": "5f3a935ba922b2add3600eb5da7cbe2f8186e031b821f56a7ac675f15cfdbd15",
-    "extensions/startup/probes/v6-acceptance.md": "e8c66c57cc1fa2279c195d8152561a22e503e5a012db19d68779859d1541a4e9",
+    "extensions/startup/probes/v6-acceptance.md": "e3754d60f5d1114ddf73d002e762800a0bbe6f98efcb30524de6ddda2e46b9ef",
     "extensions/startup/probes/v6-checks.txt": "c9b7b6aa495f538002a3503ccc2a65ea321ff1bf7a741c4309d18dff20d14e9a",
     "extensions/startup/src/boot.ts": "2884b65e6e0953d254e0a96ea0ebcd7d4f30264ce84a5e6dbceb3f2f242d541a",
     "extensions/startup/src/contracts.ts": "5501d09075710b97fa57d7f8fcbe636ab8fea4f8d084c8d54628ab13ae05958c",
@@ -416,5 +416,18 @@
       "CHANGELOG.md"
     ],
     "scope": "Detailed changelog and its current fingerprint only. Reviewed runtime, canonical roles, probe sources and retained evidence bytes are unchanged."
+  },
+  "publicationPreparation": {
+    "date": "2026-10-14",
+    "version": "6.0.0",
+    "tag": "v6.0.0",
+    "reviewedRuntimeHead": "de754e8104cc0c63268bc048044a5e8e099bca05",
+    "changedDocumentation": [
+      "CHANGELOG.md",
+      "README.md",
+      "extensions/startup/README.md",
+      "extensions/startup/probes/v6-acceptance.md"
+    ],
+    "scope": "Release documentation and current fingerprints only; reviewed runtime, canonical roles, probe sources and retained evidence bytes are unchanged."
   }
 }
