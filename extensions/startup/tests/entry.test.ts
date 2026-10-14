@@ -426,3 +426,52 @@ test("unbound native boot preserves first work and images and gates malformed AG
     existsSync(join(root, "home", "startup", "broken", "staff.sqlite")),
   ).toBe(false);
 });
+
+test("native first-space command split correlates repeated and trailing spaces", async () => {
+  for (const text of [
+    "/startup  new spaced -- fix this",
+    "/startup new spaced -- fix this   ",
+    "/startup   new spaced -- fix this \t\n",
+  ]) {
+    const { ctx, factory } = entryFixture();
+    const host = factory(null);
+    await host.handlers.get("session_start")!({}, ctx);
+    const images = [{ type: "image", mimeType: "image/png", data: "aGVsbG8=" }];
+    await host.handlers.get("input")!({ text, source: "rpc", images }, ctx);
+    const args = text.slice(text.indexOf(" ") + 1);
+    try {
+      await host.commands.get("startup")!.handler(args, ctx);
+      expect(
+        host.messages.some((message) =>
+          message.includes("Saved Startup work event"),
+        ),
+      ).toBe(true);
+    } finally {
+      await host.handlers.get("session_shutdown")!({}, ctx);
+    }
+  }
+});
+
+test("nonmatching native command names and delimiters never boot Startup", async () => {
+  for (const text of [
+    "/startup-other new unrelated",
+    "/startup\tnew unrelated",
+    "/startup\nnew unrelated",
+    " /startup new unrelated",
+    "/startup\u00a0new unrelated",
+  ]) {
+    const { ctx, factory, root } = entryFixture();
+    const host = factory(null);
+    await host.handlers.get("session_start")!({}, ctx);
+    expect(
+      await host.handlers.get("input")!(
+        { text, source: "rpc", images: [] },
+        ctx,
+      ),
+    ).toBeUndefined();
+    expect(existsSync(join(ctx.cwd, "AGENTS.md"))).toBe(false);
+    expect(existsSync(join(root, "home/startup/unrelated/staff.sqlite"))).toBe(
+      false,
+    );
+  }
+});

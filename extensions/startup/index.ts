@@ -830,9 +830,12 @@ export function installStartup(
       })
       .parse(event);
     if (parsed.source === "extension") return;
-    const match = /^\/startup(?:\s+(.*))?$/s.exec(parsed.text.trim());
-    if (match) {
-      const args = match[1] ?? "";
+    const spaceIndex = parsed.text.indexOf(" ");
+    const commandName = parsed.text.startsWith("/")
+      ? parsed.text.slice(1, spaceIndex === -1 ? undefined : spaceIndex)
+      : null;
+    if (commandName === "startup") {
+      const args = spaceIndex === -1 ? "" : parsed.text.slice(spaceIndex + 1);
       try {
         const command = parseBootCommand(args);
         await boot(ctx, command);
@@ -869,12 +872,14 @@ export function installStartup(
     if (!current) return;
     const received = current.receiveInput(ctx, event);
     if (received === null) return;
-    const command = /^\/([^\s]+)/.exec(received.raw.text.trim())?.[1];
-    if (command && pi.getCommands().some((entry) => entry.name === command))
+    if (
+      commandName &&
+      pi.getCommands().some((entry) => entry.name === commandName)
+    )
       current.routeInput(ctx, {
         inputId: received.id,
         disposition: "control",
-        reason: `Native registered command /${command}`,
+        reason: `Native registered command /${commandName}`,
         amendItemIds: [],
       });
   });
