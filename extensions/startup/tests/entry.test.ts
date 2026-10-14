@@ -134,8 +134,9 @@ function entryFixture() {
         messages.push(message.content);
       },
       events: { on: () => () => {} },
-      arktype: () => {
-        throw new Error("Unused native schema");
+      arktype: (definition) => {
+        expect(definition).toEqual({ "recoveryOffset?": "number" });
+        return nativeSchema;
       },
       on: (name, handler) => {
         handlers.set(name, handler);

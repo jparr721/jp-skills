@@ -669,7 +669,7 @@ export function installStartup(
   tool(
     "startup_staff",
     "Manager-only source readiness, capacity and bounded recovery IDs. Use recoveryOffset from recovery.nextOffset for subsequent recovery pages.",
-    builder.object({}).or(builder.object({ recoveryOffset: builder.number() })),
+    pi.arktype({ "recoveryOffset?": "number" }),
     (ctx, params) => {
       const parsed = z.strictObject({ recoveryOffset: z.number().int().nonnegative().optional() }).parse(params);
       return adapter(ctx).staff(ctx, parsed.recoveryOffset);
