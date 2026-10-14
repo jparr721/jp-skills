@@ -583,6 +583,52 @@ export function createDuties(host: DutyHost) {
       throw error;
     }
   }
+  async function executeReconciliation(
+    owner: Binding,
+    request: unknown,
+  ): Promise<Grant> {
+    if (!running) throw new DutyRepairError("Duty host is offline");
+    if (encode(owner) !== encode(host.owner()))
+      throw new StoreAuthorityError("Only the current root reconciles repair");
+    const parsed = z
+      .strictObject({
+        grantId: idSchema,
+        evidence: jsonSchema.refine((value) => value !== null),
+      })
+      .parse(request);
+    const grant = store
+      .snapshot()
+      .grants.find((entry) => entry.id === parsed.grantId);
+    if (!grant || grant.state !== "reconciliation")
+      throw new DutyRepairError("Only uncertain grants can be reconciled");
+    const action = actionSchema.parse(grant.authority);
+    const value = await read(action.verification, `${grant.id}-reconcile`);
+    if (!accepted(value, action.verification.acceptance))
+      throw new DutyRepairError(
+        "Fresh reconciliation probe failed assigned acceptance; target remains locked",
+      );
+    const released = store.verifyAndReleaseTarget({
+      employee: owner,
+      grantId: grant.id,
+      verification: {
+        kind: "native-json-reconciliation",
+        checkedAt: now(),
+        probe: action.verification,
+        value,
+        evidence: parsed.evidence,
+      },
+    });
+    store.projectResources({ manager: host.owner() });
+    return released;
+  }
+  function track(operation: Promise<Grant>): Promise<Grant> {
+    repairs.add(operation);
+    void operation.then(
+      () => repairs.delete(operation),
+      () => repairs.delete(operation),
+    );
+    return operation;
+  }
   return {
     assign(owner: Binding, request: unknown): Duty {
       if (encode(owner) !== encode(manager()))
@@ -673,49 +719,10 @@ export function createDuties(host: DutyHost) {
       });
     },
     repair(employee: Binding, authorizationId: string): Promise<Grant> {
-      const operation = executeRepair(employee, authorizationId);
-      repairs.add(operation);
-      void operation.then(
-        () => repairs.delete(operation),
-        () => repairs.delete(operation),
-      );
-      return operation;
+      return track(executeRepair(employee, authorizationId));
     },
-    async reconcile(owner: Binding, request: unknown): Promise<Grant> {
-      if (encode(owner) !== encode(host.owner()))
-        throw new StoreAuthorityError(
-          "Only the current root reconciles repair",
-        );
-      const parsed = z
-        .strictObject({
-          grantId: idSchema,
-          evidence: jsonSchema.refine((value) => value !== null),
-        })
-        .parse(request);
-      const grant = store
-        .snapshot()
-        .grants.find((entry) => entry.id === parsed.grantId);
-      if (!grant || grant.state !== "reconciliation")
-        throw new DutyRepairError("Only uncertain grants can be reconciled");
-      const action = actionSchema.parse(grant.authority);
-      const value = await read(action.verification, `${grant.id}-reconcile`);
-      if (!accepted(value, action.verification.acceptance))
-        throw new DutyRepairError(
-          "Fresh reconciliation probe failed assigned acceptance; target remains locked",
-        );
-      const released = store.verifyAndReleaseTarget({
-        employee: owner,
-        grantId: grant.id,
-        verification: {
-          kind: "native-json-reconciliation",
-          checkedAt: now(),
-          probe: action.verification,
-          value,
-          evidence: parsed.evidence,
-        },
-      });
-      store.projectResources({ manager: host.owner() });
-      return released;
+    reconcile(owner: Binding, request: unknown): Promise<Grant> {
+      return track(executeReconciliation(owner, request));
     },
     start(): void {
       running = true;

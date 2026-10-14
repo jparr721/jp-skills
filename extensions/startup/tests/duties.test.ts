@@ -87,6 +87,7 @@ function fixture() {
   const second = employees[1];
   if (!first || !second) throw new Error("Missing fixture staff");
   let admitted = true;
+  let managerAdmitted = true;
   let readCount = 0;
   let writeCount = 0;
   let readDelay: Promise<void> | null = null;
@@ -102,7 +103,9 @@ function fixture() {
     now: () => timestamp,
     binding: (id) =>
       id === "manager"
-        ? store.managerBinding
+        ? managerAdmitted
+          ? store.managerBinding
+          : null
         : admitted
           ? (employees.find((employee) => employee.employeeId === id) ?? null)
           : null,
@@ -220,6 +223,9 @@ function fixture() {
     },
     time: (value: number) => {
       timestamp = value;
+    },
+    admitManager: (value: boolean) => {
+      managerAdmitted = value;
     },
     admit: (value: boolean) => {
       admitted = value;
@@ -667,4 +673,52 @@ test("two simultaneous duties on one employee both progress across cadences", as
   ]);
   expect(observations.every((entry) => entry.observedAt !== null)).toBe(true);
   expect(f.wakes).toHaveLength(0);
+});
+
+test("reconciliation drains before shutdown and rejects new offline admission", async () => {
+  const f = fixture();
+  f.scheduler.assign(
+    f.store.managerBinding,
+    f.request("health", f.first.employeeId),
+  );
+  f.scheduler.authorize(f.store.managerBinding, {
+    id: "repair",
+    dutyId: "health",
+  });
+  f.failWrite();
+  await expect(f.scheduler.repair(f.first, "repair")).rejects.toThrow(
+    "Lost native write response",
+  );
+  const grant = f.store.snapshot().grants[0];
+  if (!grant) throw new Error("Missing grant");
+  const deferred = Promise.withResolvers<void>();
+  f.delayRead(deferred.promise);
+  f.admitManager(false);
+  const operation = f.scheduler.reconcile(f.store.managerBinding, {
+    grantId: grant.id,
+    evidence: { inspected: true },
+  });
+  let drained = false;
+  const stopping = f.scheduler.stop().then(() => {
+    drained = true;
+  });
+  try {
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(drained).toBe(false);
+    expect(() => f.scheduler.close()).toThrow("Stop and drain");
+  } finally {
+    deferred.resolve();
+    await operation;
+    await stopping;
+  }
+  expect(f.store.snapshot().grants[0]?.state).toBe("released");
+  const reads = f.reads;
+  await expect(
+    f.scheduler.reconcile(f.store.managerBinding, {
+      grantId: grant.id,
+      evidence: { inspected: true },
+    }),
+  ).rejects.toThrow("offline");
+  expect(f.reads).toBe(reads);
 });
