@@ -147,19 +147,19 @@ test("old root shutdown cannot close a newer root's same-session adapter", async
   const { ctx, factory, advance } = entryFixture();
   const first = factory();
   await first.handlers.get("session_start")!({}, ctx);
-  first.handlers.get("session_shutdown")!({}, ctx);
+  await first.handlers.get("session_shutdown")!({}, ctx);
   advance();
   const second = factory();
   await second.handlers.get("session_start")!({}, ctx);
   try {
-    first.handlers.get("session_shutdown")!({}, ctx);
+    await first.handlers.get("session_shutdown")!({}, ctx);
     const staff = await second.tools
       .get("startup_staff")!
       .execute("staff", {}, undefined, undefined, ctx);
     expect(staff.isError).not.toBe(true);
     expect(staff.details).toMatchObject({ mode: "ready" });
   } finally {
-    second.handlers.get("session_shutdown")!({}, ctx);
+    await second.handlers.get("session_shutdown")!({}, ctx);
   }
 });
 
@@ -180,7 +180,7 @@ test("recovery classifies human input before wait/final without resolving unrela
     payload: {},
   });
   await tool(first, "startup_claim", {});
-  first.handlers.get("session_shutdown")!({}, ctx);
+  await first.handlers.get("session_shutdown")!({}, ctx);
   advance();
   const next = factory();
   await next.handlers.get("session_start")!({}, ctx);
@@ -240,7 +240,7 @@ test("recovery classifies human input before wait/final without resolving unrela
       "reconciliation",
     );
   } finally {
-    next.handlers.get("session_shutdown")!({}, ctx);
+    await next.handlers.get("session_shutdown")!({}, ctx);
   }
 });
 

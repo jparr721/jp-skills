@@ -543,6 +543,81 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
     (ctx, params) => adapter(ctx).releaseReconciled(ctx, params),
   );
   tool(
+    "startup_duty",
+    "Manager assigns a persisted filesystem-only JSON duty. Missing configuration remains pending. No deployment connector or arbitrary shell authority.",
+    builder.object({
+      id: builder.string(),
+      employeeId: builder.string(),
+      target: builder.unknown(),
+      probe: builder.unknown(),
+      acceptance: builder.unknown(),
+      repairAuthority: builder.unknown(),
+      cadenceMs: builder.unknown(),
+      nextDue: builder.unknown(),
+    }),
+    (ctx, params) => {
+      const current = adapter(ctx);
+      return current.duties.assign(current.manager(ctx), params);
+    },
+  );
+  tool(
+    "startup_duty_end",
+    "Manager ends a resolved standing duty with explicit evidence.",
+    builder.object({ dutyId: builder.string(), evidence: builder.unknown() }),
+    async (ctx, params) => {
+      const current = adapter(ctx);
+      const parsed = z
+        .strictObject({ dutyId: idSchema, evidence: jsonSchema })
+        .parse(params);
+      const manager = current.manager(ctx);
+      await current.duties.recover();
+      current.store.endDuty({ manager, ...parsed });
+      return parsed;
+    },
+  );
+  tool(
+    "startup_duties",
+    "Manager reads runtime/offline status and timestamped filesystem duty observations. Historical observations do not establish current health.",
+    builder.object({}),
+    (ctx, params) => {
+      z.strictObject({}).parse(params);
+      const current = adapter(ctx);
+      current.manager(ctx);
+      return current.duties.status();
+    },
+  );
+  tool(
+    "startup_repair_authorize",
+    "Manager authorizes one exact JSON document replacement and its separately assigned post-action probe from a configured duty.",
+    builder.object({ id: builder.string(), dutyId: builder.string() }),
+    (ctx, params) => {
+      const current = adapter(ctx);
+      current.duties.authorize(current.manager(ctx), params);
+      return params;
+    },
+  );
+  tool(
+    "startup_repair",
+    "Assigned actual employee executes a fresh authorized filesystem repair once under a canonical target grant, then verifies. Existing grants are never replayed.",
+    builder.object({ authorizationId: builder.string() }),
+    (ctx, params) => {
+      const current = adapter(ctx);
+      const parsed = z
+        .strictObject({ authorizationId: idSchema })
+        .parse(params);
+      return current.duties.repair(current.caller(ctx), parsed.authorizationId);
+    },
+  );
+  tool(
+    "startup_repair_reconcile",
+    "Manager verifies an uncertain JSON repair using its saved assigned probe before releasing its target grant. Never repeats the write.",
+    builder.object({ grantId: builder.string(), evidence: builder.unknown() }),
+    (ctx, params) => {
+      const current = adapter(ctx);
+      return current.reconcileRepair(ctx, params);
+    },
+  );
+  tool(
     "startup_retire",
     "Manager-only safe retirement of idle DevOps after explicit duty/work resolution.",
     builder.object({
@@ -612,6 +687,7 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
           "startup_reconcile",
           "startup_resolve",
           "startup_release_reconciled",
+          "startup_repair_reconcile",
           "startup_bind_manager",
           "wait",
           "yield",
@@ -658,13 +734,17 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
       ? undefined
       : { continue: true, additionalContext: reason };
   });
-  pi.on("session_shutdown", (_event, ctx) => {
+  pi.on("session_shutdown", async (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
     if (ownedAdapter === null || ownedAdapter.rootId !== ctx.agent.id) return;
+    const closing = ownedAdapter;
     unsubscribeLifecycle?.();
-    ownedAdapter.close();
-    if (adapters.get(ownedAdapter.rootSession) === ownedAdapter)
-      adapters.delete(ownedAdapter.rootSession);
+    try {
+      await closing.shutdown();
+    } finally {
+      if (adapters.get(closing.rootSession) === closing)
+        adapters.delete(closing.rootSession);
+    }
   });
 }
 export function parseExecutionLimit(value: string | undefined): number | null {

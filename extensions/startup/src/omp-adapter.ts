@@ -1,3 +1,4 @@
+import { createDuties } from "./duties";
 import { randomUUID, createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { hostname } from "node:os";
@@ -1987,6 +1988,100 @@ export function createAdapter(
       nativeEnded(event.ref.id, event.ref.status);
     }
   });
+  function dutyBinding(employeeId: string): Binding | null {
+    store.renewLease();
+    const rootNow = registry.get(rootId);
+    if (
+      !managerReady ||
+      !rootNow?.session ||
+      rootNow.session.sessionManager.getSessionId() !== rootSession
+    )
+      return null;
+    verifyProfile(managerProfile);
+    if (employeeId === "manager") return store.managerBinding;
+    const employee = snapshotEmployee(employeeId);
+    if (
+      employee.nativeHandle === null ||
+      employee.source === null ||
+      employee.error !== null ||
+      employee.employment !== "hired"
+    )
+      return null;
+    const handle = decodeHandle(employee.nativeHandle);
+    const receipt = receipts.get(handle.id);
+    const ref = registry.get(handle.id);
+    if (
+      !receipt ||
+      !ref?.session ||
+      ref.parentId !== rootId ||
+      !ref.sessionFile ||
+      receipt.sessionId !== handle.sessionId ||
+      ref.session.sessionManager.getSessionId() !== handle.sessionId ||
+      receipt.profile.generation !== employee.generation ||
+      encode(receipt.profile.source) !== encode(employee.source)
+    )
+      return null;
+    const headers = readFileSync(ref.sessionFile, "utf8")
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) =>
+        z.object({ type: z.string() }).passthrough().parse(JSON.parse(line)),
+      )
+      .filter((entry) => entry.type === "session");
+    if (headers.length !== 1)
+      throw new StoreAuthorityError(
+        "Duty native transcript requires exactly one session header",
+      );
+    const header = headerSchema.parse(headers[0]);
+    if (header.id !== handle.sessionId || header.parentSession !== rootFile)
+      throw new StoreAuthorityError(
+        "Duty native transcript belongs to another root",
+      );
+    verifyProfile(receipt.profile);
+    return {
+      employeeId,
+      generation: employee.generation,
+      nativeHandle: employee.nativeHandle,
+    };
+  }
+  const duties = createDuties({
+    store,
+    now,
+    owner: () => rootAdmin(input.ctx),
+    binding: dutyBinding,
+    wake,
+    setInterval: input.ctx.setInterval,
+    clearTimer: input.ctx.clearTimer,
+    read: async (id, path) => {
+      rootAdmin(input.ctx);
+      const tool = registry.get(rootId)?.session?.getToolByName("read");
+      if (!tool)
+        throw new StoreAuthorityError(
+          "Native restricted read capability unavailable",
+        );
+      return tool.execute(id, { path });
+    },
+    write: async (id, path, content) => {
+      if (!dutyBinding("manager"))
+        throw new StoreAuthorityError("Native duty root is offline or unbound");
+      const tool = registry.get(rootId)?.session?.getToolByName("write");
+      if (!tool)
+        throw new StoreAuthorityError(
+          "Native JSON document write capability unavailable",
+        );
+      return tool.execute(id, { path, content });
+    },
+    warn: (fields) => {
+      process.stderr.write(
+        JSON.stringify({
+          level: "warning",
+          component: "startup-duty",
+          ...fields,
+        }) + "\n",
+      );
+    },
+  });
+  duties.start();
   return {
     store,
     guardTurn: (ctx: NativeContext, toolName: string): string | null => {
@@ -2051,6 +2146,17 @@ export function createAdapter(
         return;
       }
       nativeEnded(ref.id, error);
+    },
+    duties,
+    dutyBinding,
+    shutdown: async (): Promise<void> => {
+      try {
+        await duties.stop();
+      } finally {
+        input.ctx.clearTimer(timer);
+        unsubscribe();
+        store.close();
+      }
     },
     rootId,
     rootSession,
@@ -2155,12 +2261,30 @@ export function createAdapter(
         evidence: parsed.evidence,
       });
     },
-    releaseReconciled: (ctx: NativeContext, request: unknown) => {
+    reconcileRepair: (ctx: NativeContext, request: unknown) =>
+      duties.reconcile(rootAdmin(ctx), request),
+    releaseReconciled: async (ctx: NativeContext, request: unknown) => {
       const parsed = z
         .strictObject({ grantId: idSchema, verification: jsonSchema })
         .parse(request);
+      const owner = rootAdmin(ctx);
+      const saved = store
+        .snapshot()
+        .grants.find((entry) => entry.id === parsed.grantId);
+      if (
+        saved &&
+        z.object({ kind: z.literal("replace-json") }).safeParse(saved.authority)
+          .success
+      ) {
+        const released = await duties.reconcile(owner, {
+          grantId: parsed.grantId,
+          evidence: parsed.verification,
+        });
+        bindManager();
+        return released;
+      }
       const grant = store.verifyAndReleaseTarget({
-        employee: rootAdmin(ctx),
+        employee: owner,
         grantId: parsed.grantId,
         verification: parsed.verification,
       });
@@ -2267,6 +2391,7 @@ export function createAdapter(
     },
     waitGuard,
     close: (): void => {
+      duties.close();
       input.ctx.clearTimer(timer);
       unsubscribe();
       store.close();

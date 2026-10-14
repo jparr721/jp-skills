@@ -2186,9 +2186,15 @@ export function openStore(args: {
           };
           const duty = read("duty", pending.dutyId, dutySchema);
           if (duty?.cadenceMs === null || duty === null)
-            throw new StoreRecoveryError("Pending occurrence has no configured cadence");
+            throw new StoreRecoveryError(
+              "Pending occurrence has no configured cadence",
+            );
           put("occurrence", pending.id, reclaimed);
-          put("dutyNext", pending.dutyId, timeSchema.parse(timestamp + duty.cadenceMs));
+          put(
+            "dutyNext",
+            pending.dutyId,
+            timeSchema.parse(timestamp + duty.cadenceMs),
+          );
           return reclaimed;
         }
         const duty = all("duty", dutySchema).find(
@@ -2360,6 +2366,37 @@ export function openStore(args: {
         };
         put("grant", id, grant);
         return grant;
+      });
+    },
+    markTargetUncertain(input: {
+      readonly employee: Binding;
+      readonly grantId: string;
+      readonly evidence: Json;
+    }): Grant {
+      return tx((): Grant => {
+        const current = actor(input.employee);
+        const grant = read("grant", idSchema.parse(input.grantId), grantSchema);
+        if (
+          !grant ||
+          grant.employeeId !== current.id ||
+          grant.generation !== current.generation ||
+          grant.state === "released"
+        )
+          throw new StoreAuthorityError(
+            "Only the current target owner may record an uncertain action",
+          );
+        const evidence = jsonSchema.parse(input.evidence);
+        if (evidence === null)
+          throw new StoreConflictError(
+            "Uncertain target requires explicit evidence",
+          );
+        const uncertain: Grant = {
+          ...grant,
+          state: "reconciliation",
+          verification: evidence,
+        };
+        put("grant", grant.id, uncertain);
+        return uncertain;
       });
     },
     verifyAndReleaseTarget(input: {
@@ -2542,7 +2579,10 @@ export function openStore(args: {
             duties: all("duty", dutySchema),
             dutySchedules: all("duty", dutySchema).map((duty) => ({
               id: duty.id,
-              nextDue: read("dutyNext", duty.id, timeSchema) ?? duty.nextDue,
+              nextDue:
+                read("dutyEnd", duty.id, jsonSchema) === null
+                  ? (read("dutyNext", duty.id, timeSchema) ?? duty.nextDue)
+                  : null,
             })),
             occurrences: all("occurrence", occurrenceSchema),
             grants: all("grant", grantSchema),

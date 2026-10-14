@@ -2218,3 +2218,30 @@ test("item dependency blocks its mapped wake, projection and claim while unrelat
   expect(receipt).not.toMatchObject([{ kind: "dependency-blocked" }]);
   expect(f.adapter.claim(dev)?.message.id).toBe(pending.id);
 });
+
+test("host-only duty binding requires actual loaded source and native root evidence", async () => {
+  const f = fixture();
+  const receipt = f.adapter.reserve(f.ctx, {
+    startup: "hire",
+    requestId: "duty",
+    role: "devops",
+    additional: 1,
+  });
+  const employee = receipt.employees[0];
+  if (!employee) throw new Error("Missing employee");
+  expect(f.adapter.dutyBinding(employee.id)).toBeNull();
+  await f.adapter.activate(f.ctx, [employee.id]);
+  const ctx = await f.project(employee);
+  expect(f.adapter.dutyBinding(employee.id)).toEqual(f.adapter.caller(ctx));
+  const ref = f.refs.get(ctx.agent.id);
+  if (!ref?.sessionFile) throw new Error("Missing native transcript");
+  writeFileSync(
+    ref.sessionFile,
+    JSON.stringify({
+      type: "session",
+      id: ctx.sessionManager.getSessionId(),
+      parentSession: "/different/root",
+    }) + "\n",
+  );
+  expect(() => f.adapter.dutyBinding(employee.id)).toThrow("another root");
+});

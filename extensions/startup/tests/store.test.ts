@@ -1660,16 +1660,45 @@ test("reclaimed read-only occurrence coalesces overdue schedule before the next 
   const f = fixture();
   const id = first(hire(f, "devops", "reclaim-cadence", 1));
   const employee = bind(f, id, "devops", 1, null);
-  f.store.setDuty({ manager: f.store.managerBinding, duty: { id: "reclaim", employeeId: id, assignment: null, target: "fixture", probe: "read", acceptance: "healthy", repairAuthority: null, cadenceMs: 50, nextDue: 100 } });
+  f.store.setDuty({
+    manager: f.store.managerBinding,
+    duty: {
+      id: "reclaim",
+      employeeId: id,
+      assignment: null,
+      target: "fixture",
+      probe: "read",
+      acceptance: "healthy",
+      repairAuthority: null,
+      cadenceMs: 50,
+      nextDue: 100,
+    },
+  });
   const pending = f.store.claimDue({ employee });
   if (!pending) throw new Error("Expected initial occurrence");
   f.store.close();
-  const recovered = openStore({ path: f.path, scope: f.scope, owner: f.owner, now: () => 1000 });
-  recovered.bindEmployee({ manager: recovered.managerBinding, binding: { ...recovered.managerBinding, assignment: null, source: source("manager") } });
+  const recovered = openStore({
+    path: f.path,
+    scope: f.scope,
+    owner: f.owner,
+    now: () => 1000,
+  });
+  recovered.bindEmployee({
+    manager: recovered.managerBinding,
+    binding: {
+      ...recovered.managerBinding,
+      assignment: null,
+      source: source("manager"),
+    },
+  });
   const reclaimed = recovered.claimDue({ employee });
   expect(reclaimed?.id).toBe(pending.id);
   expect(recovered.snapshot().dutySchedules[0]?.nextDue).toBe(1050);
-  recovered.observeDuty({ employee, occurrenceId: pending.id, observation: { actualCheckAt: 1000 } });
+  recovered.observeDuty({
+    employee,
+    occurrenceId: pending.id,
+    observation: { actualCheckAt: 1000 },
+  });
   expect(recovered.claimDue({ employee })).toBeNull();
   expect(recovered.snapshot().occurrences).toHaveLength(1);
   recovered.close();
