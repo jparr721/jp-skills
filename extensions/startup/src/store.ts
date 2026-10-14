@@ -2197,18 +2197,28 @@ export function openStore(args: {
           );
           return reclaimed;
         }
-        const duty = all("duty", dutySchema).find(
-          (entry): boolean =>
-            entry.employeeId === current.id &&
-            entry.target !== null &&
-            entry.probe !== null &&
-            entry.acceptance !== null &&
-            entry.cadenceMs !== null &&
-            entry.nextDue !== null &&
-            (read("dutyNext", entry.id, timeSchema) ?? entry.nextDue) <=
-              timestamp &&
-            read("dutyEnd", entry.id, jsonSchema) === null,
-        );
+        let duty: Duty | undefined;
+        let earliestDue: number | null = null;
+        for (const entry of all("duty", dutySchema)) {
+          if (
+            entry.employeeId !== current.id ||
+            entry.target === null ||
+            entry.probe === null ||
+            entry.acceptance === null ||
+            entry.cadenceMs === null ||
+            entry.nextDue === null ||
+            read("dutyEnd", entry.id, jsonSchema) !== null
+          )
+            continue;
+          const dueAt = read("dutyNext", entry.id, timeSchema) ?? entry.nextDue;
+          if (
+            dueAt <= timestamp &&
+            (earliestDue === null || dueAt < earliestDue)
+          ) {
+            duty = entry;
+            earliestDue = dueAt;
+          }
+        }
         if (
           duty === undefined ||
           duty.nextDue === null ||

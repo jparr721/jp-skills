@@ -643,3 +643,28 @@ test("retired duty history does not resend acknowledged observations", async () 
   await f.scheduler.recover();
   expect(f.wakes).toHaveLength(1);
 });
+
+test("two simultaneous duties on one employee both progress across cadences", async () => {
+  const f = fixture();
+  f.scheduler.assign(
+    f.store.managerBinding,
+    f.request("first", f.first.employeeId),
+  );
+  f.scheduler.assign(
+    f.store.managerBinding,
+    f.request("second", f.first.employeeId),
+  );
+  for (const time of [100, 150, 200, 250]) {
+    f.time(time);
+    await f.scheduler.tick();
+  }
+  const observations = f.store.snapshot().occurrences;
+  expect(observations.map((entry) => entry.dutyId)).toEqual([
+    "first",
+    "second",
+    "first",
+    "second",
+  ]);
+  expect(observations.every((entry) => entry.observedAt !== null)).toBe(true);
+  expect(f.wakes).toHaveLength(0);
+});
