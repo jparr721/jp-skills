@@ -700,6 +700,7 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
     if (parsed.toolName === "wait" || parsed.toolName === "yield") {
       const reason: string | null = current.waitGuard();
       if (reason) return { block: true, reason };
+      return;
     }
     const undelegated = current.store
       .snapshot()

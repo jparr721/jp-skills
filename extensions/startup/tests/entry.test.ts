@@ -87,9 +87,10 @@ function entryFixture() {
       getToolByName: () => undefined,
     },
   };
+  const helpers: NativeRef[] = [];
   const registry: NativeRegistry = {
     get: (id) => (id === "Main" ? native : undefined),
-    list: () => [native],
+    list: () => [native, ...helpers],
     onChange: () => () => {},
   };
   function factory() {
@@ -137,6 +138,11 @@ function entryFixture() {
     ctx,
     root,
     factory,
+    occupy: () => {
+      for (let index = 0; index < 32; index++)
+        helpers.push({ ...native, id: `helper-${index}`, kind: "task", parentId: "Main", status: "running" });
+    },
+    release: () => { helpers.splice(0); },
     advance: () => {
       native = { ...native, createdAt: native.createdAt + 1 };
     },
@@ -283,4 +289,31 @@ test("host execution limit rejects invalid input before entry or store side effe
       else process.env[key] = value;
     }
   }
+});
+
+
+test("normal wait honors the authoritative capacity guard with undelegated work", async () => {
+  const { ctx, factory, occupy, release } = entryFixture();
+  const host = factory();
+  await host.handlers.get("session_start")!({}, ctx);
+  const call = (name: string, params: unknown) => host.tools.get(name)!.execute(name, params, undefined, undefined, ctx);
+  const guard = (name: string) => host.handlers.get("tool_call")!({toolName: name, input: {}}, ctx);
+  try {
+    await call("startup_intake", {eventId: "pending", input: "work", amendItemIds: []});
+    expect(guard("wait")).toMatchObject({block: true});
+    expect(guard("yield")).toMatchObject({block: true});
+    occupy();
+    expect(guard("wait")).toBeUndefined();
+    await call("startup_block", {key: "pending", evidence: {kind: "capacity"}});
+    expect(guard("yield")).toBeUndefined();
+    expect(host.handlers.get("session_stop")!({}, ctx)).toBeUndefined();
+    await host.handlers.get("input")!({text: "unclassified", source: "rpc", images: []}, ctx);
+    expect(guard("wait")).toMatchObject({block: true});
+    expect(host.handlers.get("session_stop")!({}, ctx)).toMatchObject({continue: true});
+    const staff = z.object({inputs: z.array(z.object({id:z.string()}))}).parse((await call("startup_staff", {})).details);
+    await call("startup_route", {inputId: staff.inputs[0]!.id, disposition: "status", reason: "status", amendItemIds: []});
+    release();
+    expect(guard("wait")).toMatchObject({block: true});
+    expect(guard("read")).toMatchObject({block: true});
+  } finally { await host.handlers.get("session_shutdown")!({}, ctx); }
 });
