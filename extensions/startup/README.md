@@ -47,7 +47,7 @@ task {startup:"delegate",eventId,developers}
 task {startup:"replace",employeeId,evidence}
 ```
 
-Hire/delegate/activate/replace are manager-only. Hire is additive, stable request ID retries add zero, a deliberate later hire uses a new ID. Ready requires actual native canonical-source admission. Each intake event has a fresh complete unit with exactly one architect, one QA and one or more devs. Team membership and developer count are immutable. Reuse idle staff or hire missing capacity, dispatch independent ready teams and sweep before waiting. PA has only its own scoped inbox and manager-provided summaries.
+Hire/delegate/activate/replace are manager-only. Hire is additive, stable request ID retries add zero, a deliberate later hire uses a new ID. Ready requires actual native canonical-source admission. Both native asynchronous progress and synchronous results are supported without changing OMP settings. A failed later single dispatch retains earlier successful siblings. Correct a source/profile preparation error and retry the same IDs; a changed idle hire source requires explicit `startup_refresh` before team reservation. Each intake event has a fresh complete unit with exactly one architect, one QA and one or more devs. Team membership and developer count are immutable. Reuse idle staff or hire missing capacity, dispatch independent ready teams and sweep before waiting. PA has only its own scoped inbox and manager-provided summaries.
 
 | Operation | Boundary |
 | --- | --- |
@@ -58,7 +58,7 @@ Hire/delegate/activate/replace are manager-only. Hire is additive, stable reques
 | `startup_input {inputId,offset}` / `startup_image {inputId,index}` | Assigned input pages up to 4096 characters and native image blocks; 512-character preview is not full intake. |
 | `startup_capture {captureId,eventId,rows,receipt}` | Assigned architect scoped queue capture; exact row/revision contract in [queue records](../../skills/startup-intake/references/queue-records.md). |
 | `startup_item` | Typed role-authorized execution, QA, architect gate and manager landing. Read queue records before using. |
-| `startup_staff {}` / `startup_dispatch {messageIds}` | Manager staffing, source readiness, capacity/blockers and saved-message wake. |
+| `startup_staff {recoveryOffset?}` / `startup_dispatch {messageIds}` | Manager staffing, source readiness, capacity/blockers and saved-message wake. Recovery pages expose up to 64 unresolved claims, grants, assignments and pending delivery IDs each, with counts and `nextOffset`; no task bodies. |
 | `startup_block {key,evidence}` | Manager records validated concrete capacity/resource/dependency evidence. |
 | `startup_reconcile {claimId,evidence}` / `startup_resolve {assignmentId,evidence}` | Manager evidence-based uncertain claim and assignment resolution. |
 | `startup_refresh {employeeId,evidence}` / `startup_bind_manager {}` | Idle source refresh or current-root manager recovery; real source admission required. |
@@ -89,7 +89,7 @@ Resume the same saved manager native transcript with the same named profile and 
 omp --profile my-startup --resume /absolute/path/to/saved-manager.jsonl
 ```
 
-The cold probe uses this exact `--resume` form; the installed boot probe also verifies `--session <saved-file>`. Starting a brand-new root with `startup select` is not same-session recovery. After the real default 60000 ms owner lease expires, the current owner inspects saved claims and grants, reconciles uncertain work with fresh native verification, binds its current manager source and uses `startup_dispatch {messageIds:[savedId]}`. No uncertain mutation is replayed. Preserved child transcripts and source admission retain employee identity; runtime observations resume only while the new host runs.
+The cold probe uses this exact `--resume` form; the installed boot probe also verifies `--session <saved-file>`. Starting a brand-new root with `startup select` is not same-session recovery. After the real default 60000 ms owner lease expires, the current owner calls `startup_staff {}` and follows `recovery.nextOffset` with `startup_staff {recoveryOffset:nextOffset}` to discover saved claim, grant, assignment and pending-message IDs, reconciles uncertain work with fresh native verification, binds its current manager source and uses `startup_dispatch {messageIds:[savedId]}`. No uncertain mutation is replayed. Preserved child transcripts and source admission retain employee identity; runtime observations resume only while the new host runs.
 
 Generated technical employee profiles declare native `spawns: [task]` for bounded procedure supervisors/reviewers. Native recursion, disabled-agent policy, budgets and aggregate capacity still apply. Ordinary helpers receive no Startup employee identity or inbox/hiring authority; PA retains no child-spawn permission.
 

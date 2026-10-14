@@ -5,6 +5,7 @@ import {
   unlinkSync,
   appendFileSync,
   mkdirSync,
+  renameSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { Database } from "bun:sqlite";
@@ -17,6 +18,7 @@ import {
   claimSchema,
 } from "../src/contracts";
 import nativeAdapter from "./native-adapter";
+import { loadProfile } from "../src/profiles";
 
 function env(name: string): string {
   const value = process.env[name];
@@ -130,7 +132,48 @@ export default function nativeIntegrated(pi: ExtensionAPI): void {
                 .passthrough()
                 .parse(row.details),
             );
-        if (env("STARTUP_INTEGRATED_SCENARIO") === "helper") {
+        if (env("STARTUP_INTEGRATED_SCENARIO") === "preflight") {
+          const profiles = join(ctx.cwd, ".omp/agents");
+          mkdirSync(dirname(profiles), { recursive: true });
+          writeFileSync(profiles, "Owned fixture preflight obstruction");
+          const hire = { startup: "hire", requestId: "prepare-retry", role: "devops", additional: 2 };
+          let refused = false;
+          try { await invoke("task", hire); } catch { refused = true; }
+          unlinkSync(profiles);
+          const saved = staff().filter((employee) => employee.role === "devops");
+          if (!refused || saved.length !== 2) throw new Error("Expected saved undispatched hires");
+          mkdirSync(profiles);
+          const second = saved[1]!;
+          const profile = loadProfile({ skillsRoot: env("STARTUP_ADAPTER_SOURCES"), role: second.role, employeeId: second.id, generation: 1 });
+          const conflict = join(profiles, profile.name + ".md");
+          writeFileSync(conflict, "Owned conflicting profile fixture");
+          let preparationRefused = false;
+          try { await invoke("task", { startup: "activate", employeeIds: saved.map((employee) => employee.id) }); } catch { preparationRefused = true; }
+          unlinkSync(conflict);
+          await invoke("task", hire);
+          await wait(ctx, () => saved.every((employee) => staff().some((current) => current.id === employee.id && current.nativeHandle !== null)) && idle(), "native profile preparation retry");
+          checks.preparationRetryPreservesAllIds = preparationRefused && staff().filter((employee) => employee.role === "devops").length === 2;
+          // Reserve one unactivated architect with a native preparation obstruction.
+          const directory = join(ctx.cwd, ".omp");
+          const oldProfiles = profiles + "-saved";
+          renameSync(profiles, oldProfiles);
+          writeFileSync(profiles, "Owned source-preflight obstruction");
+          try { await invoke("task", { startup: "hire", requestId: "saved-architect", role: "architect", additional: 1 }); } catch (error) { record({ kind: "preflight-reserve-refused", error: String(error) }); }
+          unlinkSync(profiles);
+          renameSync(oldProfiles, profiles);
+          const architect = staff().find((employee) => employee.role === "architect")!;
+          const rolePath = join(env("STARTUP_ADAPTER_SOURCES"), "skills/startup-role-architect/SKILL.md");
+          writeFileSync(rolePath, readFileSync(rolePath, "utf8") + "\nIsolated canonical source revision proof.\n");
+          await invoke("startup_intake", { eventId: "PREFLIGHT", input: "Preserve original event", amendItemIds: [] });
+          let sourceRefused = false;
+          try { await invoke("task", { startup: "delegate", eventId: "PREFLIGHT", developers: 1 }); } catch (error) { sourceRefused = String(error).includes("Canonical role source"); }
+          checks.sourceRefusedBeforeTeam = sourceRefused && teams().length === 0 && staff().find((employee) => employee.id === architect.id)?.assignment === null;
+          await invoke("startup_refresh", { employeeId: architect.id, evidence: { fixture: "explicit safe source refresh" } });
+          await invoke("task", { startup: "delegate", eventId: "PREFLIGHT", developers: 1 });
+          await wait(ctx, () => teams().some((team) => team.eventId === "PREFLIGHT" && team.state === "active") && idle(), "native refreshed original intake team");
+          checks.originalEmployeeAndEventRetained = teams().some((team) => team.eventId === "PREFLIGHT" && team.architect === architect.id);
+          record({ kind: "preflight-final", staff: await invoke("startup_staff", {}), directory });
+        } else if (env("STARTUP_INTEGRATED_SCENARIO") === "helper") {
           await invoke("task", {
             startup: "hire",
             requestId: "canonical-helper",
@@ -430,7 +473,7 @@ export default function nativeIntegrated(pi: ExtensionAPI): void {
             staff: await invoke("startup_staff", {}),
           });
         } else {
-          if (env("STARTUP_INTEGRATED_SCENARIO") !== "partial") {
+          if (!["partial", "final-single", "sync"].includes(env("STARTUP_INTEGRATED_SCENARIO"))) {
             checks.bootBeforeIntake =
               existsSync(join(ctx.cwd, "AGENTS.md")) &&
               existsSync(join(ctx.cwd, ".startup"));
@@ -762,7 +805,7 @@ export default function nativeIntegrated(pi: ExtensionAPI): void {
           checks.partialRetryStable =
             JSON.stringify(staff().map((entry) => entry.id)) ===
             JSON.stringify(identities);
-          if (env("STARTUP_INTEGRATED_SCENARIO") !== "partial") {
+          if (!["partial", "final-single", "sync"].includes(env("STARTUP_INTEGRATED_SCENARIO"))) {
             const coordinator = staff().find(
               (entry) => entry.role === "devops",
             );

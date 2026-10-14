@@ -148,6 +148,14 @@ def main() -> int:
         dispatch = next(row for row in events if row['kind'] == 'cold-dispatch-after')
         before_epoch = evidence['afterKill']['lease']['epoch']
         checks = evidence['checks']
+        recovery = next(row['recovery'] for row in events if row['kind'] == 'cold-public-recovery')
+        public_grants = {grant['id'] for grant in recovery['grants']}
+        public_claims = {claim['id'] for claim in recovery['claims']}
+        public_assignments = {assignment['id'] for assignment in recovery['assignments']}
+        public_pending = {message['id'] for message in recovery['pendingMessages']}
+        recovery_calls = [row for row in events if row['kind'] == 'cold-admin' and row['name'] in {'startup_reconcile', 'startup_resolve', 'startup_dispatch', 'startup_repair_reconcile'}]
+        checks['publicRecoveryIdsOnly'] = bool(recovery_calls) and all(row['params']['grantId'] in public_grants if row['name'] == 'startup_repair_reconcile' else row['params']['claimId'] in public_claims if row['name'] == 'startup_reconcile' else row['params']['assignmentId'] in public_assignments if row['name'] == 'startup_resolve' else bool(row['params']['messageIds']) and all(identifier in public_pending for identifier in row['params']['messageIds']) for row in recovery_calls)
+        checks['publicChildRecoveryDiscovered'] = any(claim['employeeId'] == saved['workerId'] and claim['status'] == 'reconciliation' for claim in recovery['claims'])
         checks['sameCanonicalRoot'] = reopened['rootSession'] == saved['rootSession'] and reopened['rootFile'] == saved['rootFile']
         checks['newGenerationEpoch'] = reopened['createdAt'] > saved['createdAt'] and evidence['afterResume']['lease']['epoch'] == before_epoch + 1
         checks['sigkillRealLeaseWait'] = evidence['processes'][0]['exit'] == -9 and evidence['leaseWait']['endedAt'] * 1000 > expires and evidence['beforeResume']['lease'] == evidence['afterKill']['lease']

@@ -136,7 +136,7 @@ export default function nativeCold(pi: ExtensionAPI): void {
               "employee bootstrap idle",
             );
           }
-          const staff = employees().filter((entry) => entry.role === "devops");
+          const staff = z.object({ employees: z.array(employeeSchema) }).parse(await invoke("startup_staff", {})).employees.filter((entry) => entry.role === "devops");
           const recipient = staff[0];
           const worker = staff[1];
           if (!recipient?.nativeHandle || !worker?.nativeHandle)
@@ -231,13 +231,14 @@ export default function nativeCold(pi: ExtensionAPI): void {
             correlation: "cold-manager",
             payload: { pending: true },
           });
-          const workerClaim = claims().find(
+          const publicStaff = z.object({ recovery: z.object({ claims: z.array(z.object({ id: z.string(), messageId: z.string() })), grants: z.array(z.object({ id: z.string(), authorizationId: z.string() })) }) }).parse(await invoke("startup_staff", {}));
+          const workerClaim = publicStaff.recovery.claims.find(
             (claim) => claim.messageId === "cold-interrupt",
           );
-          const managerClaim = claims().find(
+          const managerClaim = publicStaff.recovery.claims.find(
             (claim) => claim.messageId === "cold-manager-active",
           );
-          const grant = grants().find(
+          const grant = publicStaff.recovery.grants.find(
             (entry) => entry.authorizationId === "cold-action",
           );
           if (
@@ -306,10 +307,19 @@ export default function nativeCold(pi: ExtensionAPI): void {
               ),
             "native manager recovery denial",
           );
+          const recovery = z.object({ recovery: z.object({
+            grants: z.array(z.object({ id: z.string(), employeeId: z.string(), state: z.string() })),
+            claims: z.array(z.object({ id: z.string(), messageId: z.string(), employeeId: z.string(), status: z.string() })),
+            assignments: z.array(z.object({ id: z.string(), employeeId: z.string() })),
+            pendingMessages: z.array(z.object({ id: z.string(), recipient: z.string() })),
+          }) }).parse(await invoke("startup_staff", {})).recovery;
+          record({ kind: "cold-public-recovery", recovery });
+          const publicGrant = recovery.grants.find((grant) => grant.employeeId === saved.workerId && grant.state === "reconciliation");
+          if (!publicGrant) throw new Error("Public recovery omitted worker repair grant");
           let refused: string | null = null;
           try {
             await invoke("startup_repair_reconcile", {
-              grantId: saved.grantId,
+              grantId: publicGrant.id,
               evidence: { fixture: "still unhealthy" },
             });
           } catch (error: unknown) {
@@ -324,17 +334,20 @@ export default function nativeCold(pi: ExtensionAPI): void {
           });
           writeFileSync(saved.health, '{"healthy":true}\n');
           await invoke("startup_repair_reconcile", {
-            grantId: saved.grantId,
+            grantId: publicGrant.id,
             evidence: { fixture: "operator verified local derived state" },
           });
-          for (const claimId of [saved.workerClaimId, saved.managerClaimId])
+          const interrupted = recovery.claims.filter((claim) => claim.status === "reconciliation");
+          if (!interrupted.some((claim) => claim.employeeId === saved.workerId) || !interrupted.some((claim) => claim.employeeId === "manager"))
+            throw new Error("Public recovery omitted interrupted child or manager");
+          for (const claimId of interrupted.map((claim) => claim.id))
             await invoke("startup_reconcile", {
               claimId,
               evidence: {
                 fixture: "observed interrupted transcript and actual target",
               },
             });
-          for (const assignmentId of ["cold-interrupt", "cold-manager-active"])
+          for (const assignmentId of recovery.assignments.filter((assignment) => interrupted.some((claim) => claim.messageId === assignment.id)).map((assignment) => assignment.id))
             await invoke("startup_resolve", {
               assignmentId,
               evidence: { fixture: "resolved interrupted work" },
@@ -345,7 +358,7 @@ export default function nativeCold(pi: ExtensionAPI): void {
             registry: snapshotRegistry(),
           });
           await invoke("startup_dispatch", {
-            messageIds: ["cold-saved-pending"],
+            messageIds: recovery.pendingMessages.filter((message) => message.recipient === saved.recipientId).map((message) => message.id),
           });
           await wait(
             ctx,

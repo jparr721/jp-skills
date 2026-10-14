@@ -15,7 +15,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--workspace', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
-    parser.add_argument('--scenario', choices=['full','refresh','input','capacity','integrated','single','partial','ordinary-root','ordinary-child','helper'], required=True)
+    parser.add_argument('--scenario', choices=['full','refresh','input','capacity','integrated','single','partial','ordinary-root','ordinary-child','helper','final-single','sync','preflight'], required=True)
     parser.add_argument('--sources', choices=['product', 'fixture'], default='product')
     args = parser.parse_args()
     evidence = {'version':1,'status':'FAIL','checks':{},'failure':None}
@@ -40,7 +40,7 @@ def run(args, evidence) -> int:
     repo = Path(__file__).resolve().parents[3]
     source_paths=[repo/'extensions/startup/index.ts',*sorted((repo/'extensions/startup/src').glob('*.ts')),Path(__file__).with_name('native-adapter.ts'),Path(__file__)]
     source_paths += [Path(__file__).with_name('probe_workspace.py')]
-    if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'}:
+    if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper','final-single','sync','preflight'}:
         source_paths.append(Path(__file__).with_name('native-integrated.ts'))
     evidence['sourceHashes']={str(path.relative_to(repo)):hashlib.sha256(path.read_bytes()).hexdigest() for path in source_paths}
     workspace = args.workspace.resolve()
@@ -56,7 +56,7 @@ def run(args, evidence) -> int:
     loop.parent.mkdir(parents=True)
     loop.write_text('---\nname: startup-loop\n---\nComplete isolated canonical shared loop fixture. Remain employed and accept later durable inbox cues.\n')
     if args.sources == 'product':
-        if args.scenario == 'refresh':
+        if args.scenario in {'refresh','preflight'}:
             for path in sources.glob('skills/*/SKILL.md'):
                 path.write_bytes((repo/path.relative_to(sources)).read_bytes())
         else:
@@ -65,12 +65,14 @@ def run(args, evidence) -> int:
         evidence['canonicalSourceHashes'] = {str(path.relative_to(repo)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted((repo/'skills').glob('startup*/**/*.md'))}
     config = workspace / 'config.yml'
     config.write_text('task:\n  batch: true\n  agentIdleTtlMs: 0\n  speculativeLaunch: false\n  enableEffort: true\n  isolation:\n    enabled: true\nasync:\n  enabled: true\nproviders:\n  cacheWarming: false\nmemories:\n  enabled: false\nmcp:\n  enableProjectConfig: false\n')
-    if args.scenario == 'single':
+    if args.scenario in {'single','final-single'}:
         config.write_text(config.read_text().replace('batch: true', 'batch: false'))
+    if args.scenario == 'sync':
+        config.write_text(config.read_text().replace('async:\n  enabled: true', 'async:\n  enabled: false'))
     (workspace/'state/omp').mkdir(parents=True)
     env = {key: value for key, value in os.environ.items() if key in {'PATH','HOME','TMPDIR','LANG','LC_ALL','TERM','SHELL','USER','LOGNAME'}}
     env.update({'XDG_STATE_HOME':str(workspace/'state'),'PI_CODING_AGENT_DIR': str(workspace / 'profile'), 'STARTUP_NAME': 'adapter-proof', 'JP_SKILLS_HOME': str(workspace / 'home'), 'STARTUP_SKILLS_ROOT': str(sources), 'STARTUP_ADAPTER_HOME': str(workspace / 'home'), 'STARTUP_ADAPTER_SOURCES': str(sources), 'STARTUP_ADAPTER_EVENTS': str(workspace / 'events.jsonl'), 'STARTUP_ADAPTER_REPORT': str(workspace / 'report.json'), 'STARTUP_ADAPTER_DENIED_PATH': str(cwd / 'stale-denied.txt')})
-    if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'}:
+    if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper','final-single','sync','preflight'}:
         env['STARTUP_INTEGRATED_SCENARIO']=args.scenario
         env['STARTUP_INTEGRATED_RELEASE']=str(workspace/'release-build')
     if args.scenario in {'ordinary-root','ordinary-child','helper'}:
@@ -80,7 +82,7 @@ def run(args, evidence) -> int:
     omp = shutil.which('omp')
     if omp is None:
         raise FileNotFoundError('Installed compiled OMP is required')
-    command = [omp,'--mode','rpc','--no-ui','--cwd',str(cwd),'--config',str(config),'--no-extensions','--no-skills','--no-rules','--no-lsp','--no-pty','--no-title','--tools','task,read,write,wait','--extension',str(Path(__file__).parents[1] / 'index.ts'),'--extension',str(Path(__file__).with_name('native-integrated.ts' if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'} else 'native-adapter.ts')),'--model','startup-adapter/offline','--thinking','off','--auto-approve']
+    command = [omp,'--mode','rpc','--no-ui','--cwd',str(cwd),'--config',str(config),'--no-extensions','--no-skills','--no-rules','--no-lsp','--no-pty','--no-title','--tools','task,read,write,wait','--extension',str(Path(__file__).parents[1] / 'index.ts'),'--extension',str(Path(__file__).with_name('native-integrated.ts' if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper','final-single','sync','preflight'} else 'native-adapter.ts')),'--model','startup-adapter/offline','--thinking','off','--auto-approve']
     evidence.update({'command': command, 'installedVersion': subprocess.check_output([omp,'--version'],text=True).strip()})
     with (workspace / 'stdout.jsonl').open('w') as stdout, (workspace / 'stderr.txt').open('w') as stderr:
         process = subprocess.Popen(command,env=env,cwd=cwd,stdin=subprocess.PIPE,stdout=stdout,stderr=stderr,text=True)
@@ -106,7 +108,7 @@ def run(args, evidence) -> int:
                         raise RuntimeError('Actual human input did not route and finish')
                 process.stdin.write(json.dumps({'id':'input-report','type':'prompt','message':'/startup-input-proof-report'})+'\n')
             else:
-                process.stdin.write(json.dumps({'id':'adapter-proof','type':'prompt','message':'/startup-integrated-proof' if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'} else '/startup-capacity-proof' if args.scenario=='capacity' else '/startup-adapter-refresh-proof' if args.scenario=='refresh' else '/startup-adapter-proof'})+'\n')
+                process.stdin.write(json.dumps({'id':'adapter-proof','type':'prompt','message':'/startup-integrated-proof' if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper','final-single','sync','preflight'} else '/startup-capacity-proof' if args.scenario=='capacity' else '/startup-adapter-refresh-proof' if args.scenario=='refresh' else '/startup-adapter-proof'})+'\n')
             process.stdin.flush()
             deadline=time.monotonic()+110
             while not (workspace/'report.json').exists() and process.poll() is None and time.monotonic()<deadline:
@@ -132,7 +134,7 @@ def run(args, evidence) -> int:
     report=json.loads((workspace/'report.json').read_text()) if (workspace/'report.json').exists() else {'status':'FAIL','error':'No native adapter report'}
     evidence.update({'report':report,'events':events,'exitCode':exit_code,'stderr':(workspace/'stderr.txt').read_text(),'stdout':(workspace/'stdout.jsonl').read_text()})
     checks={}
-    if report['status']=='COMPLETE' and args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'}:
+    if report['status']=='COMPLETE' and args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper','final-single','sync','preflight'}:
         checks=report['checks'] | {'native_completion':exit_code==0}
     if report['status']=='COMPLETE' and args.scenario=='capacity':
         proof=next(event for event in events if event['kind']=='native-capacity-proof')
