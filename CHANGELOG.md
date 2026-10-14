@@ -2,25 +2,60 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
-## [6.0.0] - 2026-10-13
+## [6.0.0] - 2026-10-14
 
-Local candidate; publication remains separate. V5.0.1 is the previously released version.
+Reviewed V6 implementation for `main`. Release tagging/publication and machine-specific installation are separate actions; 5.0.1 remains the previously released version.
+
+### Breaking changes
+
+- The manager handles high-level routing, decisions, staffing, authorization and final landing. It delegates technical intake and implementation to an architect-led team instead of performing intake itself.
+- Each distinct intake receives a fresh complete team: exactly one architect, one QA and one or more developers. The architect leads the team and reports to the manager; team members report through their architect. Replaying the same intake event retains its team and requested developer count.
+- Runtime persistence requires the Startup companion on the supported Oh My Pi 18.8.9 interface. Installing or linking skills alone does not install the companion or provide native persistence.
+
+### Added
+
+- `hire` supports user- or manager-directed additive staffing. `hire devops 6` adds six more DevOps employees; retrying the same saved request adds none, while a deliberate later hire uses a new request ID. Idle staff can join a fresh team generation; busy teams remain independent.
+- `startup-loop` defines the shared employee wake, inbox, claim, result, question and waiting procedure. Durable employee identities, mail, assignments and duty history survive individual native turns and queue drain; waiting does not retire staff.
+- A transactional SQLite store outside the bound project retains staffing, team membership, received inputs, inbox claims, immutable results, ownership leases, generations and resource grants. Current-root and source checks reject stale or foreign callers.
+- Human inputs are captured before model lookup and routed explicitly. Successive requests, multiple intents, clarifications and missing details remain durable. Scoped text pages and native image retrieval retain the full request without flooding routine context with historical inputs.
+- Native `/startup new`, `/startup select` and status commands establish the bound manager. Boot synchronously creates or updates `AGENTS.md` beside `.startup/` before asynchronous dispatch, preserving unrelated existing bytes and rejecting malformed or foreign managed guidance.
+- Public manager tools expose staffing, readiness, real capacity blockers and bounded recovery pages containing unresolved claim, grant, assignment and pending-message IDs. Recovery does not require private database inspection.
+- Assigned DevOps duties support periodic local JSON observations, explicit acceptance conditions and separately authorized JSON replacement with post-action verification. Same-target grants serialize admitted repairs; uncertain actions require reconciliation rather than automatic replay.
+- Named-profile companion install/uninstall checks ownership, preserves pre-existing configuration and restores only owned changes. [Installation and runtime documentation](extensions/startup/README.md) covers dependencies, boot, tools and recovery.
 
 ### Changed
 
-- Startup uses one high-level manager, fresh complete architect/QA/dev teams per intake, additive stable hiring, complete canonical role/shared-loop sources and durable scoped inboxes. Independent ready teams dispatch while other intake or clarification remains pending; queue drain preserves staff.
-- The OMP 18.8.9 companion retains native execution, capacity, helper policy and transcripts. Technical employees can invoke bounded generic task supervisors; PA remains without child spawning. Ordinary native batch/single/default-agent calls retain their grammar and authority.
-- Native boot and named-profile installation preserve existing root guidance, profiles and user state. Current-root cold recovery resumes the saved native transcript, waits the real lease, reconciles uncertainty and explicitly dispatches saved messages.
-- Assigned host-lifetime duties support verified local JSON observation and serialized authorized repair. Host exit is offline; this candidate has no deployment/service-health connector. Non-OMP dispatch uses canonical prompts without native persistence guarantees.
+- Independent ready teams dispatch immediately while other intake, implementation or clarification is pending. Before waiting or ending a turn, the manager must dispatch ready work or retain a concrete dependency, resource or capacity blocker. Missing capacity favors hiring within actual limits.
+- Native OMP remains the execution authority for tasks, transcripts, recursion, budgets, disabled agents and capacity. Ordinary native task grammar remains available in batch and single-call modes; Startup also supports synchronous native results without changing host settings.
+- `STARTUP_EXECUTION_LIMIT` accepts an explicit positive safe integer. Native capacity further bounds concurrent work, including ordinary buddy/review descendants; no absent-limit default of six is imposed. Roster size and concurrent execution are separate.
+- Every employee receives the full canonical role and shared loop sources, with assignment data kept separate. Readiness requires verified native source admission. Safe manager-owned source refresh preserves employment and history while refusing unresolved work.
+- Technical employee profiles permit bounded generic `task` children for canonical supervisors and reviewers. Helpers gain no employee identity, inbox or hiring authority; PA child spawning remains disabled.
+- Item execution, QA proof, architect approval and manager landing use typed, revision-checked transitions through the existing queue journal. Existing per-kind procedures, review rigor and final evidence requirements remain in force.
+- Sprint/retro bookkeeping preserves independent fan-out. DevOps retirement is limited to idle staff after unresolved work, mail, duties and grants are resolved; history is retained.
 
 ### Fixed
 
-- Scoped host verification reads remain available during recovery while ordinary reads stay fenced.
-- Proven terminal native activation/helper failures release only their matching reservations; partial retries retain successful siblings and logical identities.
+- Successive intake is no longer lost behind readiness checks or an earlier team's intake. Waiting for a clarification preserves the original assignment and does not silently complete its item.
+- Later dispatch refusal or exceptions preserve earlier successful single-call activations. Partial retries retain the original team/employee identities and successful sibling handles.
+- Synchronous native result correlation requires verified source binding; job completion alone cannot create readiness. Proven terminal activation and ordinary-helper failures release only their matching execution reservations.
+- Profile preparation and reusable-source checks complete before publishing undispatched activation expectations or committing an incompatible team. Failed preparation remains retryable with the same IDs; stale idle sources can be explicitly refreshed.
+- Item transitions drain pending journal writes before another revision or retry on the same live connector. Conflicting retries cannot overwrite an immutable pending intent.
+- Narrowly scoped host verification reads remain available during recovery, including pending-input reconciliation, while ordinary reads and unrelated paths remain guarded.
+- Public failure alerts include the identifiers needed to reconcile interrupted child work. Expected negative-test diagnostics are captured and asserted, keeping successful verification output clear without hiding unexpected failures.
+
+### Upgrade and operating limits
+
+- Existing V5 queue rows, receipts, unknown fields, resource records and unrelated root instructions are preserved. There is no destructive bulk migration or automatic installation into a normal OMP profile.
+- Outside OMP, the canonical dispatch prompt supplies the full role/loop procedure and reports once that "Oh My Pi is best-suited for this system." An installed `omp` executable does not select native mode. Known OMP with a missing or failed companion stays blocked until corrected.
+- Monitoring runs only while a current owner host is alive. Offline periods produce no observations, and old observations are not current health. The included connector handles bounded regular local JSON files; deployment/service-health integrations are not included.
+- Cold recovery resumes the same saved manager transcript, waits the real default 60000 ms owner lease, reconciles uncertainty with fresh verification and explicitly dispatches saved messages. This release does not provide an always-running daemon or automatic takeover from a different transcript.
+- Prompt-only mode has no native persistence guarantee. Native deterministic-provider proofs establish runtime mechanics and ordering, not model reasoning quality or completion of an arbitrary application pipeline.
 
 ### Verification
 
-- Local candidate evidence: [V6 acceptance](extensions/startup/probes/v6-acceptance.md), 142 behavioral tests/736 assertions, typecheck, six driver tests, compiled native proofs and separate actual Codex prompt-only proof. Independent final review and publication remain required.
+- Latest reviewed runtime: 157 passing behavioral tests, 894 assertions, TypeScript checking and six passing Python probe-driver tests. Final independent review's five important findings and one minor diagnostic issue are addressed, with no new findings in scoped rereview.
+- Five final-fix installed-OMP artifacts contain 44 passing checks covering single-call activation, synchronous results, preparation/refresh, partial retry and public cold recovery. Sixteen retained baseline artifacts contain 158 historical passing checks, including a separate actual Codex prompt-only fixture; historical evidence is not relabeled as a fresh run.
+- [V6 acceptance](extensions/startup/probes/v6-acceptance.md) and its manifest retain exact artifact hashes, source fingerprints, original failure evidence, complete final review reports, controller rulings and reproducible commands. The independent fan-out fixture dispatches a complete AGENTS team while BUILD intake remains held; boot guidance exists before either dispatch.
 
 ## [5.0.1] - 2026-10-13
 
