@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, test, spyOn } from "bun:test";
 import {
   mkdtempSync,
   mkdirSync,
@@ -1285,8 +1285,13 @@ for (const mutation of [
         await a.f.adapter.shutdown();
         break;
     }
+    const diagnostic = spyOn(process.stderr, "write").mockImplementation(() => true);
     a.terminal.resolve();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const diagnostics = diagnostic.mock.calls.map((call) => String(call[0]));
+    diagnostic.mockRestore();
+    expect(diagnostics).toHaveLength(["running", "close", "shutdown"].includes(mutation) ? 0 : 1);
+    for (const line of diagnostics) expect(JSON.parse(line)).toMatchObject({ level: "warning", component: "startup-native-task" });
     expect(a.f.managerNotifications).toHaveLength(0);
     if (mutation !== "close" && mutation !== "shutdown" && mutation !== "lease")
       expect(
@@ -1474,8 +1479,13 @@ for (const state of [
     a.job.status = "failed";
     for (const progress of a.job.latestDetails.progress)
       progress.status = "failed";
+    const diagnostic = spyOn(process.stderr, "write").mockImplementation(() => true);
     a.terminal.resolve();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const diagnostics = diagnostic.mock.calls.map((call) => String(call[0]));
+    diagnostic.mockRestore();
+    expect(diagnostics).toHaveLength(state.startsWith("wrong") ? 1 : 0);
+    for (const line of diagnostics) expect(JSON.parse(line)).toMatchObject({ level: "warning", component: "startup-native-task" });
     expect(a.f.adapter.capacity().reserved).toBe(
       state.startsWith("wrong") ? 1 : 0,
     );
@@ -1511,8 +1521,13 @@ for (const fence of ["owner", "session", "source", "running"]) {
         "changed",
       );
     if (fence === "running") a.job.status = "running";
+    const diagnostic = spyOn(process.stderr, "write").mockImplementation(() => true);
     a.terminal.resolve();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const diagnostics = diagnostic.mock.calls.map((call) => String(call[0]));
+    diagnostic.mockRestore();
+    expect(diagnostics).toHaveLength(fence === "running" ? 0 : 1);
+    for (const line of diagnostics) expect(JSON.parse(line)).toMatchObject({ level: "warning", component: "startup-native-task" });
     expect(a.f.adapter.capacity().reserved).toBe(1);
   });
 }

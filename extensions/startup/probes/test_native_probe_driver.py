@@ -1,3 +1,4 @@
+from contextlib import redirect_stdout
 import gzip
 import importlib.util
 import io
@@ -47,7 +48,13 @@ class NativeProbeDriverRegression(unittest.TestCase):
             process.wait.return_value = 0
             return process
         with patch.object(sys, "argv", [str(DRIVER_PATH), "--workspace", str(workspace), "--evidence", str(evidence)]), patch.object(DRIVER.shutil, "which", return_value="/isolated/fake-omp"), patch.object(DRIVER.subprocess, "check_output", return_value="omp/18.8.9\n"), patch.object(DRIVER.subprocess, "Popen", side_effect=spawn):
-            self.assertEqual(DRIVER.main(), 1)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                try:
+                    self.assertEqual(DRIVER.main(), 1)
+                finally:
+                    diagnostic = json.loads(output.getvalue())
+                    self.assertEqual(diagnostic["status"], "FAIL")
 
     def test_failures_replace_stale_pass_evidence(self) -> None:
         reports = [
