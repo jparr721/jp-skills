@@ -71,6 +71,15 @@ import {
   type ResourceDocument,
 } from "./resources";
 
+import {
+  itemActionSchema,
+  itemExecutionSchema,
+  itemTransitionSchema,
+  terminalItemStatuses,
+  type ItemAction,
+  type ItemExecution,
+  type ItemTransition,
+} from "./items";
 const storedSchema = z.strictObject({ payload: z.string() });
 const leaseSchema = z.strictObject({
   token: z.string(),
@@ -128,6 +137,7 @@ const writeIntentSchema = z
     after: z.string(),
     state: z.enum(["pending", "complete"]),
     capture: captureRecordSchema.nullable(),
+    item: itemTransitionSchema.optional(),
   })
   .readonly();
 const occurrenceSchema = z
@@ -187,6 +197,8 @@ export type Snapshot = Readonly<{
   queueRevisions: readonly QueueRevision[];
   authorizations: readonly TargetAuthorization[];
   teams: readonly Team[];
+  itemExecutions: readonly ItemExecution[];
+  itemTransitions: readonly ItemTransition[];
   messages: readonly Message[];
   claims: readonly Claim[];
   results: readonly Settlement[];
@@ -596,6 +608,45 @@ export function openStore(args: {
       state: "active",
     });
   }
+  function canonicalQueue() {
+    const before = readFile("queue.json");
+    if (before === null)
+      return { before, rows: z.array(rowSchema).parse([]), container: null };
+    const document = jsonSchema.parse(JSON.parse(before));
+    if (Array.isArray(document))
+      return {
+        before,
+        rows: z.array(rowSchema).parse(document),
+        container: null,
+      };
+    const container = z.record(z.string(), jsonSchema).parse(document);
+    return {
+      before,
+      rows: z.array(rowSchema).parse(container.items),
+      container,
+    };
+  }
+  function finalizeItem(receipt: ItemTransition): void {
+    const current = team(receipt.teamId);
+    put("queueOwner", receipt.request.itemId, {
+      id: receipt.request.itemId,
+      eventId: receipt.eventId,
+      revision: receipt.revision,
+    });
+    put("team", current.id, {
+      ...current,
+      items: current.items.map((item) =>
+        item.id === receipt.request.itemId
+          ? { id: item.id, revision: receipt.revision }
+          : item,
+      ),
+    });
+    if (receipt.execution !== null)
+      put("itemExecution", receipt.request.itemId, receipt.execution);
+    for (const draft of receipt.cues)
+      saveCue(draft.sender, draft.cue, draft.teamId);
+    put("itemTransition", receipt.request.requestId, receipt);
+  }
   function applyIntent(id: string): void {
     tx((): void => {
       const intent = read("intent", id, writeIntentSchema);
@@ -626,6 +677,7 @@ export function openStore(args: {
           `Read-back verification failed for ${intent.file}, write ${id}`,
         );
       if (intent.capture !== null) finalizeCapture(intent.capture);
+      if (intent.item !== undefined) finalizeItem(intent.item);
       if (intent.file === "resources.json")
         put(
           "resources",
@@ -1423,6 +1475,401 @@ export function openStore(args: {
       applyIntent(`capture/${receipt.request.captureId}`);
       return receipt;
     },
+    queueItems(): readonly z.infer<typeof rowSchema>[] {
+      return canonicalQueue().rows;
+    },
+    transitionItem(input: {
+      readonly employee: Binding;
+      readonly request: ItemAction;
+    }): ItemTransition {
+      const receipt: ItemTransition = tx(() => {
+        const sender = actor(input.employee);
+        const request = itemActionSchema.parse(input.request);
+        const ownership = read("queueOwner", request.itemId, queueOwnerSchema);
+        const event =
+          ownership === null
+            ? null
+            : read("intake", ownership.eventId, intakeRecordSchema);
+        if (
+          ownership === null ||
+          event?.teamId === null ||
+          event?.teamId === undefined
+        )
+          throw new StoreAuthorityError(
+            "Canonical item has no owning delegated team",
+          );
+        const current = team(event.teamId);
+        if (
+          sender.role !== "manager" &&
+          (sender.assignment !== current.id ||
+            !members(current).includes(sender.id))
+        )
+          throw new StoreAuthorityError(
+            "Item transition is outside the current owning team",
+          );
+        const previous = read(
+          "itemTransition",
+          request.requestId,
+          itemTransitionSchema,
+        );
+        if (previous !== null) {
+          assertReplay(previous.request, request, request.requestId);
+          if (previous.actorId !== sender.id)
+            throw new StoreAuthorityError(
+              "Item receipt belongs to another actor",
+            );
+          return previous;
+        }
+        if (current.state === "finished")
+          throw new StoreAuthorityError(
+            "Finished team cannot transition items",
+          );
+        if (
+          ownership.revision !== request.expectedRevision ||
+          !current.items.some(
+            (item) =>
+              item.id === request.itemId &&
+              item.revision === request.expectedRevision,
+          )
+        )
+          throw new StoreConflictError("Item transition has a stale revision");
+        const document = canonicalQueue();
+        const row = document.rows.find((row) => row.id === request.itemId);
+        if (!row)
+          throw new StoreRecoveryError("Canonical item row is unavailable");
+        const status = z.string().parse(row.status);
+        let nextStatus = status;
+        let execution = read(
+          "itemExecution",
+          request.itemId,
+          itemExecutionSchema,
+        );
+        const cues: { sender: Employee; cue: Cue; teamId: string }[] = [];
+        const evidence =
+          request.action === "qa" ? request.proof : request.evidence;
+        if (evidence === null)
+          throw new StoreAuthorityError(
+            "Item transition requires explicit evidence",
+          );
+        const leader =
+          sender.role === "manager" || sender.id === current.architect;
+        const cue = (recipient: string, kind: Cue["kind"], payload: Json) => {
+          const value: Cue = {
+            id: `item-${request.requestId}-${recipient}`,
+            recipient,
+            kind,
+            correlation: request.itemId,
+            payload,
+          };
+          route(sender, value);
+          cues.push({ sender, cue: value, teamId: current.id });
+          return value.id;
+        };
+        const resolved = (value: ItemExecution | null): boolean =>
+          value === null ||
+          ![value.messageId, value.qaMessageId].some(
+            (id) =>
+              id !== null &&
+              (all("claim", claimSchema).some(
+                (claim) => claim.messageId === id && claim.status !== "settled",
+              ) ||
+                all("assignment", assignmentSchema).some(
+                  (assignment) =>
+                    assignment.id === id && assignment.state !== "complete",
+                )),
+          );
+        const completedResult = (
+          resultId: string,
+          messageId: string,
+          employeeId: string,
+          generation: number,
+        ) => {
+          const saved = read("result", resultId, resultRecordSchema);
+          const claim =
+            saved === null ? null : read("claim", saved.claimId, claimSchema);
+          if (
+            saved === null ||
+            saved.result.kind !== "completed" ||
+            claim?.messageId !== messageId ||
+            claim.employeeId !== employeeId ||
+            claim.generation !== generation ||
+            claim.status !== "settled"
+          )
+            throw new StoreAuthorityError(
+              "Item requires its own durable completed assignment result",
+            );
+          return saved.result;
+        };
+        switch (request.action) {
+          case "assign": {
+            if (!leader || status !== "QUEUED" || !ready(current))
+              throw new StoreAuthorityError(
+                "Only the ready own-team architect or manager may assign a queued item",
+              );
+            if (!resolved(execution))
+              throw new StoreRecoveryError(
+                "Resolve prior item claims and assignments before another execution",
+              );
+            if (!current.devs.includes(request.employeeId))
+              throw new StoreAuthorityError(
+                "Item assignee must be an owning team dev",
+              );
+            if (
+              all("assignment", assignmentSchema).some(
+                (assignment) =>
+                  assignment.employeeId === request.employeeId &&
+                  assignment.state !== "complete",
+              )
+            )
+              throw new StoreConflictError("Item dev has unresolved work");
+            const member = employee(request.employeeId);
+            const messageId = cue(member.id, "assignment", {
+              kind: "item-execution",
+              itemId: row.id,
+              eventId: ownership.eventId,
+              teamId: current.id,
+              revision: ownership.revision + 1,
+              snapshot: row,
+            });
+            execution = itemExecutionSchema.parse({
+              itemId: row.id,
+              eventId: ownership.eventId,
+              teamId: current.id,
+              attemptId: request.requestId,
+              employeeId: member.id,
+              generation: member.generation,
+              messageId,
+              qaMessageId: null,
+              qaGeneration: null,
+              reviewResultId: null,
+              qa: null,
+              snapshot: row,
+            });
+            nextStatus = "EXECUTING";
+            break;
+          }
+          case "review": {
+            if (
+              status !== "EXECUTING" ||
+              execution === null ||
+              execution.employeeId !== sender.id ||
+              execution.generation !== sender.generation
+            )
+              throw new StoreAuthorityError(
+                "Only the current assigned dev may submit item review",
+              );
+            completedResult(
+              request.resultId,
+              execution.messageId,
+              sender.id,
+              sender.generation,
+            );
+            execution = { ...execution, reviewResultId: request.resultId };
+            nextStatus = "REVIEW";
+            cue(current.architect, "report", {
+              kind: "item-review",
+              itemId: row.id,
+              resultId: request.resultId,
+            });
+            break;
+          }
+          case "qa_assign": {
+            if (
+              sender.id !== current.architect ||
+              status !== "REVIEW" ||
+              execution === null ||
+              execution.reviewResultId === null ||
+              execution.qaMessageId !== null ||
+              !ready(current)
+            )
+              throw new StoreAuthorityError(
+                "Only the owning architect may assign pending QA review",
+              );
+            if (
+              all("assignment", assignmentSchema).some(
+                (assignment) =>
+                  assignment.employeeId === current.qa &&
+                  assignment.state !== "complete",
+              )
+            )
+              throw new StoreConflictError("QA has unresolved work");
+            execution = {
+              ...execution,
+              qaGeneration: employee(current.qa).generation,
+              qaMessageId: cue(current.qa, "assignment", {
+                kind: "item-qa",
+                itemId: row.id,
+                eventId: ownership.eventId,
+                revision: ownership.revision + 1,
+                resultId: execution.reviewResultId,
+              }),
+            };
+            break;
+          }
+          case "qa": {
+            if (
+              sender.id !== current.qa ||
+              status !== "REVIEW" ||
+              execution?.qaMessageId === null ||
+              execution?.qaMessageId === undefined
+            )
+              throw new StoreAuthorityError(
+                "Only the owning assigned QA may record proof",
+              );
+            const result = completedResult(
+              request.resultId,
+              execution.qaMessageId,
+              sender.id,
+              sender.generation,
+            );
+            if (execution.qaGeneration !== sender.generation)
+              throw new StoreFenceError("QA execution generation has changed");
+            if (!sameDocument(result.output, request.proof))
+              throw new StoreConflictError(
+                "QA proof must equal its saved result",
+              );
+            execution = {
+              ...execution,
+              qa: {
+                verdict: request.verdict,
+                resultId: request.resultId,
+                proof: request.proof,
+              },
+            };
+            cue(current.architect, "report", {
+              kind: "item-qa-verdict",
+              itemId: row.id,
+              resultId: request.resultId,
+              verdict: request.verdict,
+            });
+            break;
+          }
+          case "gate": {
+            if (
+              sender.id !== current.architect ||
+              status !== "REVIEW" ||
+              execution === null
+            )
+              throw new StoreAuthorityError(
+                "Only the owning architect may gate review",
+              );
+            if (
+              request.verdict === "APPROVE" &&
+              execution.qa?.verdict !== "APPROVE"
+            )
+              throw new StoreAuthorityError(
+                "Architect approval requires matching completed QA proof",
+              );
+            if (!resolved(execution))
+              throw new StoreRecoveryError(
+                "Reconcile item claims and assignments before gate or REDO",
+              );
+            nextStatus =
+              request.verdict === "APPROVE" ? "READY_TO_LAND" : "QUEUED";
+            cue("manager", "report", {
+              kind: "item-architect-gate",
+              itemId: row.id,
+              verdict: request.verdict,
+            });
+            break;
+          }
+          case "decide": {
+            if (!leader)
+              throw new StoreAuthorityError(
+                "Only the manager or own architect may record item decisions",
+              );
+            if (
+              ["MERGED", "DONE", "REJECTED"].includes(request.status) &&
+              sender.role !== "manager"
+            )
+              throw new StoreAuthorityError(
+                "Only the manager may record authorized item completion",
+              );
+            if (
+              ["MERGED", "DONE"].includes(request.status) &&
+              status !== "READY_TO_LAND"
+            )
+              throw new StoreAuthorityError(
+                "Completion requires READY_TO_LAND review gates",
+              );
+            if (
+              request.status === "QUEUED" &&
+              !["BLOCKED", "NEEDS_DECISION"].includes(status)
+            )
+              throw new StoreAuthorityError(
+                "Explicit resume requires blocked or decision state",
+              );
+            if (
+              (request.status === "QUEUED" ||
+                terminalItemStatuses.includes(request.status)) &&
+              (!resolved(execution) ||
+                all("grant", grantSchema).some(
+                  (grant) =>
+                    members(current).includes(grant.employeeId) &&
+                    grant.state !== "released",
+                ))
+            )
+              throw new StoreRecoveryError(
+                "Reconcile item claims, assignments and grants before resume or completion",
+              );
+            if (terminalItemStatuses.includes(status))
+              throw new StoreAuthorityError(
+                "Terminal item requires a linked follow-up",
+              );
+            nextStatus = request.status;
+            break;
+          }
+        }
+        const revision = ownership.revision + 1;
+        const refs =
+          row.startup_state_refs === undefined
+            ? []
+            : z.array(jsonSchema).parse(row.startup_state_refs);
+        const nextRow = rowSchema.parse({
+          ...row,
+          status: nextStatus,
+          ...(request.action === "assign"
+            ? { dispatched_at: row.dispatched_at ?? now() }
+            : {}),
+          startup_state_refs: [...refs, request.requestId],
+        });
+        const after =
+          JSON.stringify(
+            document.container === null
+              ? document.rows.map((old) => (old.id === row.id ? nextRow : old))
+              : {
+                  ...document.container,
+                  items: document.rows.map((old) =>
+                    old.id === row.id ? nextRow : old,
+                  ),
+                },
+            null,
+            2,
+          ) + "\n";
+        const receipt = itemTransitionSchema.parse({
+          request,
+          actorId: sender.id,
+          eventId: ownership.eventId,
+          teamId: current.id,
+          revision,
+          status: nextStatus,
+          row: nextRow,
+          execution,
+          cues,
+        });
+        put("intent", `item/${request.requestId}`, {
+          file: "queue.json",
+          before: document.before,
+          after,
+          state: "pending",
+          capture: null,
+          item: receipt,
+        });
+        return receipt;
+      });
+      applyIntent(`item/${receipt.request.requestId}`);
+      return receipt;
+    },
     finishTeam(input: {
       readonly manager: Binding;
       readonly teamId: string;
@@ -1440,6 +1887,23 @@ export function openStore(args: {
         )
           throw new StoreConflictError(
             "A team cannot finish before its architect records intake capture",
+          );
+        const rows = canonicalQueue().rows;
+        if (
+          current.items.some((item) => {
+            const ownership = read("queueOwner", item.id, queueOwnerSchema);
+            return (
+              ownership?.eventId === current.eventId &&
+              !terminalItemStatuses.includes(
+                z
+                  .string()
+                  .parse(rows.find((row) => row.id === item.id)?.status),
+              )
+            );
+          })
+        )
+          throw new StoreConflictError(
+            "Team has currently owned nonterminal canonical items",
           );
         for (const id of members(current)) {
           if (
@@ -2063,6 +2527,8 @@ export function openStore(args: {
             queueRevisions: all("queueOwner", queueOwnerSchema),
             authorizations: all("authorization", authorizationSchema),
             teams: all("team", teamSchema),
+            itemExecutions: all("itemExecution", itemExecutionSchema),
+            itemTransitions: all("itemTransition", itemTransitionSchema),
             messages: all("message", messageSchema),
             claims: all("claim", claimSchema),
             results: all("result", resultRecordSchema),

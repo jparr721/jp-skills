@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterEach, expect, test } from "bun:test";
 import {
   mkdtempSync,
@@ -1517,4 +1518,532 @@ test("exact native preflight error shape releases ordinary admission unchanged",
     result,
   );
   expect(f.adapter.capacity().available).toBe(1);
+});
+async function capturedTeam(
+  f: ReturnType<typeof fixture>,
+  eventId: string,
+  itemIds: readonly string[],
+) {
+  f.adapter.recordIntake(f.ctx, {
+    eventId,
+    input: "Raw scoped request",
+    amendItemIds: [],
+  });
+  const team = await f.adapter.delegate(f.ctx, {
+    startup: "delegate",
+    eventId,
+    developers: 1,
+  });
+  const contexts = new Map<string, NativeContext>();
+  for (const id of [team.architect, team.qa, ...team.devs])
+    contexts.set(
+      id,
+      await f.project(
+        f.adapter.store
+          .snapshot()
+          .employees.find((employee) => employee.id === id)!,
+      ),
+    );
+  f.adapter.capture(contexts.get(team.architect)!, {
+    captureId: `capture-${eventId}`,
+    eventId,
+    rows: itemIds.map((id) => ({
+      id,
+      expectedRevision: null,
+      fields: {
+        request: `Work ${id}`,
+        acceptance: ["proof"],
+        blocked_on: [],
+        status: "QUEUED",
+        unknown: { retained: true },
+        receipts: ["legacy"],
+      },
+    })),
+    receipt: { captured: true },
+  });
+  for (const ctx of [f.ctx, ...contexts.values()]) {
+    while (true) {
+      const claim = f.adapter.store.claimNext({
+        employee: f.adapter.caller(ctx),
+      });
+      if (!claim) break;
+      f.adapter.store.settleClaim({
+        employee: f.adapter.caller(ctx),
+        claimId: claim.claim.id,
+        result: {
+          id: `bootstrap-${claim.claim.id}`,
+          kind: "completed",
+          output: {},
+          checkpoint: {},
+          outgoing: [],
+        },
+      });
+    }
+  }
+  return { team, contexts };
+}
+test("captured ready items remain guarded after settled bootstrap and prevent team abandonment", async () => {
+  const f = fixture();
+  const { team } = await capturedTeam(f, "guarded-items", ["ready-item"]);
+  expect(f.adapter.waitGuard()).toContain("ready-item");
+  expect(() =>
+    f.adapter.finish(f.ctx, { teamId: team.id, evidence: { done: true } }),
+  ).toThrow("nonterminal");
+});
+test("item assignment and role-gated canonical completion preserve revision and replay receipts", async () => {
+  const f = fixture();
+  const { team, contexts } = await capturedTeam(f, "item-flow", ["item-a"]);
+  const architect = contexts.get(team.architect)!;
+  const dev = contexts.get(team.devs[0]!)!;
+  const qa = contexts.get(team.qa)!;
+  const assigned = await f.adapter.item(architect, {
+    action: "assign",
+    requestId: "assign-a",
+    itemId: "item-a",
+    expectedRevision: 1,
+    employeeId: team.devs[0],
+    evidence: { approved: true },
+  });
+  expect(assigned.status).toBe("EXECUTING");
+  expect(assigned.revision).toBe(2);
+  await capturedTeam(f, "other-item-flow", ["item-b"]);
+  expect(f.adapter.waitGuard()).toContain("item-b");
+  await expect(
+    f.adapter.item(architect, {
+      action: "assign",
+      requestId: "stale",
+      itemId: "item-a",
+      expectedRevision: 1,
+      employeeId: team.devs[0],
+      evidence: {},
+    }),
+  ).rejects.toThrow("revision");
+  const claim = f.adapter.claim(dev)!;
+  await f.adapter.settle(dev, {
+    claimId: claim.claim.id,
+    result: {
+      id: "dev-item-result",
+      kind: "completed",
+      output: { built: true },
+      checkpoint: {},
+      outgoing: [],
+    },
+  });
+  await f.adapter.item(dev, {
+    action: "review",
+    requestId: "review-a",
+    itemId: "item-a",
+    expectedRevision: 2,
+    resultId: "dev-item-result",
+    evidence: {},
+  });
+  await expect(
+    f.adapter.item(architect, {
+      action: "gate",
+      requestId: "no-qa",
+      itemId: "item-a",
+      expectedRevision: 3,
+      verdict: "APPROVE",
+      evidence: {},
+    }),
+  ).rejects.toThrow("QA");
+  await f.adapter.item(architect, {
+    action: "qa_assign",
+    requestId: "qa-assign-a",
+    itemId: "item-a",
+    expectedRevision: 3,
+    evidence: { review: true },
+  });
+  const qaClaim = f.adapter.claim(qa)!;
+  await f.adapter.settle(qa, {
+    claimId: qaClaim.claim.id,
+    result: {
+      id: "qa-item-result",
+      kind: "completed",
+      output: { proof: "verified" },
+      checkpoint: {},
+      outgoing: [],
+    },
+  });
+  await f.adapter.item(qa, {
+    action: "qa",
+    requestId: "qa-a",
+    itemId: "item-a",
+    expectedRevision: 4,
+    resultId: "qa-item-result",
+    verdict: "APPROVE",
+    proof: { proof: "verified" },
+  });
+  await f.adapter.item(architect, {
+    action: "gate",
+    requestId: "gate-a",
+    itemId: "item-a",
+    expectedRevision: 5,
+    verdict: "APPROVE",
+    evidence: { shape: "approved" },
+  });
+  const done = {
+    action: "decide",
+    requestId: "done-a",
+    itemId: "item-a",
+    expectedRevision: 6,
+    status: "DONE",
+    evidence: { accepted: true },
+  };
+  const completion = await f.adapter.item(f.ctx, done);
+  expect(completion.revision).toBe(7);
+  expect(await f.adapter.item(f.ctx, done)).toEqual(completion);
+  const queue = z
+    .array(
+      z
+        .object({
+          id: z.string(),
+          status: z.string(),
+          unknown: z.unknown(),
+          receipts: z.array(z.unknown()),
+        })
+        .passthrough(),
+    )
+    .parse(
+      JSON.parse(
+        readFileSync(
+          join(f.root, "home", "startup", "fixture", "queue.json"),
+          "utf8",
+        ),
+      ),
+    );
+  expect(queue.find((row) => row.id === "item-a")).toMatchObject({
+    status: "DONE",
+    unknown: { retained: true },
+    receipts: ["legacy"],
+  });
+});
+
+test("item review and landing continuation stay guarded after reports settle", async () => {
+  const f = fixture();
+  const { team, contexts } = await capturedTeam(f, "continuation", [
+    "continuation-item",
+  ]);
+  const architect = contexts.get(team.architect)!;
+  const dev = contexts.get(team.devs[0]!)!;
+  await f.adapter.item(architect, {
+    action: "assign",
+    requestId: "continuation-assign",
+    itemId: "continuation-item",
+    expectedRevision: 1,
+    employeeId: team.devs[0],
+    evidence: {},
+  });
+  const claim = f.adapter.claim(dev)!;
+  await f.adapter.settle(dev, {
+    claimId: claim.claim.id,
+    result: {
+      id: "continuation-result",
+      kind: "completed",
+      output: {},
+      checkpoint: {},
+      outgoing: [],
+    },
+  });
+  expect(f.adapter.waitGuard()).toContain("assigned dev review");
+  await f.adapter.item(dev, {
+    action: "review",
+    requestId: "continuation-review",
+    itemId: "continuation-item",
+    expectedRevision: 2,
+    resultId: "continuation-result",
+    evidence: {},
+  });
+  const report = f.adapter.claim(architect)!;
+  await f.adapter.settle(architect, {
+    claimId: report.claim.id,
+    result: {
+      id: "consumed-review",
+      kind: "completed",
+      output: {},
+      checkpoint: {},
+      outgoing: [],
+    },
+  });
+  expect(f.adapter.waitGuard()).toContain("review/gate continuation");
+});
+test("unknown item outcome requires reconciliation and explicit resume before redispatch", async () => {
+  const f = fixture();
+  const { team, contexts } = await capturedTeam(f, "uncertain-item", [
+    "uncertain-item",
+  ]);
+  const dev = contexts.get(team.devs[0]!)!;
+  await f.adapter.item(f.ctx, {
+    action: "assign",
+    requestId: "uncertain-assign",
+    itemId: "uncertain-item",
+    expectedRevision: 1,
+    employeeId: team.devs[0],
+    evidence: { authorized: true },
+  });
+  const claim = f.adapter.claim(dev)!;
+  await f.adapter.item(f.ctx, {
+    action: "decide",
+    requestId: "uncertain-block",
+    itemId: "uncertain-item",
+    expectedRevision: 2,
+    status: "BLOCKED",
+    evidence: { unknown: true },
+  });
+  await expect(
+    f.adapter.item(f.ctx, {
+      action: "decide",
+      requestId: "too-early-resume",
+      itemId: "uncertain-item",
+      expectedRevision: 3,
+      status: "QUEUED",
+      evidence: {},
+    }),
+  ).rejects.toThrow("Reconcile");
+  await f.adapter.settle(dev, {
+    claimId: claim.claim.id,
+    result: {
+      id: "unknown-item-result",
+      kind: "uncertain",
+      output: { unknown: true },
+      checkpoint: {},
+      outgoing: [],
+    },
+  });
+  f.adapter.reconcile(f.ctx, {
+    claimId: claim.claim.id,
+    evidence: { verified: true },
+  });
+  f.adapter.resolve(f.ctx, {
+    assignmentId: claim.message.id,
+    evidence: { verified: true },
+  });
+  await f.adapter.item(f.ctx, {
+    action: "decide",
+    requestId: "explicit-resume",
+    itemId: "uncertain-item",
+    expectedRevision: 3,
+    status: "QUEUED",
+    evidence: { verified: true },
+  });
+  expect(
+    f.adapter.store
+      .snapshot()
+      .results.find((result) => result.result.id === "unknown-item-result")
+      ?.result.kind,
+  ).toBe("uncertain");
+  expect(f.adapter.store.snapshot().itemTransitions).toHaveLength(3);
+});
+test("new explicitly amended team owns current item revision and old team can close transferred history", async () => {
+  const f = fixture();
+  const old = await capturedTeam(f, "old-amend", ["shared-item"]);
+  const oldArchitect = old.contexts.get(old.team.architect)!;
+  await f.adapter.send(f.ctx, {
+    id: "clarify-old",
+    recipient: old.team.architect,
+    kind: "assignment",
+    correlation: "old-amend",
+    payload: { clarify: true },
+  });
+  const claim = f.adapter.claim(oldArchitect)!;
+  await f.adapter.settle(oldArchitect, {
+    claimId: claim.claim.id,
+    result: {
+      id: "clarify-result",
+      kind: "question",
+      output: { question: true },
+      checkpoint: {},
+      outgoing: [],
+    },
+  });
+  f.adapter.recordIntake(f.ctx, {
+    eventId: "new-amend",
+    input: "Amend pending work",
+    amendItemIds: ["shared-item"],
+  });
+  const next = await f.adapter.delegate(f.ctx, {
+    startup: "delegate",
+    eventId: "new-amend",
+    developers: 1,
+  });
+  const contexts = new Map<string, NativeContext>();
+  for (const id of [next.architect, next.qa, ...next.devs])
+    contexts.set(
+      id,
+      await f.project(
+        f.adapter.store
+          .snapshot()
+          .employees.find((employee) => employee.id === id)!,
+      ),
+    );
+  f.adapter.capture(contexts.get(next.architect)!, {
+    captureId: "new-amend-capture",
+    eventId: "new-amend",
+    rows: [
+      {
+        id: "shared-item",
+        expectedRevision: 1,
+        fields: {
+          request: "Work shared-item amended",
+          acceptance: ["proof"],
+          blocked_on: [],
+          status: "QUEUED",
+        },
+      },
+    ],
+    receipt: { authorized: true },
+  });
+  await expect(
+    f.adapter.item(oldArchitect, {
+      action: "assign",
+      requestId: "old-stale-team",
+      itemId: "shared-item",
+      expectedRevision: 2,
+      employeeId: old.team.devs[0],
+      evidence: {},
+    }),
+  ).rejects.toThrow("owning team");
+  f.adapter.resolve(f.ctx, {
+    assignmentId: claim.message.id,
+    evidence: { transferred: true },
+  });
+  while (true) {
+    const mail = f.adapter.claim(f.ctx);
+    if (!mail) break;
+    await f.adapter.settle(f.ctx, {
+      claimId: mail.claim.id,
+      result: {
+        id: `clear-${mail.claim.id}`,
+        kind: "completed",
+        output: {},
+        checkpoint: {},
+        outgoing: [],
+      },
+    });
+  }
+  expect(
+    f.adapter.finish(f.ctx, {
+      teamId: old.team.id,
+      evidence: { transferred: true },
+    }).state,
+  ).toBe("finished");
+  expect(
+    f.adapter.store
+      .snapshot()
+      .queueRevisions.find((owner) => owner.id === "shared-item"),
+  ).toMatchObject({ eventId: "new-amend", revision: 2 });
+});
+test("item intent recovery replays a canonical replacement once with assignment and receipt", async () => {
+  const f = fixture();
+  const { team, contexts } = await capturedTeam(f, "journal-item", [
+    "journal-item",
+  ]);
+  const old = f.adapter.store.snapshot();
+  const receipt = await f.adapter.item(contexts.get(team.architect)!, {
+    action: "assign",
+    requestId: "journal-assign",
+    itemId: "journal-item",
+    expectedRevision: 1,
+    employeeId: team.devs[0],
+    evidence: {},
+  });
+  f.adapter.close();
+  const db = new Database(
+    join(f.root, "home", "startup", "fixture", "staff.sqlite"),
+  );
+  const intentRow = z
+    .object({ payload: z.string() })
+    .parse(
+      db
+        .query(
+          "SELECT payload FROM records WHERE kind='intent' AND id='item/journal-assign'",
+        )
+        .get(),
+    );
+  const intent = z
+    .record(z.string(), z.unknown())
+    .parse(JSON.parse(intentRow.payload));
+  db.query(
+    "UPDATE records SET payload=? WHERE kind='intent' AND id='item/journal-assign'",
+  ).run(JSON.stringify({ ...intent, state: "pending" }));
+  db.query(
+    "DELETE FROM records WHERE kind='itemTransition' AND id='journal-assign'",
+  ).run();
+  db.query(
+    "DELETE FROM records WHERE kind='itemExecution' AND id='journal-item'",
+  ).run();
+  for (const cue of receipt.cues) {
+    db.query("DELETE FROM records WHERE kind='message' AND id=?").run(
+      cue.cue.id,
+    );
+    db.query("DELETE FROM records WHERE kind='assignment' AND id=?").run(
+      cue.cue.id,
+    );
+  }
+  db.query("UPDATE records SET payload=? WHERE kind='team' AND id=?").run(
+    JSON.stringify(old.teams.find((entry) => entry.id === team.id)),
+    team.id,
+  );
+  db.query(
+    "UPDATE records SET payload=? WHERE kind='queueOwner' AND id='journal-item'",
+  ).run(
+    JSON.stringify(
+      old.queueRevisions.find((entry) => entry.id === "journal-item"),
+    ),
+  );
+  const audits = z
+    .array(z.object({ sequence: z.number(), payload: z.string() }))
+    .parse(
+      db
+        .query(
+          "SELECT sequence,payload FROM audit WHERE kind='intent' AND id='item/journal-assign' ORDER BY sequence",
+        )
+        .all(),
+    );
+  const pending = audits.find(
+    (row) =>
+      z.object({ state: z.string() }).parse(JSON.parse(row.payload)).state ===
+      "pending",
+  )!;
+  db.query("DELETE FROM audit WHERE sequence>?").run(pending.sequence);
+  db.close();
+  const root = f.refs.get("Main")!;
+  f.refs.set("Main", { ...root, createdAt: 2 });
+  const reopened = createAdapter({
+    ctx: f.ctx,
+    registry: {
+      get: (id) => f.refs.get(id),
+      list: () => [...f.refs.values()],
+      onChange: () => () => {},
+    },
+    config: {
+      name: "fixture",
+      home: join(f.root, "home"),
+      skillsRoot: f.root,
+      employeeLimit: null,
+      executionLimit: null,
+      leaseMs: 60000,
+    },
+    nativeLimit: () => 32,
+    nativeBatch: () => true,
+    notifyManager: () => {},
+    now: Date.now,
+  });
+  adapters.push(reopened);
+  expect(reopened.store.snapshot().itemTransitions).toHaveLength(1);
+  expect(
+    reopened.store
+      .snapshot()
+      .queueRevisions.find((owner) => owner.id === "journal-item")?.revision,
+  ).toBe(2);
+  expect(
+    reopened.store
+      .snapshot()
+      .messages.filter((message) => message.id === receipt.cues[0]!.cue.id),
+  ).toHaveLength(1);
+  await reopened.projection(contexts.get(team.architect)!);
+  expect(
+    await reopened.item(contexts.get(team.architect)!, receipt.request),
+  ).toEqual(receipt);
+  expect(reopened.store.snapshot().itemTransitions).toHaveLength(1);
 });

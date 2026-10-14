@@ -40,6 +40,11 @@ const {
   parseExecutionLimit,
   default: startupEntry,
 } = await import("../index");
+const nativeSchema: ReturnType<HostAPI["zod"]["object"]> = {
+  or: () => nativeSchema,
+  and: () => nativeSchema,
+  toJsonSchema: () => ({}),
+};
 const directories: string[] = [];
 afterEach(() => {
   for (const directory of directories.splice(0))
@@ -96,15 +101,7 @@ function entryFixture() {
     const api: HostAPI = {
       pi: { AgentRegistry: { global: () => registry }, settings: {} },
       zod: {
-        object: () => ({
-          or: () => {
-            throw new Error("Unused native schema");
-          },
-          and: () => {
-            throw new Error("Unused native schema");
-          },
-          toJsonSchema: () => ({}),
-        }),
+        object: () => nativeSchema,
         string: () => ({}),
         number: () => ({}),
         unknown: () => ({}),

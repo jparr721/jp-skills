@@ -107,6 +107,12 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
       const cue = cueLine
         ? JSON.parse(cueLine.slice("STARTUP_CUE=".length))
         : null;
+      const teamLine: string | undefined = text
+        .split("\n")
+        .find((line) => line.startsWith("STARTUP_TEAM="));
+      const scope = teamLine
+        ? JSON.parse(teamLine.slice("STARTUP_TEAM=".length))
+        : null;
       const results = context.messages
         .filter((message) => message.role === "toolResult" && !message.isError)
         .map((message) => ({
@@ -177,7 +183,9 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
               ? cue.payload.architect
               : marker?.employeeId === "manager" || cue.kind === "report"
                 ? null
-                : "manager";
+                : scope?.architect && scope.architect !== marker?.employeeId
+                  ? scope.architect
+                  : "manager";
           call = {
             type: "toolCall",
             id: `fixture-settle-${count}`,
@@ -206,12 +214,6 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
           };
         }
       }
-      const teamLine: string | undefined = text
-        .split("\n")
-        .find((line) => line.startsWith("STARTUP_TEAM="));
-      const scope = teamLine
-        ? JSON.parse(teamLine.slice("STARTUP_TEAM=".length))
-        : null;
       const received = scope?.receivedInputs?.[0];
       if (marker?.employeeId === "manager" && received) {
         const previousAttempt = context.messages.some(
@@ -320,6 +322,72 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
               developers: 1,
             },
           };
+      }
+      if (!cue) {
+        const items = scope?.items ?? [];
+        const selected = items.find((item) =>
+          marker?.employeeId === "manager"
+            ? item.status === "READY_TO_LAND"
+            : scope?.architect === marker?.employeeId
+              ? (item.status === "QUEUED" && scope.availableDevs?.length > 0) ||
+                (item.status === "REVIEW" &&
+                  (item.qaMessageId === null || item.qaVerdict !== null))
+              : scope?.qa === marker?.employeeId
+                ? item.status === "REVIEW" &&
+                  item.qaResultId !== null &&
+                  item.qaVerdict === null
+                : item.status === "EXECUTING" &&
+                  item.employeeId === marker?.employeeId &&
+                  item.devResultId !== null,
+        );
+        if (selected) {
+          let action;
+          if (marker?.employeeId === "manager")
+            action = {
+              action: "decide",
+              status: "DONE",
+              evidence: { accepted: true },
+            };
+          else if (scope.architect === marker?.employeeId)
+            action =
+              selected.status === "QUEUED"
+                ? {
+                    action: "assign",
+                    employeeId: scope.availableDevs[0],
+                    evidence: { assigned: true },
+                  }
+                : selected.qaMessageId === null
+                  ? { action: "qa_assign", evidence: { review: true } }
+                  : {
+                      action: "gate",
+                      verdict: selected.qaVerdict,
+                      evidence: { approved: true },
+                    };
+          else if (scope.qa === marker?.employeeId)
+            action = {
+              action: "qa",
+              resultId: selected.qaResultId,
+              verdict: "APPROVE",
+              proof: { fixture: true },
+            };
+          else
+            action = {
+              action: "review",
+              resultId: selected.devResultId,
+              evidence: { completed: true },
+            };
+          call = {
+            type: "toolCall",
+            id: `fixture-item-${selected.id}-${selected.revision}`,
+            name: "startup_item",
+            arguments: {
+              requestId: `fixture-item-${selected.id}-${selected.revision}`,
+              itemId: selected.id,
+              expectedRevision: selected.revision,
+              ...action,
+            },
+          };
+        }
       }
       if (
         cue?.payload.kind === "capacity-hold" &&
@@ -959,6 +1027,7 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
           const snapshot = (await staff.execute("adapter-team-readiness", {}))
             .details;
           if (
+            snapshot.items.length === 0 &&
             snapshot.teams.every((team) => team.state === "active") &&
             snapshot.employees
               .filter((employee) => employee.assignment !== null)
@@ -967,7 +1036,7 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
             break;
           if (Date.now() > completeDeadline)
             throw new Error(
-              "Architect intake and settled team checkpoints did not complete",
+              "Canonical item flow and settled team checkpoints did not complete",
             );
           await pause(ctx);
         }

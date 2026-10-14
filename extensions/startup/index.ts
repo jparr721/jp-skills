@@ -353,6 +353,71 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
     execute: async (_id, params, _signal, _update, ctx) =>
       adapter(ctx).image(ctx, params),
   });
+  const itemCommon = {
+    requestId: builder.string(),
+    itemId: builder.string(),
+    expectedRevision: builder.number(),
+  };
+  const itemParameters = builder
+    .object({
+      ...itemCommon,
+      action: builder.literal("assign"),
+      employeeId: builder.string(),
+      evidence: builder.unknown(),
+    })
+    .or(
+      builder.object({
+        ...itemCommon,
+        action: builder.literal("review"),
+        resultId: builder.string(),
+        evidence: builder.unknown(),
+      }),
+    )
+    .or(
+      builder.object({
+        ...itemCommon,
+        action: builder.literal("qa_assign"),
+        evidence: builder.unknown(),
+      }),
+    )
+    .or(
+      builder.object({
+        ...itemCommon,
+        action: builder.literal("qa"),
+        resultId: builder.string(),
+        verdict: builder.enum(["APPROVE", "REDO"]),
+        proof: builder.unknown(),
+      }),
+    )
+    .or(
+      builder.object({
+        ...itemCommon,
+        action: builder.literal("gate"),
+        verdict: builder.enum(["APPROVE", "REDO"]),
+        evidence: builder.unknown(),
+      }),
+    )
+    .or(
+      builder.object({
+        ...itemCommon,
+        action: builder.literal("decide"),
+        status: builder.enum([
+          "BLOCKED",
+          "NEEDS_DECISION",
+          "QUEUED",
+          "REJECTED",
+          "MERGED",
+          "DONE",
+        ]),
+        evidence: builder.unknown(),
+      }),
+    );
+  tool(
+    "startup_item",
+    "Typed canonical item transition with current revision and stable requestId. Manager/own architect assign; assigned dev submits durable result to REVIEW; architect qa_assign owns QA dispatch; QA records saved proof; architect gates; manager alone lands/closes. Evidence and unresolved-work reconciliation are required.",
+    itemParameters,
+    (ctx, params) => adapter(ctx).item(ctx, params),
+  );
   tool(
     "startup_intake",
     "Persist raw requests and high-level amendment IDs. Delegate the event immediately through native task startup=delegate.",

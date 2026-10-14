@@ -38,6 +38,11 @@ import {
   type Profile,
 } from "./profiles";
 
+import {
+  itemActionSchema,
+  terminalItemStatuses,
+  type ItemTransition,
+} from "./items";
 export type NativeResult = Readonly<{
   content: readonly Readonly<{ type: string; text?: string }>[];
   details?: unknown;
@@ -858,6 +863,82 @@ export function createAdapter(
       sessionId: receipt.sessionId,
     });
   }
+  function itemInfo() {
+    const snapshot = store.snapshot();
+    return store.queueItems().map((row) => {
+      const ownership = snapshot.queueRevisions.find(
+        (owner) => owner.id === row.id,
+      );
+      const team =
+        ownership === undefined
+          ? undefined
+          : snapshot.teams.find((team) => team.eventId === ownership.eventId);
+      const execution = snapshot.itemExecutions.find(
+        (execution) =>
+          execution.itemId === row.id &&
+          execution.eventId === ownership?.eventId,
+      );
+      const result = (messageId: string | null | undefined) => {
+        const claim = snapshot.claims.find(
+          (claim) =>
+            claim.messageId === messageId && claim.status === "settled",
+        );
+        return (
+          snapshot.results.find(
+            (result) =>
+              result.claimId === claim?.id &&
+              result.result.kind === "completed",
+          )?.result.id ?? null
+        );
+      };
+      return {
+        id: row.id,
+        status: z.string().parse(row.status),
+        revision: ownership?.revision ?? 0,
+        eventId: ownership?.eventId ?? null,
+        teamId: team?.id ?? null,
+        employeeId: execution?.employeeId ?? null,
+        executionMessageId: execution?.messageId ?? null,
+        reviewResultId: execution?.reviewResultId ?? null,
+        devResultId: result(execution?.messageId),
+        qaMessageId: execution?.qaMessageId ?? null,
+        qaResultId: result(execution?.qaMessageId),
+        qaVerdict: execution?.qa?.verdict ?? null,
+      };
+    });
+  }
+  function availableTeamDevs(team: Team): readonly string[] {
+    const snapshot = store.snapshot();
+    return team.devs.filter(
+      (id) =>
+        !snapshot.assignments.some(
+          (assignment) =>
+            assignment.employeeId === id && assignment.state !== "complete",
+        ) &&
+        !snapshot.claims.some(
+          (claim) => claim.employeeId === id && claim.status !== "settled",
+        ),
+    );
+  }
+  async function item(
+    ctx: NativeContext,
+    request: unknown,
+  ): Promise<ItemTransition> {
+    const saved = store.transitionItem({
+      employee: caller(ctx),
+      request: itemActionSchema.parse(request),
+    });
+    for (const draft of saved.cues) {
+      const message = store
+        .snapshot()
+        .messages.find(
+          (message) =>
+            message.id === draft.cue.id && message.status === "pending",
+        );
+      if (message) await wake(message);
+    }
+    return saved;
+  }
   async function projection(ctx: NativeContext): Promise<string | null> {
     const candidate = registry.get(ctx.agent.id);
     if (
@@ -891,6 +972,9 @@ export function createAdapter(
             )
           : null,
         team: {
+          items: itemInfo()
+            .filter((item) => !terminalItemStatuses.includes(item.status))
+            .slice(0, 64),
           receivedInputs: store
             .snapshot()
             .inputs.filter((entry) => entry.disposition === null)
@@ -983,6 +1067,10 @@ export function createAdapter(
           ? null
           : {
               id: team.id,
+              items: itemInfo()
+                .filter((item) => item.teamId === team.id)
+                .slice(0, 64),
+              availableDevs: availableTeamDevs(team),
               architect: team.architect,
               qa: team.qa,
               devs: team.devs,
@@ -1748,6 +1836,65 @@ export function createAdapter(
     );
     if (raw)
       return `Delegate raw intake ${raw.request.eventId} through task startup=delegate before waiting or ending.`;
+    for (const info of itemInfo()) {
+      if (
+        blocked(info.id) ||
+        terminalItemStatuses.includes(info.status) ||
+        ["BLOCKED", "NEEDS_DECISION"].includes(info.status)
+      )
+        continue;
+      const team =
+        info.teamId === null
+          ? undefined
+          : snapshot.teams.find((team) => team.id === info.teamId);
+      const running = (employeeId: string | null): boolean =>
+        employeeId !== null &&
+        registry.list().some((ref) => {
+          const employee = snapshot.employees.find(
+            (employee) => employee.id === employeeId,
+          );
+          return (
+            employee?.nativeHandle !== null &&
+            employee?.nativeHandle !== undefined &&
+            ref.session !== null &&
+            nativeHandle(ref.id, ref.session.sessionManager.getSessionId()) ===
+              employee.nativeHandle &&
+            ["running", "working", "starting", "pending"].includes(ref.status)
+          );
+        });
+      if (info.status === "QUEUED") {
+        if (team && availableTeamDevs(team).length === 0) continue;
+        if (
+          !team &&
+          snapshot.intakes.some(
+            (intake) =>
+              intake.request.amendItemIds.includes(info.id) &&
+              (intake.teamId !== null || blocked(intake.request.eventId)),
+          )
+        )
+          continue;
+        return `Assign ready canonical item ${info.id} revision ${info.revision} through its owning team before waiting or ending.`;
+      }
+      if (
+        info.status === "EXECUTING" &&
+        info.devResultId !== null &&
+        !running(info.employeeId)
+      )
+        return `Advance completed item ${info.id} through its assigned dev review action before waiting or ending.`;
+      if (info.status === "REVIEW" && team) {
+        const responsible =
+          info.qaMessageId === null || info.qaVerdict !== null
+            ? team.architect
+            : team.qa;
+        if (
+          !running(responsible) &&
+          (info.qaMessageId === null || info.qaResultId !== null)
+        )
+          return `Dispatch the owning team review/gate continuation for item ${info.id} before waiting or ending.`;
+      }
+      if (info.status === "READY_TO_LAND")
+        return `Record authorized manager landing/close or a concrete blocker for item ${info.id} before waiting or ending.`;
+    }
     const pending = snapshot.messages.find((message) => {
       if (message.status !== "pending" || blocked(message.recipient))
         return false;
@@ -1873,6 +2020,7 @@ export function createAdapter(
     routeInput,
     readInput,
     image,
+    item,
     recordIntake,
     delegate,
     send,
@@ -2036,6 +2184,9 @@ export function createAdapter(
             .snapshot()
             .inputs.filter((entry) => entry.disposition === null).length,
         },
+        items: itemInfo()
+          .filter((item) => !terminalItemStatuses.includes(item.status))
+          .slice(0, 64),
         employees: store.snapshot().employees,
         teams: store.snapshot().teams,
         capacity: capacity(),
