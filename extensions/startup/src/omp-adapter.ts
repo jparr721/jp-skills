@@ -477,8 +477,11 @@ export function createAdapter(
         if (message) {
           const result = await wake(message);
           if (
-            z.object({ kind: z.literal("capacity-blocked") }).safeParse(result)
-              .success
+            z
+              .object({
+                kind: z.enum(["capacity-blocked", "dependency-blocked"]),
+              })
+              .safeParse(result).success
           )
             continue;
         }
@@ -967,7 +970,8 @@ export function createAdapter(
                 .messages.find(
                   (entry) =>
                     entry.recipient === "manager" &&
-                    entry.status !== "acknowledged",
+                    entry.status !== "acknowledged" &&
+                    blockedMessage(entry) === null,
                 ) ?? null,
             )
           : null,
@@ -1050,7 +1054,9 @@ export function createAdapter(
         .snapshot()
         .messages.find(
           (entry) =>
-            entry.recipient === employee.id && entry.status !== "acknowledged",
+            entry.recipient === employee.id &&
+            entry.status !== "acknowledged" &&
+            blockedMessage(entry) === null,
         ) ?? null;
     const team: Team | null =
       employee.assignment === null
@@ -1110,6 +1116,17 @@ export function createAdapter(
     return attempt;
   }
   async function wake(message: Message): Promise<Json> {
+    const blockedItem = blockedMessage(message);
+    if (blockedItem !== null) {
+      const reason: Json = {
+        kind: "dependency-blocked",
+        messageId: message.id,
+        itemId: blockedItem,
+      };
+      deliveries.set(message.id, reason);
+      pendingWakes.add(message.id);
+      return reason;
+    }
     const employee: Employee = snapshotEmployee(message.recipient);
     if (employee.nativeHandle === null)
       throw new StoreAuthorityError(
@@ -1210,7 +1227,7 @@ export function createAdapter(
       if (
         !deliveries.has(message.id) ||
         z
-          .object({ kind: z.literal("capacity-blocked") })
+          .object({ kind: z.enum(["capacity-blocked", "dependency-blocked"]) })
           .safeParse(deliveries.get(message.id)).success
       )
         await wake(message);
@@ -1820,6 +1837,29 @@ export function createAdapter(
     const evidence = blockers.get(key);
     return evidence !== undefined && blockerCurrent(key, evidence);
   }
+  function blockedMessage(message: Message): string | null {
+    if (message.status !== "pending") return null;
+    const snapshot = store.snapshot();
+    const ownership = snapshot.queueRevisions.find(
+      (item) => item.id === message.correlation,
+    );
+    const team = snapshot.teams.find(
+      (team) =>
+        team.id === message.teamId &&
+        team.eventId === ownership?.eventId &&
+        team.items.some(
+          (item) =>
+            item.id === ownership.id && item.revision === ownership.revision,
+        ),
+    );
+    if (
+      !team ||
+      (message.recipient !== "manager" &&
+        ![team.architect, team.qa, ...team.devs].includes(message.recipient))
+    )
+      return null;
+    return blocked(message.correlation) ? message.correlation : null;
+  }
   function waitGuard(): string | null {
     const snapshot = store.snapshot();
     const unrouted = snapshot.inputs.find(
@@ -1896,7 +1936,11 @@ export function createAdapter(
         return `Record authorized manager landing/close or a concrete blocker for item ${info.id} before waiting or ending.`;
     }
     const pending = snapshot.messages.find((message) => {
-      if (message.status !== "pending" || blocked(message.recipient))
+      if (
+        message.status !== "pending" ||
+        blocked(message.recipient) ||
+        blockedMessage(message) !== null
+      )
         return false;
       const employee = snapshot.employees.find(
         (entry) => entry.id === message.recipient,
@@ -2126,7 +2170,20 @@ export function createAdapter(
       rootAdmin(ctx);
       return { ready: bindManager() };
     },
-    claim: (ctx: NativeContext) => store.claimNext({ employee: caller(ctx) }),
+    claim: (ctx: NativeContext) => {
+      const employee = caller(ctx);
+      return store.claimNext({
+        employee,
+        excludedMessageIds: store
+          .snapshot()
+          .messages.filter(
+            (message) =>
+              message.recipient === employee.employeeId &&
+              blockedMessage(message) !== null,
+          )
+          .map((message) => message.id),
+      });
+    },
     capture: (ctx: NativeContext, request: unknown) =>
       store.captureIntake({
         architect: caller(ctx),

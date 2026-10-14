@@ -2047,3 +2047,147 @@ test("item intent recovery replays a canonical replacement once with assignment 
   ).toEqual(receipt);
   expect(reopened.store.snapshot().itemTransitions).toHaveLength(1);
 });
+
+test("item dependency blocks its mapped wake, projection and claim while unrelated work remains ready", async () => {
+  const f = fixture();
+  const prerequisite = await capturedTeam(f, "prerequisite-event", [
+    "prerequisite",
+  ]);
+  const { team, contexts } = await capturedTeam(f, "dependency-event", []);
+  const architect = contexts.get(team.architect)!;
+  const dev = contexts.get(team.devs[0]!)!;
+  f.adapter.capture(architect, {
+    captureId: "dependency-rows",
+    eventId: "dependency-event",
+    rows: [
+      {
+        id: "dependent",
+        expectedRevision: null,
+        fields: {
+          request: "D",
+          acceptance: [],
+          blocked_on: ["prerequisite"],
+          status: "QUEUED",
+        },
+      },
+    ],
+    receipt: {},
+  });
+  f.adapter.block(f.ctx, "dependent", {
+    kind: "dependency",
+    itemId: "prerequisite",
+  });
+  const before = f.wakePaths.length;
+  await f.adapter.item(architect, {
+    action: "assign",
+    requestId: "dependent-assign",
+    itemId: "dependent",
+    expectedRevision: 1,
+    employeeId: team.devs[0],
+    evidence: {},
+  });
+  expect(f.wakePaths.length).toBe(before);
+  expect(f.adapter.claim(dev)).toBeNull();
+  expect(await f.adapter.projection(dev)).toContain("STARTUP_CUE=null");
+  await capturedTeam(f, "independent-event", ["independent"]);
+  expect(f.adapter.waitGuard()).toContain("prerequisite");
+  await f.adapter.send(architect, {
+    id: "unrelated-own",
+    recipient: team.devs[0],
+    kind: "assignment",
+    correlation: "unrelated",
+    payload: { independent: true },
+  });
+  const unrelated = f.adapter.claim(dev)!;
+  expect(unrelated.message.id).toBe("unrelated-own");
+  await f.adapter.settle(dev, {
+    claimId: unrelated.claim.id,
+    result: {
+      id: "unrelated-result",
+      kind: "completed",
+      output: {},
+      checkpoint: {},
+      outgoing: [],
+    },
+  });
+  const pArchitect = prerequisite.contexts.get(prerequisite.team.architect)!;
+  const pDev = prerequisite.contexts.get(prerequisite.team.devs[0]!)!;
+  const pQa = prerequisite.contexts.get(prerequisite.team.qa)!;
+  await f.adapter.item(pArchitect, {
+    action: "assign",
+    requestId: "p-assign",
+    itemId: "prerequisite",
+    expectedRevision: 1,
+    employeeId: prerequisite.team.devs[0],
+    evidence: {},
+  });
+  const pDevClaim = f.adapter.claim(pDev)!;
+  await f.adapter.settle(pDev, {
+    claimId: pDevClaim.claim.id,
+    result: {
+      id: "p-dev-result",
+      kind: "completed",
+      output: {},
+      checkpoint: {},
+      outgoing: [],
+    },
+  });
+  await f.adapter.item(pDev, {
+    action: "review",
+    requestId: "p-review",
+    itemId: "prerequisite",
+    expectedRevision: 2,
+    resultId: "p-dev-result",
+    evidence: {},
+  });
+  await f.adapter.item(pArchitect, {
+    action: "qa_assign",
+    requestId: "p-qa-assign",
+    itemId: "prerequisite",
+    expectedRevision: 3,
+    evidence: {},
+  });
+  const pQaClaim = f.adapter.claim(pQa)!;
+  await f.adapter.settle(pQa, {
+    claimId: pQaClaim.claim.id,
+    result: {
+      id: "p-qa-result",
+      kind: "completed",
+      output: {},
+      checkpoint: {},
+      outgoing: [],
+    },
+  });
+  await f.adapter.item(pQa, {
+    action: "qa",
+    requestId: "p-qa",
+    itemId: "prerequisite",
+    expectedRevision: 4,
+    resultId: "p-qa-result",
+    verdict: "APPROVE",
+    proof: {},
+  });
+  await f.adapter.item(pArchitect, {
+    action: "gate",
+    requestId: "p-gate",
+    itemId: "prerequisite",
+    expectedRevision: 5,
+    verdict: "APPROVE",
+    evidence: {},
+  });
+  await f.adapter.item(f.ctx, {
+    action: "decide",
+    requestId: "p-done",
+    itemId: "prerequisite",
+    expectedRevision: 6,
+    status: "DONE",
+    evidence: {},
+  });
+  expect(f.adapter.waitGuard()).toContain("independent");
+  const pending = f.adapter.store
+    .snapshot()
+    .messages.find((message) => message.correlation === "dependent")!;
+  const receipt = await f.adapter.dispatch(f.ctx, [pending.id]);
+  expect(receipt).not.toMatchObject([{ kind: "dependency-blocked" }]);
+  expect(f.adapter.claim(dev)?.message.id).toBe(pending.id);
+});

@@ -1944,6 +1944,7 @@ export function openStore(args: {
     },
     claimNext(input: {
       readonly employee: Binding;
+      readonly excludedMessageIds?: readonly string[];
     }): Readonly<{ claim: Claim; message: Message }> | null {
       return tx(() => {
         const current: Employee = actor(input.employee);
@@ -1974,7 +1975,9 @@ export function openStore(args: {
           return null;
         const message: Message | undefined = all("message", messageSchema).find(
           (cue): boolean =>
-            cue.recipient === current.id && cue.status === "pending",
+            cue.recipient === current.id &&
+            cue.status === "pending" &&
+            !input.excludedMessageIds?.includes(cue.id),
         );
         if (message === undefined) return null;
         const claim: Claim = claimSchema.parse({
