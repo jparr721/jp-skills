@@ -1,4 +1,5 @@
 import { createDuties } from "./duties";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID, createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { hostname } from "node:os";
@@ -2046,6 +2047,10 @@ export function createAdapter(
       nativeHandle: employee.nativeHandle,
     };
   }
+  const dutyReads = new AsyncLocalStorage<
+    Readonly<{ id: string; path: string }>
+  >();
+  const activeDutyReads = new Set<string>();
   const duties = createDuties({
     store,
     now,
@@ -2061,7 +2066,15 @@ export function createAdapter(
         throw new StoreAuthorityError(
           "Native restricted read capability unavailable",
         );
-      return tool.execute(id, { path });
+      const invocationId: string = `${id}-${randomUUID()}`;
+      activeDutyReads.add(invocationId);
+      try {
+        return await dutyReads.run({ id: invocationId, path }, () =>
+          tool.execute(invocationId, { path }),
+        );
+      } finally {
+        activeDutyReads.delete(invocationId);
+      }
     },
     write: async (id, path, content) => {
       if (!dutyBinding("manager"))
@@ -2086,6 +2099,29 @@ export function createAdapter(
   duties.start();
   return {
     store,
+    admitDutyRead: (
+      ctx: NativeContext,
+      toolName: string,
+      toolCallId: string | undefined,
+      params: unknown,
+    ): boolean => {
+      const admitted = dutyReads.getStore();
+      const parsed = z.strictObject({ path: z.string() }).safeParse(params);
+      if (
+        !admitted ||
+        !activeDutyReads.has(admitted.id) ||
+        toolName !== "read" ||
+        toolCallId !== admitted.id ||
+        !parsed.success ||
+        parsed.data.path !== admitted.path ||
+        ctx.agent.kind !== "main" ||
+        ctx.agent.id !== rootId
+      )
+        return false;
+      rootAdmin(ctx);
+      activeDutyReads.delete(admitted.id);
+      return true;
+    },
     guardTurn: (ctx: NativeContext, toolName: string): string | null => {
       if (ctx.agent.id === rootId) {
         const pending = store
@@ -2101,6 +2137,7 @@ export function createAdapter(
             "startup_reconcile",
             "startup_resolve",
             "startup_release_reconciled",
+            "startup_repair_reconcile",
             "startup_bind_manager",
           ].includes(toolName)
         )

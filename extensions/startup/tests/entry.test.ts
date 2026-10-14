@@ -15,6 +15,7 @@ import type {
   NativeContext,
   NativeRef,
   NativeRegistry,
+  NativeResult,
 } from "../src/omp-adapter";
 
 const setting = { get: () => 32 };
@@ -75,6 +76,15 @@ function entryFixture() {
     setInterval: (callback, ms) => setInterval(callback, ms),
     clearTimer: clearInterval,
   };
+  const nativeTools = new Map<
+    string,
+    Readonly<{
+      execute: (
+        id: string,
+        params: Record<string, unknown>,
+      ) => Promise<NativeResult>;
+    }>
+  >();
   let native: NativeRef = {
     id: "Main",
     kind: "main",
@@ -85,7 +95,7 @@ function entryFixture() {
       sessionManager: ctx.sessionManager,
       settings: {},
       getPlanModeState: () => undefined,
-      getToolByName: () => undefined,
+      getToolByName: (name) => nativeTools.get(name),
     },
   };
   const helpers: NativeRef[] = [];
@@ -153,6 +163,7 @@ function entryFixture() {
     ctx,
     root,
     factory,
+    nativeTools,
     occupy: () => {
       for (let index = 0; index < 32; index++)
         helpers.push({
@@ -473,5 +484,220 @@ test("nonmatching native command names and delimiters never boot Startup", async
     expect(existsSync(join(root, "home/startup/unrelated/staff.sqlite"))).toBe(
       false,
     );
+  }
+});
+
+test("recovery permits only the admitted native duty verification read through entry guards", async () => {
+  const { ctx, root, factory, advance, nativeTools } = entryFixture();
+  const target: string = join(ctx.cwd, "target.json");
+  const health: string = join(ctx.cwd, "health.json");
+  writeFileSync(target, '{"enabled":false}\n');
+  writeFileSync(health, '{"healthy":false}\n');
+  let host = factory("fixture");
+  let failRead: boolean = false;
+  let lastRead: Readonly<{
+    toolName: string;
+    toolCallId: string;
+    input: { path: string };
+  }> | null = null;
+  const call = (name: string, params: unknown) =>
+    host.tools.get(name)!.execute(name, params, undefined, undefined, ctx);
+  const guard = (event: unknown, context: NativeContext) =>
+    host.handlers.get("tool_call")!(event, context);
+  nativeTools.set("write", {
+    execute: async (_id, params) => {
+      const parsed = z
+        .object({ path: z.string(), content: z.string() })
+        .parse(params);
+      writeFileSync(parsed.path, parsed.content);
+      return { content: [] };
+    },
+  });
+  nativeTools.set("read", {
+    execute: async (id, params) => {
+      const input = z.strictObject({ path: z.string() }).parse(params);
+      const event = { toolName: "read", toolCallId: id, input };
+      lastRead = event;
+      const staff = await call("startup_staff", {});
+      if (
+        z.object({ mode: z.string() }).parse(staff.details).mode === "recovery"
+      ) {
+        for (const attempt of [
+          { ...event, toolCallId: "model-read" },
+          { ...event, input: { path: target + ":raw" } },
+          { ...event, toolName: "write" },
+          { ...event, toolCallId: undefined },
+          { ...event, input: { ...input, offset: 1 } },
+        ])
+          expect(guard(attempt, ctx)).toMatchObject({ block: true });
+        expect(() =>
+          guard(event, {
+            ...ctx,
+            sessionManager: {
+              ...ctx.sessionManager,
+              getSessionId: () => "foreign-session",
+            },
+          }),
+        ).toThrow("session");
+      }
+      const outcome = guard(event, ctx);
+      if (outcome !== undefined) throw new Error(JSON.stringify(outcome));
+      if (failRead) throw new Error("Native verification fixture failure");
+      const path: string = input.path.replace(/:raw$/, "");
+      const text: string = readFileSync(path, "utf8");
+      return {
+        content: [],
+        details: {
+          totalLines: text.split("\n").length,
+          fileSize: Buffer.byteLength(text),
+          displayContent: {
+            text,
+            startLine: 1,
+            lineNumbers: text.split("\n").map((_line, index) => index + 1),
+          },
+          meta: { source: { type: "path", value: path } },
+        },
+      };
+    },
+  });
+  await host.handlers.get("session_start")!({}, ctx);
+  await call("startup_duty", {
+    id: "saved",
+    employeeId: "manager",
+    target,
+    probe: health,
+    acceptance: { path: ["healthy"], equals: true },
+    repairAuthority: {
+      kind: "replace-json",
+      payload: { enabled: true },
+      verification: {
+        path: health,
+        acceptance: { path: ["healthy"], equals: true },
+      },
+    },
+    cadenceMs: 1000,
+    nextDue: Date.now() + 3600000,
+  });
+  await call("startup_repair_authorize", { id: "repair", dutyId: "saved" });
+  await expect(
+    call("startup_repair", { authorizationId: "repair" }),
+  ).rejects.toThrow("acceptance failed");
+  const grants = z
+    .object({ managerGrants: z.array(z.object({ id: z.string() })) })
+    .parse((await call("startup_staff", {})).details);
+  const grantId: string = grants.managerGrants[0]!.id;
+  await host.handlers.get("session_shutdown")!({}, ctx);
+  advance();
+  host = factory("fixture");
+  await host.handlers.get("session_start")!({}, ctx);
+  try {
+    expect(
+      guard(
+        {
+          toolName: "read",
+          toolCallId: "model-read",
+          input: { path: health + ":raw" },
+        },
+        ctx,
+      ),
+    ).toMatchObject({ block: true });
+    failRead = true;
+    await expect(
+      call("startup_repair_reconcile", {
+        grantId,
+        evidence: { observed: true },
+      }),
+    ).rejects.toThrow("Native verification fixture failure");
+    expect(lastRead).not.toBeNull();
+    expect(guard(lastRead, ctx)).toMatchObject({ block: true });
+    failRead = false;
+    await expect(
+      call("startup_repair_reconcile", {
+        grantId,
+        evidence: { observed: true },
+      }),
+    ).rejects.toThrow("failed assigned acceptance");
+    expect(guard(lastRead, ctx)).toMatchObject({ block: true });
+    const loopPath: string = join(root, "skills/startup-loop/SKILL.md");
+    const original: string = readFileSync(loopPath, "utf8");
+    writeFileSync(loopPath, "changed canonical loop");
+    await expect(
+      call("startup_repair_reconcile", {
+        grantId,
+        evidence: { observed: true },
+      }),
+    ).rejects.toThrow("source changed");
+    writeFileSync(loopPath, original);
+    writeFileSync(health, '{"healthy":true}\n');
+    expect(
+      (
+        await call("startup_repair_reconcile", {
+          grantId,
+          evidence: { observed: true },
+        })
+      ).details,
+    ).toMatchObject({ state: "released" });
+    expect(guard(lastRead, ctx)).toMatchObject({ block: true });
+  } finally {
+    await host.handlers.get("session_shutdown")!({}, ctx);
+  }
+});
+
+test("pending human input permits repair reconciliation while ordinary work stays gated", async () => {
+  const { ctx, factory, advance } = entryFixture();
+  const first = factory("fixture");
+  await first.handlers.get("session_start")!({}, ctx);
+  await first.tools
+    .get("startup_send")!
+    .execute(
+      "send",
+      {
+        id: "prior",
+        recipient: "manager",
+        kind: "report",
+        correlation: "prior",
+        payload: {},
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+  await first.tools
+    .get("startup_claim")!
+    .execute("claim", {}, undefined, undefined, ctx);
+  await first.handlers.get("session_shutdown")!({}, ctx);
+  advance();
+  const host = factory("fixture");
+  await host.handlers.get("session_start")!({}, ctx);
+  try {
+    await host.handlers.get("input")!(
+      { text: "new human work", images: [], source: "rpc" },
+      ctx,
+    );
+    expect(
+      host.handlers.get("tool_call")!(
+        {
+          toolName: "startup_repair_reconcile",
+          toolCallId: "recover",
+          input: { grantId: "saved", evidence: {} },
+        },
+        ctx,
+      ),
+    ).toBeUndefined();
+    expect(
+      host.handlers.get("tool_call")!(
+        {
+          toolName: "read",
+          toolCallId: "model",
+          input: { path: "target.json" },
+        },
+        ctx,
+      ),
+    ).toMatchObject({ block: true });
+    expect(host.handlers.get("session_stop")!({}, ctx)).toMatchObject({
+      continue: true,
+    });
+  } finally {
+    await host.handlers.get("session_shutdown")!({}, ctx);
   }
 });

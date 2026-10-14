@@ -2248,3 +2248,125 @@ test("host-only duty binding requires actual loaded source and native root evide
   );
   expect(() => f.adapter.dutyBinding(employee.id)).toThrow("another root");
 });
+
+test("native duty read admission is async-scoped, single-use and root source/lease fenced", async () => {
+  for (const ending of ["success", "source", "lease"] as const) {
+    const f = configuredFixture({ employeeLimit: null, executionLimit: null });
+    const path: string = join(f.ctx.cwd, "health.json");
+    const text: string = '{"healthy":true}\n';
+    writeFileSync(path, text);
+    const manager = f.adapter.store.managerBinding;
+    f.adapter.duties.assign(manager, {
+      id: "health",
+      employeeId: "manager",
+      target: path,
+      probe: path,
+      acceptance: { path: ["healthy"], equals: true },
+      repairAuthority: {
+        kind: "replace-json",
+        payload: { healthy: true },
+        verification: { path, acceptance: { path: ["healthy"], equals: true } },
+      },
+      cadenceMs: 1000,
+      nextDue: Date.now() + 3600000,
+    });
+    f.adapter.duties.authorize(manager, { id: "saved", dutyId: "health" });
+    const grant = f.adapter.store.acquireTarget({
+      employee: manager,
+      grantId: "saved-grant",
+      authorizationId: "saved",
+    });
+    f.adapter.store.markTargetUncertain({
+      employee: manager,
+      grantId: grant.id,
+      evidence: { interrupted: true },
+    });
+    const entered =
+      Promise.withResolvers<
+        Readonly<{ id: string; params: Record<string, unknown> }>
+      >();
+    const release = Promise.withResolvers<void>();
+    const root = f.refs.get("Main");
+    if (!root?.session) throw new Error("Fixture root absent");
+    const originalLoop: string = readFileSync(
+      join(f.root, "skills/startup-loop/SKILL.md"),
+      "utf8",
+    );
+    f.refs.set("Main", {
+      ...root,
+      session: {
+        ...root.session,
+        getToolByName: () => ({
+          execute: async (id, params) => {
+            entered.resolve({ id, params });
+            await release.promise;
+            expect(
+              f.adapter.admitDutyRead(
+                { ...f.ctx, agent: { id: "other", kind: "main" } },
+                "read",
+                id,
+                params,
+              ),
+            ).toBe(false);
+            expect(
+              f.adapter.admitDutyRead(
+                { ...f.ctx, agent: { id: "Main", kind: "sub" } },
+                "read",
+                id,
+                params,
+              ),
+            ).toBe(false);
+            if (ending === "source")
+              writeFileSync(
+                join(f.root, "skills/startup-loop/SKILL.md"),
+                "changed while native read awaited",
+              );
+            if (ending === "lease") f.adapter.store.close();
+            expect(f.adapter.admitDutyRead(f.ctx, "read", id, params)).toBe(
+              true,
+            );
+            expect(f.adapter.admitDutyRead(f.ctx, "read", id, params)).toBe(
+              false,
+            );
+            return {
+              content: [],
+              details: {
+                totalLines: 2,
+                fileSize: Buffer.byteLength(text),
+                displayContent: { text, startLine: 1, lineNumbers: [1, 2] },
+                meta: {
+                  source: {
+                    type: "path",
+                    value: z.string().parse(params.path).replace(/:raw$/, ""),
+                  },
+                },
+              },
+            };
+          },
+        }),
+      },
+    });
+    const operation = f.adapter.duties.reconcile(manager, {
+      grantId: grant.id,
+      evidence: { observed: true },
+    });
+    const pending = await entered.promise;
+    expect(
+      f.adapter.admitDutyRead(f.ctx, "read", pending.id, pending.params),
+    ).toBe(false);
+    release.resolve();
+    try {
+      if (ending === "success")
+        expect((await operation).state).toBe("released");
+      else
+        await expect(operation).rejects.toThrow(
+          ending === "source" ? "source changed" : "closed",
+        );
+      expect(
+        f.adapter.admitDutyRead(f.ctx, "read", pending.id, pending.params),
+      ).toBe(false);
+    } finally {
+      writeFileSync(join(f.root, "skills/startup-loop/SKILL.md"), originalLoop);
+    }
+  }
+});

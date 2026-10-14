@@ -111,7 +111,11 @@ export type HostAPI = Readonly<{
 const adapters: Map<string, StartupAdapter> = new Map();
 const contextEventSchema = z.object({ messages: z.array(z.unknown()) });
 const toolEventSchema = z
-  .object({ toolName: z.string(), input: z.unknown() })
+  .object({
+    toolName: z.string(),
+    toolCallId: idSchema.optional(),
+    input: z.unknown(),
+  })
   .passthrough();
 const rootConfigSchema = z.strictObject({
   name: z
@@ -909,6 +913,15 @@ export function installStartup(
     const current = rootAdapter(registry, ctx);
     if (!current) return;
     const parsed = toolEventSchema.parse(event);
+    if (
+      current.admitDutyRead(
+        ctx,
+        parsed.toolName,
+        parsed.toolCallId,
+        parsed.input,
+      )
+    )
+      return;
     const fenced = current.guardTurn(ctx, parsed.toolName);
     if (fenced) return { block: true, reason: fenced };
     if (ctx.agent.kind !== "main") return;
