@@ -354,6 +354,8 @@ test("normal wait honors the authoritative capacity guard with undelegated work"
       input: "work",
       amendItemIds: [],
     });
+    expect(guard("startup_refresh")).toBeUndefined();
+    expect(guard("read")).toMatchObject({ block: true });
     expect(guard("wait")).toMatchObject({ block: true });
     expect(guard("yield")).toMatchObject({ block: true });
     occupy();

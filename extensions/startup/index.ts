@@ -963,6 +963,7 @@ export function installStartup(
         "startup_intake",
         "startup_route",
         "startup_staff",
+        "startup_refresh",
         "startup_block",
         "task",
       ].includes(parsed.toolName)
