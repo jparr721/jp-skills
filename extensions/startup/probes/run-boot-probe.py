@@ -40,7 +40,7 @@ lock.write_bytes(prior_lock)
 evidence={'status':'FAIL','checks':{},'profile':profile,'environment':{key:value for key,value in env.items() if key not in {'PATH','HOME','TMPDIR','LANG','TERM','SHELL','USER','LOGNAME'}},'commands':[]}
 def run(command):
     result=subprocess.run(command,env=env,cwd=cwd,text=True,capture_output=True)
-    evidence['commands'].append({'args':command,'exit':result.returncode,'stdout':result.stdout,'stderr':result.stderr})
+    evidence['commands'].append({'args':command.copy(),'exit':result.returncode,'stdout':result.stdout,'stderr':result.stderr})
     if result.returncode:raise RuntimeError(result.stdout+result.stderr)
     return result
 omp=shutil.which('omp')
@@ -63,13 +63,13 @@ try:
     def send(message,images):
         process.stdin.write(json.dumps({'type':'prompt','id':uuid.uuid4().hex,'message':message,'images':images})+'\n');process.stdin.flush()
     def start():
-        evidence['commands'].append({'args':command})
+        evidence['commands'].append({'args':command.copy()})
         return subprocess.Popen(command,env=env,cwd=cwd,stdin=subprocess.PIPE,stdout=(workspace/'stdout.jsonl').open('a'),stderr=(workspace/'stderr.txt').open('a'),text=True)
     process=start()
     wait(lambda:any(row['kind']=='start' for row in records()))
     first=next(row for row in records() if row['kind']=='start')
     evidence['checks']['lazyNativeTranscript']=not first['onDisk']
-    work='/startup new native-proof --dir '+json.dumps(str(bound))+' -- '+('FULL_INTAKE '*700)+'TAIL'
+    work='/startup  new native-proof --dir '+json.dumps(str(bound))+' -- '+('FULL_INTAKE '*700)+'TAIL  \t\n'
     image={'type':'image','mimeType':'image/png','data':'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII='}
     send(work,[image])
     wait(lambda:any(row['kind']=='tool' and row['name']=='startup_capture' and not row['error'] for row in records()))
@@ -100,6 +100,8 @@ try:
     wait(lambda:sum(row['kind']=='start' for row in records())>=2)
     send('/startup-boot-inspect',[])
     wait(lambda:sum(row['kind']=='inspect' for row in records())>count)
+    launches=[row['args'] for row in evidence['commands'] if '--mode' in row['args']]
+    evidence['checks']['launchArgvPreserved']='--session' not in launches[0] and launches[1][-2:]==['--session',inspect['file']]
     evidence['checks']['limitPrecedence']=[row for row in records() if row['kind']=='inspect'][-1]['staff']['details']['capacity']['explicitLimit']==4
     evidence['checks']['restartDiscovery']=records()[-1]['kind']=='inspect' and (bound/'AGENTS.md').read_bytes()==before
     process.stdin.close();process.wait(timeout=10);process=None
