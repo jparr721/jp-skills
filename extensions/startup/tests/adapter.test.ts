@@ -19,6 +19,7 @@ import {
 } from "../src/omp-adapter";
 import { z } from "zod";
 import type { Employee } from "../src/contracts";
+import type { ItemAction } from "../src/items";
 const directories: string[] = [];
 function sources(): string {
   const root: string = mkdtempSync(join(tmpdir(), "startup-adapter-"));
@@ -3076,3 +3077,35 @@ test("manager discovers interrupted child claim and pending delivery IDs without
   expect(alert.payload).toMatchObject({ claimIds: [claim.claim.id], messageIds: ["public-active"] });
   expect(() => f.adapter.staff(child)).toThrow();
 });
+
+for (const phase of ["before-rename", "after-rename"]) {
+  for (const retry of ["identical", "conflicting", "different"]) {
+    test(`same live item journal ${phase} preserves ${retry} retry`, async () => {
+      const f = fixture();
+      const { team, contexts } = await capturedTeam(f, "live-journal", ["live-one", "live-two"]);
+      const architect = contexts.get(team.architect)!;
+      const state = join(f.root, "home/startup/fixture");
+      const db = new Database(join(state, "staff.sqlite"));
+      const token = z.object({ token: z.string() }).parse(db.query("SELECT token FROM lease").get()).token;
+      const pendingPath = join(state, `queue.json.${token}.pending`);
+      if (phase === "before-rename") mkdirSync(pendingPath);
+      else db.run("CREATE TRIGGER fixture_finalize_failure BEFORE UPDATE ON records WHEN NEW.kind='intent' AND json_extract(NEW.payload,'$.state')='complete' BEGIN SELECT RAISE(ABORT,'fixture finalization failure'); END");
+      const request: ItemAction = { action: "assign", requestId: "live-original", itemId: "live-one", expectedRevision: 1, employeeId: team.devs[0]!, evidence: { original: true } };
+      await expect(f.adapter.item(architect, request)).rejects.toThrow();
+      const readIntent = () => z.object({ payload: z.string() }).parse(db.query("SELECT payload FROM records WHERE kind='intent' AND id='item/live-original'").get()).payload;
+      const original = readIntent();
+      await expect(f.adapter.item(architect, { ...request, evidence: { conflicting: true } })).rejects.toThrow();
+      expect(readIntent()).toBe(original);
+      if (phase === "before-rename") rmSync(pendingPath, { recursive: true });
+      else db.run("DROP TRIGGER fixture_finalize_failure");
+      if (retry === "identical") expect((await f.adapter.item(architect, request)).request).toEqual(request);
+      else if (retry === "conflicting") await expect(f.adapter.item(architect, { ...request, evidence: { conflicting: true } })).rejects.toThrow("conflicts with its saved payload");
+      else await f.adapter.item(f.ctx, { action: "decide", requestId: "live-next", itemId: "live-two", expectedRevision: 1, status: "NEEDS_DECISION", evidence: { input: "awaited" } });
+      const snapshot = f.adapter.store.snapshot();
+      expect(snapshot.itemTransitions.find((entry) => entry.request.requestId === "live-original")?.request).toEqual(request);
+      expect(JSON.parse(readIntent()).state).toBe("complete");
+      expect(snapshot.queueRevisions.find((entry) => entry.id === "live-one")?.revision).toBe(2);
+      db.close();
+    });
+  }
+}

@@ -1482,6 +1482,7 @@ export function openStore(args: {
       readonly employee: Binding;
       readonly request: ItemAction;
     }): ItemTransition {
+      pendingWrites();
       const receipt: ItemTransition = tx(() => {
         const sender = actor(input.employee);
         const request = itemActionSchema.parse(input.request);
