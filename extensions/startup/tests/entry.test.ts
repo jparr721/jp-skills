@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, test } from "bun:test";
+import { afterEach, expect, mock, test, spyOn } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -605,12 +605,20 @@ test("recovery permits only the admitted native duty verification read through e
       ),
     ).toMatchObject({ block: true });
     failRead = true;
+    const diagnostic = spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
     await expect(
       call("startup_repair_reconcile", {
         grantId,
         evidence: { observed: true },
       }),
     ).rejects.toThrow("Native verification fixture failure");
+    } finally {
+      const diagnostics = diagnostic.mock.calls.map((call) => String(call[0]));
+      diagnostic.mockRestore();
+      expect(diagnostics).toHaveLength(1);
+      expect(JSON.parse(diagnostics[0]!)).toMatchObject({ level: "warning", component: "startup-duty", attempt: 1, error: "Native verification fixture failure" });
+    }
     expect(lastRead).not.toBeNull();
     expect(guard(lastRead, ctx)).toMatchObject({ block: true });
     failRead = false;

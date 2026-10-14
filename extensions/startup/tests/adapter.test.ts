@@ -2976,6 +2976,7 @@ test("native duty read admission is async-scoped, single-use and root source/lea
     expect(
       f.adapter.admitDutyRead(f.ctx, "read", pending.id, pending.params),
     ).toBe(false);
+    const diagnostic = spyOn(process.stderr, "write").mockImplementation(() => true);
     release.resolve();
     try {
       if (ending === "success")
@@ -2988,7 +2989,11 @@ test("native duty read admission is async-scoped, single-use and root source/lea
         f.adapter.admitDutyRead(f.ctx, "read", pending.id, pending.params),
       ).toBe(false);
     } finally {
+      const diagnostics = diagnostic.mock.calls.map((call) => String(call[0]));
+      diagnostic.mockRestore();
       writeFileSync(join(f.root, "skills/startup-loop/SKILL.md"), originalLoop);
+      expect(diagnostics).toHaveLength(ending === "success" ? 0 : 1);
+      for (const line of diagnostics) expect(JSON.parse(line)).toMatchObject({ level: "warning", component: "startup-duty", operation: "saved-grant-reconcile", attempt: 1, error: ending === "source" ? "Canonical source changed for manager; explicit source reconciliation required" : "Cannot use a closed database" });
     }
   }
 });
