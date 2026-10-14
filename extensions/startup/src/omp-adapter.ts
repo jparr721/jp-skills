@@ -1959,12 +1959,13 @@ export function createAdapter(
       employee.error !== null
     )
       return;
-    const unfinished = store
+    const unfinishedClaims = store
       .snapshot()
-      .claims.some(
+      .claims.filter(
         (claim) =>
           claim.employeeId === employee.id && claim.status === "active",
       );
+    const unfinished = unfinishedClaims.length > 0;
     if (!unfinished && reason === "idle") return;
     const binding: Binding = {
       employeeId: employee.id,
@@ -1983,6 +1984,11 @@ export function createAdapter(
           nativeId,
           generation: employee.generation,
           unresolved: unfinished,
+          claimIds: unfinishedClaims.map((claim) => claim.id),
+          messageIds: unfinishedClaims.map((claim) => claim.messageId),
+          employeeId: employee.id,
+          teamId: employee.assignment,
+          ownerEpoch: store.ownerEpoch,
         },
       },
     });
@@ -2626,9 +2632,27 @@ export function createAdapter(
         evidence: parsed.evidence,
       });
     },
-    staff: (ctx: NativeContext) => {
+    staff: (ctx: NativeContext, recoveryOffset?: number) => {
       rootAdmin(ctx);
+      const offset = timeSchema.parse(recoveryOffset ?? 0);
+      const snapshot = store.snapshot();
+      const claims = snapshot.claims.filter((claim) => claim.status !== "settled");
+      const assignments = snapshot.assignments.filter((assignment) => assignment.state !== "complete");
+      const pendingMessages = snapshot.messages.filter((message) => message.status === "pending");
+      const employeeMetadata = (id: string) => {
+        const employee = snapshot.employees.find((entry) => entry.id === id);
+        if (!employee) throw new StoreAuthorityError(`Recovery employee missing: ${id}`);
+        return { employeeId: id, teamId: employee.assignment, generation: employee.generation, ownerEpoch: store.ownerEpoch };
+      };
       return {
+        recovery: {
+          offset,
+          nextOffset: Math.max(claims.length, assignments.length, pendingMessages.length) > offset + 64 ? offset + 64 : null,
+          counts: { claims: claims.length, assignments: assignments.length, pendingMessages: pendingMessages.length },
+          claims: claims.slice(offset, offset + 64).map((claim) => ({ ...employeeMetadata(claim.employeeId), ...claim })),
+          assignments: assignments.slice(offset, offset + 64).map((assignment) => ({ ...employeeMetadata(assignment.employeeId), ...assignment })),
+          pendingMessages: pendingMessages.slice(offset, offset + 64).map((message) => ({ ...employeeMetadata(message.recipient), id: message.id, sender: message.sender, recipient: message.recipient, teamId: message.teamId, kind: message.kind, status: message.status })),
+        },
         mode: managerReady ? "ready" : "recovery",
         managerClaims: store
           .snapshot()

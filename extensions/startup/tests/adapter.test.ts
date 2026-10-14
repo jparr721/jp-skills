@@ -3057,3 +3057,22 @@ for (const projected of [true, false]) {
     expect(f.adapter.capacity().reserved).toBe(0);
   });
 }
+
+test("manager discovers interrupted child claim and pending delivery IDs without task bodies", async () => {
+  const f = fixture();
+  const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "recovery-public", role: "devops", additional: 1 });
+  await f.adapter.activate(f.ctx, [hire.employees[0]!.id]);
+  const child = await f.project(hire.employees[0]!);
+  await f.adapter.send(f.ctx, { id: "public-active", recipient: hire.employees[0]!.id, kind: "assignment", correlation: "public", payload: "PRIVATE_TASK_BODY" });
+  const claim = f.adapter.claim(child)!;
+  await f.adapter.send(f.ctx, { id: "public-pending", recipient: hire.employees[0]!.id, kind: "assignment", correlation: "public", payload: "PRIVATE_TASK_BODY" });
+  f.adapter.nativeEnded(child.agent.id, "aborted");
+  const recovery = z.object({ recovery: z.object({ claims: z.array(z.object({ id: z.string(), messageId: z.string(), status: z.string() })), assignments: z.array(z.object({ id: z.string() })), pendingMessages: z.array(z.object({ id: z.string() })) }) }).parse(f.adapter.staff(f.ctx)).recovery;
+  expect(recovery.claims).toContainEqual(expect.objectContaining({ id: claim.claim.id, messageId: "public-active", status: "reconciliation" }));
+  expect(recovery.assignments).toContainEqual(expect.objectContaining({ id: "public-active" }));
+  expect(recovery.pendingMessages).toContainEqual(expect.objectContaining({ id: "public-pending" }));
+  expect(JSON.stringify(recovery)).not.toContain("PRIVATE_TASK_BODY");
+  const alert = f.adapter.store.snapshot().messages.find((message) => message.kind === "alert")!;
+  expect(alert.payload).toMatchObject({ claimIds: [claim.claim.id], messageIds: ["public-active"] });
+  expect(() => f.adapter.staff(child)).toThrow();
+});
