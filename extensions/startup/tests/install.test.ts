@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -89,4 +90,82 @@ test("uninstall preserves changed ownership and has no unmanaged removal path", 
     "ownership changed",
   );
   expect(readFileSync(lock, "utf8")).toBe(before);
+});
+
+test("installer revalidates foreign preimages after version detection before native link", () => {
+  for (const kind of ["target", "parent", "dependency", "config", "receipt"]) {
+    const f = fixture();
+    const parent = join(f.plugins, "node_modules/@jp-skills");
+    mkdirSync(parent, { recursive: true });
+    const lock = join(f.plugins, "omp-plugins.lock.json");
+    const original = '{"plugins":{},"settings":{"user":{"keep":true}}}\n';
+    writeFileSync(lock, original);
+    const foreign = join(f.plugins, "foreign.txt");
+    const sentinel = join(f.plugins, "native-link-ran");
+    const executable = join(f.plugins, "omp-fixture");
+    writeFileSync(
+      executable,
+      `#!${process.execPath}
+import { mkdirSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+const plugins=${JSON.stringify(f.plugins)};
+if(process.argv[2]==="--version") {
+  const kind=${JSON.stringify(kind)};
+  if(kind==="target") { mkdirSync(plugins+"/node_modules/@jp-skills/startup"); writeFileSync(plugins+"/node_modules/@jp-skills/startup/user.txt","foreign bytes"); }
+  if(kind==="parent") { renameSync(plugins+"/node_modules/@jp-skills", plugins+"/foreign-parent"); symlinkSync(plugins+"/foreign-parent", plugins+"/node_modules/@jp-skills"); writeFileSync(plugins+"/foreign-parent/user.txt","foreign bytes"); }
+  if(kind==="dependency") writeFileSync(plugins+"/package.json", '{"dependencies":{"@jp-skills/startup":"foreign"}}');
+  if(kind==="config") writeFileSync(plugins+"/omp-plugins.lock.json", '{"settings":{"@jp-skills/startup":{"user":true}}}');
+  if(kind==="receipt") writeFileSync(plugins+"/jp-skills-startup.install.json", "foreign receipt");
+  writeFileSync(${JSON.stringify(foreign)},"foreign bytes");
+  process.stdout.write("omp/18.8.9\\n");
+} else { writeFileSync(${JSON.stringify(sentinel)}, "called"); process.exit(73); }
+`,
+      { mode: 0o700 },
+    );
+    expect(() => manageInstallation({ ...f, omp: executable })).toThrow();
+    expect(existsSync(sentinel)).toBe(false);
+    expect(readFileSync(foreign, "utf8")).toBe("foreign bytes");
+    if (kind === "target")
+      expect(readFileSync(join(parent, "startup/user.txt"), "utf8")).toBe(
+        "foreign bytes",
+      );
+    if (kind === "parent")
+      expect(readFileSync(join(parent, "user.txt"), "utf8")).toBe(
+        "foreign bytes",
+      );
+    if (kind === "dependency")
+      expect(readFileSync(join(f.plugins, "package.json"), "utf8")).toBe(
+        '{"dependencies":{"@jp-skills/startup":"foreign"}}',
+      );
+    if (kind === "config")
+      expect(readFileSync(lock, "utf8")).toBe(
+        '{"settings":{"@jp-skills/startup":{"user":true}}}',
+      );
+    else expect(readFileSync(lock, "utf8")).toBe(original);
+    if (kind === "receipt")
+      expect(
+        readFileSync(join(f.plugins, "jp-skills-startup.install.json"), "utf8"),
+      ).toBe("foreign receipt");
+  }
+});
+test("managed installers serialize before external version detection", () => {
+  const f = fixture();
+  const executable = join(f.plugins, "omp-fixture");
+  const conflict = join(f.plugins, "competitor.json");
+  writeFileSync(
+    executable,
+    `#!${process.execPath}
+import { writeFileSync } from "node:fs";
+import { manageInstallation } from ${JSON.stringify(resolve(import.meta.dir, "../install.ts"))};
+try { manageInstallation(${JSON.stringify(f)}); writeFileSync(${JSON.stringify(conflict)}, JSON.stringify({error:"none"})); }
+catch(error) { writeFileSync(${JSON.stringify(conflict)}, JSON.stringify({error:error.message})); }
+process.stdout.write("wrong-version\\n");
+`,
+    { mode: 0o700 },
+  );
+  expect(() => manageInstallation({ ...f, omp: executable })).toThrow(
+    "requires OMP",
+  );
+  expect(JSON.parse(readFileSync(conflict, "utf8")).error).toContain(
+    "already in progress",
+  );
 });

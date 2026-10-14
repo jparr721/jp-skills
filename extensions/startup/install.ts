@@ -1,5 +1,9 @@
 import {
+  closeSync,
   existsSync,
+  fstatSync,
+  openSync,
+  unlinkSync,
   lstatSync,
   mkdirSync,
   readFileSync,
@@ -66,18 +70,22 @@ export function pluginsDirectory(
     "plugins",
   );
 }
-function checkParents(path: string): void {
+function checkParents(path: string): string {
+  const identities: string[] = [];
   let current = path;
   while (true) {
-    if (existsSync(current)) {
-      const stat = lstatSync(current);
+    const stat = lstatSync(current, { throwIfNoEntry: false });
+    identities.push(
+      `${current}:${stat ? `${stat.dev}:${stat.ino}` : "absent"}`,
+    );
+    if (stat) {
       if (stat.isSymbolicLink() || !stat.isDirectory())
         throw new StartupInstallError(
           `Installation parent must be a real directory: ${current}`,
         );
     }
     const parent = dirname(current);
-    if (parent === current) return;
+    if (parent === current) return JSON.stringify(identities);
     current = parent;
   }
 }
@@ -115,121 +123,159 @@ export function manageInstallation(options: InstallOptions): Readonly<{
     .parse(JSON.parse(readFileSync(join(source, "package.json"), "utf8")));
   const plugins = pluginsDirectory(profile, options.env);
   checkParents(join(plugins, "node_modules", "@jp-skills"));
-  const lock = join(plugins, "omp-plugins.lock.json");
-  const receiptPath = join(plugins, "jp-skills-startup.install.json");
-  const link = join(plugins, "node_modules", "@jp-skills", "startup");
-  const priorReceipt = readRegular(receiptPath);
-  const current = readRegular(lock);
-  const config = configSchema.parse(
-    current === null ? {} : JSON.parse(current),
-  );
-  const linked = lstatSync(link, { throwIfNoEntry: false });
-  const receipt =
-    priorReceipt === null
-      ? null
-      : receiptSchema.parse(JSON.parse(priorReceipt));
-  if (receipt !== null) {
+  mkdirSync(plugins, { recursive: true });
+  const mutex = join(plugins, ".jp-skills-startup.install.lock");
+  let descriptor: number;
+  try {
+    descriptor = openSync(mutex, "wx", 0o600);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "EEXIST")
+      throw new StartupInstallError(
+        `Startup installation already in progress: ${mutex}`,
+      );
+    throw error;
+  }
+  const owner = fstatSync(descriptor);
+  try {
+    const parents = checkParents(join(plugins, "node_modules", "@jp-skills"));
+    const lock = join(plugins, "omp-plugins.lock.json");
+    const receiptPath = join(plugins, "jp-skills-startup.install.json");
+    const link = join(plugins, "node_modules", "@jp-skills", "startup");
+    const priorReceipt = readRegular(receiptPath);
+    const current = readRegular(lock);
+    const config = configSchema.parse(
+      current === null ? {} : JSON.parse(current),
+    );
+    const linked = lstatSync(link, { throwIfNoEntry: false });
+    const receipt =
+      priorReceipt === null
+        ? null
+        : receiptSchema.parse(JSON.parse(priorReceipt));
+    if (receipt !== null) {
+      if (
+        receipt.source !== source ||
+        receipt.profile !== profile ||
+        receipt.plugins !== plugins ||
+        (linked !== undefined &&
+          (!linked.isSymbolicLink() || realpathSync(link) !== source)) ||
+        (current !== receipt.after && current !== receipt.before)
+      )
+        throw new StartupInstallError(
+          "Startup installation ownership changed; preserve files and reconcile the installation receipt before retrying",
+        );
+      if (options.action === "uninstall") {
+        if (current !== receipt.before) {
+          if (receipt.before === null) rmSync(lock);
+          else replace(lock, receipt.before);
+        }
+        if (linked !== undefined) rmSync(link);
+        rmSync(receiptPath);
+      }
+      if (
+        options.action === "install" &&
+        (!linked || current !== receipt.after)
+      )
+        throw new StartupInstallError(
+          "Interrupted Startup installation; uninstall the owned partial installation before retrying",
+        );
+      return { profile, plugins, source, action: options.action };
+    }
+    if (options.action === "uninstall")
+      throw new StartupInstallError(
+        "No owned Startup installation receipt; refusing to remove another installation",
+      );
     if (
-      receipt.source !== source ||
-      receipt.profile !== profile ||
-      receipt.plugins !== plugins ||
-      (linked !== undefined &&
-        (!linked.isSymbolicLink() || realpathSync(link) !== source)) ||
-      (current !== receipt.after && current !== receipt.before)
+      linked ||
+      config.plugins?.[packageName] !== undefined ||
+      config.settings?.[packageName] !== undefined
     )
       throw new StartupInstallError(
-        "Startup installation ownership changed; preserve files and reconcile the installation receipt before retrying",
+        "Startup plugin name or path is already owned; refusing native link replacement",
       );
-    if (options.action === "uninstall") {
-      if (current !== receipt.before) {
-        if (receipt.before === null) rmSync(lock);
-        else replace(lock, receipt.before);
-      }
-      if (linked !== undefined) rmSync(link);
-      rmSync(receiptPath);
-    }
-    if (options.action === "install" && (!linked || current !== receipt.after))
+    const dependencies = readRegular(join(plugins, "package.json"));
+    if (
+      dependencies !== null &&
+      z
+        .object({ dependencies: z.record(z.string(), z.unknown()).optional() })
+        .parse(JSON.parse(dependencies)).dependencies?.[packageName] !==
+        undefined
+    )
       throw new StartupInstallError(
-        "Interrupted Startup installation; uninstall the owned partial installation before retrying",
+        "Startup plugin already exists in native package dependencies",
       );
+    const version = spawnSync(options.omp, ["--version"], {
+      env: options.env,
+      encoding: "utf8",
+    });
+    if (version.status !== 0 || version.stdout.trim() !== "omp/18.8.9")
+      throw new StartupInstallError(
+        `Installer requires OMP 18.8.9; status=${version.status}, stdout=${version.stdout}, stderr=${version.stderr}`,
+      );
+    if (
+      checkParents(join(plugins, "node_modules", "@jp-skills")) !== parents ||
+      lstatSync(link, { throwIfNoEntry: false }) !== undefined ||
+      readRegular(lock) !== current ||
+      readRegular(join(plugins, "package.json")) !== dependencies ||
+      readRegular(receiptPath) !== priorReceipt
+    )
+      throw new StartupInstallError(
+        "Startup installation preimage changed during version detection; preserve files and retry after reconciling ownership",
+      );
+    const expected = {
+      plugins: {
+        ...config.plugins,
+        [packageName]: {
+          version: manifest.version,
+          enabledFeatures: null,
+          enabled: true,
+        },
+      },
+      settings: config.settings ?? {},
+    };
+    const expectedBytes = JSON.stringify(expected, null, 2);
+    writeFileSync(
+      receiptPath,
+      JSON.stringify(
+        {
+          version: 1,
+          source,
+          profile,
+          plugins,
+          before: current,
+          after: expectedBytes,
+        },
+        null,
+        2,
+      ) + "\n",
+      { flag: "wx", mode: 0o600 },
+    );
+    const command = spawnSync(
+      options.omp,
+      ["--profile", profile, "plugin", "link", source],
+      { env: options.env, encoding: "utf8" },
+    );
+    const after = readRegular(lock);
+    if (
+      command.status !== 0 ||
+      after !== expectedBytes ||
+      !lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() ||
+      realpathSync(link) !== source
+    ) {
+      throw new StartupInstallError(
+        `Native link did not produce the expected owned installation. Preserve partial files for reconciliation: profile=${profile}, plugins=${plugins}, status=${command.status}, stdout=${command.stdout}, stderr=${command.stderr}`,
+      );
+    }
     return { profile, plugins, source, action: options.action };
+  } finally {
+    closeSync(descriptor);
+    const retained = lstatSync(mutex, { throwIfNoEntry: false });
+    if (retained?.dev === owner.dev && retained.ino === owner.ino)
+      unlinkSync(mutex);
+    else
+      throw new StartupInstallError(
+        `Startup installation mutex ownership changed; preserve files: ${mutex}`,
+      );
   }
-  if (options.action === "uninstall")
-    throw new StartupInstallError(
-      "No owned Startup installation receipt; refusing to remove another installation",
-    );
-  if (
-    linked ||
-    config.plugins?.[packageName] !== undefined ||
-    config.settings?.[packageName] !== undefined
-  )
-    throw new StartupInstallError(
-      "Startup plugin name or path is already owned; refusing native link replacement",
-    );
-  const dependencies = readRegular(join(plugins, "package.json"));
-  if (
-    dependencies !== null &&
-    z
-      .object({ dependencies: z.record(z.string(), z.unknown()).optional() })
-      .parse(JSON.parse(dependencies)).dependencies?.[packageName] !== undefined
-  )
-    throw new StartupInstallError(
-      "Startup plugin already exists in native package dependencies",
-    );
-  const version = spawnSync(options.omp, ["--version"], {
-    env: options.env,
-    encoding: "utf8",
-  });
-  if (version.status !== 0 || version.stdout.trim() !== "omp/18.8.9")
-    throw new StartupInstallError(
-      `Installer requires OMP 18.8.9; status=${version.status}, stdout=${version.stdout}, stderr=${version.stderr}`,
-    );
-  mkdirSync(plugins, { recursive: true });
-  const expected = {
-    plugins: {
-      ...config.plugins,
-      [packageName]: {
-        version: manifest.version,
-        enabledFeatures: null,
-        enabled: true,
-      },
-    },
-    settings: config.settings ?? {},
-  };
-  const expectedBytes = JSON.stringify(expected, null, 2);
-  writeFileSync(
-    receiptPath,
-    JSON.stringify(
-      {
-        version: 1,
-        source,
-        profile,
-        plugins,
-        before: current,
-        after: expectedBytes,
-      },
-      null,
-      2,
-    ) + "\n",
-    { flag: "wx", mode: 0o600 },
-  );
-  const command = spawnSync(
-    options.omp,
-    ["--profile", profile, "plugin", "link", source],
-    { env: options.env, encoding: "utf8" },
-  );
-  const after = readRegular(lock);
-  if (
-    command.status !== 0 ||
-    after !== expectedBytes ||
-    !lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink() ||
-    realpathSync(link) !== source
-  ) {
-    throw new StartupInstallError(
-      `Native link did not produce the expected owned installation. Preserve partial files for reconciliation: profile=${profile}, plugins=${plugins}, status=${command.status}, stdout=${command.stdout}, stderr=${command.stderr}`,
-    );
-  }
-  return { profile, plugins, source, action: options.action };
 }
 if (import.meta.main) {
   const [action, profile] = z
