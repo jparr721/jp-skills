@@ -23,6 +23,7 @@ export type Profile = Readonly<{
   name: string;
   marker: string;
   source: Source;
+  roleName: Employee["role"];
   role: string;
   loop: string;
 }>;
@@ -62,6 +63,7 @@ export function loadProfile(
       loopPath,
       loopRevision: revision(loop),
     },
+    roleName: role,
     role: roleText,
     loop,
   };
@@ -97,7 +99,8 @@ export function writeProfile(
       throw new ProfileSourceError(`Generated profile directory ownership conflict: ${candidate}`);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const path: string = join(directory, `${input.profile.name}.md`);
-  const content = `---\nname: ${input.profile.name}\ndescription: Canonical Startup employee context\nblocking: false\nread-summarize: false\n---\n${profileText(input.profile)}\n`;
+  const spawns: string = input.profile.roleName === "pa" ? "" : "spawns: [task]\n";
+  const content = `---\nname: ${input.profile.name}\ndescription: Canonical Startup employee context\n${spawns}blocking: false\nread-summarize: false\n---\n${profileText(input.profile)}\n`;
   if (existsSync(path)) {
     if (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile() || readFileSync(path, "utf8") !== content)
       throw new ProfileSourceError(`Generated profile ownership conflict: ${path}`);
