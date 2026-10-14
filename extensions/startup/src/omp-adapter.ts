@@ -1483,50 +1483,7 @@ export function createAdapter(
           "Activation lost reserved execution capacity",
         );
     }
-    try {
-      if (batch) dispatched.push(await ctx.invokeTool({ context, tasks }));
-      else
-        for (const task of tasks)
-          dispatched.push(
-            await ctx.invokeTool({
-              ...task,
-              task: `${context}\n${String(task.task)}`,
-            }),
-          );
-    } catch (error: unknown) {
-      for (const employee of selected) {
-        expected.delete(employee.id);
-        admissions.delete(employee.id);
-        store.recordBindingFailure({
-          manager: store.managerBinding,
-          employeeId: employee.id,
-          error: `Native dispatch threw for ${employee.id}: ${error instanceof Error ? error.message : String(error)}`,
-        });
-      }
-      throw error;
-    }
-    const native: NativeResult =
-      dispatched.length === 1
-        ? (dispatched[0] ?? { content: [] })
-        : {
-            content: dispatched.flatMap((entry) => entry.content),
-            details: {
-              progress: dispatched.flatMap((entry, index) => {
-                const parsed = nativeDispatchSchema.safeParse(entry.details);
-                return parsed.success
-                  ? parsed.data.progress.map((progress) => ({
-                      ...progress,
-                      index,
-                    }))
-                  : [];
-              }),
-            },
-            isError: dispatched.some(
-              (entry) =>
-                entry.isError ||
-                !nativeDispatchSchema.safeParse(entry.details).success,
-            ),
-          };
+    function correlate(native: NativeResult, selected: readonly Employee[]): void {
     const parsed = nativeDispatchSchema.safeParse(native.details);
     if (native.isError || !parsed.success) {
       for (const employee of selected) {
@@ -1537,7 +1494,7 @@ export function createAdapter(
           error: `Native dispatch rejected activation: ${JSON.stringify(native)}`,
         });
       }
-      return { employees: ids.map(snapshotEmployee), native };
+      return;
     }
     for (const [index, employee] of selected.entries()) {
       const progress = parsed.data.progress.find(
@@ -1601,7 +1558,7 @@ export function createAdapter(
       blockers.delete(employee.id);
     }
     if (
-      dispatched.some(
+      [native].some(
         (result) =>
           z
             .object({
@@ -1654,6 +1611,43 @@ export function createAdapter(
         });
       }
     }
+    }
+    const completed = new Set<string>();
+    try {
+      if (batch) {
+        const result = await ctx.invokeTool({ context, tasks });
+        correlate(result, selected);
+        dispatched.push(result);
+        for (const employee of selected) completed.add(employee.id);
+      } else {
+        for (const [index, task] of tasks.entries()) {
+          const employee = selected[index]!;
+          const result = await ctx.invokeTool({ ...task, task: `${context}\n${String(task.task)}` });
+          correlate(result, [employee]);
+          dispatched.push(result);
+          completed.add(employee.id);
+        }
+      }
+    } catch (error: unknown) {
+      for (const employee of selected.filter((entry) => !completed.has(entry.id))) {
+        expected.delete(employee.id);
+        admissions.delete(employee.id);
+        store.recordBindingFailure({
+          manager: store.managerBinding,
+          employeeId: employee.id,
+          error: `Native dispatch threw for ${employee.id}: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+      throw error;
+    }
+    const native: NativeResult = dispatched.length === 1 ? dispatched[0]! : {
+      content: dispatched.flatMap((entry) => entry.content),
+      details: { progress: dispatched.flatMap((entry, index) => {
+        const parsed = nativeDispatchSchema.safeParse(entry.details);
+        return parsed.success ? parsed.data.progress.map((progress) => ({ ...progress, index })) : [];
+      }) },
+      isError: dispatched.some((entry) => entry.isError || !nativeDispatchSchema.safeParse(entry.details).success),
+    };
     for (const team of store.snapshot().teams) await wakeTeam(team);
     return { employees: ids.map(snapshotEmployee), native };
   }

@@ -82,6 +82,7 @@ function configuredFixture(
   managerNotifications: string[];
   wakePaths: string[];
   setStatus: (id: string, status: string) => void;
+  setBatch: (batch: boolean) => void;
 
   ctx: NativeContext;
   refs: Map<string, NativeRef>;
@@ -185,6 +186,7 @@ function configuredFixture(
     clearTimer: clearInterval,
   };
   const managerNotifications: string[] = [];
+  let batch = true;
   const adapter = createAdapter({
     ctx,
     registry: {
@@ -207,7 +209,7 @@ function configuredFixture(
       leaseMs: 60000,
     },
     nativeLimit: () => 32,
-    nativeBatch: () => true,
+    nativeBatch: () => batch,
     notifyManager: (cueId) => {
       managerNotifications.push(cueId);
     },
@@ -264,6 +266,7 @@ function configuredFixture(
     project,
     managerNotifications,
     wakePaths,
+    setBatch: (value) => { batch = value; },
     setStatus: (id, status) => {
       const current = refs.get(id);
       if (!current) throw new Error("Fixture native ref missing");
@@ -3006,3 +3009,32 @@ test("saved idle hire source update is rejected before team reservation and perm
   expect(team.architect).toBe(employee.id);
   expect(team.eventId).toBe("source-preflight");
 });
+
+for (const failure of ["returned", "thrown"]) {
+  test(`single activation preserves successful sibling before later ${failure} failure`, async () => {
+    const f = fixture();
+    f.setBatch(false);
+    const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "single", role: "devops", additional: 3 });
+    let calls = 0;
+    const ctx: NativeContext = { ...f.ctx, invokeTool: async (params) => {
+      calls += 1;
+      if (calls === 2) {
+        if (failure === "thrown") throw new Error("native preflight refused");
+        return { content: [], isError: true };
+      }
+      const result = await f.activate({ tasks: [params] });
+      if (calls === 1) await f.project(hire.employees[0]!);
+      return result;
+    } };
+    const ids = hire.employees.map((entry) => entry.id);
+    if (failure === "thrown") await expect(f.adapter.activate(ctx, ids)).rejects.toThrow("native preflight refused");
+    else await f.adapter.activate(ctx, ids);
+    const sibling = f.adapter.store.snapshot().employees.find((entry) => entry.id === ids[0])!;
+    expect(sibling.error).toBeNull();
+    expect(sibling.nativeHandle).toContain("child-1");
+    const retryAgents: unknown[] = [];
+    await f.adapter.activate({ ...ctx, invokeTool: async (params) => { retryAgents.push(params.agent); return f.activate({ tasks: [params] }); } }, ids);
+    expect(retryAgents).toHaveLength(failure === "thrown" ? 2 : 0 + 1);
+    expect(f.adapter.store.snapshot().employees.find((entry) => entry.id === ids[0])?.nativeHandle).toBe(sibling.nativeHandle);
+  });
+}
