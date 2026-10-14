@@ -440,10 +440,13 @@ export function createDuties(host: DutyHost) {
     if (timer !== null) host.clearTimer(timer);
     timer = null;
     if (!running) return;
-    const cadences = store
-      .snapshot()
-      .duties.filter(
+    const snapshot = store.snapshot();
+    const cadences = snapshot.duties
+      .filter(
         (entry) =>
+          snapshot.dutySchedules.some(
+            (schedule) => schedule.id === entry.id && schedule.nextDue !== null,
+          ) &&
           savedDutySchema.safeParse(entry.assignment).success &&
           complete(configOf(entry)),
       )
@@ -665,6 +668,20 @@ export function createDuties(host: DutyHost) {
       });
       arm();
       return saved;
+    },
+    async end(
+      owner: Binding,
+      request: unknown,
+    ): Promise<{ dutyId: string; evidence: Json }> {
+      if (encode(owner) !== encode(manager()))
+        throw new StoreAuthorityError("Only the bound manager ends duties");
+      const parsed = z
+        .strictObject({ dutyId: idSchema, evidence: jsonSchema })
+        .parse(request);
+      await recover();
+      store.endDuty({ manager: owner, ...parsed });
+      arm();
+      return parsed;
     },
     authorize(owner: Binding, request: unknown): void {
       if (encode(owner) !== encode(manager()))

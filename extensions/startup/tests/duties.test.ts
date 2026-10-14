@@ -96,7 +96,7 @@ function fixture() {
   let wakeError = false;
   const wakes: Message[] = [];
   const warnings: Json[] = [];
-  const timers: Map<ReturnType<typeof setInterval>, () => void> = new Map();
+  const timers: Map<ReturnType<typeof setInterval>, number> = new Map();
   const host = (): DutyHost => ({
     store,
     owner: () => store.managerBinding,
@@ -146,10 +146,10 @@ function fixture() {
       return { kind: "accepted" };
     },
     warn: (fields) => warnings.push(fields),
-    setInterval: (callback, _ms) => {
+    setInterval: (_callback, ms) => {
       const timer = setInterval(() => {}, 2147483647);
       timer.unref();
-      timers.set(timer, callback);
+      timers.set(timer, ms);
       return timer;
     },
     clearTimer: (timer) => {
@@ -721,4 +721,54 @@ test("reconciliation drains before shutdown and rejects new offline admission", 
     }),
   ).rejects.toThrow("offline");
   expect(f.reads).toBe(reads);
+});
+
+test("ended duties cannot own or accelerate the managed timer", async () => {
+  const f = fixture();
+  f.scheduler.assign(f.store.managerBinding, {
+    ...f.request("fast", f.first.employeeId),
+    cadenceMs: 1,
+  });
+  f.scheduler.assign(f.store.managerBinding, {
+    ...f.request("slow", f.second.employeeId),
+    cadenceMs: 100,
+  });
+  expect([...f.timers.values()]).toEqual([1]);
+  f.store.endDuty({
+    manager: f.store.managerBinding,
+    dutyId: "fast",
+    evidence: { ended: true },
+  });
+  f.scheduler.start();
+  expect([...f.timers.values()]).toEqual([100]);
+  f.store.endDuty({
+    manager: f.store.managerBinding,
+    dutyId: "slow",
+    evidence: { ended: true },
+  });
+  f.scheduler.start();
+  expect(f.timers.size).toBe(0);
+  expect(f.store.snapshot().duties).toHaveLength(2);
+});
+
+test("ending duties immediately transfers and releases timer ownership", async () => {
+  const f = fixture();
+  f.scheduler.assign(f.store.managerBinding, {
+    ...f.request("fast", f.first.employeeId),
+    cadenceMs: 1,
+  });
+  f.scheduler.assign(f.store.managerBinding, {
+    ...f.request("slow", f.second.employeeId),
+    cadenceMs: 100,
+  });
+  await f.scheduler.end(f.store.managerBinding, {
+    dutyId: "fast",
+    evidence: { ended: true },
+  });
+  expect([...f.timers.values()]).toEqual([100]);
+  await f.scheduler.end(f.store.managerBinding, {
+    dutyId: "slow",
+    evidence: { ended: true },
+  });
+  expect(f.timers.size).toBe(0);
 });

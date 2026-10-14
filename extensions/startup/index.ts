@@ -566,13 +566,7 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
     builder.object({ dutyId: builder.string(), evidence: builder.unknown() }),
     async (ctx, params) => {
       const current = adapter(ctx);
-      const parsed = z
-        .strictObject({ dutyId: idSchema, evidence: jsonSchema })
-        .parse(params);
-      const manager = current.manager(ctx);
-      await current.duties.recover();
-      current.store.endDuty({ manager, ...parsed });
-      return parsed;
+      return current.duties.end(current.manager(ctx), params);
     },
   );
   tool(
