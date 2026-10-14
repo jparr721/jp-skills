@@ -772,3 +772,61 @@ test("ending duties immediately transfers and releases timer ownership", async (
   });
   expect(f.timers.size).toBe(0);
 });
+
+test("unrelated legacy directory non-JSON and missing identities preserve independent repair", async () => {
+  const f = fixture();
+  const nonJson = join(f.root, "legacy.txt");
+  writeFileSync(nonJson, "legacy");
+  const locks = {
+    [f.root]: { owner: "old-directory" },
+    [nonJson]: { owner: "old-text" },
+    [join(f.root, "missing.json")]: { owner: "old-missing" },
+  };
+  const resources = join(f.root, "home", "startup", "duties", "resources.json");
+  writeFileSync(resources, JSON.stringify({ locks, inventory: ["retained"] }));
+  f.scheduler.assign(
+    f.store.managerBinding,
+    f.request("health", f.first.employeeId),
+  );
+  f.scheduler.authorize(f.store.managerBinding, {
+    id: "repair",
+    dutyId: "health",
+  });
+  const result = await f.scheduler.repair(f.first, "repair");
+  expect(result.state).toBe("released");
+  expect(
+    f.store
+      .snapshot()
+      .legacyLocks.map((lock) => lock.target)
+      .sort(),
+  ).toEqual(Object.keys(locks).sort());
+  expect(
+    f.store.snapshot().legacyLocks.every((lock) => lock.state === "blocked"),
+  ).toBe(true);
+  const projected = JSON.parse(readFileSync(resources, "utf8"));
+  expect(projected.locks).toEqual(locks);
+  expect(projected.inventory).toEqual(["retained"]);
+});
+
+test("same-file legacy alias still blocks canonical JSON repair", () => {
+  const f = fixture();
+  const alias = join(f.root, "legacy.txt");
+  symlinkSync(f.target, alias);
+  const locks = { [alias]: { owner: "uncertain" } };
+  const resources = join(f.root, "home", "startup", "duties", "resources.json");
+  writeFileSync(resources, JSON.stringify({ locks }));
+  f.scheduler.assign(
+    f.store.managerBinding,
+    f.request("health", f.first.employeeId),
+  );
+  expect(() =>
+    f.scheduler.authorize(f.store.managerBinding, {
+      id: "repair",
+      dutyId: "health",
+    }),
+  ).toThrow("unresolved legacy lock");
+  expect(f.store.snapshot().grants).toHaveLength(0);
+  expect(f.writes).toBe(0);
+  expect(f.store.snapshot().legacyLocks[0]?.target).toBe(alias);
+  expect(JSON.parse(readFileSync(resources, "utf8")).locks).toEqual(locks);
+});

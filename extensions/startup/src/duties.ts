@@ -711,11 +711,19 @@ export function createDuties(host: DutyHost) {
       assertCanonical(config.target);
       store.importResources({ manager: owner });
       for (const lock of store.snapshot().legacyLocks) {
-        if (
-          lock.state === "blocked" &&
-          isAbsolute(lock.target) &&
-          canonicalFile(lock.target) === config.target
-        )
+        if (lock.state !== "blocked" || !isAbsolute(lock.target)) continue;
+        let identity: string;
+        try {
+          identity = realpathSync(lock.target);
+        } catch (error) {
+          if (
+            z.object({ code: z.enum(["ENOENT", "ENOTDIR"]) }).safeParse(error)
+              .success
+          )
+            continue;
+          throw error;
+        }
+        if (identity === config.target)
           throw new StoreConflictError(
             `Canonical target has an unresolved legacy lock: ${config.target}`,
           );
