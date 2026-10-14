@@ -18,21 +18,23 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 |-------|-------------|--------|
 | [`pipeline`](skills/pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. Commits early and often; stacks when the caller passes a parent base. | Changes code, merges PR |
 | [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. Dependent tickets stack as `--base` chains (STACK_MODE auto/stacked/flat) with a standing stack driver; merges bottom-up with child retarget. | Changes code, can merge to `main` |
-| [`startup`](skills/startup/SKILL.md) | A persistent cross-turn queue drained by a singular manager. v5 binds every manager and specialist dispatch to its canonical role skill, keeps task data separate, persists explicit role requests, and requires requested DevOps coordination before worker fan-out. | Changes code, merges per item, exits on drain |
+| [`startup`](skills/startup/SKILL.md) | A persistent queue with a single high-level manager and fresh architect-led teams for each intake. Full canonical role and shared loop sources bind every employee. | Changes code, merges per item, waits logically on drain |
 | [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate, light review + simplify pass, final approval gate. Commits per site as it goes. | Commits scoped fix on current branch + opens ready PR, never merges |
 
-Startup family (roles + commands — invoke via `startup`, never directly unless the row says so):
+Startup family (roles + procedures):
 
 | Skill | Use it when |
 |-------|-------------|
-| [`startup-role-manager`](skills/startup-role-manager/SKILL.md) | Every startup command needs the canonical manager role - sole boss contact, manager-owned intake, role-bound fan-out, outcome enforcement, merges. |
+| [`hire`](skills/hire/SKILL.md) | Add staff through manager authority with idempotent retries and real readiness receipts. |
+| [`startup-loop`](skills/startup-loop/SKILL.md) | Every employee wake, scoped inbox result, waiting assignment or duty. |
+| [`startup-role-manager`](skills/startup-role-manager/SKILL.md) | Every startup command needs the canonical manager role - sole boss contact, architect-led intake, complete-team dispatch, outcome enforcement, merges. |
 | [`startup-role-pa`](skills/startup-role-pa/SKILL.md) | The manager needs its reminder tick — time, check-ins, priorities, sprint count, aging blockers. |
 | [`startup-role-dev`](skills/startup-role-dev/SKILL.md) | A worker drains one queue item through the full pipeline with don't-merge and an outcome block. |
-| [`startup-role-architect`](skills/startup-role-architect/SKILL.md) | Every item needs the required merge-gate verdict; shared shape, repeated friction, or structural intake ambiguity also invokes its deeper consult. |
+| [`startup-role-architect`](skills/startup-role-architect/SKILL.md) | A fresh intake team needs its technical leader, scoped intake, member coordination and required merge gate. |
 | [`startup-role-qa`](skills/startup-role-qa/SKILL.md) | Per-item proof or cross-item overlap checks are needed, using the proof standard for the item's kind. |
 | [`startup-role-devops`](skills/startup-role-devops/SKILL.md) | The user explicitly requests DevOps coordination, or an item needs environment, resource, or operation adjudication. |
 | [`startup-intake`](skills/startup-intake/SKILL.md) | New or successive requests arrive in a Startup, including multiple tasks, shorthand, missing details, and clarifications. Every work intent receives a durable queue record and receipt before readiness checks. |
-| [`startup-sprint`](skills/startup-sprint/SKILL.md) | INTERNAL — every 5 merged items pause fan-out, retro, compress memory, resume. |
+| [`startup-sprint`](skills/startup-sprint/SKILL.md) | INTERNAL - every 5 merged items record a retro and compress memory while independent ready work continues. |
 | [`startup-retro`](skills/startup-retro/SKILL.md) | An on-demand retro is wanted — same procedure as the sprint boundary. |
 | [`startup-stop-doing`](skills/startup-stop-doing/SKILL.md) | A text rule or screenshot complaint must become a standing instruction now. |
 | [`startup-status`](skills/startup-status/SKILL.md) | The queue, bulletin, sprint count, or parked blockers need rendering (or explicit wipe). |
@@ -183,8 +185,6 @@ New skills follow the same shape: one directory, one `SKILL.md` with `name` + `d
 
 Skill instructions are written as generic actions. Each harness maps actions such as dispatching agents, asking the user, reading files, searching files, editing files, and running commands to its native tools.
 
-Oh My Pi (`omp`) is best-suited for Startup. The manager identifies the active harness from session metadata; an installed `omp` binary does not identify the current session. OMP uses verified native capabilities. Other or unidentified harnesses use prompt-only coordination through their supported subagent tools, and the manager tells the user once that Oh My Pi is best-suited for this system. Prompt-only mode does not guarantee persistent agents or scheduled monitoring.
-
-Startup role dispatch follows the binding contract in [`skills/startup/references/role-dispatch.md`](skills/startup/references/role-dispatch.md). On OMP, native role or skill preloading is preferred; the fallback passes the complete canonical role skill verbatim in the child instruction block, with the assignment in a separate data block. An available skill name is not a loaded role. Missing role source or subagent support leaves the dispatch queued or blocked.
+Startup requires the companion for runtime persistence on supported OMP 18.8.9. Linking skills alone does not install it. See [companion install, boot and public tool contracts](extensions/startup/README.md), including an explicit named-profile installer and ownership-checked uninstall. The single active-harness and full-source binding contract is [role-dispatch](skills/startup/references/role-dispatch.md).
 
 Oh My Pi surfaces linked skills as namespaced slash commands: type `/skill:` (e.g. `/skill:pipeline`), not `/<skill-name>`. Restart `omp` after linking so startup discovery picks them up.

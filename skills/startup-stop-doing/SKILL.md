@@ -1,29 +1,18 @@
 ---
 name: startup-stop-doing
-description: Runtime rule injection — text rule or screenshot plus complaint becomes a standing instruction: manager interprets with QA and architect, reports one line, propagates to live workers.
+description: Use for an explicit Startup standing rule or screenshot complaint that needs scoped interpretation and propagation.
 ---
 
-# Startup stop-doing (runtime rule injection)
+# Startup stop-doing
 
-`startup stop-doing <rule|screenshot+complaint>` — either form becomes a standing instruction in `standing-instructions.md`, loaded at every spawn.
+Resolve selected Startup first. A direct textual rule is recorded by manager with its explicit scope. A screenshot complaint requiring technical interpretation or a fix is saved as work and dispatched to a fresh complete architect-led team. Architect reads full input and native images through `startup-intake`; own QA examines repro and scope. Architect reports the proposed enforceable rule to manager.
 
-Resolve the selected Startup through `startup` State. Read and write its files under `<home>/startup/<name>/`; reuse the manager's selection.
+Manager records the approved rule in selected `standing-instructions.md`, or `<bound_root>/.startup/<repo>/<role>.md` when explicitly repo/role-scoped. Preserve existing instructions and source-tag the new constraint. Report the rule and destination in one line.
 
-## Input paths
+Propagate via saved scoped cues: manager to affected architects/standing staff, architects to their members. Each acknowledges through settlement; future assignments carry the applicable source-tagged constraint. Ordinary native review children receive their assigned procedure and scoped constraints. Direct worker messaging must not bypass the hierarchy.
 
-1. **Text rule** — a direct behavioral ban or constraint ("never use X", "always do Y in scope Z") → append as-is, scoped to the named area or global when no scope is given.
-2. **Screenshot + complaint** — a screenshot of unwanted behavior plus a one-line complaint → interpret before appending. The manager pulls standing QA (`skill://startup-role-qa`) + architect (`skill://startup-role-architect`) via mesh and answers: repro (can QA reproduce it from the screenshot?), scope (which areas/files does it cover?), rule (what is the enforceable standing rule?).
-
-## Append + propagate
-
-Append the interpreted rule to `standing-instructions.md`. Propagate to live workers via `agent://` handles; each live worker confirms in one line. Workers spawned later load it from the file at spawn — no extra push needed.
-
-Repo+role scope: when the rule names a repo and role in a bound startup (e.g. `stop-doing "QA: no local typecheck in repoA"`), append to `<bound_root>/.startup/<repo>/<role>.md` (create dirs as needed) instead of global `standing-instructions.md`. Global rules keep the existing path. Report names the file (e.g. `Scoped: .startup/repoA/qa.md — no local typecheck`).
-
-## Report
-
-Return a 1-line report to the boss: the rule plus its scope (e.g. `Standing: no footer CTAs in marketing pages`).
+A rule never replaces canonical persona authority or authorizes a resource mutation. New work from feedback follows full intake; live/completed item feedback becomes a linked follow-up where required by queue ownership.
 
 ## Framework tail
 
-Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.
+Before finishing, read `../cleanup/SKILL.md` and follow it.

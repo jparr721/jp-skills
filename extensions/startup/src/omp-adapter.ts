@@ -53,6 +53,7 @@ export type NativeSession = Readonly<{
   sessionManager: Readonly<{
     getSessionId: () => string;
     getSessionFile: () => string | undefined;
+    ensureOnDisk?: () => Promise<void>;
   }>;
   settings: unknown;
   effectiveExtensionRoots?: unknown;
@@ -107,6 +108,7 @@ export type NativeContext = Readonly<{
   clearTimer: (timer: ReturnType<typeof setInterval>) => void;
 }>;
 export type AdapterConfig = Readonly<{
+  boundRoot: string;
   name: string;
   home: string;
   skillsRoot: string;
@@ -364,7 +366,7 @@ export function createAdapter(
       home: config.home,
       host: hostname(),
       name: config.name,
-      boundRoot: rootDirectory,
+      boundRoot: realpathSync(config.boundRoot),
       managerSession: rootSession,
     },
     owner: {

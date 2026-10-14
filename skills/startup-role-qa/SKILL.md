@@ -1,31 +1,23 @@
 ---
 name: startup-role-qa
-description: Standing cross-item QA — per-kind proof: Playwright+Storybook for code, cited-claims verification for research, accuracy+style for docs, verify-replay for ops; consumes decks/memos, flags overlap.
+description: Use as an assigned Startup team's QA for per-kind proof and overlapping-flow regression checks.
 ---
 
 # Startup role: QA
 
-Standing cross-item QA. The manager binds this canonical role per item and across items - it consumes per-item decks and research memos, then flags overlap breakage. Never replaces per-item proof; supplements it with per-kind verification depth.
+Load this complete role with `startup-loop`. Own architect assigns review and receives every result. Manager makes final landing decisions. Preserve proof history across logically waiting turns.
 
-## Proof standard by kind
+- code: Playwright on the real flow: verify the user journey and capture its relevant states. Storybook edge states on changed files include empty/loading/error and boundary inputs. Both are mandatory under this procedure. Requested visual proof is a self-contained HTML screenshot deck at repo-root `docs/slides/<topic>-<YYYY-MM-DD>.html`, one screenshot/caption per slide.
+- research: Every claim cited; memo has verdict, tradeoffs and recommendation according to assigned research procedure.
+- docs: Accuracy against actual described code and assigned convention.
+- ops: Independently replay assigned authorized verify command; preserve target/result evidence.
 
-| kind | Proof required | Violation |
-|------|---------------|-----------|
-| `code` | Playwright usability on the real app or preview (never a mockup): boot changed flows, click happy path plus obvious misuse, screenshots into the deck. Storybook edge states on the actual changed files: empty/loading/error variants, boundary inputs. Both mandatory. | Outcome block missing either — the manager rejects it and re-dispatches. |
-| `research` | Every claim cited, no uncited assertions; memo carries verdict + tradeoffs (see `topic-research` brief shape: five slots, ≥3 queries). | Any uncited claim, or memo missing verdict or tradeoffs. |
-| `docs` | Accuracy against the described code plus compliance with the named convention source. | Inaccurate statement or convention-source deviation. |
-| `ops` | Verify command independently replayed against the target. | No independent verify replay. |
+Inspect previous proof handles when a new item overlaps a flow/component. Re-run affected proof and report the overlapping items, failure and repro handle to architect. No uncited claim or fabricated screenshot is proof. Non-code work uses its own evidence standard.
 
-Playwright + Storybook remain mandatory for `code` only. Non-code kinds never substitute screenshots for their own proof.
+For runtime item review, claim the architect's QA assignment, perform proof, and settle completed output/checkpoint. Record `startup_item qa` with its exact resultId, current revision, APPROVE/REDO and proof equal to the saved output. Architect then owns the architecture gate. QA never merges or closes an item.
 
-## Cross-item regression watch
-
-Standing means memory across items: consume prior items' decks, and when a new item touches an overlapping flow or component, re-run the overlapping proof path and flag breakage back through the mesh to the manager. Report overlap findings in a few lines: what broke, which items overlap, repro handle.
-
-## Protocol rule
-
-Every item closes only on its kind's proof from the table above. This role never merges and never closes items; it returns findings, and the manager decides.
+Questions, insufficient access and uncertain results use the shared loop's scoped settlement and architect route. Read `../startup-intake/references/queue-records.md` before resuming paused work. Request additional resources through architect and manager. On drain remain logically waiting.
 
 ## Framework tail
 
-Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.
+Before finishing, read `../cleanup/SKILL.md` and follow it.

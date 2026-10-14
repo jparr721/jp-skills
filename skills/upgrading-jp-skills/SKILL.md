@@ -16,13 +16,14 @@ One cached git clone is the source of truth. Upgrade = pull it, migrate state, r
 Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (XDG default; Windows `%APPDATA%\jp-skills`): `config.json` (`repo_path`, `installed_version`, `updated_at`), `servers/`, `tmp/<skill>/`, `worktrees/<repo>/<branch>/`. Repo `VERSION` is version truth; `config.json` holds the installed copy.
 
 ## Flow
-1. Resolve repo: `$JP_SKILLS_REPO` → `config.json` `repo_path` → else ask human once and persist. Verify `<repo>/VERSION` exists; else STOP, wrong directory.
-2. Ensure `$HOME/servers/`, `$HOME/tmp/`, and `$HOME/worktrees/` exist (`$HOME` = stable home).
-3. `git -C <repo> pull --ff-only`. Refused (diverged/dirty) → report `git status --short`, STOP, let the human resolve. Never force-pull.
+1. Resolve repo: `$JP_SKILLS_REPO` -> `config.json` `repo_path` -> else ask human once and persist. Verify `<repo>/VERSION` exists; else STOP, wrong directory.
+2. Ensure `$JP_SKILLS_HOME/servers/`, `$JP_SKILLS_HOME/tmp/`, and `$JP_SKILLS_HOME/worktrees/` exist (resolve the stable home above without changing the shell HOME variable).
+3. `git -C <repo> pull --ff-only`. Refused (diverged/dirty) -> report `git status --short`, STOP, let the human resolve. Never force-pull.
 4. Read `<repo>/VERSION`. If newer than `installed_version`, show the `CHANGELOG.md` entries in between, then run Migration.
-5. Migration: move legacy `~/.local/share/server-maintenance/servers/*.md` → home `servers/` (skip names that already exist, never overwrite, report each). Then detect pre-v2: if `<repo>/skills/` is missing but `<repo>/architecture-audit/SKILL.md` exists, this is a v1 checkout. After a clean `pull --ff-only`, delete stale root symlinks (`<skill>` entries that are symlinks to the old root dirs) in all five registries, then continue.
+5. Migration: move legacy `~/.local/share/server-maintenance/servers/*.md` -> home `servers/` (skip names that already exist, never overwrite, report each). Then detect pre-v2: if `<repo>/skills/` is missing but `<repo>/architecture-audit/SKILL.md` exists, this is a v1 checkout. After a clean `pull --ff-only`, delete stale root symlinks (`<skill>` entries that are symlinks to the old root dirs) in all five registries, then continue.
 6. Relink: for every `<repo>/skills/*/SKILL.md`, ensure symlinks in `~/.claude/skills/`, `~/.agents/skills/`, `~/.codex/skills/`, `~/.pi/agent/skills/`, `~/.omp/agent/skills/`. Remove any registry symlink whose target no longer exists (covers the three retired stack audits). Restart `omp` afterwards so discovery runs again.
-7. Stamp `config.json` (`repo_path`, new `installed_version`, `updated_at`), report old → new plus changelog highlights.
+7. Startup companion: skill relinking alone provides no runtime persistence. Read `../../extensions/startup/README.md`; on an explicitly selected supported OMP named profile use its ownership-checked installer. Preserve existing plugin settings, user profiles and Startup state. Restart and verify `/startup status` in the actual running host before reporting runtime availability. Never overwrite foreign profile files or migrate staff/history by deleting them.
+8. Stamp `config.json` (`repo_path`, new `installed_version`, `updated_at`), report old -> new plus changelog highlights.
 ## Common mistakes
 - Force-pulling or resetting a dirty tree instead of stopping.
 - Overwriting newer server records during migration.

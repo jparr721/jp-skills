@@ -1,44 +1,32 @@
 ---
 name: startup-intake
-description: Use when receiving new tasks, multiple requests, follow-up work, clarifications, or incomplete instructions in an active Startup conversation, including repeated intake calls while workers run or the manager is on standby.
+description: Use for each new Startup work event, including later requests, clarifications, multiple tasks and screenshot complaints; execution belongs to its assigned architect.
 ---
 
 # Startup intake
 
-Capture every actionable request durably before assessing readiness. A request with missing details is a pending queue item. The manager runs intake in its own context.
+The manager saves/classifies raw input and dispatches a fresh complete team for every distinct invocation. Only that team's assigned architect runs this procedure. Direct invocation in the manager context routes to team dispatch; it does not make the manager a technical intake worker. A retry reuses the original event/team.
 
-## Every incoming turn
+## Capture then triage
 
-Apply intake to each later human message in an active Startup, including "also", "another thing", and additional requests during ongoing work. A direct intake invocation loads `startup-role-manager` in the current context and resolves the selected Startup first.
+1. Read `references/queue-records.md`. Claim your own architect-intake cue after full team readiness. `message.payload.raw` is bounded metadata: 512-character preview, original text length, attachment count and retrieval references. Use `startup_input {inputId,offset:0}` and follow `nextOffset` until the full request is read. Pages are at most 4096 characters. Retrieve relevant `startup_image {inputId,index}` native blocks; use attachmentCount to include relevant attachments beyond the first eight metadata refs. Never treat the preview as full intake.
+2. Enumerate every actionable passage. Independent deliverables get separate IDs. Authorized amendments to identified undispatched rows retain IDs and earlier request text; feedback on dispatched/terminal work becomes a linked follow-up. Status/conversation alone creates no work row. A screenshot complaint requesting a fix is captured before interpreting standing rules.
+3. Persist every passage before ticket lookup, feasibility or clarification through `startup_capture`. Incomplete work is NEEDS_DECISION with request, acceptance, blocked_on, intake_refs and requested_roles; unknown values may be null. Retain exact event identity and one receipt mapping all passages.
+4. Resolve kind/procedure/acceptance using known repo/ticket context and recorded assumptions. For each ready row proceed with own-team execution immediately; another row's lookup or missing input is not a barrier. Capture subsequent row changes with current revision and a new stable capture ID. Keep unresolved rows and their concrete blocker visible.
+5. Confirm the durable passage mapping and current outcomes to manager, then continue coordinating the team. Members report to you; report only to manager. Questions go through manager, while independent ready work continues.
 
-## Intake procedure
+| Outcome | Saved status | Requirement |
+| --- | --- | --- |
+| enqueue | QUEUED | Resolved kind/procedure/acceptance and required repo, target, convention or operation authorization |
+| async-clarify | NEEDS_DECISION | Named missing scope/access/target/acceptance in blocked_on |
+| reject-with-reason | REJECTED | Demonstrated infeasibility or unauthorized scope, preserving request and reason |
 
-1. Before writing, read `references/queue-records.md`. Resolve the selected state, reload the latest queue, and identify this incoming event or its retry.
-2. Enumerate every actionable passage. Independent deliverables get separate IDs. Clarifications and amendments to an identified undispatched item keep its ID; feedback on dispatched/completed work becomes a linked follow-up. Status questions and conversation without requested work create no row. Route explicit Startup control commands to their command procedure and acknowledge its result.
-3. Record the incoming text and event reference, then persist each new work request as `NEEDS_DECISION`, with its `request`, `acceptance`, `blocked_on`, `intake_refs`, and explicit `requested_roles`. Unknown fields may be `null`. Capture all passages before ticket lookup, feasibility checks, or questions. A screenshot complaint requesting a fix is captured before any `startup-stop-doing` interpretation.
-4. Triage each captured item using the table below. Use established conversation, binding, repo, and ticket context to resolve shorthand and derive acceptance. Record assumptions. Missing scope, access, target, kind, or acceptance keeps the item pending; capture remains complete.
-5. Preserve and verify the queue using the record procedure. Finish a durable receipt mapping every passage to its item ID and outcome. Confirm queued IDs, pending IDs plus missing details, rejected IDs plus reasons, and amendments. Intake is complete only when all passages are accounted for in saved state; then the manager may resume work.
+Kinds are code/research/docs/ops. Code acceptance names behavior; research names question/decision; docs names scope/convention; ops names target/mutation/independent verify. Preserve explicit canonical requested_roles from first capture. Requested DevOps coordination returns READY/NEEDS_INPUT/NO_ACTION before affected execution; coordination alone is not mutation permission.
 
-## Readiness outcomes
+## Boot ownership
 
-| Outcome | Saved state | Condition |
-|---|---|---|
-| `enqueue` | `QUEUED` | Kind, procedure, and per-kind acceptance are resolved; required repo/target/convention or operation authorization is known. |
-| `async-clarify` | `NEEDS_DECISION` | Missing information or access. Name it in `blocked_on`, batch questions, and continue other items. |
-| `reject-with-reason` | `REJECTED` | Demonstrably infeasible or outside the authorized scope. Preserve the request and explicit reason. |
-
-Kind is `code`, `research`, `docs`, or `ops`: infer from the requested deliverable and record the inference; unresolved ambiguity remains pending. Acceptance names code behavior and area, the research question and decision, docs scope and convention, or ops target, mutation, and verify command. Resolve execution readiness after capture; each incomplete request stays visible.
-
-## `startup new` interactive setup
-
-`startup new <name> [--dir <path>]` (default dir = cwd). Bounded - never stalls:
-
-1. List repos found in dir; boss confirms/adds/removes.
-2. One confirm per repo for move-or-clone (local path vs remote URL); skip allowed, resume on next invoke.
-3. Ask local-test command + production/CI verify path once; per-repo override only on deviation.
-4. Write `<dir>/.startup/config.md` (name, purpose, repo list, test/verify map) and per-name state `<home>/startup/<name>/` with `binding.json` (`{name, bound_root}`). Seed DevOps `resources.json` locks from the answers.
-5. Never write inside repo dirs; repo `.git` stays clean.
+`startup new` deterministic selection/root guidance happens before this team is dispatched; see `../startup/SKILL.md`. Architect can collect repo inventory, verification preferences and unresolved setup decisions as scoped intake. Preserve existing `.startup/config.md`, binding, queue and resource history; runtime queue writes use the existing serialized writer.
 
 ## Framework tail
 
-Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.
+Before finishing, read `../cleanup/SKILL.md` and follow it.

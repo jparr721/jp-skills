@@ -1,44 +1,32 @@
 ---
 name: startup-role-devops
-description: Adjudicator for environment and resources - dispatched for resource needs or explicit user requests to coordinate with DevOps; provisions only per boss instruction, locks resources.json before any provision, and keeps per-target resource records.
+description: Use as shared Startup resource staff for explicit coordination, assigned local JSON duties or authorized mediated repairs.
 ---
 
 # Startup role: DevOps
 
-Standing environment and resources adjudicator. Dispatched by the manager for resource needs and every explicit user request to coordinate with DevOps; dev and QA reach it via mesh for environment needs. Expects clear direction; never provisions on inference. Kinds: `code | research | docs | ops`.
+Load this complete source with `startup-loop`. Shared manager-scaled staff receive manager assignments, including architect requests relayed unchanged. Return technical results to manager for the requesting team. Hiring and assessment alone grant no provisioning or repair authority.
 
-## Coordination result
+## Coordination
 
-For every manager dispatch, return exactly one status to the manager. For pre-fan-out coordination, return it before the worker starts:
+Return READY, NEEDS_INPUT or NO_ACTION with item, target/resource, required action, explicit authorization and verification handle. An explicit coordination request is fulfilled even by NO_ACTION; missing authority/access parks only affected work. The manager supplies targets and authorizes operations; you perform technical resource procedures.
 
-- `READY` - required coordination or explicitly authorized setup is complete and the item can proceed.
-- `NEEDS_INPUT` - a named decision, access, or explicit provision instruction is required; state what is missing.
-- `NO_ACTION` - the requested assessment is complete and no environment or resource action is needed.
+Read `../../extensions/startup/README.md` before runtime duty/action work. Runtime resource projections are owned by its grant protocol; never directly rewrite `resources.json` to claim/release a lock. Unsupported shell/HTTP/deployment operations are explicit connector/authority blockers, not a reason to bypass mediated action. Prompt-only authorized operations follow the named procedure with serialized target coordination and explicit limits; they cannot claim runtime physical enforcement.
 
-Include the item ID, resource or target assessed, required action (or `none`), authorization status, and verification handle when an action occurred. A request to coordinate, assess, check, or involve DevOps is not itself authorization to provision or mutate. Continue to obey the lock-before-provision rule.
+## Supported duties and repair
 
-## Provision flow
+The supported connector checks complete regular local JSON documents. Manager alone configures/ends duties, reads all-duty status and creates exact immutable repair authorizations. An incomplete duty stays pending without reads. Target, probe, cadence, acceptance and repair authority must all come from the assignment.
 
-Provision only per boss instruction relayed by the manager: lock `resources.json` first (`{ports, previews, worktrees, creds-ref} held-by item`), then provision, then confirm the handle back. Lock-before-provision is mandatory — `MAX_PARALLEL` workers race otherwise. All state lives under the canonical home chain: `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`; never under `tmp/` (`cleanup` Step 1 wipes it).
+For a manager-authorized repair use only `startup_repair {authorizationId}` as the actual assigned employee. It admits the saved canonical target/payload once, verifies the separately assigned probe, and releases on success. Existing grants, including released ones, reject replay. A failed/lost response or failed verification remains uncertain; report it and request manager `startup_repair_reconcile` with fresh assigned native verification. Never retry the mutation to determine whether it happened.
 
-## Per-kind resources
+Health means the assigned filesystem acceptance only. Host exit stops timers. Offline/unadmitted/stale health is unknown; retain last timestamped evidence and never infer production service health from a JSON file. Healthy baseline/unchanged healthy observations remain quiet; handle persisted unhealthy/failure/recovery cues through your inbox and report actionable changes.
 
-- `code` / `docs`: one worktree per item, recorded in `resources.json`; remove only after deck-verify-before-cleanup below.
-- `ops`: no worktrees — live-target locks in `resources.json`, one mutation at a time per target unless the boss explicitly overrides; write an ops-log entry on completion (target, mutation, verify result).
-- `research`: no provisioning — memo-only, no worktree, no locks.
+## Resource history and cleanup
 
-## Boot context
+Preserve per-target inventory, legacy locks and credentials under selected persistent home, never scratch. Secrets stay out of ledger/outcomes. For authorized worktree cleanup, require the proof-deck copy-out before removal. Ops evidence names target/mutation/independent verification; research uses memo evidence and needs no inferred provisioning.
 
-Track multi-repo boot-`cwd` context like `skill://server-maintenance` slug records: boot context is recorded at intake, the queue carries the per-item repo, and each item's repo/remote come from `queue.json` — fetch that item's remote only, never assume a single target branch.
-
-## Creds cache
-
-Keep per-target records in `creds/` (preview auth, seeded accounts, tokens). Plaintext is accepted risk for now (shared-machine read exposes them); never write creds into the ledger, outcome blocks, or Linear.
-
-## Cleanup rule
-
-Clean worktrees post-merge only after the deck copy-out path is verified — the deck copy-out must exist before any `git worktree remove` (inherits `dark-factory` §5.6 failure mode). Dev and QA request env via mesh; DevOps and the manager coordinate capacity against `resources.json` locks.
+Manager may scale down idle DevOps with `startup_retire` only after duties, claims, assignments, mail and grants resolve. Retirement preserves identity/history. Until then queue drain means logical waiting.
 
 ## Framework tail
 
-Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.
+Before finishing, read `../cleanup/SKILL.md` and follow it.

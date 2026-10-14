@@ -1,46 +1,55 @@
 # Intake queue records
 
-## State and ownership
+## Ownership and preservation
 
-Use the selected Startup's `<home>/startup/<name>/queue.json` and `ledger.md`. Resolve the name and legacy state through the `State` section of `../../startup/SKILL.md`. A later intake uses the manager's current selection; an item's repo does not select another Startup. The manager is the sole queue writer and serializes intake events, outcome updates, and recovery writes.
+Use selected `<home>/startup/<name>/` throughout; an item's repo does not select the namespace. Runtime is the single canonical queue writer. Only the assigned architect captures its event's technical intake; manager retains high-level decisions/landing authority. All writes preserve old IDs, terminal rows, unknown fields, receipt history and the existing array/object container shape.
 
-## Durable rows
+Retain `id, source, status, repo, remote, target, merge-strategy, branch, worktree, base, stack-mode, report-handle, kind, procedure, convention-source, requested_roles`. New intake rows also carry `request, acceptance, blocked_on, intake_refs`. Source metadata is not the task payload. Missing requested_roles on legacy rows behaves as `[]`; recover absent request/acceptance from identified evidence or leave NEEDS_DECISION. Preserve ambiguous legacy ownership and original files.
 
-Retain the existing fields: `id, source, status, repo, remote, target, merge-strategy, branch, worktree, base, stack-mode, report-handle, kind, procedure, convention-source, requested_roles`. New rows also carry:
+## Scoped capture
 
-| Field | Content |
-|---|---|
-| `request` | The user's task passage, with later amendments appended in order. Preserve earlier intent and redact credential values under the existing credential rule. |
-| `acceptance` | Current completion criteria, or `null` while unresolved. Record any criteria derived from established context in the receipt. |
-| `blocked_on` | Missing information, access, or rejection reason; `null` when ready. |
-| `intake_refs` | Intake event/part references that created or amended this item. |
+Manager preserves an exact received event through `startup_route` work disposition, or `startup_intake {eventId,input,amendItemIds}`, before `task startup=delegate`. Native receipt ID is the event ID. The same event retry is idempotent; identical later user wording is a new event/team.
 
-`source` remains origin metadata such as `prompt` or a ticket ID; it is not a replacement for `request`. A pending row has a real request and ID, with unknown repo, target, kind, procedure, or other fields set to `null`. Capture explicit role requests in `requested_roles` immediately, including on pending rows.
+Architect invokes:
 
-Statuses for intake are `NEEDS_DECISION` for captured unresolved work, `QUEUED` for ready work, and `REJECTED` for a recorded rejection. Existing execution and terminal statuses remain intact. Only ready rows may be dispatched; rejected or pending rows do not count toward merged sprint totals.
-
-Preserve old IDs, statuses, terminal rows, and unknown fields. These additions are optional on legacy rows; do not bulk rewrite them. Before dispatching an old row without a reconstructable request or acceptance, recover the missing payload from an identified ticket, transcript, or receipt. If recovery is uncertain, retain the row and mark it `NEEDS_DECISION` with the missing payload named. Existing in-flight work continues under its existing assignment.
-
-## Event identity and receipts
-
-Use the harness's stable incoming message ID as the intake event reference. If unavailable, allocate a receipt ID at first capture and reuse it for retries of that same event. A later user message with identical wording is a distinct event unless it is explicitly identified as a retry. Each actionable passage gets an event/part reference, such as `evt-7/2`.
-
-Persist the event reference and complete incoming request text in `ledger.md` before ticket lookups, feasibility work, or clarification. Apply credential redaction. Each passage then maps to an existing or new row through `intake_refs`. On replay, resume an incomplete receipt from those rows; a completed receipt returns its existing mapping. An event header alone does not mean intake is complete. If a queue write succeeded before receipt completion, recover the receipt from the rows instead of duplicating them.
-
-After verification, append the completed receipt with one outcome for every actionable passage:
-
-```json
-{"ref":"evt-7","status":"complete","input":"<incoming request text>","items":[{"part":1,"id":"<queue-id>","outcome":"enqueue|async-clarify|reject-with-reason|amend","blocked_on":null}]}
+```text
+startup_capture {
+  captureId, eventId,
+  rows: [{id, expectedRevision, fields}],
+  receipt
+}
 ```
 
-An amendment to undispatched work keeps the ID, appends the new instruction to `request`, updates current acceptance, and adds its intake reference. Feedback on dispatched or completed work creates a new linked follow-up item; its request and receipt name the originating item. A status question produces no work row.
+New rows use expectedRevision null; existing rows use current revision. Fields include nonempty request, acceptance, blocked_on and status QUEUED/NEEDS_DECISION/REJECTED. Preserve prior request text when appending an authorized amendment. Receipt maps every passage/part to ID and enqueue/async-clarify/reject-with-reason/amend outcome. The runtime preserves and journals queue replacement, revisions and receipt; read its result before claiming capture success. Same capture retry must be identical. Direct queue-file replacement is not the runtime procedure.
 
-## Preserve, write, verify
+Capture all passages before technical lookup, then update and dispatch ready rows independently. Authorized amendments transfer ownership only under runtime event/team/revision rules; an old team cannot write afterward. Dispatched or terminal feedback requires linked follow-up. Existing execution remains under its assigned generation.
 
-1. Read the latest queue and matching receipts for every intake write. Allocate new IDs without reusing existing ones. Append captures and update only explicitly matched items.
-2. Preserve all unrelated rows and fields. If the file changed since it was read, reload and reconcile before writing; do not overwrite a stale snapshot.
-3. Validate the resulting JSON, write a temporary file in the selected state directory, then atomically replace `queue.json`. Keep the queue's existing JSON container shape.
-4. Read the saved queue back. Verify every prior ID remains, unrelated values are unchanged, and every actionable passage has its expected row, request, status, and intake reference. Verify amendments and replay did not create extra items.
-5. Complete the receipt only after that check. Confirm its item IDs and outcomes to the user before continuing dispatch or collection. Missing details are visible in the receipt and queue status.
+## Typed item phases
 
-If reading, writing, or verification fails, report the state path and affected event/tasks as an intake failure. Do not claim successful capture or switch silently to a different queue. Keep unfinished receipt work visible until it is recovered.
+Every `startup_item` action requires `{requestId,itemId,expectedRevision,action}` and non-null evidence/proof. Read the returned revision after every action. Stable identical request retry replays; another transition uses a new ID.
+
+| Action | Extra fields | Authority and effect |
+| --- | --- | --- |
+| assign | employeeId, evidence | Manager/own architect; QUEUED -> EXECUTING, own free dev |
+| review | resultId, evidence | Assigned dev; its exact completed settled assignment result -> REVIEW |
+| qa_assign | evidence | Own architect assigns own QA against saved dev result |
+| qa | resultId, verdict APPROVE/REDO, proof | Assigned QA; exact completed settled QA output is proof |
+| gate | verdict APPROVE/REDO, evidence | Own architect; APPROVE with matching QA proof -> READY_TO_LAND, scoped REDO -> QUEUED |
+| decide | status, evidence | Manager/own architect BLOCKED/NEEDS_DECISION; explicit resolved resume to QUEUED |
+| decide | status MERGED/DONE/REJECTED, evidence | Manager only; actual landing/acceptance required for MERGED/DONE from READY_TO_LAND |
+
+Every accepted action increments revision, including QA assignment/proof. A normal flow is revisions 1 captured QUEUED, 2 assigned, 3 review, 4 QA assignment, 5 QA proof, 6 gate, 7 manager completion. `startup_finish_team` requires captured work and no unresolved owned item, mail, claim, assignment or grant.
+
+## Paused execution
+
+`startup_settle` question acknowledges its cue and settles its claim but leaves the assignment waiting. Uncertain leaves reconciliation. A later answer has another message/claim and cannot supply the original execution's required completed result.
+
+1. Architect/manager records affected item NEEDS_DECISION or BLOCKED with `startup_item decide` and concrete evidence. Preserve waiting assignment and continue unrelated work.
+2. Once actual state is known, manager uses `startup_resolve {assignmentId,evidence}` on the old assignment. For uncertainty first `startup_reconcile {claimId,evidence}`; then resolve its waiting assignment. Resolve/release held grants through their supported verified path. Never silently replay uncertain mutation.
+3. Architect/manager records explicit QUEUED resume only from BLOCKED/NEEDS_DECISION after old claims/assignments and team grants resolve. Then `startup_item assign` with a new request ID creates a new attempt/message. The assigned dev must settle this new assignment completed and submit that exact result ID for review.
+
+Capacity-blocked pending delivery is different: the cue is unclaimed and the host retries admission when slots free. Keep existing event/team/employee IDs; do not settle nonexistent claims or hire duplicate retry identities. Manager `startup_block` evidence kinds are capacity, resource with target, dependency with prerequisite itemId, or employee-limit; the runtime validates current reality. Unrelated CI/intake/review is no blanket blocker.
+
+## Prompt-only writer
+
+When the active harness contract selects prompt-only mode, architect proposes scoped captures and manager serializes file writes. Reload latest queue/receipts; reconcile changed preimage, preserve unknown fields/container, atomically replace in the selected state directory and read back every prior ID plus each passage mapping. Record receipts before reporting success. This is procedural coordination, not native runtime enforcement.

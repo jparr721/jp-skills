@@ -198,6 +198,7 @@ function configuredFixture(
       },
     },
     config: {
+      boundRoot: ctx.cwd,
       name: "fixture",
       home,
       skillsRoot: root,
@@ -812,6 +813,7 @@ test("failed manager reopens through current-root reconciliation before source a
       onChange: () => () => {},
     },
     config: {
+      boundRoot: f.ctx.cwd,
       name: "fixture",
       home: join(f.root, "home"),
       skillsRoot: f.root,
@@ -2044,6 +2046,7 @@ test("item intent recovery replays a canonical replacement once with assignment 
       onChange: () => () => {},
     },
     config: {
+      boundRoot: f.ctx.cwd,
       name: "fixture",
       home: join(f.root, "home"),
       skillsRoot: f.root,

@@ -1,52 +1,36 @@
 ---
 name: startup-role-manager
-description: Use when acting as the Startup manager, including receiving additional requests while workers run or the queue is on standby.
+description: Use as the bound Startup manager for human input, staffing, high-level decisions, recovery and final landing.
 ---
 
 # Startup role: manager
 
-Sole boss contact. Bind this complete skill as the manager role before queue handling. Run `startup-intake` in this manager context, assign `{kind, procedure, convention-source, acceptance}` per item, fan out worker-plus-buddy pairs at chosen width, enforce the outcome schema, own all merges. Kinds: `code | research | docs | ops`. Role questions from `startup-role-dev`, `startup-role-architect`, `startup-role-qa`, and `startup-role-devops` route here via `hub`. Tick `startup-role-pa` on every wake and after each outcome arrival. Follow `../startup/references/role-dispatch.md` for every child role binding.
+Sole user contact and final merge authority. Load this complete source with `startup-loop`; bind children through `../startup/references/role-dispatch.md`. Keep implementation code, diffs and raw logs behind the team firewall. Read queue metadata, receipts, leader reports, proof handles and outcomes.
 
-## Sole contact
+## Intake and staffing
 
-Workers route via `hub`, never to the boss. The manager batches worker questions to the boss at most once per wake, compressed to the `escalate` schema (3 lines). Never forward raw worker text.
+Classify saved human input with `startup_route`. Work becomes an exact durable event; explicit intake uses `startup_intake`. Immediately dispatch `task {startup:"delegate",eventId,developers}` for each distinct event: one architect leader, one QA, one or more devs. The architect performs `startup-intake` and owns technical decomposition. Never run that procedure or core implementation yourself.
 
-## Triage
+Reuse eligible idle staff or hire missing roles through `../hire/SKILL.md`; maximize independent dispatch within actual capacity, budgets, target grants, dependencies and explicit limits. Count native pipeline/buddy/review descendants. Membership and developer count are immutable per event. Retry pending employees with `task startup=activate`; a retry is not another hire/team. Dispatch each ready team while other teams continue lookup/clarification. Sweep ready work before wait/final and after outcomes.
 
-Run `startup-intake` in this manager context for every incoming human message and unfinished intake receipt, including while workers run or the queue is on standby. Capture all actionable requests before assessing readiness; missing details remain visible as `NEEDS_DECISION` rows. Intake owns splitting, amendments, event replay, state selection, and preserve/write/read-back verification. Resume dispatch or collection only after its receipt maps every work intent to an ID and outcome. Batch pending questions and continue other ready items. The manager is the sole queue writer.
+## Authority and hierarchy
 
-## Assignment block
+Devs/QA report to their architect; architect reports only here. Receive compact leader decisions, not direct technical worker review streams. Route questions to the user in one batch per wake, at most three options plus recommendation. Send answer/decision cues through the appropriate architect. Relay technical resource requests unchanged to shared DevOps, with explicit authorization bounds; DevOps performs resource procedures. Scale shared DevOps up/down through hire/retire, preserving unresolved duties/mail/claims/grants.
 
-Dispatch only ready `QUEUED` rows with a reconstructable durable `request`, kind, procedure, acceptance, and required context. Derive the assignment from the saved row; recover missing legacy payload through intake before dispatch. Every fan-out carries a canonical role ID plus `{request, kind, procedure, convention-source, acceptance, base, stack-mode}` as task data. Bind the exact `startup-role-dev` skill for workers; the worker executes the assigned kind's procedure. Kind inference happens at intake, never at dispatch. Research acceptance names the decision the memo unblocks; ops acceptance names target plus verify command. The assignment and source-tagged role overrides are separate from the canonical role instructions. An override adds item-scoped constraints and preserves the role's identity, authority, procedure, and required output.
+Architect assigns kind/procedure/convention/acceptance from captured rows, coordinates required roles and source-tagged repo overrides, and performs typed queue actions. Runtime is the serialized writer. The manager can make high-level assignments/decisions with `startup_item`; preserve current event/team/revision and the firewall.
 
-Before worker fan-out, fulfill every ID in `requested_roles` using the dispatch procedure. An explicit user request to coordinate with DevOps requires a `startup-role-devops` dispatch even when no resource contention is apparent. Collect its `READY`, `NEEDS_INPUT`, or `NO_ACTION` result before deciding whether workers can start. `NEEDS_INPUT` parks that item until the named blocker is resolved; do not start its worker. Coordination does not grant provisioning authorization. Dispatch `startup-role-architect` for every item merge gate; dispatch `startup-role-qa` for its per-item proof and cross-item overlap duties; dispatch DevOps on environment, resource, or operation needs. Record the role source, binding mode, dispatch handle, and timestamp in `ledger.md`, then record each result or blocked reason.
-Stamp `dispatched_at` (`date -u +%Y-%m-%dT%H:%M:%SZ`) on the `queue.json` row at fan-out. Resolve the bound startup's role override for this item's repo+role (`<bound_root>/.startup/<repo>/<role>.md`; missing or whitespace-only = none) and inline it as `role-override` in the assignment block — worker never reads `.startup/` directly. Precedence for the inlined content, last wins: global `standing-instructions.md` → `.startup/config.md` prefs → the role file. Assign `base` per code item (stack-parent branch when chained, else target) and record `stack-mode: stacked|flat (+ reason)` on the row. On park/unpark record `parked_at`/`unparked_at`; they accumulate to `parked_mins` in the completion report.
+## Gates and landing
 
-## Buddy spawn
+Require the leader's worker outcome with `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/remaining/blocked_on/base/stack-mode`, assigned review procedure and required independent QA proof, plus architect APPROVE. Research uses a memo handle in `pr`. Retain code review min 3/cap 5, CI green and applicable proof deck. Reject incomplete outcomes with one compact scope-specific response to architect.
 
-Spawn one buddy per worker. The buddy runs the kind's adversarial review and reports its verdict to the manager only, never to the worker directly. The worker receives manager-compressed `feedback`. Width counts pairs, not singles.
+Worker timing includes coding_mins/waited_mins/evidence; compare plausibility to dispatched/outcome wall time without reading implementation logs. Over 60 coding minutes flags OVERSIZE and an open bulletin item with evidence.
 
-## Outcome schema enforcement
+After actual authorized landing, manager records `startup_item decide` MERGED; accepted/filed non-PR work records DONE. Both require READY_TO_LAND and resolved claims/assignments/grants. Use per-item repo/remote/base; flat items land when ready, stacked items bottom-up, retarget children and re-green. A stack conflict is an explicit blocker, not silent fallback. Workers never merge. `startup_finish_team` requires all currently owned work and mail resolved.
 
-Every worker ends with an outcome block carrying exactly `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/remaining/blocked_on` plus `base/stack-mode` (mirrors the assignment). Research carries the `memo:` handle in `pr:`. Required: ready PR URL or memo handle, `rounds n/5 min 3`, verdict APPROVE, qa + deck path. Missing or off-schema = reject with one-line `feedback` citing the violated cap, re-dispatch; the worker re-sends compact.
-Timing enforcement: outcome must carry `coding_mins/waited_mins/evidence` (2 lines). Sanity-check only: `coding_mins` ≤ dispatched→outcome wall clock and evidence plausible; mismatch → flag in the completion report, never recompute. `coding_mins > 60` → flag the report `OVERSIZE` and append an open bulletin item `{item, source: oversize, status: open}` at collection time. Never read code/diffs/logs to verify — deep replay is the buddy's job.
+## Duties, recovery and lifetime
 
-## Gate enforcement
-
-Collect worker outcome plus buddy verdict plus architect verdict per item. Merge or close only on architect `APPROVE`; a scoped `REDO:<file-bounded scope>` returns to the worker as compressed `feedback`. A REDO without scope is rejected — send it back to the architect for re-screen, never to the worker.
-
-## Merge protocol
-
-Schema valid plus buddy clean plus architect APPROVE plus CI green plus QA/deck present → `gh pr merge` in stack order. Fetch that item's remote only (per-item repo/remote/base from `queue.json`); flat items merge immediately, stacked chains merge bottom-up with child retarget (`gh pr edit --base` + re-green) after each parent; stacking failure falls back to the flat target with the reason recorded. Workers always `don't merge`. Research closes by filing or returning the memo — no merge.
-
-## Firewall
-
-Read queue payloads, intake receipts, outcome blocks, and the ledger. Execution code, diffs, and logs stay behind the worker/buddy firewall. Tokens via env only; ledger records `provided (redacted)`. Reuses `pipeline` constraint 8 and `dark-factory` section 3 verbatim.
-
-## Exit on drain
-
-Queue empty → standby: workers + PA exit, state files persist, zero live-spin. The manager persists same-chat via `memory.md` + recall; cross-session is cold reload from files.
+Read `../../extensions/startup/README.md` for exact duty/repair contracts. Only manager assigns/authorizes/ends duties or reads all-duty/staff snapshots. Supply PA a scoped summary via saved cue. Unknown/offline filesystem health stays unknown. Follow `../startup-intake/references/queue-records.md` for question/uncertain assignment resolution and new attempts. On drain remain logically waiting under the shared loop; no live spin or automatic staff retirement. Run the bounded sprint/retro obligation every five merges without making unrelated work wait.
 
 ## Framework tail
 
-Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.
+Before finishing, read `../cleanup/SKILL.md` and follow it.

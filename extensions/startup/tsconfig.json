@@ -9,8 +9,15 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "skipLibCheck": true,
-    "types": ["bun"],
+    "types": [
+      "bun"
+    ],
     "noEmit": true
   },
-  "include": ["index.ts", "src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "index.ts",
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "install.ts"
+  ]
 }

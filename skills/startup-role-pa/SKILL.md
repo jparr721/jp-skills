@@ -1,41 +1,27 @@
 ---
 name: startup-role-pa
-description: Reminder loop for the startup manager — ticks every wake and after each outcome with time, check-ins, priorities, sprint count, aging blockers. Prompts only; owns no work, merges nothing, asks boss nothing, exits with manager.
+description: Use for scoped Startup manager reminders on wakes, outcomes and assigned duty cues.
 ---
 
 # Startup role: PA
 
-Reminder loop for the manager, not a one-shot. The manager binds this canonical role on every wake and after each outcome arrival.
+Load this complete role with `startup-loop`. Consume only your assigned inbox and manager-provided summary; report to manager. You never take implementation items, merge, hire or contact the user directly.
 
-## Tick triggers
+## Reminder tick
 
-Tick on every manager wake plus after each worker outcome arrival. Two triggers only — never on a timer, never spinning live.
+On an assigned wake/outcome/duty cue, return a compact reminder with the provided facts:
 
-## Reminder contents
+- Current time, next check-in and responsible team.
+- Open user priorities and sprint count to the five-merge boundary.
+- Received events awaiting disposition/delegation, pending hires/source admission and complete-team readiness.
+- Inbox/claim backlog, due duties and actual capacity/resource/dependency blockers.
+- Offline/unknown observation state, reconciliation concerns and oldest parked items.
+- A ready-work sweep before manager wait/standby/final; unrelated intake/CI/review is no global barrier.
 
-Each tick prompts the manager with exactly:
+`startup_staff` and `startup_duties` are manager-only tools. Ask manager for missing scoped summary data; never fabricate all-staff visibility or inspect another employee's inbox. Each fact needs its supplied timestamp/evidence. Historical observation is not current health. PA does not assign, authorize or end duties.
 
-- Current time.
-- Next check-in + which sub-team (`dev` / `qa` / `devops` / `architect`).
-- Open priorities from the boss.
-- Received work events without a completed intake receipt, plus unresolved legacy queue recovery.
-- Sprint count to the retro boundary (merged-count mod `SPRINT_SIZE` 5).
-- Aging parked blockers (`BLOCKED` / `NEEDS_DECISION` items waiting longest).
-
-Prompts only — the PA never acts on the reminders itself.
-
-## Invariants
-
-Three rules, no exceptions:
-
-- Owns no work — never takes a queue item, never runs `pipeline`.
-- Merges nothing — merge authority stays with the manager.
-- Asks the boss nothing — no `escalate`, no direct boss contact; route through the manager.
-
-## Exit on drain
-
-On drain the PA exits; it never watches an empty queue. The manager persists same-chat — PA respawns on next wake with work in flight. State files persist under `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` — never under `tmp/`.
+Persist result/checkpoint and manager report through `startup_settle`. The host owns managed timers and cue admission; no PA polling process. After the reminder drains, remain logically waiting. Native parking does not erase employment or checkpoint. Offline host means no active reminders/observations.
 
 ## Framework tail
 
-Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.
+Before finishing, read `../cleanup/SKILL.md` and follow it.

@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -93,14 +94,23 @@ function entryFixture() {
     list: () => [native, ...helpers],
     onChange: () => () => {},
   };
-  function factory() {
+  function factory(name: string | null) {
     const handlers = new Map<
       string,
       (event: unknown, context: NativeContext) => unknown
     >();
     const tools = new Map<string, Parameters<HostAPI["registerTool"]>[0]>();
+    const commands = new Map<
+      string,
+      Parameters<HostAPI["registerCommand"]>[1]
+    >();
+    const messages: string[] = [];
     const api: HostAPI = {
-      pi: { AgentRegistry: { global: () => registry }, settings: {} },
+      pi: {
+        VERSION: "18.8.9",
+        AgentRegistry: { global: () => registry },
+        settings: {},
+      },
       zod: {
         object: () => nativeSchema,
         string: () => ({}),
@@ -110,7 +120,9 @@ function entryFixture() {
         literal: () => ({}),
         enum: () => ({}),
       },
-      sendMessage: () => {},
+      sendMessage: (message) => {
+        messages.push(message.content);
+      },
       events: { on: () => () => {} },
       arktype: () => {
         throw new Error("Unused native schema");
@@ -121,18 +133,21 @@ function entryFixture() {
       registerTool: (tool) => {
         tools.set(tool.name, tool);
       },
+      registerCommand: (name, command) => {
+        commands.set(name, command);
+      },
       getCommands: () => [{ name: "fixture-status" }],
       getAllTools: () => [],
     };
     installStartup(api, {
-      name: "fixture",
+      name,
       home: join(root, "home"),
       skillsRoot: root,
       employeeLimit: null,
       executionLimit: null,
       leaseMs: 60000,
     });
-    return { handlers, tools, api };
+    return { handlers, tools, api, commands, messages };
   }
   return {
     ctx,
@@ -140,9 +155,17 @@ function entryFixture() {
     factory,
     occupy: () => {
       for (let index = 0; index < 32; index++)
-        helpers.push({ ...native, id: `helper-${index}`, kind: "task", parentId: "Main", status: "running" });
+        helpers.push({
+          ...native,
+          id: `helper-${index}`,
+          kind: "task",
+          parentId: "Main",
+          status: "running",
+        });
     },
-    release: () => { helpers.splice(0); },
+    release: () => {
+      helpers.splice(0);
+    },
     advance: () => {
       native = { ...native, createdAt: native.createdAt + 1 };
     },
@@ -151,11 +174,11 @@ function entryFixture() {
 
 test("old root shutdown cannot close a newer root's same-session adapter", async () => {
   const { ctx, factory, advance } = entryFixture();
-  const first = factory();
+  const first = factory("fixture");
   await first.handlers.get("session_start")!({}, ctx);
   await first.handlers.get("session_shutdown")!({}, ctx);
   advance();
-  const second = factory();
+  const second = factory("fixture");
   await second.handlers.get("session_start")!({}, ctx);
   try {
     await first.handlers.get("session_shutdown")!({}, ctx);
@@ -171,7 +194,7 @@ test("old root shutdown cannot close a newer root's same-session adapter", async
 
 test("recovery classifies human input before wait/final without resolving unrelated claims", async () => {
   const { ctx, factory, advance } = entryFixture();
-  const first = factory();
+  const first = factory("fixture");
   await first.handlers.get("session_start")!({}, ctx);
   const tool = async (
     host: ReturnType<typeof factory>,
@@ -188,7 +211,7 @@ test("recovery classifies human input before wait/final without resolving unrela
   await tool(first, "startup_claim", {});
   await first.handlers.get("session_shutdown")!({}, ctx);
   advance();
-  const next = factory();
+  const next = factory("fixture");
   await next.handlers.get("session_start")!({}, ctx);
   try {
     expect((await tool(next, "startup_staff", {})).details).toMatchObject({
@@ -252,7 +275,7 @@ test("recovery classifies human input before wait/final without resolving unrela
 
 test("host execution limit rejects invalid input before entry or store side effects", () => {
   const { root, factory } = entryFixture();
-  const host = factory();
+  const host = factory("fixture");
   const old = {
     name: process.env.STARTUP_NAME,
     limit: process.env.STARTUP_EXECUTION_LIMIT,
@@ -291,29 +314,101 @@ test("host execution limit rejects invalid input before entry or store side effe
   }
 });
 
-
 test("normal wait honors the authoritative capacity guard with undelegated work", async () => {
   const { ctx, factory, occupy, release } = entryFixture();
-  const host = factory();
+  const host = factory("fixture");
   await host.handlers.get("session_start")!({}, ctx);
-  const call = (name: string, params: unknown) => host.tools.get(name)!.execute(name, params, undefined, undefined, ctx);
-  const guard = (name: string) => host.handlers.get("tool_call")!({toolName: name, input: {}}, ctx);
+  const call = (name: string, params: unknown) =>
+    host.tools.get(name)!.execute(name, params, undefined, undefined, ctx);
+  const guard = (name: string) =>
+    host.handlers.get("tool_call")!({ toolName: name, input: {} }, ctx);
   try {
-    await call("startup_intake", {eventId: "pending", input: "work", amendItemIds: []});
-    expect(guard("wait")).toMatchObject({block: true});
-    expect(guard("yield")).toMatchObject({block: true});
+    await call("startup_intake", {
+      eventId: "pending",
+      input: "work",
+      amendItemIds: [],
+    });
+    expect(guard("wait")).toMatchObject({ block: true });
+    expect(guard("yield")).toMatchObject({ block: true });
     occupy();
     expect(guard("wait")).toBeUndefined();
-    await call("startup_block", {key: "pending", evidence: {kind: "capacity"}});
+    await call("startup_block", {
+      key: "pending",
+      evidence: { kind: "capacity" },
+    });
     expect(guard("yield")).toBeUndefined();
     expect(host.handlers.get("session_stop")!({}, ctx)).toBeUndefined();
-    await host.handlers.get("input")!({text: "unclassified", source: "rpc", images: []}, ctx);
-    expect(guard("wait")).toMatchObject({block: true});
-    expect(host.handlers.get("session_stop")!({}, ctx)).toMatchObject({continue: true});
-    const staff = z.object({inputs: z.array(z.object({id:z.string()}))}).parse((await call("startup_staff", {})).details);
-    await call("startup_route", {inputId: staff.inputs[0]!.id, disposition: "status", reason: "status", amendItemIds: []});
+    await host.handlers.get("input")!(
+      { text: "unclassified", source: "rpc", images: [] },
+      ctx,
+    );
+    expect(guard("wait")).toMatchObject({ block: true });
+    expect(host.handlers.get("session_stop")!({}, ctx)).toMatchObject({
+      continue: true,
+    });
+    const staff = z
+      .object({ inputs: z.array(z.object({ id: z.string() })) })
+      .parse((await call("startup_staff", {})).details);
+    await call("startup_route", {
+      inputId: staff.inputs[0]!.id,
+      disposition: "status",
+      reason: "status",
+      amendItemIds: [],
+    });
     release();
-    expect(guard("wait")).toMatchObject({block: true});
-    expect(guard("read")).toMatchObject({block: true});
-  } finally { await host.handlers.get("session_shutdown")!({}, ctx); }
+    expect(guard("wait")).toMatchObject({ block: true });
+    expect(guard("read")).toMatchObject({ block: true });
+  } finally {
+    await host.handlers.get("session_shutdown")!({}, ctx);
+  }
+});
+
+test("unbound native boot preserves first work and images and gates malformed AGENTS", async () => {
+  const { ctx, factory, root } = entryFixture();
+  const host = factory(null);
+  await host.handlers.get("session_start")!({}, ctx);
+  const input = {
+    text: "/startup new first -- fix screenshot",
+    source: "rpc",
+    images: [{ type: "image", mimeType: "image/png", data: "aGVsbG8=" }],
+  };
+  await host.handlers.get("input")!(input, ctx);
+  await host.commands
+    .get("startup")!
+    .handler("new first -- fix screenshot", ctx);
+  const result = await host.tools
+    .get("startup_staff")!
+    .execute("staff", {}, undefined, undefined, ctx);
+  expect(result.details).toMatchObject({
+    inputCounts: { total: 1, unclassified: 0 },
+    teams: [],
+  });
+  expect(
+    host.messages.some((text) => text.includes("Saved Startup work event")),
+  ).toBe(true);
+  const saved = JSON.parse(
+    readFileSync(join(ctx.cwd, "AGENTS.md"), "utf8")
+      .split("<!-- identity: ")[1]!
+      .split(" -->")[0]!,
+  );
+  expect(saved.name).toBe("first");
+  await host.handlers.get("session_shutdown")!({}, ctx);
+  const broken = factory("broken");
+  writeFileSync(join(ctx.cwd, "AGENTS.md"), "<!-- jp-skills-startup:begin -->");
+  await broken.handlers.get("session_start")!({}, ctx);
+  expect(
+    await broken.handlers.get("input")!(
+      { text: "work", source: "rpc", images: [] },
+      ctx,
+    ),
+  ).toEqual({ handled: true });
+  expect(
+    broken.handlers.get("tool_call")!({ toolName: "read", input: {} }, ctx),
+  ).toMatchObject({ block: true });
+  expect(broken.handlers.get("session_stop")!({}, ctx)).toMatchObject({
+    continue: true,
+  });
+  expect(
+    existsSync(join(root, "home", "startup", "broken", "staff.sqlite")),
+  ).toBe(false);
 });

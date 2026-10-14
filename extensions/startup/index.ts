@@ -1,3 +1,12 @@
+import { existsSync, readFileSync } from "node:fs";
+import {
+  bootSelection,
+  parseBootCommand,
+  writeBootGuidance,
+  StartupBootError,
+  type BootCommand,
+  type Selection,
+} from "./src/boot";
 import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import { z } from "zod";
@@ -51,6 +60,7 @@ export type HostAPI = Readonly<{
   pi: Readonly<{
     AgentRegistry: Readonly<{ global: () => NativeRegistry }>;
     settings: unknown;
+    VERSION: string;
   }>;
   zod: SchemaBuilder;
   sendMessage: (
@@ -84,6 +94,13 @@ export type HostAPI = Readonly<{
       ) => Promise<NativeResult>;
     }>,
   ) => void;
+  registerCommand: (
+    name: string,
+    options: Readonly<{
+      description: string;
+      handler: (args: string, ctx: NativeContext) => Promise<void>;
+    }>,
+  ) => void;
   getCommands: () => readonly Readonly<{ name: string }>[];
   getAllTools: () => readonly Readonly<{
     name: string;
@@ -97,7 +114,10 @@ const toolEventSchema = z
   .object({ toolName: z.string(), input: z.unknown() })
   .passthrough();
 const rootConfigSchema = z.strictObject({
-  name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+  name: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .nullable(),
   home: z.string().min(1),
   skillsRoot: z.string().min(1),
   employeeLimit: z.number().int().positive().nullable(),
@@ -135,48 +155,120 @@ function rootAdapter(
     ref?.session?.sessionManager.getSessionId();
   return sessionId === undefined ? undefined : adapters.get(sessionId);
 }
-export function installStartup(pi: HostAPI, config: AdapterConfig): void {
+export type StartupConfig = Omit<AdapterConfig, "name" | "boundRoot"> &
+  Readonly<{ name: string | null }>;
+export function installStartup(pi: HostAPI, config: StartupConfig): void {
   rootConfigSchema.parse(config);
   const registry: NativeRegistry = pi.pi.AgentRegistry.global();
   let ownContext: NativeContext | null = null;
   let ownedAdapter: StartupAdapter | null = null;
   let defaultAgent: string = "task";
+  let bootFailure: string | null = null;
+  let selected: Selection | null = null;
+  let commandReceipt: Readonly<{
+    args: string;
+    inputId: string;
+    work: boolean;
+  }> | null = null;
+  let initializing: Promise<void> | null = null;
   let unsubscribeLifecycle: (() => void) | null = null;
   const ordinaryDescription: string =
     "Delegate bounded work through native task. Batch mode accepts context and tasks; single mode accepts task and solutionSpace. Native agent, name, outputSchema, schemaMode and enabled isolation, effort and eval-tool fields retain native validation. Context is shared task background; task is the concrete assignment; solutionSpace bounds the work. Native dispatch policy, capacity, isolation, budgets and transcripts apply.";
   function adapter(ctx: NativeContext): StartupAdapter {
+    if (bootFailure !== null) throw new StartupBootError(bootFailure);
     const current = rootAdapter(registry, ctx);
     if (!current) throw new Error("Startup is not bound to this native root");
     return current;
   }
-  pi.on("session_start", async (_event, ctx) => {
-    ownContext = ctx;
-    if (ctx.agent.kind !== "main") {
-      const nativeSession =
-        registry.get(ctx.agent.id)?.session ??
-        (ctx.agent.parentId ? registry.get(ctx.agent.parentId)?.session : null);
-      const discovered = await discoverAgents(
-        ctx.cwd,
-        homedir(),
-        nativeSession?.effectiveExtensionRoots,
+  function fail(error: unknown): void {
+    bootFailure = error instanceof Error ? error.message : String(error);
+    pi.sendMessage(
+      {
+        customType: "startup-boot-error",
+        content: `Startup boot blocked: ${bootFailure}`,
+        display: true,
+      },
+      { triggerTurn: false, deliverAs: "nextTurn" },
+    );
+  }
+  async function initialize(
+    ctx: NativeContext,
+    command: BootCommand | null,
+  ): Promise<void> {
+    if (ctx.agent.kind !== "main")
+      throw new StartupBootError(
+        "Only the actual native root may select a Startup",
       );
-      const definition = [
-        ...discovered.agents,
-        ...(nativeSession?.getSessionAgents?.() ?? []),
-      ].find((agent) => agent.name === ctx.agent.name);
-      if (!definition)
-        throw new Error(
-          `Native agent profile unavailable for task schema: ${ctx.agent.name}`,
+    if (pi.pi.VERSION !== "18.8.9")
+      throw new StartupBootError(
+        `Startup requires running OMP 18.8.9; actual host is ${pi.pi.VERSION}`,
+      );
+    const selection = bootSelection({
+      cwd: ctx.cwd,
+      home: config.home,
+      skillsRoot: config.skillsRoot,
+      command,
+      explicitName: config.name,
+      executionLimit: config.executionLimit,
+    });
+    if (selection === null) return;
+    if (ownedAdapter !== null) {
+      if (
+        selected?.name !== selection.name ||
+        selected.boundRoot !== selection.boundRoot ||
+        ownedAdapter.rootSession !== ctx.sessionManager.getSessionId()
+      )
+        throw new StartupBootError(
+          "Startup selection is already bound to another root or session; resume its canonical manager",
         );
-      defaultAgent = resolveSpawnPolicy(
-        definition.spawns === "*" ? "*" : definition.spawns?.join(","),
-      ).defaultAgent;
+      writeBootGuidance(selection);
+      bootFailure = null;
       return;
     }
+    writeBootGuidance(selection);
+    const native = registry.get(ctx.agent.id);
+    const session = native?.session?.sessionManager;
+    if (
+      !session ||
+      native?.kind !== "main" ||
+      session.getSessionId() !== ctx.sessionManager.getSessionId()
+    )
+      throw new StartupBootError(
+        "Native root session evidence unavailable at boot",
+      );
+    const file = session.getSessionFile();
+    if (!file)
+      throw new StartupBootError(
+        "Startup requires a persistent native root transcript",
+      );
+    if (!existsSync(file)) {
+      if (!session.ensureOnDisk)
+        throw new StartupBootError(
+          "Native root transcript cannot be materialized by this host",
+        );
+      await session.ensureOnDisk();
+    }
+    const headers = readFileSync(file, "utf8")
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) =>
+        z.object({ type: z.string() }).passthrough().parse(JSON.parse(line)),
+      )
+      .filter((row) => row.type === "session");
+    if (headers.length !== 1 || headers[0]?.id !== session.getSessionId())
+      throw new StartupBootError(
+        "Native root transcript identity conflicts at boot",
+      );
+    selected = selection;
     const current: StartupAdapter = createAdapter({
       ctx,
       registry,
-      config,
+      config: {
+        ...config,
+        name: selection.name,
+        boundRoot: selection.boundRoot,
+        executionLimit: selection.executionLimit,
+      },
       nativeLimit: () => {
         const root = registry.get(ctx.agent.id);
         if (!root?.session)
@@ -215,6 +307,95 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
           current.nativeEnded(event.id, event.status);
       },
     );
+    bootFailure = null;
+  }
+  async function boot(
+    ctx: NativeContext,
+    command: BootCommand | null,
+  ): Promise<void> {
+    if (initializing !== null) await initializing;
+    const attempt = initialize(ctx, command);
+    initializing = attempt;
+    try {
+      await attempt;
+    } catch (error: unknown) {
+      fail(error);
+      throw error;
+    } finally {
+      if (initializing === attempt) initializing = null;
+    }
+  }
+  pi.on("session_start", async (_event, ctx) => {
+    ownContext = ctx;
+    if (ctx.agent.kind !== "main") {
+      const nativeSession =
+        registry.get(ctx.agent.id)?.session ??
+        (ctx.agent.parentId ? registry.get(ctx.agent.parentId)?.session : null);
+      const discovered = await discoverAgents(
+        ctx.cwd,
+        homedir(),
+        nativeSession?.effectiveExtensionRoots,
+      );
+      const definition = [
+        ...discovered.agents,
+        ...(nativeSession?.getSessionAgents?.() ?? []),
+      ].find((agent) => agent.name === ctx.agent.name);
+      if (!definition)
+        throw new Error(
+          `Native agent profile unavailable for task schema: ${ctx.agent.name}`,
+        );
+      defaultAgent = resolveSpawnPolicy(
+        definition.spawns === "*" ? "*" : definition.spawns?.join(","),
+      ).defaultAgent;
+      return;
+    }
+    try {
+      await boot(ctx, null);
+    } catch {
+      /* fail() retains the explicit initialization error for every guard. */
+    }
+  });
+  pi.registerCommand("startup", {
+    description:
+      "Bind Startup: new <name> [--dir <JSON-quoted-path>] [-- <work>], select <name> [-- <work>], or status",
+    handler: async (args, ctx) => {
+      const command = parseBootCommand(args);
+      await boot(ctx, command);
+      if (selected === null)
+        throw new StartupBootError(
+          "No Startup selected; use /startup new <name> or /startup select <name>",
+        );
+      const current = adapter(ctx);
+      const receipt = commandReceipt;
+      commandReceipt = null;
+      if (command.work !== null) {
+        if (receipt === null || receipt.args !== args || !receipt.work)
+          throw new StartupBootError(
+            "Startup work command requires its original native input receipt; submit through native interactive/RPC input",
+          );
+        pi.sendMessage(
+          {
+            customType: "startup-work",
+            content: `Saved Startup work event ${receipt.inputId}. Delegate through task startup=delegate to a complete architect-led team before lookup.`,
+            display: true,
+          },
+          { triggerTurn: true, deliverAs: "nextTurn" },
+        );
+      } else
+        pi.sendMessage(
+          {
+            customType: "startup-status",
+            content: JSON.stringify({
+              runningOMP: pi.pi.VERSION,
+              selection: selected,
+              staff: current.staff(ctx),
+              duties: current.duties.status(),
+            }),
+            display: true,
+          },
+          { triggerTurn: false, deliverAs: "nextTurn" },
+        );
+    },
   });
   const builder: SchemaBuilder = pi.zod;
   const hireSchema = builder.object({
@@ -264,6 +445,7 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
         .or(replaceSchema);
     },
     execute: async (_id, params, _signal, _update, ctx) => {
+      if (bootFailure !== null) throw new StartupBootError(bootFailure);
       if (!ctx.invokeTool)
         throw new Error("Native same-name task delegate unavailable");
       const shape = z.record(z.string(), z.unknown()).parse(params);
@@ -632,9 +814,53 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
       return parsed;
     },
   );
-  pi.on("input", (event, ctx) => {
+  pi.on("input", async (event, ctx) => {
+    if (ctx.agent.kind !== "main") return;
+    const parsed = z
+      .object({
+        text: z.string(),
+        source: z.enum(["interactive", "rpc", "extension"]),
+        images: z.array(z.unknown()).optional(),
+      })
+      .parse(event);
+    if (parsed.source === "extension") return;
+    const match = /^\/startup(?:\s+(.*))?$/s.exec(parsed.text.trim());
+    if (match) {
+      const args = match[1] ?? "";
+      try {
+        const command = parseBootCommand(args);
+        await boot(ctx, command);
+        if (selected === null)
+          throw new StartupBootError(
+            "No Startup selected; use /startup new <name> or /startup select <name>",
+          );
+        const current = adapter(ctx);
+        const received = current.receiveInput(ctx, event);
+        if (received === null)
+          throw new StartupBootError("Native Startup work receipt unavailable");
+        current.routeInput(ctx, {
+          inputId: received.id,
+          disposition: command.work === null ? "control" : "work",
+          reason:
+            command.work === null
+              ? "Native Startup control command"
+              : "Explicit native Startup work command",
+          amendItemIds: [],
+        });
+        commandReceipt = {
+          args,
+          inputId: received.id,
+          work: command.work !== null,
+        };
+      } catch (error: unknown) {
+        fail(error);
+        return { handled: true };
+      }
+      return;
+    }
+    if (bootFailure !== null) return { handled: true };
     const current = rootAdapter(registry, ctx);
-    if (!current || ctx.agent.kind !== "main") return;
+    if (!current) return;
     const received = current.receiveInput(ctx, event);
     if (received === null) return;
     const command = /^\/([^\s]+)/.exec(received.raw.text.trim())?.[1];
@@ -667,6 +893,8 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
     };
   });
   pi.on("tool_call", (event, ctx) => {
+    if (bootFailure !== null)
+      return { block: true, reason: `Startup boot blocked: ${bootFailure}` };
     const current = rootAdapter(registry, ctx);
     if (!current) return;
     const parsed = toolEventSchema.parse(event);
@@ -722,12 +950,35 @@ export function installStartup(pi: HostAPI, config: AdapterConfig): void {
       };
   });
   pi.on("session_stop", (_event, ctx) => {
+    if (bootFailure !== null)
+      return {
+        continue: true,
+        additionalContext: `Startup boot blocked: ${bootFailure}. Report the blocker; only a corrected human /startup command may retry boot.`,
+      };
     const current = rootAdapter(registry, ctx);
     if (!current || ctx.agent.kind !== "main") return;
     const reason: string | null = current.waitGuard();
     return reason === null
       ? undefined
       : { continue: true, additionalContext: reason };
+  });
+  pi.on("session_switch", async (_event, ctx) => {
+    if (ctx.agent.kind !== "main") return;
+    try {
+      if (ownedAdapter !== null) {
+        const closing = ownedAdapter;
+        unsubscribeLifecycle?.();
+        await closing.shutdown();
+        if (adapters.get(closing.rootSession) === closing)
+          adapters.delete(closing.rootSession);
+        ownedAdapter = null;
+        selected = null;
+      }
+      ownContext = ctx;
+      await boot(ctx, null);
+    } catch (error: unknown) {
+      fail(error);
+    }
   });
   pi.on("session_shutdown", async (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
@@ -759,12 +1010,15 @@ export function parseExecutionLimit(value: string | undefined): number | null {
     );
 }
 export default function startup(pi: HostAPI): void {
-  const name: string | undefined = process.env.STARTUP_NAME;
-  if (name === undefined) return;
+  const name: string | null = process.env.STARTUP_NAME ?? null;
   installStartup(pi, {
     name,
     home: resolve(
-      process.env.JP_SKILLS_HOME ?? join(homedir(), ".config", "jp-skills"),
+      process.env.JP_SKILLS_HOME ??
+        join(
+          process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"),
+          "jp-skills",
+        ),
     ),
     skillsRoot: resolve(
       process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."),

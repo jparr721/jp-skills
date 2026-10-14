@@ -13,5 +13,10 @@
   "devDependencies": {
     "@types/bun": "1.3.0",
     "typescript": "5.9.3"
+  },
+  "omp": {
+    "extensions": [
+      "index.ts"
+    ]
   }
 }
