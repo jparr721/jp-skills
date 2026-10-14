@@ -157,8 +157,11 @@ function rootAdapter(
 }
 export type StartupConfig = Omit<AdapterConfig, "name" | "boundRoot"> &
   Readonly<{ name: string | null }>;
-export function installStartup(pi: HostAPI, config: StartupConfig): void {
-  rootConfigSchema.parse(config);
+export function installStartup(
+  pi: HostAPI,
+  config: StartupConfig,
+  configurationError?: string,
+): void {
   const registry: NativeRegistry = pi.pi.AgentRegistry.global();
   let ownContext: NativeContext | null = null;
   let ownedAdapter: StartupAdapter | null = null;
@@ -195,6 +198,9 @@ export function installStartup(pi: HostAPI, config: StartupConfig): void {
     ctx: NativeContext,
     command: BootCommand | null,
   ): Promise<void> {
+    if (configurationError !== undefined)
+      throw new StartupBootError(configurationError);
+    rootConfigSchema.parse(config);
     if (ctx.agent.kind !== "main")
       throw new StartupBootError(
         "Only the actual native root may select a Startup",
@@ -953,7 +959,7 @@ export function installStartup(pi: HostAPI, config: StartupConfig): void {
     if (bootFailure !== null)
       return {
         continue: true,
-        additionalContext: `Startup boot blocked: ${bootFailure}. Report the blocker; only a corrected human /startup command may retry boot.`,
+        additionalContext: `Startup boot blocked: ${bootFailure}. Report the blocker; correct the reported files and retry /startup; invalid host configuration requires a corrected host restart.`,
       };
     const current = rootAdapter(registry, ctx);
     if (!current || ctx.agent.kind !== "main") return;
@@ -1011,20 +1017,31 @@ export function parseExecutionLimit(value: string | undefined): number | null {
 }
 export default function startup(pi: HostAPI): void {
   const name: string | null = process.env.STARTUP_NAME ?? null;
-  installStartup(pi, {
-    name,
-    home: resolve(
-      process.env.JP_SKILLS_HOME ??
-        join(
-          process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"),
-          "jp-skills",
-        ),
-    ),
-    skillsRoot: resolve(
-      process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."),
-    ),
-    employeeLimit: null,
-    executionLimit: parseExecutionLimit(process.env.STARTUP_EXECUTION_LIMIT),
-    leaseMs: 60000,
-  });
+  let executionLimit: number | null = null;
+  let configurationError: string | undefined;
+  try {
+    executionLimit = parseExecutionLimit(process.env.STARTUP_EXECUTION_LIMIT);
+  } catch (error: unknown) {
+    configurationError = `Invalid STARTUP_EXECUTION_LIMIT ${JSON.stringify(process.env.STARTUP_EXECUTION_LIMIT)}: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  installStartup(
+    pi,
+    {
+      name,
+      home: resolve(
+        process.env.JP_SKILLS_HOME ??
+          join(
+            process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"),
+            "jp-skills",
+          ),
+      ),
+      skillsRoot: resolve(
+        process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."),
+      ),
+      employeeLimit: null,
+      executionLimit,
+      leaseMs: 60000,
+    },
+    configurationError,
+  );
 }

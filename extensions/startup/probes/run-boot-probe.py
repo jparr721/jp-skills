@@ -113,6 +113,13 @@ try:
     evidence['checks']['failedGuidancePreserved']=(bound/'AGENTS.md').read_bytes()==malformed
     process.stdin.close();process.wait(timeout=10);process=None
     (bound/'AGENTS.md').write_bytes(before)
+    env['STARTUP_BOOT_FAILURE']='invalid-limit'
+    env['STARTUP_EXECUTION_LIMIT']='0'
+    process=start()
+    wait(lambda:any(row['kind']=='failure-guards' and row.get('scenario')=='invalid-limit' for row in records()))
+    invalid=next(row for row in records() if row['kind']=='failure-guards' and row.get('scenario')=='invalid-limit')
+    evidence['checks']['invalidConfigRetainsGuards']=invalid['input'].get('handled') is True and invalid['tool'].get('block') is True and invalid['stop'].get('continue') is True and 'STARTUP_EXECUTION_LIMIT' in invalid['tool']['reason']
+    process.stdin.close();process.wait(timeout=10);process=None
     run(['bun',str(repo/'extensions/startup/install.ts'),'uninstall',profile])
     evidence['checks']['uninstallPreservesConfig']=lock.read_bytes()==prior_lock
     evidence['checks']['uninstallOnlyOwned']=not (plugins/'node_modules/@jp-skills/startup').exists() and (cwd/'.omp/agents/user.md').exists() and (workspace/'home/startup/native-proof/staff.sqlite').exists()

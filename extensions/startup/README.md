@@ -34,7 +34,7 @@ Boot checks actual running `pi.pi.VERSION`, writes a synchronous managed root AG
 
 `-- <work>` retains the exact original native human input and attached images, routes its receipt as work and wakes the manager to delegate it. Command words are part of the retained raw evidence. A boot without work records a control receipt. Ordinary later human input remains unclassified until manager `startup_route`; registered commands are control. `STARTUP_NAME` is an optional explicit host selection, not required boot syntax.
 
-`STARTUP_EXECUTION_LIMIT` is absent or a positive safe integer. The effective explicit ceiling is the smaller of it and saved `binding.json.executionLimit`; native execution capacity further bounds admission, including bounded review/buddy descendants. No absent-limit default of six. Invalid values fail before store effects. Roster reservation and concurrent execution are different.
+`STARTUP_EXECUTION_LIMIT` is absent or a positive safe integer. The effective explicit ceiling is the smaller of it and saved `binding.json.executionLimit`; native execution capacity further bounds admission, including bounded review/buddy descendants. No absent-limit default of six. Invalid values retain boot guards and fail before store effects; correct the host environment and restart to clear an invalid host configuration. Roster reservation and concurrent execution are different.
 
 ## Public tools
 

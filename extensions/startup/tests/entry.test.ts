@@ -273,8 +273,8 @@ test("recovery classifies human input before wait/final without resolving unrela
   }
 });
 
-test("host execution limit rejects invalid input before entry or store side effects", () => {
-  const { root, factory } = entryFixture();
+test("host execution limit retains guards and rejects invalid input before store side effects", async () => {
+  const { root, factory, ctx } = entryFixture();
   const host = factory("fixture");
   const old = {
     name: process.env.STARTUP_NAME,
@@ -294,7 +294,21 @@ test("host execution limit rejects invalid input before entry or store side effe
       "9007199254740992",
     ]) {
       process.env.STARTUP_EXECUTION_LIMIT = invalid;
-      expect(() => startupEntry(host.api)).toThrow();
+      expect(() => startupEntry(host.api)).not.toThrow();
+      await host.handlers.get("session_start")!({}, ctx);
+      expect(
+        await host.handlers.get("input")!(
+          { text: "work", source: "rpc", images: [] },
+          ctx,
+        ),
+      ).toEqual({ handled: true });
+      expect(
+        host.handlers.get("tool_call")!({ toolName: "read", input: {} }, ctx),
+      ).toMatchObject({ block: true });
+      expect(host.handlers.get("session_stop")!({}, ctx)).toMatchObject({
+        continue: true,
+      });
+      expect(() => parseExecutionLimit(invalid)).toThrow();
       expect(
         existsSync(join(root, "home", "startup", "fixture", "staff.sqlite")),
       ).toBe(false);

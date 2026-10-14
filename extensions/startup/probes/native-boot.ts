@@ -24,7 +24,10 @@ export default function bootProof(pi: ExtensionAPI): void {
       file: ctx.sessionManager.getSessionFile(),
       onDisk: existsSync(ctx.sessionManager.getSessionFile() ?? ""),
     });
-    if (process.env.STARTUP_BOOT_FAILURE === "1" && ctx.agent.kind === "main") {
+    if (
+      process.env.STARTUP_BOOT_FAILURE !== undefined &&
+      ctx.agent.kind === "main"
+    ) {
       const runner = pi.pi.AgentRegistry.global().get(ctx.agent.id)?.session
         ?.extensionRunner;
       if (!runner)
@@ -47,7 +50,13 @@ export default function bootProof(pi: ExtensionAPI): void {
         stop_hook_active: false,
         signal: new AbortController().signal,
       });
-      record({ kind: "failure-guards", input, tool, stop });
+      record({
+        kind: "failure-guards",
+        scenario: process.env.STARTUP_BOOT_FAILURE,
+        input,
+        tool,
+        stop,
+      });
     }
   });
   pi.on("before_subagent_spawn", () => ({ model: "startup-boot/offline" }));
