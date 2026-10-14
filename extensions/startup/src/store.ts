@@ -2184,7 +2184,11 @@ export function openStore(args: {
             ownerEpoch: epoch,
             claimedAt: timestamp,
           };
+          const duty = read("duty", pending.dutyId, dutySchema);
+          if (duty?.cadenceMs === null || duty === null)
+            throw new StoreRecoveryError("Pending occurrence has no configured cadence");
           put("occurrence", pending.id, reclaimed);
+          put("dutyNext", pending.dutyId, timeSchema.parse(timestamp + duty.cadenceMs));
           return reclaimed;
         }
         const duty = all("duty", dutySchema).find(
