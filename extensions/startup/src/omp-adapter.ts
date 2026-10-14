@@ -271,21 +271,23 @@ function inputMetadata(received: ReceivedInput) {
     ...inputSummary(received.id, jsonSchema.parse(received.raw)),
   };
 }
-function projectedCue(message: Message | null): Json {
-  if (message === null) return null;
+function publicMessage(message: Message): Message {
   const parsed = z
     .object({ kind: z.literal("architect-intake"), raw: jsonSchema })
     .passthrough()
     .safeParse(message.payload);
   return parsed.success
-    ? jsonSchema.parse({
+    ? {
         ...message,
-        payload: {
+        payload: jsonSchema.parse({
           ...parsed.data,
           raw: inputSummary(message.correlation, parsed.data.raw),
-        },
-      })
-    : jsonSchema.parse(message);
+        }),
+      }
+    : message;
+}
+function projectedCue(message: Message | null): Json {
+  return message === null ? null : jsonSchema.parse(publicMessage(message));
 }
 function reusableStaff(
   snapshot: Snapshot,
@@ -2172,7 +2174,7 @@ export function createAdapter(
     },
     claim: (ctx: NativeContext) => {
       const employee = caller(ctx);
-      return store.claimNext({
+      const claimed = store.claimNext({
         employee,
         excludedMessageIds: store
           .snapshot()
@@ -2183,6 +2185,9 @@ export function createAdapter(
           )
           .map((message) => message.id),
       });
+      return claimed === null
+        ? null
+        : { claim: claimed.claim, message: publicMessage(claimed.message) };
     },
     capture: (ctx: NativeContext, request: unknown) =>
       store.captureIntake({

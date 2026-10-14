@@ -1176,6 +1176,33 @@ test("raw images/history stay durable while projected current input is bounded a
     );
   const architect = contexts.get(team.architect)!;
   expect((await f.adapter.projection(architect))!).not.toContain(image.data);
+  const claimed = f.adapter.claim(architect)!;
+  const serializedClaim = JSON.stringify(claimed);
+  expect(serializedClaim).not.toContain(image.data);
+  expect(serializedClaim).not.toContain("request ".repeat(128));
+  expect(serializedClaim.length).toBeLessThan(8192);
+  expect(claimed.message.payload).toMatchObject({
+    raw: {
+      inputId: received.id,
+      textTool: "startup_input",
+      attachmentCount: 1,
+      attachments: [{ tool: "startup_image", index: 0 }],
+    },
+  });
+  const storedMessage = f.adapter.store
+    .snapshot()
+    .messages.find((message) => message.id === claimed.message.id)!;
+  expect(storedMessage.payload).toMatchObject({ raw: received.raw });
+  expect(
+    f.adapter.store
+      .snapshot()
+      .claims.find((claim) => claim.id === claimed.claim.id)?.messageId,
+  ).toBe(storedMessage.id);
+  expect(
+    f.adapter.readInput(architect, { inputId: received.id, offset: 4096 }).text,
+  ).toBe(
+    z.object({ text: z.string() }).parse(received.raw).text.slice(4096, 8192),
+  );
   expect(
     f.adapter.image(architect, { inputId: received.id, index: 0 }).content,
   ).toEqual([image]);

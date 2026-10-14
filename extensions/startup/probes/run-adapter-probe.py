@@ -70,7 +70,7 @@ def run(args, evidence) -> int:
                 for number in range(100):
                     process.stdin.write(json.dumps({'id':f'history-{number}','type':'prompt','message':'/startup-fixture-status HISTORY_BLOB '+('retained '*512)})+'\n')
                 process.stdin.flush()
-                for number,message in enumerate(['status fixture input','also investigate fixture']):
+                for number,message in enumerate(['status fixture input','also investigate fixture '+('LONG_INTAKE_SEGMENT '*1024)+'LONG_INTAKE_TAIL']):
                     process.stdin.write(json.dumps({'id':f'input-{number}','type':'prompt','message':message,'images':[] if number==0 else [{'type':'image','mimeType':'image/png','data':'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII='}]})+'\n')
                     process.stdin.flush()
                     deadline=time.monotonic()+35
@@ -121,11 +121,22 @@ def run(args, evidence) -> int:
         initial=proof['initial']
         inputs=[event['details'] for event in events if event['kind']=='tool' and event['name']=='startup_route' and not event['error']]
         status=next(receipt for receipt in inputs if receipt['textPreview']=='status fixture input')
-        work=next(receipt for receipt in inputs if receipt['textPreview']=='also investigate fixture')
+        work=next(receipt for receipt in inputs if receipt['textPreview'].startswith('also investigate fixture'))
         providers=[event['context'] for event in events if event['kind']=='provider']
         denied=[message for context in providers for message in context['messages'] if message['role']=='toolResult' and message.get('isError') and message.get('toolCallId','').startswith('fixture-input-read') and 'Route received input' in str(message['content'])]
         guards=[message for context in providers for message in context['messages'] if 'Route received input' in str(message.get('content')) and message['role']!='toolResult']
         checks={'native_completion':exit_code==0,'human_input_captured_before_lookup':len(denied)>=2,'no_idle_with_unrouted_input':bool(guards),'status_routed_without_work':status['disposition']['kind']=='status' and all(team['eventId']!=status['id'] for team in initial['teams']),'additional_input_fresh_complete_team':work['disposition']['kind']=='work' and any(team['eventId']==work['id'] and team['state']=='active' and len(team['devs'])==1 for team in initial['teams']),'registered_command_control_receipt':any(event['kind']=='native-input' and event['text']=='/startup-input-proof-report' for event in events) and initial['inputCounts']['unclassified']==0,'internal_manager_wake_excluded':any('Fixture internal wake exclusion' in str(context['messages']) for context in providers) and initial['inputs']==proof['after']['inputs'] and initial['inputCounts']==proof['after']['inputCounts'],'bounded_history_and_projection':initial['inputCounts']['total']==103 and 'HISTORY_BLOB' not in json.dumps(initial) and len(json.dumps(initial))<24000 and all('iVBORw0KGgo' not in message['content'] for context in providers for message in context['messages'] if message['role']=='developer' and isinstance(message['content'],str)),'scoped_native_image_retrieval':any(message['role']=='toolResult' and message.get('toolName')=='startup_image' and not message.get('isError') and any(part.get('type')=='image' and part.get('mimeType')=='image/png' for part in message['content']) for context in providers for message in context['messages'])}
+        architect_ids={team['architect'] for team in initial['teams']}
+        claimed_contexts=[]
+        for context in providers:
+            projection=next((message['content'] for message in context['messages'] if message['role']=='developer' and isinstance(message['content'],str) and message['content'].startswith('STARTUP_BINDING=')),None)
+            if projection is None or json.loads(projection.split('\n')[0].removeprefix('STARTUP_BINDING='))['employeeId'] not in architect_ids:
+                continue
+            if any(message['role']=='toolResult' and message.get('toolName')=='startup_claim' and 'architect-intake' in json.dumps(message['content']) for message in context['messages']):
+                claimed_contexts.append(context)
+        non_image_text=[message['content'] if isinstance(message['content'],str) else part.get('text','') for context in claimed_contexts for message in context['messages'] for part in ([{}] if isinstance(message['content'],str) else message['content']) if isinstance(message['content'],str) or part.get('type')=='text']
+        claimed_intakes=[event['details']['message'] for event in events if event['kind']=='tool' and event.get('name')=='startup_claim' and not event.get('error') and event.get('details') and event['details']['message']['payload'].get('kind')=='architect-intake']
+        checks['claimed_intake_text_bounded']=bool(claimed_contexts) and bool(claimed_intakes) and work['textLength']>16384 and all('iVBORw0KGgo' not in text and 'LONG_INTAKE_TAIL' not in text for text in non_image_text) and all(message['payload']['raw']['textLength']>16384 and len(message['payload']['raw']['textPreview'])<=512 and message['payload']['raw']['textTool']=='startup_input' and message['payload']['raw']['attachments'][0]['tool']=='startup_image' for message in claimed_intakes)
     if report['status']=='COMPLETE' and args.scenario=='refresh':
         refreshed=next(event for event in events if event['kind']=='native-refresh')
         providers=[event['context'] for event in events if event['kind']=='provider']
