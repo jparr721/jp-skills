@@ -195,10 +195,16 @@ export default function bootProof(pi: ExtensionAPI): void {
               inputId: cue.correlation,
               offset: page?.inputId === cue.correlation ? page.nextOffset : 0,
             });
-          else if (page.attachmentCount > 0 && !result("startup_image"))
+          else if (
+            page.attachmentCount >
+            results.filter((message) => message.toolName === "startup_image")
+              .length
+          )
             call = invoke("startup_image", {
               inputId: cue.correlation,
-              index: 0,
+              index: results.filter(
+                (message) => message.toolName === "startup_image",
+              ).length,
             });
           else if (!parsed("startup_capture"))
             call = invoke("startup_capture", {

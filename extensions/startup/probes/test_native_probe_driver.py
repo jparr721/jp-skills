@@ -50,7 +50,6 @@ class NativeProbeDriverRegression(unittest.TestCase):
             self.assertEqual(DRIVER.main(), 1)
 
     def test_failures_replace_stale_pass_evidence(self) -> None:
-        plan = DRIVER_PATH.resolve().parents[3] / ".superpowers/sdd/2026-10-13-startup-v6/native-scratch"
         reports = [
             '{"status":"FAIL","error":"Native preflight: Unknown agent fixture"}',
             None,
@@ -62,7 +61,7 @@ class NativeProbeDriverRegression(unittest.TestCase):
             '{"status":"FAIL"}',
             '{"status":"COMPLETE"}',
         ]
-        with tempfile.TemporaryDirectory(dir=plan, prefix="driver-regression-") as directory:
+        with tempfile.TemporaryDirectory(prefix="driver-regression-") as directory:
             for index, report in enumerate(reports):
                 with self.subTest(report=report):
                     evidence = Path(directory) / f"evidence-{index}.json.gz"
@@ -77,8 +76,7 @@ class NativeProbeDriverRegression(unittest.TestCase):
                         self.assertIn("failure", record)
 
     def test_unexpected_validation_error_is_preserved_and_raised(self) -> None:
-        plan = DRIVER_PATH.resolve().parents[3] / ".superpowers/sdd/2026-10-13-startup-v6/native-scratch"
-        with tempfile.TemporaryDirectory(dir=plan, prefix="driver-regression-") as directory:
+        with tempfile.TemporaryDirectory(prefix="driver-regression-") as directory:
             for index, error_type in enumerate([RuntimeError, KeyError, TypeError]):
                 with self.subTest(error_type=error_type):
                     evidence = Path(directory) / f"evidence-{index}.json.gz"

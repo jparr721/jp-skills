@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from probe_workspace import create_workspace, resume_workspace
 import argparse
 import gzip
 import hashlib
@@ -14,7 +15,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--workspace', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
-    parser.add_argument('--scenario', choices=['full','refresh','input','capacity'], required=True)
+    parser.add_argument('--scenario', choices=['full','refresh','input','capacity','integrated','single','partial','ordinary-root','ordinary-child','helper'], required=True)
+    parser.add_argument('--sources', choices=['product', 'fixture'], default='product')
     args = parser.parse_args()
     evidence = {'version':1,'status':'FAIL','checks':{},'failure':None}
     def save():
@@ -26,7 +28,7 @@ def main() -> int:
     save()
     try:
         return run(args,evidence)
-    except Exception as error:
+    except BaseException as error:
         evidence['failure']={'kind':type(error).__name__,'message':str(error)}
         raise
     finally:
@@ -37,11 +39,12 @@ def main() -> int:
 def run(args, evidence) -> int:
     repo = Path(__file__).resolve().parents[3]
     source_paths=[repo/'extensions/startup/index.ts',*sorted((repo/'extensions/startup/src').glob('*.ts')),Path(__file__).with_name('native-adapter.ts'),Path(__file__)]
+    source_paths += [Path(__file__).with_name('probe_workspace.py')]
+    if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'}:
+        source_paths.append(Path(__file__).with_name('native-integrated.ts'))
     evidence['sourceHashes']={str(path.relative_to(repo)):hashlib.sha256(path.read_bytes()).hexdigest() for path in source_paths}
     workspace = args.workspace.resolve()
-    if not workspace.is_relative_to(repo / '.superpowers/sdd/2026-10-13-startup-v6/native-scratch'):
-        raise ValueError('Adapter proof must remain under the isolated plan scratch')
-    workspace.mkdir(parents=True, exist_ok=False)
+    create_workspace(workspace, repo, "adapter")
     cwd = workspace / 'cwd'
     cwd.mkdir()
     sources = workspace / 'fixture-canonical'
@@ -52,16 +55,32 @@ def run(args, evidence) -> int:
     loop = sources / 'skills/startup-loop/SKILL.md'
     loop.parent.mkdir(parents=True)
     loop.write_text('---\nname: startup-loop\n---\nComplete isolated canonical shared loop fixture. Remain employed and accept later durable inbox cues.\n')
+    if args.sources == 'product':
+        if args.scenario == 'refresh':
+            for path in sources.glob('skills/*/SKILL.md'):
+                path.write_bytes((repo/path.relative_to(sources)).read_bytes())
+        else:
+            sources = repo
+        loop = sources/'skills/startup-loop/SKILL.md'
+        evidence['canonicalSourceHashes'] = {str(path.relative_to(repo)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted((repo/'skills').glob('startup*/**/*.md'))}
     config = workspace / 'config.yml'
     config.write_text('task:\n  batch: true\n  agentIdleTtlMs: 0\n  speculativeLaunch: false\n  enableEffort: true\n  isolation:\n    enabled: true\nasync:\n  enabled: true\nproviders:\n  cacheWarming: false\nmemories:\n  enabled: false\nmcp:\n  enableProjectConfig: false\n')
+    if args.scenario == 'single':
+        config.write_text(config.read_text().replace('batch: true', 'batch: false'))
+    (workspace/'state/omp').mkdir(parents=True)
     env = {key: value for key, value in os.environ.items() if key in {'PATH','HOME','TMPDIR','LANG','LC_ALL','TERM','SHELL','USER','LOGNAME'}}
-    env.update({'PI_CODING_AGENT_DIR': str(workspace / 'profile'), 'STARTUP_NAME': 'adapter-proof', 'JP_SKILLS_HOME': str(workspace / 'home'), 'STARTUP_SKILLS_ROOT': str(sources), 'STARTUP_ADAPTER_HOME': str(workspace / 'home'), 'STARTUP_ADAPTER_SOURCES': str(sources), 'STARTUP_ADAPTER_EVENTS': str(workspace / 'events.jsonl'), 'STARTUP_ADAPTER_REPORT': str(workspace / 'report.json'), 'STARTUP_ADAPTER_DENIED_PATH': str(cwd / 'stale-denied.txt')})
+    env.update({'XDG_STATE_HOME':str(workspace/'state'),'PI_CODING_AGENT_DIR': str(workspace / 'profile'), 'STARTUP_NAME': 'adapter-proof', 'JP_SKILLS_HOME': str(workspace / 'home'), 'STARTUP_SKILLS_ROOT': str(sources), 'STARTUP_ADAPTER_HOME': str(workspace / 'home'), 'STARTUP_ADAPTER_SOURCES': str(sources), 'STARTUP_ADAPTER_EVENTS': str(workspace / 'events.jsonl'), 'STARTUP_ADAPTER_REPORT': str(workspace / 'report.json'), 'STARTUP_ADAPTER_DENIED_PATH': str(cwd / 'stale-denied.txt')})
+    if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'}:
+        env['STARTUP_INTEGRATED_SCENARIO']=args.scenario
+        env['STARTUP_INTEGRATED_RELEASE']=str(workspace/'release-build')
+    if args.scenario in {'ordinary-root','ordinary-child','helper'}:
+        env['STARTUP_EXECUTION_LIMIT']='2'
     if args.scenario=='capacity':
         env.update({'STARTUP_EXECUTION_LIMIT':'1','STARTUP_ADAPTER_CAPACITY_RELEASE':str(workspace/'capacity-release')})
     omp = shutil.which('omp')
     if omp is None:
         raise FileNotFoundError('Installed compiled OMP is required')
-    command = [omp,'--mode','rpc','--no-ui','--cwd',str(cwd),'--config',str(config),'--no-extensions','--no-skills','--no-rules','--no-lsp','--no-pty','--no-title','--tools','task,read,write','--extension',str(Path(__file__).parents[1] / 'index.ts'),'--extension',str(Path(__file__).with_name('native-adapter.ts')),'--model','startup-adapter/offline','--thinking','off','--auto-approve']
+    command = [omp,'--mode','rpc','--no-ui','--cwd',str(cwd),'--config',str(config),'--no-extensions','--no-skills','--no-rules','--no-lsp','--no-pty','--no-title','--tools','task,read,write,wait','--extension',str(Path(__file__).parents[1] / 'index.ts'),'--extension',str(Path(__file__).with_name('native-integrated.ts' if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'} else 'native-adapter.ts')),'--model','startup-adapter/offline','--thinking','off','--auto-approve']
     evidence.update({'command': command, 'installedVersion': subprocess.check_output([omp,'--version'],text=True).strip()})
     with (workspace / 'stdout.jsonl').open('w') as stdout, (workspace / 'stderr.txt').open('w') as stderr:
         process = subprocess.Popen(command,env=env,cwd=cwd,stdin=subprocess.PIPE,stdout=stdout,stderr=stderr,text=True)
@@ -87,7 +106,7 @@ def run(args, evidence) -> int:
                         raise RuntimeError('Actual human input did not route and finish')
                 process.stdin.write(json.dumps({'id':'input-report','type':'prompt','message':'/startup-input-proof-report'})+'\n')
             else:
-                process.stdin.write(json.dumps({'id':'adapter-proof','type':'prompt','message':'/startup-capacity-proof' if args.scenario=='capacity' else '/startup-adapter-refresh-proof' if args.scenario=='refresh' else '/startup-adapter-proof'})+'\n')
+                process.stdin.write(json.dumps({'id':'adapter-proof','type':'prompt','message':'/startup-integrated-proof' if args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'} else '/startup-capacity-proof' if args.scenario=='capacity' else '/startup-adapter-refresh-proof' if args.scenario=='refresh' else '/startup-adapter-proof'})+'\n')
             process.stdin.flush()
             deadline=time.monotonic()+110
             while not (workspace/'report.json').exists() and process.poll() is None and time.monotonic()<deadline:
@@ -113,6 +132,8 @@ def run(args, evidence) -> int:
     report=json.loads((workspace/'report.json').read_text()) if (workspace/'report.json').exists() else {'status':'FAIL','error':'No native adapter report'}
     evidence.update({'report':report,'events':events,'exitCode':exit_code,'stderr':(workspace/'stderr.txt').read_text(),'stdout':(workspace/'stdout.jsonl').read_text()})
     checks={}
+    if report['status']=='COMPLETE' and args.scenario in {'integrated','single','partial','ordinary-root','ordinary-child','helper'}:
+        checks=report['checks'] | {'native_completion':exit_code==0}
     if report['status']=='COMPLETE' and args.scenario=='capacity':
         proof=next(event for event in events if event['kind']=='native-capacity-proof')
         checks={'native_completion':exit_code==0,'native32_explicit1':proof['blocked']['capacity']['nativeLimit']==32 and proof['blocked']['capacity']['explicitLimit']==1,'idle_wakes_blocked':all(proof['blocked']['deliveries'][key]['kind']=='capacity-blocked' for key in ['capacity-blocked-one','capacity-blocked-two']),'running_injection_accepted':proof['blocked']['deliveries']['capacity-injected']['outcome']=='injected','aggregate_native_turn_limit':bool(proof['activeCounts']) and max(proof['activeCounts'])<=1,'pending_cues_resume':any(employee['checkpoint'] and employee['checkpoint'].get('assignment')=='capacity-blocked-two' for employee in proof['final']['employees']),'ordinary_running_helper_denied':any(event['kind']=='provider' and any(message['role']=='toolResult' and message.get('toolCallId')=='fixture-capacity-helper' and message.get('isError') and 'capacity' in str(message['content']) for message in event['context']['messages']) for event in events),'ordinary_batch_count_bounded':proof['batch']['rejected'],'native_rejection_releases_slot':'does-not-exist' in json.dumps(proof['rejected']) and proof['afterRejected']['capacity']['available']==1,'blocked_retry_no_provider_spin':proof['providersBeforeRetry']==proof['providersAfterRetry']}
@@ -160,6 +181,18 @@ def run(args, evidence) -> int:
         transitions=[event['details'] for event in events if event['kind']=='tool' and event.get('name')=='startup_item' and not event.get('error')]
         checks['canonical_native_item_phases']=all([entry['status'] for entry in transitions if entry['request']['itemId']==item]==['EXECUTING','REVIEW','REVIEW','REVIEW','READY_TO_LAND','DONE'] for item in ['item-first-event','item-second-event'])
         checks['native_item_role_hierarchy']=all(next(employee['role'] for employee in staff['employees'] if employee['id']==entry['actorId'])=={'assign':'architect','review':'dev','qa_assign':'architect','qa':'qa','gate':'architect','decide':'manager'}[entry['request']['action']] for entry in transitions)
+    if report['status']=='COMPLETE' and args.scenario=='integrated':
+        final=next(event for event in events if event['kind']=='integrated-final')
+        projected=[message['content'] for event in events if event['kind']=='provider' for message in event['context']['messages'] if message['role']=='developer' and isinstance(message['content'],str) and message['content'].startswith('STARTUP_BINDING=')]
+        roles=set()
+        complete=bool(projected)
+        for text in projected:
+            marker=json.loads(text.split('\n')[0].removeprefix('STARTUP_BINDING='))
+            employee=next(entry for entry in final['staff'] if entry['id']==marker['employeeId'])
+            roles.add(employee['role'])
+            complete=complete and Path(employee['source']['rolePath']).read_text() in text and loop.read_text() in text
+        checks['allSixCanonicalPersonas']=complete and roles=={'manager','dev','qa','architect','devops','pa'}
+    evidence['transcripts']={str(path.relative_to(workspace)):path.read_text() for path in (workspace/'profile').rglob('*.jsonl')}
     evidence['checks']=checks
     evidence['status']='PASS' if checks and all(checks.values()) else 'FAIL'
     return 0 if evidence['status']=='PASS' else 1

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from probe_workspace import create_workspace, resume_workspace
 import argparse
 import gzip
 import hashlib
@@ -27,20 +28,18 @@ def main():
     try:
         repo = Path(__file__).resolve().parents[3]
         workspace = args.workspace.resolve()
-        if not workspace.is_relative_to(repo / '.superpowers/sdd/2026-10-13-startup-v6/native-scratch'):
-            raise ValueError('Duty proof requires isolated plan scratch')
-        workspace.mkdir(parents=True, exist_ok=args.scenario=='resume')
+        if args.scenario == 'resume':
+            resume_workspace(workspace, repo, 'duties')
+        else:
+            create_workspace(workspace, repo, 'duties')
         cwd = workspace / 'cwd'
         cwd.mkdir(exist_ok=args.scenario=='resume')
-        sources = workspace / 'sources'
-        for name in ['startup-loop', *[f'startup-role-{role}' for role in ['manager','devops','architect','dev','qa','pa']]]:
-            path = sources / 'skills' / name / 'SKILL.md'
-            path.parent.mkdir(parents=True, exist_ok=args.scenario=='resume')
-            path.write_text(f'---\nname: {name}\n---\nComplete isolated {name} canonical fixture source.\n')
+        sources = repo
+        (workspace/'state/omp').mkdir(parents=True,exist_ok=args.scenario=='resume')
         config = workspace / 'config.yml'
         config.write_text('task:\n  batch: true\n  agentIdleTtlMs: 0\n  speculativeLaunch: false\nasync:\n  enabled: true\nproviders:\n  cacheWarming: false\nmemories:\n  enabled: false\nmcp:\n  enableProjectConfig: false\n')
         env = {key: value for key, value in os.environ.items() if key in {'PATH','HOME','TMPDIR','LANG','LC_ALL','TERM','SHELL','USER','LOGNAME'}}
-        env.update({'PI_CODING_AGENT_DIR': str(workspace/'profile'), 'STARTUP_NAME': 'duty-proof', 'JP_SKILLS_HOME': str(workspace/'home'), 'STARTUP_SKILLS_ROOT': str(sources), 'STARTUP_ADAPTER_EVENTS': str(workspace/'events.jsonl'), 'STARTUP_ADAPTER_REPORT': str(workspace/'report.json')})
+        env.update({'XDG_STATE_HOME':str(workspace/'state'),'PI_CODING_AGENT_DIR': str(workspace/'profile'), 'STARTUP_NAME': 'duty-proof', 'JP_SKILLS_HOME': str(workspace/'home'), 'STARTUP_SKILLS_ROOT': str(sources), 'STARTUP_ADAPTER_EVENTS': str(workspace/'events.jsonl'), 'STARTUP_ADAPTER_REPORT': str(workspace/'report.json')})
         omp = shutil.which('omp')
         if omp is None:
             raise FileNotFoundError('Installed compiled OMP required')
@@ -69,6 +68,7 @@ def main():
         report = json.loads((workspace/'report.json').read_text()) if (workspace/'report.json').exists() else {'status':'MISSING'}
         evidence.update({'events':[json.loads(line) for line in (workspace/'events.jsonl').read_text().splitlines()] if (workspace/'events.jsonl').exists() else [],'transcripts':{str(path):path.read_text() for path in (workspace/'profile').rglob('*.jsonl')},'report':report,'exitCode':exit_code,'stderr':(workspace/'stderr.txt').read_text(),'stdout':(workspace/'stdout.jsonl').read_text()})
         paths = [repo/'extensions/startup/index.ts', *sorted((repo/'extensions/startup/src').glob('*.ts')), Path(__file__), Path(__file__).with_name('native-duties.ts'), Path(__file__).with_name('native-adapter.ts')]
+        paths += [Path(__file__).with_name('probe_workspace.py'), *sorted((repo/'skills').glob('startup*/**/*.md'))]
         evidence['sourceHashes'] = {str(path.relative_to(repo)):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
         results = report.get('results', [])
         evidence['checks'] = {'complete': report['status']=='COMPLETE' and exit_code==0, 'five_raw_reads':len(results)==5, 'raw_display':len(results)==5 and all(json.loads(result['details']['displayContent']['text'])=={'healthy':True} for result in results), 'complete_metadata':len(results)==5 and all(result['details']['fileSize']==17 and result['details']['totalLines']==2 and result['details']['displayContent']['startLine']==1 for result in results)}
@@ -81,9 +81,12 @@ def main():
                 first=report['snapshots'][0]['status']['duties'][0]
                 last=report['final']['duties'][0]
                 evidence['checks'].update({'same_root':report['rootSession']==evidence['previous']['rootSession'],'staff_retained':report['employee']['id']==evidence['previous']['employee']['id'],'no_false_initial_health':first['currentHealth']=='unknown','new_owner_observation':last['lastObservation']['ownerEpoch']>=2})
+        projections=[message['content'] for row in evidence['events'] if row['kind']=='provider' for message in row['context']['messages'] if message['role']=='developer' and isinstance(message['content'],str) and message['content'].startswith('STARTUP_BINDING=')]
+        if args.scenario != 'raw':
+            evidence['checks']['canonicalSources']=bool(projections) and all((repo/'skills/startup-loop/SKILL.md').read_text() in text and any((repo/'skills'/f'startup-role-{role}'/'SKILL.md').read_text() in text for role in ['manager','devops']) for text in projections)
         evidence['status'] = 'PASS' if all(evidence['checks'].values()) else 'FAIL'
         return 0 if evidence['status']=='PASS' else 1
-    except Exception as error:
+    except BaseException as error:
         evidence['failure'] = {'kind':type(error).__name__,'message':str(error)}
         raise
     finally:

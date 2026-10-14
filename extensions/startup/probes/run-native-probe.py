@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the installed compiled OMP in an isolated deterministic native fixture."""
+from probe_workspace import create_workspace
 import argparse
 import hashlib
 import gzip
@@ -57,11 +58,13 @@ def main() -> int:
     parser.add_argument("--workspace", required=True, type=Path)
     parser.add_argument("--evidence", required=True, type=Path)
     args = parser.parse_args()
+    args.evidence.parent.mkdir(parents=True, exist_ok=True)
+    initial = args.evidence.with_name(args.evidence.name + '.tmp')
+    initial.write_bytes(gzip.compress(json.dumps({'gateVersion': 1, 'status': 'FAIL', 'checks': {}, 'failure': 'Initialized; interrupted or incomplete'}).encode()))
+    initial.replace(args.evidence)
     repo = Path(__file__).resolve().parents[3]
     workspace = args.workspace.resolve()
-    if not workspace.is_relative_to(repo / ".superpowers/sdd/2026-10-13-startup-v6"):
-        raise ValueError(f"Probe workspace must be under this plan: {workspace}")
-    workspace.mkdir(parents=True, exist_ok=False)
+    create_workspace(workspace, repo, "feasibility")
     agent_dir = workspace / "agent-data"
     cwd = workspace / "cwd"
     agents = cwd / ".omp" / "agents"
@@ -69,8 +72,7 @@ def main() -> int:
     agents.mkdir(parents=True)
     role_path = repo / "skills/startup-role-devops/SKILL.md"
     role = role_path.read_text()
-    design = (repo / "docs/superpowers/specs/2026-10-13-startup-v6-design.md").read_text()
-    loop = design.split("**Canonical prompt text to add through the shared loop skill:**", 1)[1].split("```text\n", 1)[1].split("```", 1)[0].rstrip("\n")
+    loop = (repo / "skills/startup-loop/SKILL.md").read_text()
     (agents / "startup-probe-devops.md").write_text(
         '---\nname: startup-probe-devops\ndescription: Isolated local health fixture\n'
         'model: startup-probe/offline\ntools: [read]\nblocking: false\nread-summarize: false\n---\n' + role

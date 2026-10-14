@@ -1,0 +1,198 @@
+{
+  "candidate": "6.0.0",
+  "nativeVersion": "omp/18.8.9",
+  "productFixHead": "eaa3626",
+  "unitTests": {
+    "passed": 142,
+    "assertions": 736
+  },
+  "typecheck": "PASS",
+  "driverTests": 6,
+  "artifacts": {
+    "native-integrated-evidence.json.gz": {
+      "sha256": "61759c5e1bbc2ffd77dd51250295e4c942254590f7eefbe515a9b79df6e09c53",
+      "bytes": 8337821,
+      "status": "PASS",
+      "checks": 21,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-adapter-evidence.json.gz": {
+      "sha256": "5e8dfc6277acdfd810225370c62a91ded88d00381b26108d2fb6c3cbec42996a",
+      "bytes": 2121064,
+      "status": "PASS",
+      "checks": 14,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-capacity-evidence.json.gz": {
+      "sha256": "06efcb03e73b788561942cbac6dc0dc099ecaa4876bbca942fc4cc3887c3e87c",
+      "bytes": 469808,
+      "status": "PASS",
+      "checks": 10,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-input-evidence.json.gz": {
+      "sha256": "7083ac159c444b7cb1c7378c87022f5de29b03a37841629287146df49654450d",
+      "bytes": 974972,
+      "status": "PASS",
+      "checks": 10,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-refresh-evidence.json.gz": {
+      "sha256": "71dade7fbf318aac6476a753af0db99a39ca931ed0348222a5ff3e3a8c659080",
+      "bytes": 195622,
+      "status": "PASS",
+      "checks": 5,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-single-evidence.json.gz": {
+      "sha256": "1111f08f00288d92ee04646da20406082b90f571b8b8503a3392a7ea35b34261",
+      "bytes": 83947,
+      "status": "PASS",
+      "checks": 5,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-canonical-helper-pass.json.gz": {
+      "sha256": "dad80ba3ff4a40bc4a9b09dc2b387b34d97132f9ce32a1e9c8d7fe5eb87311dc",
+      "bytes": 124380,
+      "status": "PASS",
+      "checks": 4,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-ordinary-root-pass.json.gz": {
+      "sha256": "bc73bb0b6b0a6aa62826a5d7b236350e8b2ed2c1066b0eaf676356099b3ba6b0",
+      "bytes": 46803,
+      "status": "PASS",
+      "checks": 4,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-ordinary-child-pass.json.gz": {
+      "sha256": "30d616b66810651a145ac48660207c9214540f65ef6f3700150ca7269cc48566",
+      "bytes": 125966,
+      "status": "PASS",
+      "checks": 4,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-partial-focused-pass.json.gz": {
+      "sha256": "eae4705ddc4ee8ef6313d3780eac062f718cf8bd59cb13ca90707049919936dd",
+      "bytes": 829248,
+      "status": "PASS",
+      "checks": 6,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-duty-read-evidence.json.gz": {
+      "sha256": "96c08214f6a1f954a6ad21ebfda87197d039aa41feebd24879bb9b59f637db9c",
+      "bytes": 7197,
+      "status": "PASS",
+      "checks": 4,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-duty-monitor-evidence.json.gz": {
+      "sha256": "819297322ce16efac389e8037bb8f8249a663ccbc9b98934637e75f2196ea9f2",
+      "bytes": 259498,
+      "status": "PASS",
+      "checks": 9,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-duty-resume-evidence.json.gz": {
+      "sha256": "a8afc83eb558ec0278b3318bb9df5301db9f5b7a952154a0b3af5099f765d88b",
+      "bytes": 359132,
+      "status": "PASS",
+      "checks": 7,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-boot-evidence.json.gz": {
+      "sha256": "56e5feadbb5e1f5f3115350d9c88e231f371ae7930425a79c92532a51130fa81",
+      "bytes": 10844,
+      "status": "PASS",
+      "checks": 21,
+      "recordedSourceHashesCurrent": true
+    },
+    "native-cold-restart-evidence.json.gz": {
+      "sha256": "e033f254a95abf26699c1e41a2bb9f9a8c61f6b83ec9670c67990d9ee02d3984",
+      "bytes": 448872,
+      "status": "PASS",
+      "checks": 20,
+      "recordedSourceHashesCurrent": true
+    },
+    "prompt-only-evidence.json": {
+      "sha256": "271ec4b2b265a014f0b5b22e42777bb9350261d1db1f985129f9005c62794ece",
+      "bytes": 217017,
+      "status": "PASS",
+      "checks": 14,
+      "recordedSourceHashesCurrent": true
+    }
+  },
+  "reusedInstallerProof": {
+    "artifact": "native-install-recovery-evidence.json.gz",
+    "status": "PASS",
+    "checks": 6,
+    "boundary": "Installer source unchanged; driver ownership/initialized FAIL portability updated. Historical driver hash retained. Actual native partial link failure/uninstall preservation accepted from Task5."
+  },
+  "retainedFailures": [
+    "native-cold-recovery-read-failure.json.gz",
+    "native-partial-launch-failure.json.gz",
+    "native-partial-focused-evidence.json.gz",
+    "native-ordinary-root-failure.json.gz",
+    "native-ordinary-child-failure.json.gz",
+    "native-canonical-helper-failure.json.gz"
+  ],
+  "finalSourceHashes": {
+    "CHANGELOG.md": "ee543f45bce675066ac9d416d446b2767787d2b7952e1c83dfb34a561f2b0010",
+    "README.md": "3ca59f719f01fc9c3f1a002a8df7da1c2a6e208922d2b0f0beae309e06b00992",
+    "VERSION": "54ef76332b31df830699e9d4138396885ab72bae260a034a81ff02bf32d8e90a",
+    "docs/superpowers/specs/2026-10-13-startup-v6-design.md": "c83bf58f997999b202250f4f021da2e840a7b549e9adc88a1041fe8e0d8574b5",
+    "extensions/startup/README.md": "a21c658553290aec32c3c8f7ff3a389ad016d813ccde584a7a4e65c6f6c46e79",
+    "extensions/startup/index.ts": "b03f81b7c2fb259b49b3c3e7a0941fa8391fe521347d3175873090ac73427abc",
+    "extensions/startup/install.ts": "e282a293b9dafa0dc4cf9ca320884c137603b89768c79ea48ef80a10c80eb857",
+    "extensions/startup/probes/native-adapter.ts": "ac0cf2c590306dce33f604104bd20cb63a0f2e213ca23de158f39726d8f1bf9b",
+    "extensions/startup/probes/native-boot.ts": "b888d71d52b92fc43d28d9f8aeda4c60dc3d788a5a319a8c3a5a0f5d675a5d10",
+    "extensions/startup/probes/native-cold.ts": "96a63550d1d535f805cb222129cf5fafc3c1f7baf87b9ab9e502e37971cc9abb",
+    "extensions/startup/probes/native-duties.ts": "a57bdcb47706646293bafdf8e8e24757184d49a7e528e84b419267d13390834b",
+    "extensions/startup/probes/native-feasibility.ts": "adc34ca6123d05abc141ff0c39bd555693fc5f4a8f2346fab1d50e46b2c88335",
+    "extensions/startup/probes/native-integrated.ts": "3562a6e02d2fa88e01bc412b2b81cb366f8db459cb2c1cf2f83e27d578e77df4",
+    "extensions/startup/probes/probe_workspace.py": "1b88bde4c1877a25cb3cdd38d3c19bde06c8a71f4bfa628c199ccdef305d0fc1",
+    "extensions/startup/probes/run-adapter-probe.py": "1db6ad825bebb4296dff86e15b3eee4756654031b07589815c29f469d07ce3e6",
+    "extensions/startup/probes/run-boot-probe.py": "886d4e2c9b3fcec7d80e59bae2d1ccf02a61be2cc3764dc157d41112ec02092a",
+    "extensions/startup/probes/run-cold-probe.py": "aa6d389414c21326dd2b55f9643bddf64c44d0a5b775151aa379ecd52a846661",
+    "extensions/startup/probes/run-duties-probe.py": "8431960a0ff84411974a6ead2c03997593d1c42ed2b4c824b3bee91fb2f59f15",
+    "extensions/startup/probes/run-install-recovery-probe.py": "9a20d49c5f82b555975b061249095158286bca8a513c20d034ead12d263410ff",
+    "extensions/startup/probes/run-native-probe.py": "e210e8b51333d8004a16c6b1dc7e87471f2b7a89a53801ce2583585b4b97a035",
+    "extensions/startup/probes/test_adapter_probe_driver.py": "20099602c7ed0473492c8e6d31dc721ebe193b90d4d178b6281acde3249b77f4",
+    "extensions/startup/probes/test_boot_probe_driver.py": "2c3ecc6e04a9839d8861dd75f0ef87353bbf7d4fbae08d6092521b9eb5fd0a1a",
+    "extensions/startup/probes/test_native_probe_driver.py": "dd9744d75724b939bf5243ad38dbf5d57959a0ef290466c99140c67d51d84738",
+    "extensions/startup/probes/v6-acceptance.md": "82bca2c2e90a5abaa8d22240909553cc47ed6b193aa524eaac33558c28f09df0",
+    "extensions/startup/probes/v6-checks.txt": "c80de1a4887eb0dc3b47ae6393ded8e5b87ba289f4ad2b3c68d222bc9ca683f5",
+    "extensions/startup/src/boot.ts": "2884b65e6e0953d254e0a96ea0ebcd7d4f30264ce84a5e6dbceb3f2f242d541a",
+    "extensions/startup/src/contracts.ts": "5501d09075710b97fa57d7f8fcbe636ab8fea4f8d084c8d54628ab13ae05958c",
+    "extensions/startup/src/duties.ts": "426b45f795ccd0a77b4527c1f21a4e05b472cf62400c399bb4e907d47251a2b9",
+    "extensions/startup/src/items.ts": "5e7974343e9f3c21f9a4dca43c34b7d462b16ff7ea9808fe0799611723a787c7",
+    "extensions/startup/src/native.d.ts": "c0e736cee66f7dfbd36ab5bda37f9a44ca943aeb6f652eb7a90c8f83c7866dfd",
+    "extensions/startup/src/omp-adapter.ts": "16695216e1e54cc051f2879421c7ff5ab071ac6bd1900ca5c15feaae69b3b6b8",
+    "extensions/startup/src/profiles.ts": "b218fca09f5f210b59ba220ac59cca21da66d533c386fba033b34d80e8ca820b",
+    "extensions/startup/src/resources.ts": "5dac18e8e728355095393535071fc3d48662a644f796f4cbbc2d1c8a624b64de",
+    "extensions/startup/src/store.ts": "5fb2d106b376e60f9b5690de9c5436c18570abd440d9b2c320cbe4b2d6f36b01",
+    "extensions/startup/tests/adapter.test.ts": "c0e4bc1367b058dd320c44b09768e15e0f8411e9127f0b5f983a40755078ba99",
+    "extensions/startup/tests/boot.test.ts": "c9a68465740508aa8365b30493c01e3ecf7d992e32d0a4ec422418ba4d2f9376",
+    "extensions/startup/tests/duties.test.ts": "98592b71164843ba05a04ac4c3de2105e9a262de6949626b6e423bfe96265083",
+    "extensions/startup/tests/entry.test.ts": "c0c872efcd82df087841bf9d5e3a035f7f9b5159660214e522c2c15e3431f6be",
+    "extensions/startup/tests/install.test.ts": "ac6d7e9a56889762ac0342564c07a12365098831f77bde7094449c9a561162ff",
+    "extensions/startup/tests/profiles.test.ts": "e3774658f86a4061d5afae33f8c3796668d3367ccfff602a4799bcb89101a58e",
+    "extensions/startup/tests/store.test.ts": "c21f4853837a30ec950dd2a9df6c946737c49831b664895fd79ba5dbcb5c55c8",
+    "skills/hire/SKILL.md": "c9aa1a70d81fdfc78c166327fbe6073fd84974372d74c18f06f126acfbcf13c1",
+    "skills/startup/SKILL.md": "d06d3033f122c8b5a6927597636974148248f307db52bc875f7e3270bd839bfa",
+    "skills/startup/references/role-dispatch.md": "1d3dc62ac61966f16abb8be271d21ae9659ac407a680917d70f7d2f9ba22227e",
+    "skills/startup-intake/SKILL.md": "2e302ebb484ee9cc763a7fca1727fd3dcef3b72fb97edf51f4a3d12b440eb1e3",
+    "skills/startup-intake/references/queue-records.md": "21c217641fc1945e6a23d601c186e4b18264cd19a60b1df1c42aac3d2b4f3db9",
+    "skills/startup-loop/SKILL.md": "b57145d608c1f91962a8159f372266a0d2af1e86e665a756b2b4ccf883c09427",
+    "skills/startup-retro/SKILL.md": "6eb52727ff611a67252795f8f13fdfd55c953f1d3573d55673a7a89572da4516",
+    "skills/startup-role-architect/SKILL.md": "18a070983a44d84ead297b2d89ed3c10e53b520a196d59a674752f5718bbb7e5",
+    "skills/startup-role-dev/SKILL.md": "a29630276fe7c6c8a0de6f3b1dcb0ceb1f2325bc3348090621182de39f29ea0a",
+    "skills/startup-role-devops/SKILL.md": "15f277e717e3ef6d5f0a90d035c763f0d0423f4577a1ae3cd7c7660dc8231fb1",
+    "skills/startup-role-manager/SKILL.md": "573c8c5a8098d87ee94d60f5004d032abd35d46ba9533a7c708dd2bb42cc0013",
+    "skills/startup-role-pa/SKILL.md": "67576c3ffd38fd5667445f7f804fd8776c5d6d2f82c0a71bfd0e81f228516e6f",
+    "skills/startup-role-qa/SKILL.md": "98dcb477a5ef1db68cfdc18be6f1cee7b48b0eb219184b45532ecb6b6b04906c",
+    "skills/startup-sprint/SKILL.md": "6086e1bad543b501d1dc0b70abd19ba419bb9bf81cb258d3f6b812e5dab966d6",
+    "skills/startup-status/SKILL.md": "c532b8d12aa54cef7a256d2262d2a5c86c8c74b7217817bdd12e481a220aa93d",
+    "skills/startup-stop-doing/SKILL.md": "e35300247f0a59b5c67c47431e022c16d134cb215911e2d3aaa70afc59f84786"
+  }
+}

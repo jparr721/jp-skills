@@ -80,3 +80,17 @@ Only the current host owns timers; offline means no monitoring. This version sup
 ## Verification
 
 `bun run --cwd extensions/startup typecheck` and `bun test extensions/startup/tests` run local checks. Compiled native probe evidence is retained under `probes/`; offline fixture providers exercise the real installed OMP runtime without external services. Installation, source admission and file probes do not establish production deployment health.
+
+## Cold recovery and local candidate proof
+
+Resume the same saved manager native transcript with the same named profile and isolated environment used to install and boot it:
+
+```sh
+omp --profile my-startup --resume /absolute/path/to/saved-manager.jsonl
+```
+
+The cold probe uses this exact `--resume` form; the installed boot probe also verifies `--session <saved-file>`. Starting a brand-new root with `startup select` is not same-session recovery. After the real default 60000 ms owner lease expires, the current owner inspects saved claims and grants, reconciles uncertain work with fresh native verification, binds its current manager source and uses `startup_dispatch {messageIds:[savedId]}`. No uncertain mutation is replayed. Preserved child transcripts and source admission retain employee identity; runtime observations resume only while the new host runs.
+
+Generated technical employee profiles declare native `spawns: [task]` for bounded procedure supervisors/reviewers. Native recursion, disabled-agent policy, budgets and aggregate capacity still apply. Ordinary helpers receive no Startup employee identity or inbox/hiring authority; PA retains no child-spawn permission.
+
+[V6 acceptance](probes/v6-acceptance.md) contains reproducible owned-fixture commands, fingerprints, current proofs and reused component boundaries. VERSION 6.0.0 is a local candidate. Final review, publication and normal-profile installation remain separate actions.

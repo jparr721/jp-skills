@@ -133,7 +133,8 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
           entry.text.includes(cue.correlation),
       );
       let call: ToolCall | null =
-        marker?.employeeId === "manager"
+        marker?.employeeId === "manager" ||
+        !context.tools?.some((tool) => tool.name === "yield")
           ? null
           : {
               type: "toolCall",
@@ -159,33 +160,36 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
             arguments: {
               captureId: `capture-${cue.correlation}`,
               eventId: cue.correlation,
-              rows: [
-                {
-                  id: `item-${cue.correlation}`,
-                  expectedRevision: null,
-                  fields: {
-                    request:
-                      typeof cue.payload.raw === "string"
-                        ? cue.payload.raw
-                        : (cue.payload.raw.text ?? cue.payload.raw.textPreview),
-                    acceptance: ["fixture complete"],
-                    blocked_on: [],
-                    status: "QUEUED",
-                  },
+              rows: (cue.correlation === "MULTI"
+                ? ["MULTI-A", "MULTI-B"]
+                : [cue.correlation]
+              ).map((itemId: string) => ({
+                id: `item-${itemId}`,
+                expectedRevision: null,
+                fields: {
+                  request:
+                    typeof cue.payload.raw === "string"
+                      ? cue.payload.raw
+                      : (cue.payload.raw.text ?? cue.payload.raw.textPreview),
+                  acceptance: ["fixture complete"],
+                  blocked_on: [],
+                  status: "QUEUED",
                 },
-              ],
+              })),
               receipt: { fixture: true },
             },
           };
         else {
           const target =
-            cue.payload.kind === "team-assignment"
-              ? cue.payload.architect
-              : marker?.employeeId === "manager" || cue.kind === "report"
-                ? null
-                : scope?.architect && scope.architect !== marker?.employeeId
-                  ? scope.architect
-                  : "manager";
+            marker?.employeeId === "manager" && cue.payload.coordinate
+              ? cue.payload.devops
+              : cue.payload.kind === "team-assignment"
+                ? cue.payload.architect
+                : marker?.employeeId === "manager" || cue.kind === "report"
+                  ? null
+                  : scope?.architect && scope.architect !== marker?.employeeId
+                    ? scope.architect
+                    : "manager";
           call = {
             type: "toolCall",
             id: `fixture-settle-${count}`,
@@ -194,7 +198,10 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
               claimId: claim.claim.id,
               result: {
                 id: `result-${claim.claim.id}`,
-                kind: "completed",
+                kind:
+                  cue.payload.kind === "fixture-question"
+                    ? "question"
+                    : "completed",
                 output: { fixture: true },
                 checkpoint: { assignment: cue.id },
                 outgoing:
@@ -204,9 +211,16 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
                         {
                           id: `report-${cue.id}`,
                           recipient: target,
-                          kind: "report",
+                          kind:
+                            marker?.employeeId === "manager"
+                              ? "assignment"
+                              : "report",
                           correlation: cue.correlation,
-                          payload: { fixture: true },
+                          payload:
+                            cue.payload.coordinate &&
+                            marker?.employeeId !== "manager"
+                              ? cue.payload
+                              : { fixture: true, originalPayload: cue.payload },
                         },
                       ],
               },
@@ -412,6 +426,55 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
             ],
           },
         };
+      let finalText: string = "Fixture root idle.";
+      if (
+        process.env.STARTUP_INTEGRATED_SCENARIO === "integrated" &&
+        marker?.employeeId === "manager" &&
+        JSON.stringify(context.messages).includes("INTEGRATED_READY_SWEEP")
+      ) {
+        const delegated = context.messages.some(
+          (entry) =>
+            entry.role === "toolResult" &&
+            entry.toolCallId === "integrated-delegate" &&
+            !entry.isError,
+        );
+        const waited = context.messages.some(
+          (entry) =>
+            entry.role === "toolResult" &&
+            entry.toolCallId === "integrated-wait",
+        );
+        const finalized = context.messages.some(
+          (entry) =>
+            entry.role === "assistant" &&
+            entry.content.some(
+              (part) =>
+                part.type === "text" && part.text === "INTEGRATED_EARLY_FINAL",
+            ),
+        );
+        if (!delegated) {
+          if (!waited)
+            call = {
+              type: "toolCall",
+              id: "integrated-wait",
+              name: "wait",
+              arguments: {},
+            };
+          else if (!finalized) {
+            call = null;
+            finalText = "INTEGRATED_EARLY_FINAL";
+          } else
+            call = {
+              type: "toolCall",
+              id: "integrated-delegate",
+              name: "task",
+              arguments: {
+                startup: "delegate",
+                eventId: "AGENTS",
+                developers: 1,
+              },
+            };
+        }
+      }
       const nativeDefaultParent: boolean = context.systemPrompt.some((prompt) =>
         prompt.includes("NATIVE_DEFAULT_AGENT_PROBE"),
       );
@@ -429,6 +492,21 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
                 solutionSpace: "Fixture only",
               },
             ],
+          },
+        };
+      if (
+        nativeDefaultParent &&
+        count === 1 &&
+        process.env.STARTUP_INTEGRATED_SCENARIO === "single"
+      )
+        call = {
+          type: "toolCall",
+          id: "single-default-child",
+          name: "task",
+          arguments: {
+            name: "default-scout",
+            task: "Return a read-only fixture checkpoint",
+            solutionSpace: "Fixture only",
           },
         };
       const stale: boolean =
@@ -456,12 +534,128 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
             content: "Unauthorized stale source action",
           },
         };
+      const coldPhase = process.env.STARTUP_COLD_PHASE;
+      const coldRepair = context.messages.findLast(
+        (entry) =>
+          entry.role === "toolResult" && entry.toolCallId === "cold-repair",
+      );
+      if (
+        coldPhase === "A" &&
+        cue?.payload.kind === "cold-interrupt" &&
+        claim?.claim.messageId === cue.id &&
+        !coldRepair
+      )
+        call = {
+          type: "toolCall",
+          id: "cold-repair",
+          name: "startup_repair",
+          arguments: { authorizationId: "cold-action" },
+        };
+      if (
+        coldPhase === "B" &&
+        marker?.employeeId === "manager" &&
+        scope?.mode === "recovery"
+      ) {
+        const denied = context.messages.some(
+          (entry) =>
+            entry.role === "toolResult" &&
+            entry.toolCallId === "cold-recovery-denial",
+        );
+        call = denied
+          ? null
+          : {
+              type: "toolCall",
+              id: "cold-recovery-denial",
+              name: "startup_claim",
+              arguments: {},
+            };
+      }
+      if (
+        coldPhase === "B" &&
+        cue?.payload.kind === "cold-stale" &&
+        !context.messages.some(
+          (entry) =>
+            entry.role === "toolResult" &&
+            entry.toolCallId === "cold-old-claim",
+        )
+      )
+        call = {
+          type: "toolCall",
+          id: "cold-old-claim",
+          name: "startup_settle",
+          arguments: {
+            claimId: cue.payload.oldClaimId,
+            result: {
+              id: "cold-stale-result",
+              kind: "completed",
+              output: { stale: true },
+              checkpoint: null,
+              outgoing: [],
+            },
+          },
+        };
+      if (
+        process.env.STARTUP_INTEGRATED_SCENARIO === "ordinary-child" &&
+        ((marker?.employeeId && marker.employeeId !== "manager") ||
+          context.systemPrompt.some((prompt) =>
+            prompt.includes("NATIVE_ORDINARY_CHILD_PROBE"),
+          )) &&
+        !context.messages.some(
+          (message) =>
+            message.role === "toolResult" &&
+            message.toolCallId === "ordinary-child-refusal",
+        )
+      )
+        call = {
+          type: "toolCall",
+          id: "ordinary-child-refusal",
+          name: "task",
+          arguments: {
+            context: "Explicit isolated ordinary refusal fixture",
+            tasks: [
+              {
+                name: "ordinary-refused-child",
+                agent: "fixture-refused",
+                task: "Explicit isolated refusal",
+                solutionSpace: "Fixture only",
+                isolated: false,
+              },
+            ],
+          },
+        };
+      if (
+        process.env.STARTUP_INTEGRATED_SCENARIO === "helper" &&
+        marker?.employeeId &&
+        marker.employeeId !== "manager" &&
+        !context.messages.some(
+          (message) =>
+            message.role === "toolResult" &&
+            message.toolCallId === "canonical-dev-helper",
+        )
+      )
+        call = {
+          type: "toolCall",
+          id: "canonical-dev-helper",
+          name: "task",
+          arguments: {
+            context: "Canonical pipeline bounded supervisor",
+            tasks: [
+              {
+                name: "procedure-helper",
+                agent: "task",
+                task: "Return a bounded read-only supervisor checkpoint",
+                solutionSpace: "Fixture only",
+                isolated: false,
+              },
+            ],
+          },
+        };
       const message: AssistantMessage = {
         role: "assistant",
         api: model.api,
         provider: model.provider,
         model: model.id,
-        content: call ? [call] : [{ type: "text", text: "Fixture root idle." }],
+        content: call ? [call] : [{ type: "text", text: finalText }],
         stopReason: call ? "toolUse" : "stop",
         timestamp: Date.now(),
         usage: {
@@ -475,6 +669,57 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
       };
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "start", partial: message });
+      if (
+        coldPhase === "A" &&
+        ((cue?.payload.kind === "cold-interrupt" && coldRepair) ||
+          (cue?.payload.kind === "cold-manager-hold" &&
+            claim?.claim.messageId === cue.id))
+      ) {
+        record({
+          kind: "cold-provider-held",
+          employeeId: marker?.employeeId,
+          claim,
+          coldRepair,
+        });
+        return stream;
+      }
+      const buildRelease = process.env.STARTUP_INTEGRATED_RELEASE;
+      if (
+        buildRelease &&
+        cue?.correlation === "BUILD" &&
+        cue.payload.kind === "architect-intake" &&
+        claim?.claim.messageId === cue.id &&
+        !existsSync(buildRelease)
+      ) {
+        record({
+          kind: "integrated-build-held",
+          employeeId: marker?.employeeId,
+          claimId: claim.claim.id,
+        });
+        void (async () => {
+          while (!existsSync(buildRelease)) await Bun.sleep(20);
+          if (call) {
+            stream.push({
+              type: "toolcall_start",
+              contentIndex: 0,
+              partial: message,
+            });
+            stream.push({
+              type: "toolcall_end",
+              contentIndex: 0,
+              toolCall: call,
+              partial: message,
+            });
+          }
+          stream.push({
+            type: "done",
+            reason: call ? "toolUse" : "stop",
+            message,
+          });
+          stream.end();
+        })();
+        return stream;
+      }
       const heldPath = process.env.STARTUP_ADAPTER_CAPACITY_RELEASE;
       if (
         cue?.payload.kind === "capacity-hold" &&

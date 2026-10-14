@@ -1,6 +1,6 @@
 # Startup V6: persistent staff, inbox, and loop
 
-**Status:** Proposed scope, not implemented. V5.0.1 remains the released version.
+**Status:** Implemented local V6.0.0 candidate with completed acceptance gates; independent final review remains pending. V5.0.1 remains the released version until separate publication authorization. See [portable acceptance and limits](../../../extensions/startup/probes/v6-acceptance.md). The design below records the approved architecture; native APIs are identified separately from companion operations.
 
 ## Problem and decision
 

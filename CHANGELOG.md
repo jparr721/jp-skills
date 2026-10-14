@@ -2,6 +2,26 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [6.0.0] - 2026-10-13
+
+Local candidate; publication remains separate. V5.0.1 is the previously released version.
+
+### Changed
+
+- Startup uses one high-level manager, fresh complete architect/QA/dev teams per intake, additive stable hiring, complete canonical role/shared-loop sources and durable scoped inboxes. Independent ready teams dispatch while other intake or clarification remains pending; queue drain preserves staff.
+- The OMP 18.8.9 companion retains native execution, capacity, helper policy and transcripts. Technical employees can invoke bounded generic task supervisors; PA remains without child spawning. Ordinary native batch/single/default-agent calls retain their grammar and authority.
+- Native boot and named-profile installation preserve existing root guidance, profiles and user state. Current-root cold recovery resumes the saved native transcript, waits the real lease, reconciles uncertainty and explicitly dispatches saved messages.
+- Assigned host-lifetime duties support verified local JSON observation and serialized authorized repair. Host exit is offline; this candidate has no deployment/service-health connector. Non-OMP dispatch uses canonical prompts without native persistence guarantees.
+
+### Fixed
+
+- Scoped host verification reads remain available during recovery while ordinary reads stay fenced.
+- Proven terminal native activation/helper failures release only their matching reservations; partial retries retain successful siblings and logical identities.
+
+### Verification
+
+- Local candidate evidence: [V6 acceptance](extensions/startup/probes/v6-acceptance.md), 142 behavioral tests/736 assertions, typecheck, six driver tests, compiled native proofs and separate actual Codex prompt-only proof. Independent final review and publication remain required.
+
 ## [5.0.1] - 2026-10-13
 
 ### Fixed

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Isolated native link failure after symlink creation, before lock persistence."""
+from probe_workspace import create_workspace
 import argparse
 import gzip
 import hashlib
@@ -14,11 +15,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--workspace', type=Path, required=True)
 parser.add_argument('--evidence', type=Path, required=True)
 args = parser.parse_args()
+args.evidence.parent.mkdir(parents=True,exist_ok=True)
+initial=args.evidence.with_name(args.evidence.name+'.tmp')
+with gzip.open(initial,'wt') as file:json.dump({'status':'FAIL','checks':{},'failure':'Probe initialized; interrupted or incomplete'},file)
+os.replace(initial,args.evidence)
 repo = Path(__file__).resolve().parents[3]
 workspace = args.workspace.resolve()
-if not workspace.is_relative_to(repo / '.superpowers/sdd/2026-10-13-startup-v6/native-scratch'):
-    raise ValueError('Recovery proof requires plan scratch isolation')
-workspace.mkdir(parents=True, exist_ok=False)
+create_workspace(workspace, repo, "install-recovery")
 profile = 'startup-recovery-' + uuid.uuid4().hex[:10]
 env = {key: value for key, value in os.environ.items() if key in {'PATH', 'HOME', 'TMPDIR', 'LANG', 'TERM', 'SHELL', 'USER', 'LOGNAME'}}
 env.update({'PI_CONFIG_DIR': '.omp-' + profile, 'XDG_DATA_HOME': str(workspace / 'data'), 'XDG_STATE_HOME': str(workspace / 'state'), 'XDG_CACHE_HOME': str(workspace / 'cache')})
@@ -65,6 +68,8 @@ try:
     evidence['status'] = 'PASS'
 finally:
     evidence['sourceHashes'] = {str(path.relative_to(repo)): hashlib.sha256(path.read_bytes()).hexdigest() for path in [installer, Path(__file__)]}
-    with gzip.open(args.evidence, 'wt') as file:
+    temporary=args.evidence.with_name(args.evidence.name+'.tmp')
+    with gzip.open(temporary, 'wt') as file:
         json.dump(evidence, file)
+    os.replace(temporary,args.evidence)
     print(json.dumps({'status': evidence['status'], 'checks': evidence['checks']}))
