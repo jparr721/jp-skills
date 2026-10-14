@@ -1036,6 +1036,401 @@ test("native failure saves and immediately attempts manager notification before 
     messageId: cue.id,
   });
 });
+test("native async preflight failure releases only its proven failed activation for retry", async (): Promise<void> => {
+  const f = fixture();
+  const root = f.refs.get("Main");
+  if (!root?.session) throw new Error("Fixture root session required");
+  const terminal = Promise.withResolvers<void>();
+  const job = {
+    id: "native-job-2",
+    agentId: "child-2",
+    ownerId: "Main",
+    type: "task",
+    status: "running",
+    promise: terminal.promise,
+    errorText: "Actual native preflight refused",
+    latestDetails: { progress: new Array<unknown>() },
+  };
+  const siblingJob = { ...job, id: "native-job-1", agentId: "child-1" };
+  let registered = false;
+  const session = {
+    ...root.session,
+    asyncJobManager: {
+      getAllJobs: () => (registered ? [siblingJob, job] : []),
+    },
+  };
+  f.refs.set("Main", { ...root, session });
+  const hire = f.adapter.reserve(f.ctx, {
+    startup: "hire",
+    requestId: "async-partial",
+    role: "devops",
+    additional: 2,
+  });
+  const ids = hire.employees.map((employee) => employee.id);
+  const ctx: NativeContext = {
+    ...f.ctx,
+    invokeTool: async (params) => {
+      const result = await f.activate(params);
+      const details = z
+        .object({
+          progress: z.array(
+            z.object({
+              index: z.number(),
+              id: z.string(),
+              agent: z.string(),
+              assignment: z.string(),
+              status: z.string(),
+            }),
+          ),
+        })
+        .parse(result.details);
+      job.latestDetails.progress = details.progress.map((entry) => ({
+        ...entry,
+        status: "failed",
+      }));
+      registered = true;
+      return {
+        ...result,
+        details: {
+          ...details,
+          async: { state: "running", type: "task", jobId: job.id },
+        },
+      };
+    },
+  };
+  await f.adapter.activate(ctx, ids);
+  await f.project(hire.employees[0]!);
+  const sibling = f.adapter.store
+    .snapshot()
+    .employees.find((employee) => employee.id === ids[0]);
+  expect((await f.adapter.activate(f.ctx, ids)).native).toBeNull();
+  job.status = "failed";
+  terminal.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(
+    f.adapter.store
+      .snapshot()
+      .employees.find((employee) => employee.id === ids[1])?.error,
+  ).toContain("failed");
+  const retry = await f.adapter.activate(f.ctx, ids);
+  expect(retry.native).not.toBeNull();
+  expect(
+    f.adapter.store
+      .snapshot()
+      .employees.find((employee) => employee.id === ids[0]),
+  ).toEqual(sibling);
+  expect(
+    f.adapter.store
+      .snapshot()
+      .employees.map((employee) => employee.id)
+      .sort(),
+  ).toEqual(["manager", ...ids].sort());
+});
+
+function asyncActivationFixture() {
+  const f = fixture();
+  const root = f.refs.get("Main");
+  if (!root?.session) throw new Error("Fixture native root required");
+  const terminal = Promise.withResolvers<void>();
+  const progress: {
+    index: number;
+    id: string;
+    agent: string;
+    assignment: string;
+    status: string;
+  }[] = [];
+  const job = {
+    id: "job-1",
+    agentId: "child-1",
+    ownerId: "Main",
+    type: "task",
+    status: "running",
+    promise: terminal.promise,
+    latestDetails: { progress },
+  };
+  const jobs: (typeof job)[] = [];
+  const session = {
+    ...root.session,
+    asyncJobManager: { getAllJobs: () => jobs },
+  };
+  f.refs.set("Main", { ...root, session });
+  const hire = f.adapter.reserve(f.ctx, {
+    startup: "hire",
+    requestId: "async-fences",
+    role: "devops",
+    additional: 1,
+  });
+  const ids = hire.employees.map((employee) => employee.id);
+  const ctx: NativeContext = {
+    ...f.ctx,
+    invokeTool: async (params) => {
+      const result = await f.activate(params);
+      const details = z
+        .object({
+          progress: z.array(
+            z.object({
+              index: z.number(),
+              id: z.string(),
+              agent: z.string(),
+              assignment: z.string(),
+              status: z.string(),
+            }),
+          ),
+        })
+        .parse(result.details);
+      progress.push(...details.progress);
+      jobs.push(job);
+      return {
+        ...result,
+        details: {
+          ...details,
+          async: { type: "task", state: "running", jobId: job.id },
+        },
+      };
+    },
+  };
+  return { f, root, session, terminal, job, jobs, ids, ctx, hire };
+}
+
+for (const mutation of [
+  "owner",
+  "type",
+  "agent",
+  "job-id",
+  "progress-id",
+  "progress-agent",
+  "progress-running",
+  "running",
+  "source",
+  "employee-source",
+  "lease",
+  "session",
+  "close",
+  "shutdown",
+]) {
+  test(`native activation terminal observation fences ${mutation}`, async (): Promise<void> => {
+    const a = asyncActivationFixture();
+    await a.f.adapter.activate(a.ctx, a.ids);
+    a.job.status = "failed";
+    const progress = a.job.latestDetails.progress[0];
+    if (!progress) throw new Error("Expected native progress");
+    progress.status = "failed";
+    switch (mutation) {
+      case "owner":
+        a.job.ownerId = "Other";
+        break;
+      case "type":
+        a.job.type = "bash";
+        break;
+      case "agent":
+        a.job.agentId = "other-child";
+        break;
+      case "job-id":
+        a.job.id = "other-job";
+        break;
+      case "progress-id":
+        progress.id = "other-child";
+        break;
+      case "progress-agent":
+        progress.agent = "other-profile";
+        break;
+      case "progress-running":
+        progress.status = "running";
+        break;
+      case "running":
+        a.job.status = "running";
+        break;
+      case "source":
+        writeFileSync(
+          join(a.f.root, "skills/startup-role-manager/SKILL.md"),
+          "changed",
+        );
+        break;
+      case "employee-source":
+        writeFileSync(
+          join(a.f.root, "skills/startup-role-devops/SKILL.md"),
+          "changed",
+        );
+        break;
+      case "lease": {
+        const db = new Database(
+          join(a.f.root, "home/startup/fixture/staff.sqlite"),
+        );
+        db.query(
+          "UPDATE lease SET token='other-owner' WHERE singleton=1",
+        ).run();
+        db.close();
+        break;
+      }
+      case "session":
+        a.f.refs.set("Main", {
+          ...a.root,
+          session: {
+            ...a.session,
+            sessionManager: {
+              getSessionId: () => "other-session",
+              getSessionFile: () => a.root.sessionFile ?? undefined,
+            },
+          },
+        });
+        break;
+      case "close":
+        a.f.adapter.close();
+        break;
+      case "shutdown":
+        await a.f.adapter.shutdown();
+        break;
+    }
+    a.terminal.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(a.f.managerNotifications).toHaveLength(0);
+    if (mutation !== "close" && mutation !== "shutdown" && mutation !== "lease")
+      expect(
+        a.f.adapter.store
+          .snapshot()
+          .employees.find((employee) => employee.id === a.ids[0])?.error,
+      ).toBeNull();
+  });
+}
+
+for (const field of ["ownerId", "type", "agentId"] as const) {
+  test(`native activation refuses unmatched job ${field}`, async (): Promise<void> => {
+    const a = asyncActivationFixture();
+    a.job[field] = "unrelated";
+    await expect(a.f.adapter.activate(a.ctx, a.ids)).rejects.toThrow(
+      "correlated root-owned task job",
+    );
+    expect(a.f.managerNotifications).toHaveLength(0);
+  });
+}
+
+test("actual cancelled native job releases its pending reservation", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  await a.f.adapter.activate(a.ctx, a.ids);
+  a.job.status = "cancelled";
+  for (const progress of a.job.latestDetails.progress)
+    progress.status = "aborted";
+  a.terminal.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(
+    a.f.adapter.store
+      .snapshot()
+      .employees.find((employee) => employee.id === a.ids[0])?.error,
+  ).toContain("aborted");
+  expect((await a.f.adapter.activate(a.f.ctx, a.ids)).native).not.toBeNull();
+});
+
+test("completed native activation without source binding is retryable and never ready", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  await a.f.adapter.activate(a.ctx, a.ids);
+  a.job.status = "completed";
+  for (const progress of a.job.latestDetails.progress)
+    progress.status = "completed";
+  a.terminal.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const employee = a.f.adapter.store
+    .snapshot()
+    .employees.find((entry) => entry.id === a.ids[0]);
+  expect(employee?.nativeHandle).toBeNull();
+  expect(employee?.error).toContain(
+    "completed without verified source binding",
+  );
+  expect((await a.f.adapter.activate(a.f.ctx, a.ids)).native).not.toBeNull();
+});
+
+test("completed source-bound activation retains its successful native handle", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  await a.f.adapter.activate(a.ctx, a.ids);
+  const original = a.hire.employees[0];
+  if (!original) throw new Error("Expected reserved employee");
+  await a.f.project(original);
+  const bound = a.f.adapter.store
+    .snapshot()
+    .employees.find((entry) => entry.id === original.id);
+  a.job.status = "completed";
+  for (const progress of a.job.latestDetails.progress)
+    progress.status = "completed";
+  a.terminal.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  expect(
+    a.f.adapter.store
+      .snapshot()
+      .employees.find((entry) => entry.id === original.id),
+  ).toEqual(bound);
+  expect(a.f.managerNotifications).toHaveLength(0);
+});
+
+test("already-completed native job preserves source receipt awaiting dispatch correlation", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  const original = a.hire.employees[0];
+  if (!original || !a.ctx.invokeTool)
+    throw new Error("Expected activation fixture");
+  const invoke = a.ctx.invokeTool;
+  const ctx: NativeContext = {
+    ...a.ctx,
+    invokeTool: async (params) => {
+      const result = await invoke(params);
+      await a.f.project(original);
+      a.job.status = "completed";
+      for (const progress of a.job.latestDetails.progress)
+        progress.status = "completed";
+      a.terminal.resolve();
+      return result;
+    },
+  };
+  await a.f.adapter.activate(ctx, a.ids);
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const bound = a.f.adapter.store
+    .snapshot()
+    .employees.find((entry) => entry.id === original.id);
+  expect(bound?.generation).toBe(1);
+  expect(bound?.error).toBeNull();
+  expect(bound?.nativeHandle).toContain("child-1");
+  expect(a.f.managerNotifications).toHaveLength(0);
+});
+
+test("old terminal attempt cannot poison retry reusing a native ID", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  await a.f.adapter.activate(a.ctx, a.ids);
+  a.f.adapter.nativeEnded("child-1", "failed");
+  const retryCtx: NativeContext = {
+    ...a.f.ctx,
+    invokeTool: async () => ({
+      content: [],
+      details: {
+        progress: a.job.latestDetails.progress.map((entry) => ({
+          ...entry,
+          status: "running",
+        })),
+      },
+    }),
+  };
+  await a.f.adapter.activate(retryCtx, a.ids);
+  a.job.status = "failed";
+  for (const progress of a.job.latestDetails.progress)
+    progress.status = "failed";
+  a.terminal.resolve();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const original = a.hire.employees[0];
+  if (!original) throw new Error("Expected reserved employee");
+  await a.f.project(original);
+  const bound = a.f.adapter.store
+    .snapshot()
+    .employees.find((employee) => employee.id === original.id);
+  expect(bound?.generation).toBe(1);
+  expect(bound?.error).toBeNull();
+  expect(bound?.nativeHandle).toContain("child-1");
+  expect(a.f.managerNotifications).toHaveLength(1);
+});
+
+test("async activation requires actual job observation but sync mode remains supported", async (): Promise<void> => {
+  const a = asyncActivationFixture();
+  a.f.refs.set("Main", a.root);
+  await expect(a.f.adapter.activate(a.ctx, a.ids)).rejects.toThrow(
+    "terminal job observation capability",
+  );
+});
+
 test("duplicate pending-activation lifecycle failures do not trigger repeated manager turns", async (): Promise<void> => {
   const f = fixture();
   const hire = f.adapter.reserve(f.ctx, {
