@@ -614,6 +614,23 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
           payload: { kind: "capacity-update" },
         });
         const blocked = (await staff.execute("cap-blocked", {})).details;
+        const providersBeforeRetry = readFileSync(
+          env("STARTUP_ADAPTER_EVENTS"),
+          "utf8",
+        )
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line))
+          .filter((event) => event.kind === "provider").length;
+        await Bun.sleep(1100);
+        const providersAfterRetry = readFileSync(
+          env("STARTUP_ADAPTER_EVENTS"),
+          "utf8",
+        )
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line))
+          .filter((event) => event.kind === "provider").length;
         writeFileSync(env("STARTUP_ADAPTER_CAPACITY_RELEASE"), "release");
         const finishDeadline = Date.now() + 10000;
         let final;
@@ -655,6 +672,8 @@ export default function nativeAdapter(pi: ExtensionAPI): void {
           .details;
         record({
           kind: "native-capacity-proof",
+          providersBeforeRetry,
+          providersAfterRetry,
           blocked,
           final,
           activeCounts,
