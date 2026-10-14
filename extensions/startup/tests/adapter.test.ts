@@ -2973,3 +2973,36 @@ test("native duty read admission is async-scoped, single-use and root source/lea
     }
   }
 });
+
+
+test("later profile preparation failure leaves all undispatched hires retryable", async () => {
+  const f = fixture();
+  const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "prepare", role: "devops", additional: 2 });
+  const profile = loadProfile({ skillsRoot: f.root, role: "devops", employeeId: hire.employees[1]!.id, generation: 1 });
+  const directory = join(f.ctx.cwd, ".omp", "agents");
+  mkdirSync(directory, { recursive: true });
+  const conflict = join(directory, `${profile.name}.md`);
+  writeFileSync(conflict, "foreign profile");
+  const ids = hire.employees.map((employee) => employee.id);
+  await expect(f.adapter.activate(f.ctx, ids)).rejects.toThrow("ownership conflict");
+  rmSync(conflict);
+  const retried = await f.adapter.activate(f.ctx, ids);
+  expect(z.object({ progress: z.array(z.unknown()) }).parse(retried.native?.details).progress).toHaveLength(2);
+});
+
+test("saved idle hire source update is rejected before team reservation and permits explicit refresh", async () => {
+  const f = fixture();
+  const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "saved-architect", role: "architect", additional: 1 });
+  const employee = hire.employees[0]!;
+  const path = join(f.root, "skills", "startup-role-architect", "SKILL.md");
+  writeFileSync(path, readFileSync(path, "utf8") + "Updated canonical procedure.\n");
+  f.adapter.recordIntake(f.ctx, { eventId: "source-preflight", input: "original event", amendItemIds: [] });
+  const request = { startup: "delegate", eventId: "source-preflight", developers: 1 };
+  await expect(f.adapter.delegate(f.ctx, request)).rejects.toThrow("Canonical role source");
+  expect(f.adapter.store.snapshot().teams).toHaveLength(0);
+  expect(f.adapter.store.snapshot().employees.find((entry) => entry.id === employee.id)?.assignment).toBeNull();
+  f.adapter.refresh(f.ctx, { employeeId: employee.id, evidence: { source: "explicit refresh" } });
+  const team = await f.adapter.delegate(f.ctx, request);
+  expect(team.architect).toBe(employee.id);
+  expect(team.eventId).toBe("source-preflight");
+});

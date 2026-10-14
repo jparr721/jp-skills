@@ -1435,6 +1435,7 @@ export function createAdapter(
       return { employees: staff, native: null };
     }
     const tasks: Record<string, unknown>[] = [];
+    const prepared: Profile[] = [];
     for (const employee of selected) {
       const team: Team | undefined =
         employee.assignment === null
@@ -1455,9 +1456,7 @@ export function createAdapter(
           "Canonical role source differs from the hire reservation",
         );
       writeProfile({ root: rootDirectory, profile });
-      const previousId = expected.get(employee.id)?.nativeId;
-      if (previousId) nativeFailures.delete(previousId);
-      expected.set(employee.id, { profile, nativeId: null, sessionId: null });
+      prepared.push(profile);
       tasks.push({
         name: `${employee.id}-${generation}`,
         agent: profile.name,
@@ -1470,6 +1469,11 @@ export function createAdapter(
       "Startup canonical employee activation. Raw intake remains in each employee own durable inbox. Wait for full team binding before scoped intake.";
     const batch: boolean = input.nativeBatch();
     const dispatched: NativeResult[] = [];
+    for (const profile of prepared) {
+      const previousId = expected.get(profile.employeeId)?.nativeId;
+      if (previousId) nativeFailures.delete(previousId);
+      expected.set(profile.employeeId, { profile, nativeId: null, sessionId: null });
+    }
     for (const employee of selected) {
       const profile = expected.get(employee.id)?.profile;
       if (!profile)
@@ -1786,6 +1790,14 @@ export function createAdapter(
       return (
         store.snapshot().teams.find((entry) => entry.id === prior.id) ?? prior
       );
+    }
+    for (const role of ["architect", "qa", "dev"] as const) {
+      const count = role === "dev" ? parsed.developers : 1;
+      for (const employee of reusableStaff(store.snapshot(), role).slice(0, count)) {
+        const profile = loadProfile({ skillsRoot: config.skillsRoot, role, employeeId: employee.id, generation: employee.generation + 1 });
+        if (profile.source.roleRevision !== employee.canonicalRevision)
+          throw new StoreAuthorityError(`Canonical role source differs for ${employee.id}; use startup_refresh before delegation`);
+      }
     }
     const members: string[] = [];
     for (const role of ["architect", "qa", "dev"] as const) {
