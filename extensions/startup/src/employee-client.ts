@@ -166,7 +166,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   let closed: boolean = false;
   let continuedReason: string | null = null;
   let releasePending: boolean = false;
-  let turnHeld: boolean = false;
+  let turnHeld: boolean = true;
   let turnBlocked: string | null = null;
   function isRoot(ctx: NativeContext): boolean {
     return ctx.agent.kind === "main" && ctx.agent.id === rootId &&

@@ -138,6 +138,19 @@ test("native idle reconciliation releases capacity held by a context-only side r
   expect(fixture.requests.filter((r) => r.path === "/command").map((r) => r.body)).toEqual([{ kind: "begin_turn" }, { kind: "end_turn" }]);
 });
 
+test("an idle reattached native root reconciles a reservation from its prior process", async () => {
+  const fixture = serverFixture();
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: [], waitReason: null, toolBlockReason: null });
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  native.setRunState(true, false);
+  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  await bridge.poll();
+  expect(fixture.requests.filter((r) => r.path === "/command").map((r) => r.body)).toEqual([{ kind: "end_turn" }]);
+});
+
 test("a fresh helper extension denies employee tools before any client attachment", async () => {
   const native = nativeFixture();
   installEmployeeToolGuard(native.host);
