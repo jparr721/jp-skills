@@ -110,8 +110,10 @@ test("an exited named occupant with omitted agent fields does not block live obs
   expect(await h.runtime.observe()).toEqual([expect.objectContaining({ name: "crew-dev" })]);
 });
 test("native session reporting before interactive readiness remains explicit pending evidence", async () => {
-  const h = harness([response({ type: "agent_list", agents: [{ ...agent(), interactive_ready: undefined }] })]);
-  expect(await h.runtime.observe()).toEqual([expect.objectContaining({ nativeSession: "/sessions/dev.jsonl", interactiveReady: false })]);
+  for (const launch_pending of [true, false]) {
+    const h = harness([response({ type: "agent_list", agents: [{ ...agent(), agent_status: "idle", launch_pending, interactive_ready: undefined }] })]);
+    expect(await h.runtime.observe()).toEqual([expect.objectContaining({ nativeSession: "/sessions/dev.jsonl", interactiveReady: false })]);
+  }
 });
 test("rejects cross-workspace layout and unexpected launched identity", async () => {
   await expect(harness([response({ type: "tab_created", tab: { tab_id: "w2:t2", workspace_id: "w2" }, root_pane: { ...agent(), workspace_id: "w2" } })]).runtime.createCrew({ label: "x", cwd: "/repo", env: {} })).rejects.toThrow("binding_mismatch");
