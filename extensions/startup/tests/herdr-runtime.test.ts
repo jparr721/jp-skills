@@ -92,6 +92,16 @@ test("malformed JSON, missing sequence and wrong result kind retain actionable d
     }
   }
 });
+test("launch-pending agents without session fields do not break observation of ready roots", async () => {
+  const h = harness([response({ type: "agent_list", agents: [agent(), {
+    workspace_id: "w1", tab_id: "w1:t3", pane_id: "w1:p4", terminal_id: "term-4",
+    name: "s-pending", launch_pending: true, agent_status: "unknown", state_change_seq: 0,
+  }] })]);
+  expect(await h.runtime.observe()).toEqual([
+    expect.objectContaining({ name: "crew-dev", nativeSession: "/sessions/dev.jsonl" }),
+    expect.objectContaining({ name: "s-pending", nativeSession: null, state: "unknown", interactiveReady: false }),
+  ]);
+});
 test("rejects cross-workspace layout and unexpected launched identity", async () => {
   await expect(harness([response({ type: "tab_created", tab: { tab_id: "w2:t2", workspace_id: "w2" }, root_pane: { ...agent(), workspace_id: "w2" } })]).runtime.createCrew({ label: "x", cwd: "/repo", env: {} })).rejects.toThrow("binding_mismatch");
   for (const patch of [{ pane_id: "w1:p9" }, { name: "wrong" }, { agent: "codex" }, { interactive_ready: false }]) {
