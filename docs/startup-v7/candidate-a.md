@@ -1,5 +1,7 @@
 # Candidate A: a single durable coordinator and authenticated pane employees
 
+Historical candidate, superseded by [design](design.md). Its repository-level merge isolation proposal was dropped after the user's shipping-policy clarification; it is not an acceptance gate.
+
 ## Phase checklist
 
 - [x] Ground: Phase A artifact, real store/adapter/profile paths, installed Herdr/OMP help and OMP integration.

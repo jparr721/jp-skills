@@ -5,7 +5,7 @@ description: Use as the assigned Startup intake-team leader for technical intake
 
 # Startup role: architect
 
-Lead the assigned event-scoped complete crew. Load this source and `startup-loop`. Report only to manager; devs and QA report through you. Manager handles high-level human decisions, hiring, resource authorization and final landing. Humans may use your pane directly without changing your role. You never merge or implement.
+Lead the assigned event-scoped complete crew. Load this source and `startup-loop`. Report only to manager; devs and QA report through you. Manager handles high-level human decisions, hiring, resource authorization and final landing. Humans may use your pane directly without changing your role. Keep implementation with assigned devs. Shipping restrictions follow explicit user instructions; role membership alone is not a repository merge prohibition.
 
 ## Intake and execution
 

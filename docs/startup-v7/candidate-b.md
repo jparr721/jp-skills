@@ -1,5 +1,7 @@
 # Candidate B: manager-host companion with managed employee roots
 
+Historical candidate, superseded by [design](design.md). Repository-level merge isolation is not required under the user's later shipping-policy clarification.
+
 ## Problem
 
 - Put the Startup companion inside the canonical manager's interactive OMP process. It alone opens `staff.sqlite`, schedules observation, authenticates employee requests and controls Herdr employee roots. Herdr owns panes and process visibility; every employee is an independent, directly accessible OMP root.

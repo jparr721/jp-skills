@@ -5,18 +5,18 @@ description: Use for an assigned Startup queue item of any kind, with its canoni
 
 # Startup role: dev
 
-Load this complete role with `startup-loop`. Execute one assigned item at a time. Your architect supplies kind/procedure/convention/acceptance and source-tagged constraints from the durable row. Missing procedure goes to architect; never invent a substitute. Manager retains final merge authority.
+Load this complete role with `startup-loop`. Execute one assigned item at a time. Your architect supplies kind/procedure/convention/acceptance and source-tagged constraints from the durable row. Missing procedure goes to architect; never invent a substitute. Manager records canonical completion; shipping restrictions follow explicit user instructions.
 
 ## Kind procedure
 
-- code: Run full `pipeline` for exactly the assigned item through its ready-PR outcome. Honor verify-mode/target/base overrides, including stack-parent base. Commit small logical slices and fixes; open an independently tested/reviewed ready PR. Startup reserves the owning architect's gate and manager's final landing; neither you nor pipeline helpers may merge, regardless of the pipeline's default merge step.
+- code: Run full `pipeline` for exactly the assigned item through its ready-PR outcome. Honor verify-mode/target/base overrides, including stack-parent base. Commit small logical slices and fixes; open an independently tested/reviewed ready PR. Preserve the owning architect's review gate and manager's canonical completion record. Follow explicit user shipping restrictions; an agent shipping is not itself a violation.
 - research: Run assigned `topic-research` or internal research; memo contains adopt/adapt/build verdict, tradeoffs, recommendation and citations for every claim. Outcome pr field carries memo handle.
 - docs: Follow assigned convention, verify described behavior against actual code, commit under owning repo convention.
 - ops: Follow assigned server-maintenance procedure and named authorization, target and stored instructions; preserve independent verify command and ops-log evidence.
 
 ## Review and coordination
 
-Architect coordinates independent buddy review: code `pr-review-toolkit` min 3/cap 5 rounds; research every-claim-cited check; docs style/accuracy sweep; ops independent verify replay. Bounded OMP pipeline supervisors/review helpers load the exact canonical procedure source and consume this OMP root's local helper capacity, separately from coordinator root-turn slots. They receive no employee admission, inbox, staffing or merge authority. Reports and feedback stay within the architect-led team; manager receives leader summaries.
+Architect coordinates independent buddy review: code `pr-review-toolkit` min 3/cap 5 rounds; research every-claim-cited check; docs style/accuracy sweep; ops independent verify replay. Bounded OMP pipeline supervisors/review helpers load the exact canonical procedure source and consume this OMP root's local helper capacity, separately from coordinator root-turn slots. They receive no employee admission, inbox, staffing or workflow approval authority. Reports and feedback stay within the architect-led team; manager receives leader summaries.
 
 Questions/blockers go to architect in at most three lines with decision needed, up to three options and recommendation. Architect escalates to manager. File handoffs and contention go through saved scoped cues to architect; include handles (branch/files/commit/signature contract), not copied content. Request resources through architect -> manager -> shared DevOps; hire grants no mutation permission.
 

@@ -23,6 +23,9 @@ The native probe loads the production employee client into the installed compile
 - Native restore retaining the named profile, Herdr integration, generated employee bootstrap, cwd and original root transcript.
 - Explicit V6 state migration and filesystem duty/repair parity. V7 refuses existing V6 ownership/duties instead of silently importing or dropping them.
 - Deployment supervision for coordinator death/host reboot. The detached coordinator survives manager loss; it is not an automatically restarted OS service.
-- Repository-enforced merge credential isolation. Startup enforces independent QA proof, the owning architect's gate and manager landing. Shared-user shell credentials do not prevent out-of-band GitHub merges.
 
 The installed Herdr skill requires `HERDR_ENV=1` for live pane control. This Codex session is outside Herdr; its tests used owned isolated fixtures. No requested live deployment was represented as complete.
+
+## Shipping policy clarification
+
+The user removed strict merge control as a requirement. Shipping restrictions must be explicit user instructions. Repository credential isolation is not an acceptance gate. Existing QA, architect and manager tool permissions still govern canonical review/completion records; those records are separate from which agent executes a repository merge.

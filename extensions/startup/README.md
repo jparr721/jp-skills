@@ -79,7 +79,7 @@ Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md
 
 Result shape is `{id,kind,output,checkpoint,outgoing}`, with kind `completed`, `question` or `uncertain`. Outgoing cues use `{id,recipient,kind,correlation,payload}`. A question acknowledges its cue but retains the waiting assignment; an answer is not the original completed result. Follow [queue records](../../skills/startup-intake/references/queue-records.md) for block/decision, reconciliation, explicit resolution and a new attempt.
 
-Independent QA proof precedes the owning architect's approval gate; manager alone records landing/completion. Other architects, workers, PA, helpers and observed idle/done states cannot approve progression. These are Startup workflow gates. Shared OS/shell credentials do not establish repository-enforced prevention of out-of-band GitHub merges.
+Independent QA proof precedes the owning architect's approval gate; manager alone records landing/completion. Other architects, workers, PA, helpers and observed idle/done states cannot approve progression. These are Startup workflow gates for recording review and completion. Shipping permissions follow explicit user instructions; repository-level merge denial and credential isolation are not V7 requirements.
 
 ## Capacity and supervision
 

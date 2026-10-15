@@ -10,7 +10,7 @@
 
 ## User requirements
 
-OMP, Herdr and Startup companion are mandatory. Each employee has a visible, directly interactive pane. A durable crew has an architect, QA and one or more devs, under one manager. The PA is permanently assigned and supervised while Startup runs. Herdr idle/done changes are durable messages to manager, never work acceptance. Only manager and owning architect may approve merge progression. Progress must be monitored, with explicit blockers and recovery rather than silent staleness. Screenshot on 2026-10-15 shows individual OMP task agents and a flat roster, not evidence of runtime crew admission.
+OMP, Herdr and Startup companion are mandatory. Each employee has a visible, directly interactive pane. A durable crew has an architect, QA and one or more devs, under one manager. The PA is permanently assigned and supervised while Startup runs. Herdr idle/done changes are durable messages to manager, never work acceptance. Architect/manager permissions govern canonical review/completion records. The user later removed strict merge control: an agent shipping is acceptable, shipping restrictions must be explicit, and repository credential isolation is not required. Progress must be monitored, with explicit blockers and recovery rather than silent staleness. Screenshot on 2026-10-15 shows individual OMP task agents and a flat roster, not evidence of runtime crew admission.
 
 ## Current trace and rationale
 
@@ -30,4 +30,4 @@ Prior-art verdict: adapt existing Herdr CLI/socket protocol and native OMP exten
 
 ## Result
 
-Implemented candidate and proof are recorded in [acceptance](acceptance.md). Live Herdr deployment, restore, V6 migration and external credential isolation remain explicit gates rather than inferred successes. The released VERSION remains 6.0.0.
+Implemented candidate and proof are recorded in [acceptance](acceptance.md). Live Herdr deployment, restore and V6 migration remain explicit gates rather than inferred successes. Repository-level merge isolation is not required; the user controls shipping restrictions explicitly. The released VERSION remains 6.0.0.

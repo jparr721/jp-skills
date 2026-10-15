@@ -25,7 +25,7 @@ Require the leader's worker outcome with `ticket/status/pr/verify-mode/rounds/ve
 
 Worker timing includes coding_mins/waited_mins/evidence; compare plausibility to dispatched/outcome wall time without reading implementation logs. Over 60 coding minutes flags OVERSIZE and an open bulletin item with evidence.
 
-After actual authorized landing, manager records `startup_item decide` MERGED; accepted/filed non-PR work records DONE. Both require READY_TO_LAND and resolved claims/assignments/grants. Use per-item repo/remote/base; flat items land when ready, stacked items bottom-up, retarget children and re-green. A stack conflict is an explicit blocker, not silent fallback. Workers never merge. `startup_finish_team` requires all currently owned work and mail resolved.
+After actual authorized landing, manager records `startup_item decide` MERGED; accepted/filed non-PR work records DONE. Both require READY_TO_LAND and resolved claims/assignments/grants. Use per-item repo/remote/base; flat items land when ready, stacked items bottom-up, retarget children and re-green. A stack conflict is an explicit blocker, not silent fallback. Shipping restrictions follow explicit user instructions; an agent shipping is not itself a policy violation. Record actual landing evidence through the existing workflow. `startup_finish_team` requires all currently owned work and mail resolved.
 
 ## Duties, recovery and lifetime
 
