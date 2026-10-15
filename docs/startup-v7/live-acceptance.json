@@ -1,0 +1,1573 @@
+{
+  "status": "PASS",
+  "scope": "Bounded live hierarchy, supervision, fault detection and explicit same-session recovery. Not an indefinite progress guarantee.",
+  "startup": "V7Live",
+  "herdrSession": "startup-v7-live-20261015",
+  "profile": "startup-v7",
+  "repository": "/Users/jarredparr/Projects/startup-v7-live",
+  "implementationCommit": "82500dfe0f1ddfda8b498e9c13efa563ad88dffb",
+  "sourceHashes": {
+    "extensions/startup/v7.ts": "02d2e2319b66fdcc710e9d49ee6cf5a67c39e7280025ac347b91e90ed5e1a723",
+    "extensions/startup/src/employee-entry.ts": "8cbaeaffe811fcbb6baa6a861dc78e135f4ea2b61d4dd98b9c9143142137eb81",
+    "extensions/startup/src/employee-client.ts": "e6a2da4bc273518ecdc707901d5f2f1e1ab9b49e4e1257089b8f7c9b791f9a6e",
+    "extensions/startup/src/coordinator.ts": "f4a79b6f70ce0657d7cc9c130ecb035a138166627c0955d08db7abd8ae7e629c",
+    "extensions/startup/src/herdr-runtime.ts": "f87eaf17f160eb3b0677bd45573ab0879d939dec1ffedda49bc9a60f499aa47e",
+    "extensions/startup/src/store.ts": "6906d26b67f43d45121a8df384fda53142970d1407e697871928963d88ebd0de"
+  },
+  "checks": {
+    "two_complete_immutable_crews": true,
+    "eight_distinct_native_roots_and_panes": true,
+    "all_source_bound_and_ready": true,
+    "matching_real_herdr_sessions": true,
+    "crew_members_share_own_herdr_tab": true,
+    "all_control_polls_fresh_under_5s": true,
+    "pa_periodic_reports_continue": true,
+    "pa_offline_alert_to_manager": true,
+    "pa_deadline_reached_without_fake_clock": true,
+    "same_pa_control_recovers": true,
+    "architect_semantic_progress_frozen_during_pause": true,
+    "five_minute_stall_alert_to_manager": true,
+    "other_crew_progress_during_stall": true,
+    "fault_alerts_acknowledged_by_manager": true,
+    "direct_pane_input_reported_to_manager": true,
+    "resumes_preserve_employee_ids_and_generations": true,
+    "idle_roots_release_execution_slots": true,
+    "interrupted_claim_reconciled": true
+  },
+  "faults": [
+    {
+      "kind": "controlled-architect-stall",
+      "employeeId": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+      "paneId": "w1:p7",
+      "pid": 63015,
+      "startedAt": 1792083267213,
+      "resumeAfterSeconds": 325,
+      "commandSha256": "f250ff2c3aaa71f4994e05fcac5c762a982b1c434e6031b6625ba5369865550a",
+      "bootstrap": "/Users/jarredparr/.config/jp-skills/startup/V7Live/launches/729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e.ts",
+      "resumedAt": 1792083592217
+    },
+    {
+      "kind": "controlled-pa-control-loss",
+      "employeeId": "a1c52112-544b-40fe-8998-6eb1b2da4a7b",
+      "paneId": "w1:p6",
+      "pid": 60057,
+      "startedAt": 1792083435718,
+      "holdSeconds": 45,
+      "resumedAt": 1792083480725
+    }
+  ],
+  "teams": [
+    {
+      "architect": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+      "devs": [
+        "eb21c226-8ffc-4642-a276-630abea8333c"
+      ],
+      "eventId": "evt-crew-one-docs",
+      "generations": {
+        "2075e6f8-c44c-49ca-bb78-ac4d615bd654": 1,
+        "ddd45db7-a3a2-4fe1-ad9b-9072be730c15": 1,
+        "eb21c226-8ffc-4642-a276-630abea8333c": 1
+      },
+      "id": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+      "items": [
+        {
+          "id": "item-crew-one-docs-1",
+          "revision": 9
+        }
+      ],
+      "qa": "ddd45db7-a3a2-4fe1-ad9b-9072be730c15",
+      "state": "waiting"
+    },
+    {
+      "architect": "295403fa-e6ba-48bc-9e57-56b1e474dec7",
+      "devs": [
+        "f42969b3-b288-460c-bbaf-61f88b89ee48"
+      ],
+      "eventId": "evt-crew-two-docs",
+      "generations": {
+        "295403fa-e6ba-48bc-9e57-56b1e474dec7": 1,
+        "d19f658a-b6a4-41b8-8517-22327edc6b92": 1,
+        "f42969b3-b288-460c-bbaf-61f88b89ee48": 1
+      },
+      "id": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+      "items": [
+        {
+          "id": "it-crew-two-docs-01",
+          "revision": 11
+        }
+      ],
+      "qa": "d19f658a-b6a4-41b8-8517-22327edc6b92",
+      "state": "waiting"
+    }
+  ],
+  "snapshots": [
+    {
+      "name": "sample-00",
+      "observedAt": 1792083283236,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "aec24348-5f74-4d50-bce3-ab0c75a3d914",
+            "state": "ready",
+            "paneId": "w1:p5",
+            "terminalId": "term_65de3c8d493b65",
+            "tabId": "w1:t5",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-17-985Z_01a14075-1781-737e-9986-447198e70ff3.jsonl",
+            "lastPoll": 1792083282657,
+            "lastProgress": 1792083281837,
+            "lastSeen": 1792083099600,
+            "turnActive": true,
+            "stateSequence": null,
+            "observedState": null,
+            "error": null
+          }
+        },
+        {
+          "id": "a1c52112-544b-40fe-8998-6eb1b2da4a7b",
+          "role": "pa",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "36efce21-81f9-4696-8de0-fd63c0331035",
+            "state": "ready",
+            "paneId": "w1:p6",
+            "terminalId": "term_65de3cb2313aa6",
+            "tabId": "w1:t6",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-47-449Z_01a14075-8a99-775a-9efa-f9cab777639f.jsonl",
+            "lastPoll": 1792083282937,
+            "lastProgress": 1792083230529,
+            "lastSeen": 1792083282394,
+            "turnActive": true,
+            "stateSequence": 65,
+            "observedState": "working",
+            "error": null
+          }
+        },
+        {
+          "id": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+            "state": "ready",
+            "paneId": "w1:p7",
+            "terminalId": "term_65de3e05406dc7",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-43-025Z_01a1407a-f791-7607-bb68-47d4b1a6c6c8.jsonl",
+            "lastPoll": 1792083266689,
+            "lastProgress": 1792083265784,
+            "lastSeen": 1792083282395,
+            "turnActive": true,
+            "stateSequence": 51,
+            "observedState": "working",
+            "error": null
+          }
+        },
+        {
+          "id": "ddd45db7-a3a2-4fe1-ad9b-9072be730c15",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "00d6a9aa-e883-4eb0-9933-aeeb8e0054b3",
+            "state": "ready",
+            "paneId": "w1:p8",
+            "terminalId": "term_65de3e083a3d88",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-46-102Z_01a1407b-0396-72fb-b09e-3c6a61c01666.jsonl",
+            "lastPoll": 1792083282766,
+            "lastProgress": 1792083193897,
+            "lastSeen": 1792083282395,
+            "turnActive": false,
+            "stateSequence": 55,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "eb21c226-8ffc-4642-a276-630abea8333c",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "b3baf1ba-786b-4c41-9379-dc3102f2a26f",
+            "state": "ready",
+            "paneId": "w1:p9",
+            "terminalId": "term_65de3e0b2a0e09",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-49-237Z_01a1407b-0fd5-72ad-8a41-0f6da1b62b67.jsonl",
+            "lastPoll": 1792083283190,
+            "lastProgress": 1792083196738,
+            "lastSeen": 1792083282395,
+            "turnActive": false,
+            "stateSequence": 56,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "295403fa-e6ba-48bc-9e57-56b1e474dec7",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "8873268c-5a92-43da-bf25-a5ef467c5d74",
+            "state": "ready",
+            "paneId": "w1:pA",
+            "terminalId": "term_65de3e27da77ca",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-19-274Z_01a1407b-852a-7599-816d-45f976cf99e2.jsonl",
+            "lastPoll": 1792083282890,
+            "lastProgress": 1792083239006,
+            "lastSeen": 1792083282395,
+            "turnActive": true,
+            "stateSequence": 61,
+            "observedState": "working",
+            "error": null
+          }
+        },
+        {
+          "id": "d19f658a-b6a4-41b8-8517-22327edc6b92",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bef89549-5a3a-45f5-8b76-84269e88bb5c",
+            "state": "ready",
+            "paneId": "w1:pB",
+            "terminalId": "term_65de3e2abc2adb",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-22-271Z_01a1407b-90df-735c-b12b-54a682385977.jsonl",
+            "lastPoll": 1792083282924,
+            "lastProgress": 1792083247557,
+            "lastSeen": 1792083282395,
+            "turnActive": false,
+            "stateSequence": 64,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "f42969b3-b288-460c-bbaf-61f88b89ee48",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bc9ec91f-4ba1-45d8-844f-9b2c4853fcd8",
+            "state": "ready",
+            "paneId": "w1:pC",
+            "terminalId": "term_65de3e2da156fc",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-25-314Z_01a1407b-9cc2-73cd-aa97-615b1b1a6e16.jsonl",
+            "lastPoll": 1792083282959,
+            "lastProgress": 1792083210076,
+            "lastSeen": 1792083282395,
+            "turnActive": true,
+            "stateSequence": 59,
+            "observedState": "working",
+            "error": null
+          }
+        }
+      ],
+      "itemProgress": [
+        {
+          "changedAt": 1792083249355,
+          "itemId": "item-crew-one-docs-1",
+          "revision": 2,
+          "status": "BLOCKED"
+        },
+        {
+          "changedAt": 1792083239004,
+          "itemId": "it-crew-two-docs-01",
+          "revision": 1,
+          "status": "QUEUED"
+        }
+      ],
+      "paReports": 7,
+      "resultCount": 23,
+      "faultAlerts": []
+    },
+    {
+      "name": "pa-outage-check",
+      "observedAt": 1792083474998,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "aec24348-5f74-4d50-bce3-ab0c75a3d914",
+            "state": "ready",
+            "paneId": "w1:p5",
+            "terminalId": "term_65de3c8d493b65",
+            "tabId": "w1:t5",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-17-985Z_01a14075-1781-737e-9986-447198e70ff3.jsonl",
+            "lastPoll": 1792083474686,
+            "lastProgress": 1792083473685,
+            "lastSeen": 1792083099600,
+            "turnActive": true,
+            "stateSequence": null,
+            "observedState": null,
+            "error": null
+          }
+        },
+        {
+          "id": "a1c52112-544b-40fe-8998-6eb1b2da4a7b",
+          "role": "pa",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "36efce21-81f9-4696-8de0-fd63c0331035",
+            "state": "ready",
+            "paneId": "w1:p6",
+            "terminalId": "term_65de3cb2313aa6",
+            "tabId": "w1:t6",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-47-449Z_01a14075-8a99-775a-9efa-f9cab777639f.jsonl",
+            "lastPoll": 1792083434969,
+            "lastProgress": 1792083415990,
+            "lastSeen": 1792083474596,
+            "turnActive": false,
+            "stateSequence": 71,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+            "state": "ready",
+            "paneId": "w1:p7",
+            "terminalId": "term_65de3e05406dc7",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-43-025Z_01a1407a-f791-7607-bb68-47d4b1a6c6c8.jsonl",
+            "lastPoll": 1792083266689,
+            "lastProgress": 1792083265784,
+            "lastSeen": 1792083474597,
+            "turnActive": true,
+            "stateSequence": 51,
+            "observedState": "working",
+            "error": null
+          }
+        },
+        {
+          "id": "ddd45db7-a3a2-4fe1-ad9b-9072be730c15",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "00d6a9aa-e883-4eb0-9933-aeeb8e0054b3",
+            "state": "ready",
+            "paneId": "w1:p8",
+            "terminalId": "term_65de3e083a3d88",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-46-102Z_01a1407b-0396-72fb-b09e-3c6a61c01666.jsonl",
+            "lastPoll": 1792083474791,
+            "lastProgress": 1792083193897,
+            "lastSeen": 1792083474597,
+            "turnActive": true,
+            "stateSequence": 55,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "eb21c226-8ffc-4642-a276-630abea8333c",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "b3baf1ba-786b-4c41-9379-dc3102f2a26f",
+            "state": "ready",
+            "paneId": "w1:p9",
+            "terminalId": "term_65de3e0b2a0e09",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-49-237Z_01a1407b-0fd5-72ad-8a41-0f6da1b62b67.jsonl",
+            "lastPoll": 1792083474234,
+            "lastProgress": 1792083196738,
+            "lastSeen": 1792083474597,
+            "turnActive": true,
+            "stateSequence": 56,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "295403fa-e6ba-48bc-9e57-56b1e474dec7",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "8873268c-5a92-43da-bf25-a5ef467c5d74",
+            "state": "ready",
+            "paneId": "w1:pA",
+            "terminalId": "term_65de3e27da77ca",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-19-274Z_01a1407b-852a-7599-816d-45f976cf99e2.jsonl",
+            "lastPoll": 1792083474946,
+            "lastProgress": 1792083376385,
+            "lastSeen": 1792083474597,
+            "turnActive": false,
+            "stateSequence": 69,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "d19f658a-b6a4-41b8-8517-22327edc6b92",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bef89549-5a3a-45f5-8b76-84269e88bb5c",
+            "state": "ready",
+            "paneId": "w1:pB",
+            "terminalId": "term_65de3e2abc2adb",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-22-271Z_01a1407b-90df-735c-b12b-54a682385977.jsonl",
+            "lastPoll": 1792083474961,
+            "lastProgress": 1792083247557,
+            "lastSeen": 1792083474597,
+            "turnActive": false,
+            "stateSequence": 64,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "f42969b3-b288-460c-bbaf-61f88b89ee48",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bc9ec91f-4ba1-45d8-844f-9b2c4853fcd8",
+            "state": "ready",
+            "paneId": "w1:pC",
+            "terminalId": "term_65de3e2da156fc",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-25-314Z_01a1407b-9cc2-73cd-aa97-615b1b1a6e16.jsonl",
+            "lastPoll": 1792083474987,
+            "lastProgress": 1792083325918,
+            "lastSeen": 1792083474597,
+            "turnActive": true,
+            "stateSequence": 59,
+            "observedState": "working",
+            "error": null
+          }
+        }
+      ],
+      "itemProgress": [
+        {
+          "changedAt": 1792083249355,
+          "itemId": "item-crew-one-docs-1",
+          "revision": 2,
+          "status": "BLOCKED"
+        },
+        {
+          "changedAt": 1792083367128,
+          "itemId": "it-crew-two-docs-01",
+          "revision": 6,
+          "status": "EXECUTING"
+        }
+      ],
+      "paReports": 10,
+      "resultCount": 61,
+      "faultAlerts": [
+        {
+          "id": "pa-health-pa-offline-36efce21-81f9-4696-8de0-fd63c0331035",
+          "sender": "manager",
+          "recipient": "manager",
+          "kind": "alert",
+          "correlation": "manager-supervision",
+          "status": "pending",
+          "payload": {
+            "kind": "pa-offline",
+            "observedAt": 1792083465595
+          }
+        }
+      ]
+    },
+    {
+      "name": "pa-resumed-check",
+      "observedAt": 1792083503446,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "aec24348-5f74-4d50-bce3-ab0c75a3d914",
+            "state": "ready",
+            "paneId": "w1:p5",
+            "terminalId": "term_65de3c8d493b65",
+            "tabId": "w1:t5",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-17-985Z_01a14075-1781-737e-9986-447198e70ff3.jsonl",
+            "lastPoll": 1792083502693,
+            "lastProgress": 1792083502329,
+            "lastSeen": 1792083099600,
+            "turnActive": true,
+            "stateSequence": null,
+            "observedState": null,
+            "error": null
+          }
+        },
+        {
+          "id": "a1c52112-544b-40fe-8998-6eb1b2da4a7b",
+          "role": "pa",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "36efce21-81f9-4696-8de0-fd63c0331035",
+            "state": "ready",
+            "paneId": "w1:p6",
+            "terminalId": "term_65de3cb2313aa6",
+            "tabId": "w1:t6",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-47-449Z_01a14075-8a99-775a-9efa-f9cab777639f.jsonl",
+            "lastPoll": 1792083502741,
+            "lastProgress": 1792083487544,
+            "lastSeen": 1792083502629,
+            "turnActive": false,
+            "stateSequence": 73,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+            "state": "ready",
+            "paneId": "w1:p7",
+            "terminalId": "term_65de3e05406dc7",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-43-025Z_01a1407a-f791-7607-bb68-47d4b1a6c6c8.jsonl",
+            "lastPoll": 1792083266689,
+            "lastProgress": 1792083265784,
+            "lastSeen": 1792083502629,
+            "turnActive": true,
+            "stateSequence": 51,
+            "observedState": "working",
+            "error": null
+          }
+        },
+        {
+          "id": "ddd45db7-a3a2-4fe1-ad9b-9072be730c15",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "00d6a9aa-e883-4eb0-9933-aeeb8e0054b3",
+            "state": "ready",
+            "paneId": "w1:p8",
+            "terminalId": "term_65de3e083a3d88",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-46-102Z_01a1407b-0396-72fb-b09e-3c6a61c01666.jsonl",
+            "lastPoll": 1792083502793,
+            "lastProgress": 1792083193897,
+            "lastSeen": 1792083502629,
+            "turnActive": true,
+            "stateSequence": 55,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "eb21c226-8ffc-4642-a276-630abea8333c",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "b3baf1ba-786b-4c41-9379-dc3102f2a26f",
+            "state": "ready",
+            "paneId": "w1:p9",
+            "terminalId": "term_65de3e0b2a0e09",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-49-237Z_01a1407b-0fd5-72ad-8a41-0f6da1b62b67.jsonl",
+            "lastPoll": 1792083503248,
+            "lastProgress": 1792083196738,
+            "lastSeen": 1792083502629,
+            "turnActive": true,
+            "stateSequence": 56,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "295403fa-e6ba-48bc-9e57-56b1e474dec7",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "8873268c-5a92-43da-bf25-a5ef467c5d74",
+            "state": "ready",
+            "paneId": "w1:pA",
+            "terminalId": "term_65de3e27da77ca",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-19-274Z_01a1407b-852a-7599-816d-45f976cf99e2.jsonl",
+            "lastPoll": 1792083502950,
+            "lastProgress": 1792083376385,
+            "lastSeen": 1792083502634,
+            "turnActive": false,
+            "stateSequence": 69,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "d19f658a-b6a4-41b8-8517-22327edc6b92",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bef89549-5a3a-45f5-8b76-84269e88bb5c",
+            "state": "ready",
+            "paneId": "w1:pB",
+            "terminalId": "term_65de3e2abc2adb",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-22-271Z_01a1407b-90df-735c-b12b-54a682385977.jsonl",
+            "lastPoll": 1792083502968,
+            "lastProgress": 1792083247557,
+            "lastSeen": 1792083502637,
+            "turnActive": false,
+            "stateSequence": 64,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "f42969b3-b288-460c-bbaf-61f88b89ee48",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bc9ec91f-4ba1-45d8-844f-9b2c4853fcd8",
+            "state": "ready",
+            "paneId": "w1:pC",
+            "terminalId": "term_65de3e2da156fc",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-25-314Z_01a1407b-9cc2-73cd-aa97-615b1b1a6e16.jsonl",
+            "lastPoll": 1792083502989,
+            "lastProgress": 1792083325918,
+            "lastSeen": 1792083502637,
+            "turnActive": true,
+            "stateSequence": 59,
+            "observedState": "working",
+            "error": null
+          }
+        }
+      ],
+      "itemProgress": [
+        {
+          "changedAt": 1792083249355,
+          "itemId": "item-crew-one-docs-1",
+          "revision": 2,
+          "status": "BLOCKED"
+        },
+        {
+          "changedAt": 1792083367128,
+          "itemId": "it-crew-two-docs-01",
+          "revision": 6,
+          "status": "EXECUTING"
+        }
+      ],
+      "paReports": 11,
+      "resultCount": 68,
+      "faultAlerts": [
+        {
+          "id": "pa-health-pa-offline-36efce21-81f9-4696-8de0-fd63c0331035",
+          "sender": "manager",
+          "recipient": "manager",
+          "kind": "alert",
+          "correlation": "manager-supervision",
+          "status": "pending",
+          "payload": {
+            "kind": "pa-offline",
+            "observedAt": 1792083465595
+          }
+        }
+      ]
+    },
+    {
+      "name": "stall-deadline-check",
+      "observedAt": 1792083575298,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "aec24348-5f74-4d50-bce3-ab0c75a3d914",
+            "state": "ready",
+            "paneId": "w1:p5",
+            "terminalId": "term_65de3c8d493b65",
+            "tabId": "w1:t5",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-17-985Z_01a14075-1781-737e-9986-447198e70ff3.jsonl",
+            "lastPoll": 1792083574720,
+            "lastProgress": 1792083573953,
+            "lastSeen": 1792083099600,
+            "turnActive": true,
+            "stateSequence": null,
+            "observedState": null,
+            "error": null
+          }
+        },
+        {
+          "id": "a1c52112-544b-40fe-8998-6eb1b2da4a7b",
+          "role": "pa",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "36efce21-81f9-4696-8de0-fd63c0331035",
+            "state": "ready",
+            "paneId": "w1:p6",
+            "terminalId": "term_65de3cb2313aa6",
+            "tabId": "w1:t6",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-47-449Z_01a14075-8a99-775a-9efa-f9cab777639f.jsonl",
+            "lastPoll": 1792083574754,
+            "lastProgress": 1792083555765,
+            "lastSeen": 1792083574697,
+            "turnActive": true,
+            "stateSequence": 74,
+            "observedState": "working",
+            "error": null
+          }
+        },
+        {
+          "id": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+            "state": "ready",
+            "paneId": "w1:p7",
+            "terminalId": "term_65de3e05406dc7",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-43-025Z_01a1407a-f791-7607-bb68-47d4b1a6c6c8.jsonl",
+            "lastPoll": 1792083266689,
+            "lastProgress": 1792083265784,
+            "lastSeen": 1792083574697,
+            "turnActive": true,
+            "stateSequence": 51,
+            "observedState": "working",
+            "error": null
+          }
+        },
+        {
+          "id": "ddd45db7-a3a2-4fe1-ad9b-9072be730c15",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "00d6a9aa-e883-4eb0-9933-aeeb8e0054b3",
+            "state": "ready",
+            "paneId": "w1:p8",
+            "terminalId": "term_65de3e083a3d88",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-46-102Z_01a1407b-0396-72fb-b09e-3c6a61c01666.jsonl",
+            "lastPoll": 1792083574801,
+            "lastProgress": 1792083193897,
+            "lastSeen": 1792083574697,
+            "turnActive": true,
+            "stateSequence": 55,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "eb21c226-8ffc-4642-a276-630abea8333c",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "b3baf1ba-786b-4c41-9379-dc3102f2a26f",
+            "state": "ready",
+            "paneId": "w1:p9",
+            "terminalId": "term_65de3e0b2a0e09",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-49-237Z_01a1407b-0fd5-72ad-8a41-0f6da1b62b67.jsonl",
+            "lastPoll": 1792083575258,
+            "lastProgress": 1792083196738,
+            "lastSeen": 1792083574698,
+            "turnActive": true,
+            "stateSequence": 56,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "295403fa-e6ba-48bc-9e57-56b1e474dec7",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "8873268c-5a92-43da-bf25-a5ef467c5d74",
+            "state": "ready",
+            "paneId": "w1:pA",
+            "terminalId": "term_65de3e27da77ca",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-19-274Z_01a1407b-852a-7599-816d-45f976cf99e2.jsonl",
+            "lastPoll": 1792083574980,
+            "lastProgress": 1792083376385,
+            "lastSeen": 1792083574698,
+            "turnActive": false,
+            "stateSequence": 69,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "d19f658a-b6a4-41b8-8517-22327edc6b92",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bef89549-5a3a-45f5-8b76-84269e88bb5c",
+            "state": "ready",
+            "paneId": "w1:pB",
+            "terminalId": "term_65de3e2abc2adb",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-22-271Z_01a1407b-90df-735c-b12b-54a682385977.jsonl",
+            "lastPoll": 1792083574998,
+            "lastProgress": 1792083247557,
+            "lastSeen": 1792083574698,
+            "turnActive": false,
+            "stateSequence": 64,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "f42969b3-b288-460c-bbaf-61f88b89ee48",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bc9ec91f-4ba1-45d8-844f-9b2c4853fcd8",
+            "state": "ready",
+            "paneId": "w1:pC",
+            "terminalId": "term_65de3e2da156fc",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-25-314Z_01a1407b-9cc2-73cd-aa97-615b1b1a6e16.jsonl",
+            "lastPoll": 1792083575015,
+            "lastProgress": 1792083325918,
+            "lastSeen": 1792083574698,
+            "turnActive": true,
+            "stateSequence": 59,
+            "observedState": "working",
+            "error": null
+          }
+        }
+      ],
+      "itemProgress": [
+        {
+          "changedAt": 1792083249355,
+          "itemId": "item-crew-one-docs-1",
+          "revision": 2,
+          "status": "BLOCKED"
+        },
+        {
+          "changedAt": 1792083367128,
+          "itemId": "it-crew-two-docs-01",
+          "revision": 6,
+          "status": "EXECUTING"
+        }
+      ],
+      "paReports": 12,
+      "resultCount": 79,
+      "faultAlerts": [
+        {
+          "id": "pa-health-pa-offline-36efce21-81f9-4696-8de0-fd63c0331035",
+          "sender": "manager",
+          "recipient": "manager",
+          "kind": "alert",
+          "correlation": "manager-supervision",
+          "status": "pending",
+          "payload": {
+            "kind": "pa-offline",
+            "observedAt": 1792083465595
+          }
+        },
+        {
+          "id": "stale-729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e-1792083265784",
+          "sender": "manager",
+          "recipient": "manager",
+          "kind": "alert",
+          "correlation": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+          "status": "pending",
+          "payload": {
+            "employeeId": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+            "kind": "stale-progress",
+            "lastProgress": 1792083265784
+          }
+        }
+      ]
+    },
+    {
+      "name": "final-check",
+      "observedAt": 1792085032140,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "aec24348-5f74-4d50-bce3-ab0c75a3d914",
+            "state": "ready",
+            "paneId": "w1:p5",
+            "terminalId": "term_65de3c8d493b65",
+            "tabId": "w1:t5",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-17-985Z_01a14075-1781-737e-9986-447198e70ff3.jsonl",
+            "lastPoll": 1792085031733,
+            "lastProgress": 1792085029222,
+            "lastSeen": 1792084657242,
+            "turnActive": true,
+            "stateSequence": null,
+            "observedState": null,
+            "error": null
+          }
+        },
+        {
+          "id": "a1c52112-544b-40fe-8998-6eb1b2da4a7b",
+          "role": "pa",
+          "generation": 1,
+          "assignment": null,
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "36efce21-81f9-4696-8de0-fd63c0331035",
+            "state": "ready",
+            "paneId": "w1:p6",
+            "terminalId": "term_65de3cb2313aa6",
+            "tabId": "w1:t6",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-47-449Z_01a14075-8a99-775a-9efa-f9cab777639f.jsonl",
+            "lastPoll": 1792085032074,
+            "lastProgress": 1792085027704,
+            "lastSeen": 1792085031817,
+            "turnActive": true,
+            "stateSequence": 164,
+            "observedState": "working",
+            "error": null
+          }
+        },
+        {
+          "id": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+            "state": "ready",
+            "paneId": "w1:p7",
+            "terminalId": "term_65de3e05406dc7",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-43-025Z_01a1407a-f791-7607-bb68-47d4b1a6c6c8.jsonl",
+            "lastPoll": 1792085031178,
+            "lastProgress": 1792084371293,
+            "lastSeen": 1792085031817,
+            "turnActive": false,
+            "stateSequence": 128,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "ddd45db7-a3a2-4fe1-ad9b-9072be730c15",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "00d6a9aa-e883-4eb0-9933-aeeb8e0054b3",
+            "state": "ready",
+            "paneId": "w1:p8",
+            "terminalId": "term_65de3e083a3d88",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-46-102Z_01a1407b-0396-72fb-b09e-3c6a61c01666.jsonl",
+            "lastPoll": 1792085031669,
+            "lastProgress": 1792083881284,
+            "lastSeen": 1792085031818,
+            "turnActive": false,
+            "stateSequence": 111,
+            "observedState": "idle",
+            "error": null
+          }
+        },
+        {
+          "id": "eb21c226-8ffc-4642-a276-630abea8333c",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "a8e5ad95-d1b7-4d01-a38c-176e5721ed0f",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "b3baf1ba-786b-4c41-9379-dc3102f2a26f",
+            "state": "ready",
+            "paneId": "w1:p9",
+            "terminalId": "term_65de3e0b2a0e09",
+            "tabId": "w1:t7",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-49-237Z_01a1407b-0fd5-72ad-8a41-0f6da1b62b67.jsonl",
+            "lastPoll": 1792085032004,
+            "lastProgress": 1792083660861,
+            "lastSeen": 1792085031818,
+            "turnActive": false,
+            "stateSequence": 113,
+            "observedState": "idle",
+            "error": null
+          }
+        },
+        {
+          "id": "295403fa-e6ba-48bc-9e57-56b1e474dec7",
+          "role": "architect",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "8873268c-5a92-43da-bf25-a5ef467c5d74",
+            "state": "ready",
+            "paneId": "w1:pA",
+            "terminalId": "term_65de3e27da77ca",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-19-274Z_01a1407b-852a-7599-816d-45f976cf99e2.jsonl",
+            "lastPoll": 1792085031467,
+            "lastProgress": 1792084975345,
+            "lastSeen": 1792085031818,
+            "turnActive": false,
+            "stateSequence": 162,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "d19f658a-b6a4-41b8-8517-22327edc6b92",
+          "role": "qa",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bef89549-5a3a-45f5-8b76-84269e88bb5c",
+            "state": "ready",
+            "paneId": "w1:pB",
+            "terminalId": "term_65de3e2abc2adb",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-22-271Z_01a1407b-90df-735c-b12b-54a682385977.jsonl",
+            "lastPoll": 1792085031903,
+            "lastProgress": 1792084831030,
+            "lastSeen": 1792085031818,
+            "turnActive": false,
+            "stateSequence": 152,
+            "observedState": "done",
+            "error": null
+          }
+        },
+        {
+          "id": "f42969b3-b288-460c-bbaf-61f88b89ee48",
+          "role": "dev",
+          "generation": 1,
+          "assignment": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+          "sourceBound": true,
+          "runtime": {
+            "generation": 1,
+            "launchId": "bc9ec91f-4ba1-45d8-844f-9b2c4853fcd8",
+            "state": "ready",
+            "paneId": "w1:pC",
+            "terminalId": "term_65de3e2da156fc",
+            "tabId": "w1:t8",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-25-314Z_01a1407b-9cc2-73cd-aa97-615b1b1a6e16.jsonl",
+            "lastPoll": 1792085031301,
+            "lastProgress": 1792083616348,
+            "lastSeen": 1792085031818,
+            "turnActive": false,
+            "stateSequence": 114,
+            "observedState": "idle",
+            "error": null
+          }
+        }
+      ],
+      "itemProgress": [
+        {
+          "changedAt": 1792084409168,
+          "itemId": "item-crew-one-docs-1",
+          "revision": 9,
+          "status": "DONE"
+        },
+        {
+          "changedAt": 1792084972765,
+          "itemId": "it-crew-two-docs-01",
+          "revision": 11,
+          "status": "DONE"
+        }
+      ],
+      "paReports": 35,
+      "resultCount": 242,
+      "faultAlerts": [
+        {
+          "id": "pa-health-pa-offline-36efce21-81f9-4696-8de0-fd63c0331035",
+          "sender": "manager",
+          "recipient": "manager",
+          "kind": "alert",
+          "correlation": "manager-supervision",
+          "status": "acknowledged",
+          "payload": {
+            "kind": "pa-offline",
+            "observedAt": 1792083465595
+          }
+        },
+        {
+          "id": "stale-729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e-1792083265784",
+          "sender": "manager",
+          "recipient": "manager",
+          "kind": "alert",
+          "correlation": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+          "status": "acknowledged",
+          "payload": {
+            "employeeId": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+            "kind": "stale-progress",
+            "lastProgress": 1792083265784
+          }
+        },
+        {
+          "id": "stale-729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e-1792083920197",
+          "sender": "manager",
+          "recipient": "manager",
+          "kind": "alert",
+          "correlation": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+          "status": "acknowledged",
+          "payload": {
+            "employeeId": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+            "kind": "stale-progress",
+            "lastProgress": 1792083920197
+          }
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "id": "pane-input-0f5af898-47e9-4583-b183-0658205e05da",
+      "sender": "manager",
+      "recipient": "manager",
+      "kind": "alert",
+      "correlation": "7a228510-1bb7-4120-ae64-0bf82a5edc68",
+      "status": "acknowledged",
+      "payload": {
+        "employeeId": "295403fa-e6ba-48bc-9e57-56b1e474dec7",
+        "kind": "direct-pane-input",
+        "raw": {
+          "images": [],
+          "text": "CONTROL clarification for your assigned crew-two.md task: use plain Markdown, local read-back verification and independent QA. No PR, push, external CI or deployment is required. Please proceed with your own captured item through dev assignment, QA, your gate and a report to manager. Stay within /Users/jarredparr/Projects/startup-v7-live. This direct pane interaction is part of the authorized acceptance test; preserve your role and team."
+        },
+        "receivedAt": 1792083284779,
+        "source": "interactive"
+      }
+    },
+    {
+      "id": "pa-health-pa-offline-36efce21-81f9-4696-8de0-fd63c0331035",
+      "sender": "manager",
+      "recipient": "manager",
+      "kind": "alert",
+      "correlation": "manager-supervision",
+      "status": "acknowledged",
+      "payload": {
+        "kind": "pa-offline",
+        "observedAt": 1792083465595
+      }
+    },
+    {
+      "id": "stale-729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e-1792083265784",
+      "sender": "manager",
+      "recipient": "manager",
+      "kind": "alert",
+      "correlation": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+      "status": "acknowledged",
+      "payload": {
+        "employeeId": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+        "kind": "stale-progress",
+        "lastProgress": 1792083265784
+      }
+    },
+    {
+      "id": "stale-729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e-1792083920197",
+      "sender": "manager",
+      "recipient": "manager",
+      "kind": "alert",
+      "correlation": "729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e",
+      "status": "acknowledged",
+      "payload": {
+        "employeeId": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+        "kind": "stale-progress",
+        "lastProgress": 1792083920197
+      }
+    }
+  ],
+  "herdrAgents": [
+    {
+      "agent": "omp",
+      "name": "v7-live-manager",
+      "agent_session": {
+        "agent": "omp",
+        "kind": "path",
+        "source": "herdr:omp",
+        "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-17-985Z_01a14075-1781-737e-9986-447198e70ff3.jsonl"
+      },
+      "agent_status": "working",
+      "pane_id": "w1:p5",
+      "tab_id": "w1:t5",
+      "terminal_id": "term_65de3c8d493b65",
+      "state_change_seq": 139,
+      "completion_seq": null
+    },
+    {
+      "agent": "omp",
+      "name": null,
+      "agent_session": {
+        "agent": "omp",
+        "kind": "path",
+        "source": "herdr:omp",
+        "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-47-449Z_01a14075-8a99-775a-9efa-f9cab777639f.jsonl"
+      },
+      "agent_status": "working",
+      "pane_id": "w1:p6",
+      "tab_id": "w1:t6",
+      "terminal_id": "term_65de3cb2313aa6",
+      "state_change_seq": 164,
+      "completion_seq": null
+    },
+    {
+      "agent": "omp",
+      "name": "s-729ba6e3bc5942feba3be93a5bb8",
+      "agent_session": {
+        "agent": "omp",
+        "kind": "path",
+        "source": "herdr:omp",
+        "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-43-025Z_01a1407a-f791-7607-bb68-47d4b1a6c6c8.jsonl"
+      },
+      "agent_status": "done",
+      "pane_id": "w1:p7",
+      "tab_id": "w1:t7",
+      "terminal_id": "term_65de3e05406dc7",
+      "state_change_seq": 128,
+      "completion_seq": 128
+    },
+    {
+      "agent": "omp",
+      "name": "s-b3baf1ba786b4c419379dc3102f2",
+      "agent_session": {
+        "agent": "omp",
+        "kind": "path",
+        "source": "herdr:omp",
+        "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-49-237Z_01a1407b-0fd5-72ad-8a41-0f6da1b62b67.jsonl"
+      },
+      "agent_status": "idle",
+      "pane_id": "w1:p9",
+      "tab_id": "w1:t7",
+      "terminal_id": "term_65de3e0b2a0e09",
+      "state_change_seq": 113,
+      "completion_seq": null
+    },
+    {
+      "agent": "omp",
+      "name": "s-00d6a9aae8834eb09933aeeb8e00",
+      "agent_session": {
+        "agent": "omp",
+        "kind": "path",
+        "source": "herdr:omp",
+        "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-46-102Z_01a1407b-0396-72fb-b09e-3c6a61c01666.jsonl"
+      },
+      "agent_status": "idle",
+      "pane_id": "w1:p8",
+      "tab_id": "w1:t7",
+      "terminal_id": "term_65de3e083a3d88",
+      "state_change_seq": 111,
+      "completion_seq": null
+    },
+    {
+      "agent": "omp",
+      "name": "s-8873268c5a9243dabf25a5ef467c",
+      "agent_session": {
+        "agent": "omp",
+        "kind": "path",
+        "source": "herdr:omp",
+        "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-19-274Z_01a1407b-852a-7599-816d-45f976cf99e2.jsonl"
+      },
+      "agent_status": "done",
+      "pane_id": "w1:pA",
+      "tab_id": "w1:t8",
+      "terminal_id": "term_65de3e27da77ca",
+      "state_change_seq": 162,
+      "completion_seq": 162
+    },
+    {
+      "agent": "omp",
+      "name": "s-bc9ec91f4ba145d8844f9b2c4853",
+      "agent_session": {
+        "agent": "omp",
+        "kind": "path",
+        "source": "herdr:omp",
+        "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-25-314Z_01a1407b-9cc2-73cd-aa97-615b1b1a6e16.jsonl"
+      },
+      "agent_status": "idle",
+      "pane_id": "w1:pC",
+      "tab_id": "w1:t8",
+      "terminal_id": "term_65de3e2da156fc",
+      "state_change_seq": 114,
+      "completion_seq": null
+    },
+    {
+      "agent": "omp",
+      "name": "s-bef895495a3a45f58b7684269e88",
+      "agent_session": {
+        "agent": "omp",
+        "kind": "path",
+        "source": "herdr:omp",
+        "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-22-271Z_01a1407b-90df-735c-b12b-54a682385977.jsonl"
+      },
+      "agent_status": "done",
+      "pane_id": "w1:pB",
+      "tab_id": "w1:t8",
+      "terminal_id": "term_65de3e2abc2adb",
+      "state_change_seq": 152,
+      "completion_seq": 152
+    }
+  ],
+  "workflow": {
+    "itemProgress": [
+      {
+        "changedAt": 1792084409168,
+        "itemId": "item-crew-one-docs-1",
+        "revision": 9,
+        "status": "DONE"
+      },
+      {
+        "changedAt": 1792084972765,
+        "itemId": "it-crew-two-docs-01",
+        "revision": 11,
+        "status": "DONE"
+      }
+    ],
+    "unresolvedClaims": [
+      {
+        "id": "cc0f12c7-32b9-44d1-a85e-857ac15b1391",
+        "employeeId": "manager",
+        "status": "active"
+      }
+    ],
+    "unassignedTestIntakeReceipts": [
+      "7c4a2549-65a9-46e9-beb2-8a0b0ee3108d",
+      "853ae23f-3dc6-49fb-b501-7ded02ad2046",
+      "345223df-dad0-421e-a60b-9719268a9780"
+    ],
+    "bothItemsCanonicallyDone": true
+  },
+  "limits": [
+    "Manual explicit resumes retained profile, native transcript, Herdr integration and employee bootstrap. Automatic Herdr restore is unverified.",
+    "Coordinator death and host reboot have no automatic OS restart service.",
+    "V6 state migration and filesystem duty parity remain unsupported.",
+    "Three unassigned duplicate proof-harness intake receipts are retained; no claim that the entire intake queue drained.",
+    "Native Herdr TUI capture was unavailable. Browser screenshots show a labeled read-only evidence viewer.",
+    "The two documentation work items are recorded at their actual states, not inferred complete from idle/done."
+  ],
+  "nativeRoots": [
+    {
+      "employeeId": "manager",
+      "role": "manager",
+      "paneId": "w1:p5",
+      "pid": 74221,
+      "processState": "S+",
+      "nativeTranscript": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-17-985Z_01a14075-1781-737e-9986-447198e70ff3.jsonl",
+      "transcriptSha256": "4eca3ed4c465e575ef5bb7ff633ff5271b06a33ff9452a3dbb89b2e1738b9396",
+      "provider": "openrouter",
+      "model": "meta/muse-spark-1.3-contributor",
+      "providerResponses": 489,
+      "lastResponseAt": 1792084931789
+    },
+    {
+      "employeeId": "a1c52112-544b-40fe-8998-6eb1b2da4a7b",
+      "role": "pa",
+      "paneId": "w1:p6",
+      "pid": 70199,
+      "processState": "S+",
+      "nativeTranscript": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-47-449Z_01a14075-8a99-775a-9efa-f9cab777639f.jsonl",
+      "transcriptSha256": "f841381c6d8c33ba43a95b20fec7dde19afb0b025ca5e8b5e35e8c42324b5e20",
+      "provider": "openrouter",
+      "model": "meta/muse-spark-1.3-contributor",
+      "providerResponses": 142,
+      "lastResponseAt": 1792084911032
+    },
+    {
+      "employeeId": "2075e6f8-c44c-49ca-bb78-ac4d615bd654",
+      "role": "architect",
+      "paneId": "w1:p7",
+      "pid": 70269,
+      "processState": "S+",
+      "nativeTranscript": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-43-025Z_01a1407a-f791-7607-bb68-47d4b1a6c6c8.jsonl",
+      "transcriptSha256": "1e3750a6dad70a402ef7c27f7aeff6425abd751d24ea52f3ba9b9a568cacac4c",
+      "provider": "openrouter",
+      "model": "meta/muse-spark-1.3-contributor",
+      "providerResponses": 59,
+      "lastResponseAt": 1792084373336
+    },
+    {
+      "employeeId": "ddd45db7-a3a2-4fe1-ad9b-9072be730c15",
+      "role": "qa",
+      "paneId": "w1:p8",
+      "pid": 69271,
+      "processState": "S+",
+      "nativeTranscript": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-46-102Z_01a1407b-0396-72fb-b09e-3c6a61c01666.jsonl",
+      "transcriptSha256": "92a9176ace14f91891c03713c4625de13a5a9c2a09c26ff3b210c3d0bfcdf0c7",
+      "provider": "openrouter",
+      "model": "meta/muse-spark-1.3-contributor",
+      "providerResponses": 18,
+      "lastResponseAt": 1792083882665
+    },
+    {
+      "employeeId": "eb21c226-8ffc-4642-a276-630abea8333c",
+      "role": "dev",
+      "paneId": "w1:p9",
+      "pid": 69405,
+      "processState": "S+",
+      "nativeTranscript": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-49-237Z_01a1407b-0fd5-72ad-8a41-0f6da1b62b67.jsonl",
+      "transcriptSha256": "bef034c652c2569fedb07e5f510d61344496b99c8e302ca017a9f532189783a2",
+      "provider": "openrouter",
+      "model": "meta/muse-spark-1.3-contributor",
+      "providerResponses": 24,
+      "lastResponseAt": 1792083673642
+    },
+    {
+      "employeeId": "295403fa-e6ba-48bc-9e57-56b1e474dec7",
+      "role": "architect",
+      "paneId": "w1:pA",
+      "pid": 69211,
+      "processState": "S+",
+      "nativeTranscript": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-19-274Z_01a1407b-852a-7599-816d-45f976cf99e2.jsonl",
+      "transcriptSha256": "43bb9d4a2385ec4acc8a97d5dfe6dbd165dda5a64fbba020283486c3a5193dc3",
+      "provider": "openrouter",
+      "model": "meta/muse-spark-1.3-contributor",
+      "providerResponses": 80,
+      "lastResponseAt": 1792084906468
+    },
+    {
+      "employeeId": "d19f658a-b6a4-41b8-8517-22327edc6b92",
+      "role": "qa",
+      "paneId": "w1:pB",
+      "pid": 69333,
+      "processState": "S+",
+      "nativeTranscript": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-22-271Z_01a1407b-90df-735c-b12b-54a682385977.jsonl",
+      "transcriptSha256": "0208ce211ded5964562efa46433a357a3cb2de5d628bad5293132af3f401af69",
+      "provider": "openrouter",
+      "model": "meta/muse-spark-1.3-contributor",
+      "providerResponses": 22,
+      "lastResponseAt": 1792084833254
+    },
+    {
+      "employeeId": "f42969b3-b288-460c-bbaf-61f88b89ee48",
+      "role": "dev",
+      "paneId": "w1:pC",
+      "pid": 69503,
+      "processState": "S+",
+      "nativeTranscript": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-25-314Z_01a1407b-9cc2-73cd-aa97-615b1b1a6e16.jsonl",
+      "transcriptSha256": "608cc7dabcd0da1d8959b26703e8ecd2efd9a9805a4740288dd43cf5fdef4e77",
+      "provider": "openrouter",
+      "model": "meta/muse-spark-1.3-contributor",
+      "providerResponses": 40,
+      "lastResponseAt": 1792083665813
+    }
+  ],
+  "verification": {
+    "tests": 242,
+    "assertions": 1279,
+    "testFiles": 12,
+    "driverTests": 6,
+    "nativeGuardChecks": 8,
+    "typecheck": "PASS"
+  },
+  "installation": {
+    "linkedPackage": "/Users/jarredparr/Projects/jp-skills/extensions/startup"
+  }
+}

@@ -2,7 +2,7 @@
 
 The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP root in a directly interactive Herdr pane. The manager's inference or process can stop while the coordinator continues observing.
 
-V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or establish live Herdr acceptance. `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path. VERSION and publication are separate from this candidate.
+V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path. VERSION and publication are separate from this candidate.
 
 ## Requirements and isolated installation
 
@@ -87,9 +87,9 @@ Independent QA proof precedes the owning architect's approval gate; manager alon
 
 The coordinator has separate lease-renewal and serialized supervision timers. Default supervision ticks every second, PA checks are scheduled every 60 seconds with one outstanding check, semantic progress deadline is five minutes, and connection deadline is 30 seconds. The PA remains resident between checks; continuous inference is not required. PA settlement must include a manager report. Missing/offline/overdue PA supervision blocks new delegation and approval/landing while retaining existing history.
 
-Herdr lifecycle snapshots become timestamped durable manager alerts. Idle/done never settle a claim. Heartbeats and working animation never reset semantic progress. The watchdog checks claims, queue progression, unclassified input, employee presence, manager presence and PA deadlines. Polling can report gaps; it does not promise replay of every unseen intermediate lifecycle transition.
+Herdr idle/done/blocked/unknown snapshots become timestamped durable manager alerts. Working state remains queryable without generating manager inbox traffic. Herdr state sequences are server-wide: forward jumps between observations of one employee are valid; regressions report a gap. Idle/done never settle a claim. Heartbeats and working animation never reset semantic progress. The watchdog checks claims, queue progression, unclassified input, employee presence, manager presence and PA deadlines. Polling can report gaps; it does not promise replay of every unseen intermediate lifecycle transition.
 
-Employee polling updates control-presence metadata and injects durable own-inbox notifications through native `sendMessage`/next-turn delivery. It never types into the human composer or acknowledges work. Claims and settlements remain explicit. A coordinator-epoch rejection can reconnect the same credential/session metadata; uncertain command writes are never automatically replayed. Admission retries are limited to the explicit no-commit HTTP 425 native-session-report-pending response.
+Employee polling updates control-presence metadata and injects durable own-inbox notifications through native `sendMessage`/next-turn delivery. It never types into the human composer or acknowledges work. Native `read`/`write` dispatch through `xd://startup_*` retains the same employee authority checks as named tools. Native `isIdle()` and `hasPendingMessages()` are required: idle roots release execution slots after recap/auxiliary requests, including after reattachment. Claims and settlements remain explicit. A coordinator-epoch rejection can reconnect the same credential/session metadata; uncertain command writes are never automatically replayed. Admission retries are limited to the explicit no-commit HTTP 425 native-session-report-pending response.
 
 ## State and recovery boundaries
 
@@ -99,9 +99,9 @@ State is under `<home>/startup/NAME/`: `binding.json`, `staff.sqlite`, canonical
 - Configured V6 duties block V7 startup. V7 does not expose V6 duty, filesystem repair, repair-authorization or grant-verification parity. Preserve that state for a separately designed migration.
 - An interrupted prepared launch or retained launch lock requires explicit ownership/identity reconciliation. Do not create a second runtime to conceal uncertainty.
 - The detached coordinator survives manager process loss, but it is not installed as an OS-supervised service. Automatic recovery from coordinator process death is not established.
-- Coordinator restart fences unresolved work. Metadata reconnection restores the control channel; technical work remains blocked until saved uncertain claims/grants are reconciled. No uncertain mutation is replayed.
+- Coordinator restart fences unresolved work. Metadata reconnection restores the control channel; technical work remains blocked until saved uncertain claims/grants are reconciled. No uncertain mutation is replayed. Explicit claim reconciliation restores a ready crew to waiting only after all uncertain member claims/grants are resolved. Exact reconciliation retries retain their original evidence and do not reset completed assignments.
 - Native restore must retain the named profile, explicit Herdr integration, generated bootstrap, bound cwd and original native root transcript. Preservation of those flags by Herdr/native restore remains unproven. Bare `omp --resume` is not acceptance evidence for employee admission.
-- Live Herdr crew creation, direct pane interaction, authentication recovery, pane/process loss and restart/restore remain end-to-end acceptance gates. Local fixtures and compiled OMP guard probes do not claim those results.
+- Live two-crew creation, direct pane input routing, real deadline fault detection, PA recovery and explicit same-transcript resumes passed on 2026-10-15. See [live evidence](../../docs/startup-v7/live-acceptance.json). Automatic Herdr restore, OS restart and V6 migration remain unverified/unsupported boundaries.
 
 ## Verification and evidence
 

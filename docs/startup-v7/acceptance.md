@@ -1,31 +1,56 @@
-# Startup V7 candidate acceptance - 2026-10-15
+# Startup V7 acceptance - 2026-10-15
 
-Implemented on `codex/startup-v7`, in an isolated worktree. No normal-profile installation, live Herdr control, publication, release or VERSION change occurred.
+Merged into local `main` and installed in the named OMP profile `startup-v7`. New Startup `V7Live` runs in the owned Herdr session `startup-v7-live-20261015`, bound to `/Users/jarredparr/Projects/startup-v7-live`. The package entry is `v7.ts`. The repository's release VERSION remains 6.0.0; this installation is the V7 companion, not a release/tag or V6 state migration.
 
 ## Verified
 
 | Check | Result |
 | --- | --- |
-| `bun test tests` from `extensions/startup` | 231 passed, 0 failed, 1250 assertions across 12 files |
-| `bun run typecheck` from `extensions/startup` | Passed, including V7 entry and detached runtime |
-| `python3 -m unittest discover -s extensions/startup/probes -p 'test_*driver.py'` | 6 passed |
-| Compiled OMP 18.8.9 guard probe | 8/8 passed; [machine-readable evidence](../../extensions/startup/probes/v7-native-guards.json) |
-| Native negative control | Removing the root bridge preflight guard permits both write and bash mutation artifacts |
-| Diff whitespace and changed skill ASCII checks | Passed |
+| `bun test extensions/startup/tests` | 242 passed, 0 failed, 1279 assertions across 12 files |
+| `bun run --cwd extensions/startup typecheck` | Passed |
+| `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s extensions/startup/probes -p 'test_*driver.py'` | 6 passed |
+| Compiled OMP 18.8.9 guard probe | 8/8 passed; source and executable hashes rechecked current |
+| Live Herdr/OMP acceptance | 18 computed checks passed; actual provider calls, no fixture provider |
+| Diff whitespace and added text ASCII checks | Passed |
 
-Real SQLite/Unix-socket tests establish complete crew admission, manager/architect routing, generation/epoch fencing, source binding, exact retained input/images and existing item approval gates. New regressions cover incomplete-crew direct turns, slow launch isolation, uncertain layout effects, stranded unadmitted recovery, live identity duplication denial, PA supervision, failed Herdr observation, lifecycle gaps, missed launch deadlines, and item-specific staleness that unrelated activity cannot reset. Progress timestamps commit with queue revisions and survive reopen; exact replay does not refresh them.
+[Live machine-readable evidence](live-acceptance.json) records source hashes, actual Herdr session locators, immutable team membership, selected canonical snapshots, fault timings and computed checks. [Screenshot deck](../slides/startup-v7-live-2026-10-15.html) contains browser captures of a labeled read-only evidence viewer. Native Herdr TUI capture was unavailable; these are not presented as native TUI screenshots. [Native guard evidence](../../extensions/startup/probes/v7-native-guards.json) separately proves native enforcement with an offline provider and a guard-removal negative control.
 
-The native probe loads the production employee client into the installed compiled OMP with isolated offline fixtures. It proves complete role/loop projection, actual helper denial, native write/bash denial after lost admission/connection, and zero provider calls after denied context admission. It does not exercise the entire Herdr launch path. The artifact records executable/source hashes and exact stages.
+## Live hierarchy and progress
 
-## Remaining acceptance gates
+- Two complete crews: each has an owning architect, QA and dev. Each crew occupies its own Herdr tab with three independently interactive OMP panes.
+- Manager and permanent PA have separate panes. All eight roots have distinct native transcript and pane identities, canonical role/loop source binding, and fresh authenticated control polling.
+- Direct input in an architect pane produced a durable message to manager. Role and crew membership did not change.
+- Periodic PA checks produced repeated settled reports to manager. The PA remains resident between checks; continuous inference is not required.
+- Crew one reached canonical DONE at revision 9 after dev result, independent QA approval, architect gate and manager decision. Crew two reached canonical DONE at revision 11 after explicit recovery and independent QA. The evidence artifact retains exact observed revisions/statuses; idle/done observations do not substitute for acceptance.
 
-- Live Herdr crew creation, direct human pane interaction, observer failure/recovery and process loss in a real selected workspace.
-- Native restore retaining the named profile, Herdr integration, generated employee bootstrap, cwd and original root transcript.
-- Explicit V6 state migration and filesystem duty/repair parity. V7 refuses existing V6 ownership/duties instead of silently importing or dropping them.
-- Deployment supervision for coordinator death/host reboot. The detached coordinator survives manager loss; it is not an automatically restarted OS service.
+## Faults and recovery
 
-The installed Herdr skill requires `HERDR_ENV=1` for live pane control. This Codex session is outside Herdr; its tests used owned isolated fixtures. No requested live deployment was represented as complete.
+| Experiment | Observed result |
+| --- | --- |
+| SIGSTOP one architect for 325 seconds | Real five-minute semantic deadline produced `stale-progress` TO manager while Herdr still appeared working |
+| Other crew during that pause | Advanced from revision 1 QUEUED to revision 6 EXECUTING |
+| SIGSTOP PA for 45 seconds | Real 30-second control deadline produced `pa-offline` TO manager |
+| Resume PA | Same employee and generation recovered fresh polling and subsequent periodic reports |
+| Explicit native root resumes | Original profile, cwd, Herdr integration, generated employee bootstrap and native transcript retained; no duplicate employees or generations |
+| Coordinator restart | Preserved uncertain claims; manager explicitly reconciled their saved receipts without replaying technical mutations |
+| Idle native recap/side requests | Released execution reservations rather than starving the next crew |
 
-## Shipping policy clarification
+Both injected fault alerts were acknowledged by the real manager. Historical alerts and failed attempts remain in the audit history. Three duplicate test-harness intake receipts remain unassigned and retained; this report does not claim the entire intake queue drained.
 
-The user removed strict merge control as a requirement. Shipping restrictions must be explicit user instructions. Repository credential isolation is not an acceptance gate. Existing QA, architect and manager tool permissions still govern canonical review/completion records; those records are separate from which agent executes a repository merge.
+The live run exposed and fixed registration-before-runtime, worker import aliases, transitional Herdr wire fields, native XD tool dispatch, global sequence misinterpretation, working-state inbox noise, idle root capacity retention and crew recovery state. Each bug fix has a standalone commit and regression coverage. Explicit same-process `/startup select` now checks/restarts a provably dead coordinator before polling its existing client; its regression test passes. Live manual cold resumes are the recovery path established by this run.
+
+## Limits
+
+- This is bounded evidence of hierarchy, useful work, supervision, deadline detection and explicit recovery. It cannot establish that every future run always makes progress.
+- Automatic Herdr/native restore retaining all required flags remains unverified. Bare `omp --resume` is insufficient.
+- Coordinator death/host reboot have no automatically restarted OS service. Explicit recovery is required.
+- V6 state migration and filesystem duty/repair parity remain unsupported. Existing V6 ownership/duties are refused, not imported or discarded.
+- Shipping restrictions follow explicit user instructions. Repository credential isolation is not a V7 requirement. Canonical QA, architect gate and manager completion records retain their role checks.
+
+## Interact with the live run
+
+```sh
+herdr session attach startup-v7-live-20261015
+```
+
+Manager: `w1:p5`. PA: `w1:p6`. Crew one: `w1:p7`, `w1:p8`, `w1:p9`. Crew two: `w1:pA`, `w1:pB`, `w1:pC`. In the manager pane, `/startup status` reads the canonical roster and recovery metadata.
