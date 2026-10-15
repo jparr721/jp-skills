@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createHerdrRuntime, HerdrRuntimeError, runHerdrCommand } from "../src/herdr-runtime";
+import { createHerdrCommandRunner, createHerdrRuntime, HerdrRuntimeError, runHerdrCommand } from "../src/herdr-runtime";
 type ProcessResult = Readonly<{ exitCode: number; stdout: string; stderr: string }>;
 function output(value: unknown): ProcessResult {
   return { exitCode: 0, stdout: JSON.stringify(value), stderr: "" };
@@ -16,7 +16,7 @@ function agent() {
 function schemaFixture(): ProcessResult {
   return output({ protocol: 22, schema_version: 1, schemas: { success_response: { $defs: {
     AgentInfo: { properties: { state_change_seq: { type: "integer" }, interactive_ready: { type: "boolean" }, agent_session: {} } },
-    ResponseResult: { oneOf: ["tab_created", "pane_info", "agent_started", "agent_list"].map((type) => ({ properties: { type: { const: type } } })) },
+    ResponseResult: { oneOf: ["tab_created", "tab_info", "pane_info", "agent_started", "agent_list"].map((type) => ({ properties: { type: { const: type } } })) },
   } } } });
 }
 function serverFixture(patch: Readonly<Record<string, unknown>>): ProcessResult {
@@ -137,4 +137,76 @@ test("spawn failure and invalid argv retain actionable command context", async (
   await expect(runHerdrCommand(["/missing/startup-herdr-test-binary"])).rejects.toThrow("spawn_failed");
   const runtime = createHerdrRuntime({ session: "named", workspaceId: "w1", binary: "/herdr", run: async () => { throw new Error("transport lost"); } });
   await expect(runtime.split({ paneId: "w1:p1", cwd: "/repo", env: {} })).rejects.toThrow("transport lost");
+});
+test("renames a finished crew tab in the selected session without changing focus", async () => {
+  const h = harness([response({ type: "tab_info", tab: { tab_id: "w1:t2", workspace_id: "w1", label: "crew next" } })]);
+  expect(await h.runtime.renameCrew({ tabId: "w1:t2", label: "crew next" })).toBeUndefined();
+  expect(h.calls).toEqual([["/bin/herdr", "--session", "startup-test", "tab", "rename", "w1:t2", "crew next"]]);
+});
+test("rename rejects wrong workspace, tab, label and response variant", async () => {
+  for (const tab of [
+    { tab_id: "w1:t2", workspace_id: "w2", label: "crew next" },
+    { tab_id: "w1:t3", workspace_id: "w1", label: "crew next" },
+    { tab_id: "w1:t2", workspace_id: "w1", label: "old crew" },
+  ]) {
+    const h = harness([response({ type: "tab_info", tab })]);
+    await expect(h.runtime.renameCrew({ tabId: "w1:t2", label: "crew next" })).rejects.toThrow("binding_mismatch");
+    expect(h.calls).toHaveLength(1);
+  }
+  const h = harness([response({ type: "tab_created", tab: { tab_id: "w1:t2", workspace_id: "w1", label: "crew next" } })]);
+  await expect(h.runtime.renameCrew({ tabId: "w1:t2", label: "crew next" })).rejects.toThrow("invalid_response");
+});
+test("rename does not retry ambiguous writes or admit invalid positional arguments", async () => {
+  const failure = { exitCode: 1, stdout: "", stderr: '{"id":"rename","error":{"code":"timeout","message":"unknown result"}}' };
+  const h = harness([failure]);
+  await expect(h.runtime.renameCrew({ tabId: "w1:t2", label: "crew next" })).rejects.toThrow("command_failed");
+  expect(h.calls).toHaveLength(1);
+  const invalid = harness([]);
+  await expect(invalid.runtime.renameCrew({ tabId: "--current", label: "crew next" })).rejects.toThrow("invalid_request");
+  await expect(invalid.runtime.renameCrew({ tabId: "w1:t2", label: "--focus" })).rejects.toThrow("invalid_request");
+  expect(invalid.calls).toHaveLength(0);
+});
+test("bounded runner kills its hung subprocess and reports the timeout without retrying", async () => {
+  const run = createHerdrCommandRunner({ timeoutMs: 100 });
+  const started = performance.now();
+  try {
+    await run([process.execPath, "-e", "console.log(process.pid); console.error('before-timeout'); process.on('SIGTERM',()=>{}); setInterval(()=>{},1000)"]);
+    throw new Error("Expected timeout");
+  } catch (error: unknown) {
+    expect(error).toBeInstanceOf(HerdrRuntimeError);
+    if (!(error instanceof HerdrRuntimeError)) throw error;
+    expect(error.code).toBe("command_timeout");
+    expect(error.detail).toContain("100ms");
+    expect(error.detail).toContain("reconcile");
+    expect(error.stderr).toContain("before-timeout");
+    const pid = Number(error.stdout.trim());
+    expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
+    expect(() => process.kill(pid, 0)).toThrow();
+    expect(performance.now() - started).toBeLessThan(1500);
+  }
+  expect(await run([process.execPath, "-e", "console.log('next-command')"])).toEqual({ exitCode: 0, stdout: "next-command\n", stderr: "" });
+});
+test("timeout also bounds pipe reads when an owned descendant inherits the CLI output", async () => {
+  const run = createHerdrCommandRunner({ timeoutMs: 100 });
+  const started = performance.now();
+  let descendant: number | null = null;
+  try {
+    await run([process.execPath, "-e", "const child=Bun.spawn([process.execPath,'-e','setTimeout(()=>process.exit(0),2000)'],{stdin:'ignore',stdout:'inherit',stderr:'inherit'}); console.log(child.pid); setInterval(()=>{},1000)"]);
+    throw new Error("Expected timeout");
+  } catch (error: unknown) {
+    expect(error).toBeInstanceOf(HerdrRuntimeError);
+    if (!(error instanceof HerdrRuntimeError)) throw error;
+    const pid: number = Number(error.stdout.trim());
+    if (Number.isSafeInteger(pid) && pid > 0) descendant = pid;
+    expect(descendant).not.toBeNull();
+    expect(error.code).toBe("command_timeout");
+    expect(performance.now() - started).toBeLessThan(1000);
+  } finally {
+    if (descendant !== null) {
+      try { process.kill(descendant, "SIGKILL"); }
+      catch (error: unknown) {
+        if (!(error instanceof Error) || !("code" in error) || error.code !== "ESRCH") throw error;
+      }
+    }
+  }
 });

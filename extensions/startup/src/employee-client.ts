@@ -6,6 +6,7 @@ import type { NativeContext } from "./omp-adapter";
 const pollSchema = z.strictObject({
   projection: z.string().min(1),
   pendingMessageIds: z.array(z.string().min(1)).readonly(),
+  toolBlockReason: z.string().min(1).nullable(),
   waitReason: z.string().min(1).nullable(),
 }).readonly();
 const admissionSchema = z.strictObject({
@@ -27,7 +28,23 @@ export type EmployeeClient = Readonly<{
   close: () => void;
 }>;
 export type EmployeeBridgeHost = Pick<HostAPI, "on" | "sendMessage">;
+function isEmployeeTool(event: unknown): boolean {
+  const parsed = toolSchema.parse(event);
+  const taskInput = z.record(z.string(), z.unknown()).safeParse(parsed.input);
+  return parsed.toolName.startsWith("startup_") || (parsed.toolName === "task" && taskInput.success && Object.hasOwn(taskInput.data, "startup"));
+}
+export function installEmployeeToolGuard(host: EmployeeBridgeHost): void {
+  host.on("tool_call", (event, ctx) => {
+    if (ctx.agent.kind !== "main" && isEmployeeTool(event))
+      return { block: true, reason: "Native helper has no Startup employee authority" };
+    return;
+  });
+}
 export class EmployeeClientError extends Error {}
+class EmployeeHttpError extends EmployeeClientError {
+  readonly status: number;
+  constructor(status: number, message: string) { super(message); this.status = status; }
+}
 
 export async function connectEmployee(input: Readonly<{
   socketPath: string;
@@ -66,7 +83,7 @@ export async function connectEmployee(input: Readonly<{
       throw new EmployeeClientError(`Startup ${method} ${path} failed: ${redact(reason)}`);
     }
     if (!response.ok)
-      throw new EmployeeClientError(`Startup ${method} ${path} HTTP ${response.status}: ${redact(text)}`);
+      throw new EmployeeHttpError(response.status, `Startup ${method} ${path} HTTP ${response.status}: ${redact(text)}`);
     try {
       return jsonSchema.parse(JSON.parse(text));
     } catch (error: unknown) {
@@ -74,20 +91,42 @@ export async function connectEmployee(input: Readonly<{
       throw new EmployeeClientError(`Startup ${method} ${path} HTTP ${response.status} invalid JSON response: ${redact(reason)}; body=${redact(text)}`);
     }
   }
-  const receipt: Json = await exchange("POST", "/admit", {
+  async function admitConnection(): Promise<void> {
+    const receipt: Json = await exchange("POST", "/admit", {
     credential: admitted.credential,
     nativeSession: admitted.nativeSession,
     paneId: admitted.paneId,
     source: admitted.source,
   });
-  const parsedConnection = connectionSchema.safeParse(receipt);
-  if (!parsedConnection.success)
+    const parsedConnection = connectionSchema.safeParse(receipt);
+    if (!parsedConnection.success)
     throw new EmployeeClientError("Startup POST /admit HTTP 200 returned an invalid connection receipt");
-  connection = parsedConnection.data.connection;
+    connection = parsedConnection.data.connection;
+  }
+  async function awaitAdmission(): Promise<void> {
+    const deadline = Date.now() + 10000;
+    let warned = false;
+    while (true) {
+      try { await admitConnection(); return; }
+      catch (error: unknown) {
+        if (!(error instanceof EmployeeHttpError) || error.status !== 425 || Date.now() >= deadline) throw error;
+        if (!warned) { process.stderr.write(JSON.stringify({ level: "warn", component: "startup-admission", reason: "native-session-report-pending" }) + "\n"); warned = true; }
+        await Bun.sleep(100);
+      }
+    }
+  }
+  await awaitAdmission();
   return {
     request: (command: Json): Promise<Json> => exchange("POST", "/command", command),
     async poll(): Promise<EmployeePoll> {
-      const body: Json = await exchange("GET", "/poll", null);
+      let body: Json;
+      try { body = await exchange("GET", "/poll", null); }
+      catch (error: unknown) {
+        if (!(error instanceof EmployeeHttpError) || ![401, 403, 409].includes(error.status)) throw error;
+        connection = null;
+        await awaitAdmission();
+        body = await exchange("GET", "/poll", null);
+      }
       const parsed = pollSchema.safeParse(body);
       if (!parsed.success)
         throw new EmployeeClientError(`Startup GET /poll HTTP 200 returned an invalid employee projection: ${redact(parsed.error.message)}`);
@@ -108,13 +147,19 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   z.number().int().positive().parse(input.intervalMs);
   if (input.ctx.agent.kind !== "main")
     throw new EmployeeClientError("Only an actual OMP root may install the employee bridge");
+  const abort = input.ctx.abort;
+  if (typeof abort !== "function") throw new EmployeeClientError("V7 requires the native abort capability before employee admission");
+  const abortTurn: () => void = abort;
   const rootId: string = input.ctx.agent.id;
   const rootSession: string = input.ctx.sessionManager.getSessionId();
-  const notified: Set<string> = new Set();
+  const notified: Map<string, number> = new Map();
   let current: EmployeePoll | null = null;
   let failure: string | null = null;
   let pending: Promise<void> | null = null;
   let closed: boolean = false;
+  let continuedReason: string | null = null;
+  let releasePending: boolean = false;
+  let turnBlocked: string | null = null;
   function isRoot(ctx: NativeContext): boolean {
     return ctx.agent.kind === "main" && ctx.agent.id === rootId &&
       ctx.sessionManager.getSessionId() === rootSession;
@@ -122,17 +167,20 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   async function refresh(): Promise<void> {
     try {
       const next: EmployeePoll = await input.client.poll();
+      if (releasePending) { await input.client.request({ kind: "end_turn" }); releasePending = false; }
       if (closed) return;
       current = next;
       failure = null;
+      for (const id of notified.keys()) if (!next.pendingMessageIds.includes(id)) notified.delete(id);
       for (const id of next.pendingMessageIds) {
-        if (notified.has(id)) continue;
+        const notifiedAt = notified.get(id);
+        if (notifiedAt !== undefined && Date.now() - notifiedAt < 30000) continue;
         host.sendMessage({
           customType: "startup-cue",
           content: `Startup inbox cue ${id} is durable. Claim your own inbox and follow the canonical loop.`,
           display: false,
         }, { triggerTurn: true, deliverAs: "nextTurn" });
-        notified.add(id);
+        notified.set(id, Date.now());
       }
     } catch (error: unknown) {
       if (closed) return;
@@ -170,42 +218,71 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     input.ctx.clearTimer(timer);
     input.client.close();
   }
+  async function admitTurn(): Promise<void> {
+    try { await poll(); await input.client.request({ kind: "begin_turn" }); turnBlocked = null; }
+    catch (error: unknown) {
+      turnBlocked = error instanceof Error ? error.message : String(error);
+      abortTurn();
+      host.sendMessage({ customType: "startup-turn-blocked", content: `Startup turn blocked: ${turnBlocked}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+    }
+  }
+  function projectedText(): string {
+    return current?.projection ?? "Startup employee is blocked until its canonical source and coordinator connection are admitted.";
+  }
   host.on("before_agent_start", async (event, ctx) => {
     if (!isRoot(ctx)) return;
     const parsed = beforeStartSchema.parse(event);
-    await poll();
-    return { systemPrompt: [...parsed.systemPrompt, projection().projection] };
+    await admitTurn();
+    return { systemPrompt: [...parsed.systemPrompt, projectedText()] };
   });
   host.on("context", async (event, ctx) => {
     if (!isRoot(ctx)) return;
     const parsed = contextSchema.parse(event);
-    await poll();
+    await admitTurn();
     return { messages: [
-      { role: "developer", content: projection().projection, timestamp: Date.now() },
+      { role: "developer", content: projectedText(), timestamp: Date.now() },
       ...parsed.messages,
     ] };
   });
   host.on("tool_call", (event, ctx) => {
-    const parsed = toolSchema.parse(event);
-    const taskInput = z.record(z.string(), z.unknown()).safeParse(parsed.input);
-    const startupTask: boolean = parsed.toolName === "task" &&
-      taskInput.success && Object.hasOwn(taskInput.data, "startup");
-    const employeeTool: boolean = parsed.toolName.startsWith("startup_") || startupTask;
+    const employeeTool: boolean = isEmployeeTool(event);
     if (!isRoot(ctx))
       return employeeTool ? { block: true, reason: "Native helper has no Startup employee authority" } : undefined;
+    if (turnBlocked !== null) return { block: true, reason: turnBlocked };
     if (failure !== null)
       return { block: true, reason: `Startup coordinator unavailable: ${failure}` };
+    if (!employeeTool && current?.toolBlockReason !== null && current?.toolBlockReason !== undefined)
+      return { block: true, reason: current.toolBlockReason };
     if (employeeTool && current === null)
       return { block: true, reason: "Startup employee projection is not admitted yet" };
     return;
   });
+  host.on("agent_end", async (event, ctx) => {
+    if (!isRoot(ctx)) return;
+    const parsed = z.object({ willContinue: z.boolean().optional() }).passthrough().parse(event);
+    if (parsed.willContinue !== true) {
+      releasePending = true;
+      try { await input.client.request({ kind: "end_turn" }); releasePending = false; }
+      catch (error: unknown) {
+        host.sendMessage({ customType: "startup-capacity-release", content: "Startup capacity release is pending; the control connection will reconcile it on recovery.", display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+        throw error;
+      }
+    }
+  });
   host.on("session_stop", async (_event, ctx) => {
     if (!isRoot(ctx)) return;
-    if (failure !== null)
-      return { continue: true, additionalContext: `Startup coordinator unavailable: ${failure}` };
+    const failureReason = failure === null ? null : `Startup coordinator unavailable: ${failure}`;
+    if (failureReason !== null) {
+      if (continuedReason === failureReason) return;
+      continuedReason = failureReason;
+      return { continue: true, additionalContext: failureReason };
+    }
     await poll();
     const reason: string | null = projection().waitReason;
-    return reason === null ? undefined : { continue: true, additionalContext: reason };
+    if (reason === null) { continuedReason = null; return; }
+    if (continuedReason === reason) return;
+    continuedReason = reason;
+    return { continue: true, additionalContext: reason };
   });
   host.on("session_shutdown", (_event, ctx) => { if (isRoot(ctx)) close(); });
   return { poll, close };

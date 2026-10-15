@@ -1,96 +1,123 @@
-# Startup companion
+# Startup V7 companion candidate
 
-## Install and remove
+The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP root in a directly interactive Herdr pane. The manager's inference or process can stop while the coordinator continues observing.
 
-Requires Bun and supported OMP 18.8.9. This package exposes `omp.extensions: ["index.ts"]` to native plugin discovery. Link canonical skills separately using the repository instructions; skills-only installation does not provide runtime persistence.
+V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or establish live Herdr acceptance. `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path. VERSION and publication are separate from this candidate.
 
-Choose an explicit named OMP profile. Close its running OMP sessions before changing installation. From this repository:
+## Requirements and isolated installation
+
+- Bun and actual OMP 18.8.9, including native root session, persistent transcript and `ctx.abort` support.
+- Running compatible Herdr >=0.9.5, protocol 22, with installed OMP integration v10.
+- An existing Herdr pane with inherited `HERDR_ENV=1`, `HERDR_SESSION`, `HERDR_WORKSPACE_ID`, `HERDR_PANE_ID` and socket context. No focused-pane discovery from outside Herdr.
+- A named OMP profile supplied through `OMP_PROFILE`, with canonical role/loop sources available locally.
+
+For an explicitly requested isolated installation, run from this repository:
 
 ```sh
 bun install --cwd extensions/startup --frozen-lockfile
-bun extensions/startup/install.ts install my-startup
-omp --profile my-startup
-bun extensions/startup/install.ts uninstall my-startup
+bun extensions/startup/install.ts install startup-v7
+export STARTUP_HERDR_OMP_EXTENSION="$HOME/.omp/agent/extensions/herdr-omp-agent-state.ts"
+OMP_PROFILE=startup-v7 omp --profile startup-v7 --extension "$STARTUP_HERDR_OMP_EXTENSION"
 ```
 
-The installer runs native `omp --profile <profile> plugin link <package-directory>` only after ownership checks. `OMP_BINARY` may identify the intended OMP executable. `PI_CONFIG_DIR` is a single directory name beneath the real home; named-profile plugin data normally lives there under `profiles/<profile>/plugins`. On macOS/Linux an existing `$XDG_DATA_HOME/omp/profiles/<profile>` selects native XDG plugin storage. An agent-directory override alone does not isolate plugins. Use the same profile and environment for install, execution and uninstall.
+The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and `HERDR_INTEGRATION_VERSION=10` headers. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. Without it, entry uses `PI_CODING_AGENT_DIR/extensions/herdr-omp-agent-state.ts`, or `~/.omp/agent/extensions/herdr-omp-agent-state.ts`. Custom configuration locations should supply the explicit path. Worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle.
 
-Installation refuses an existing foreign package path, native dependency, plugin entry/settings or changed ownership receipt. Uninstall verifies the owned link and exact saved lockfile, restores its prior bytes and removes only the owned link/receipt. Changed installation files require explicit reconciliation; no force overwrite. An interrupted owned link can be removed with the same uninstall command before retrying. It retains all user profiles, configuration, transcript/history, Startup staff/state, generated employee profiles and unrelated plugins. Normal-profile installation is not part of repository development or acceptance.
+The installer links the package through native `omp --profile PROFILE plugin link`. `OMP_BINARY` selects the intended executable. Close that profile's sessions before changing installation; use the same profile/environment for installation and execution. `PI_CONFIG_DIR` must be a single directory name beneath the real home. Existing native XDG named-profile storage is respected. Installer checks, mutexes and ownership receipts refuse foreign or changed links/configuration.
 
-## Native boot
+Owned removal restores the saved prior lockfile bytes and retains Startup databases, history and unrelated plugins:
 
-The installed companion registers `/startup` even before selection:
+```sh
+bun extensions/startup/install.ts uninstall startup-v7
+```
+
+Repository development does not install into a normal profile or upgrade an existing V6 Startup.
+
+## Boot and input
+
+In the original manager's Herdr/OMP root:
 
 ```text
-/startup new <name> [--dir <JSON-double-quoted-path>] [-- <work>]
-/startup select <name> [-- <work>]
+/startup new NAME [--dir "absolute-or-relative-existing-path"] [-- WORK]
+/startup select NAME [-- WORK]
 /startup
 /startup status
 ```
 
-Names contain letters, digits, underscore or hyphen. The directory must exist. New defaults to actual native cwd. Select reads `<JP_SKILLS_HOME>/startup/<name>/binding.json`; current boot discovers exactly one saved binding for the nearest ancestor `.startup/config.md`. Ambiguous legacy prose is preserved and requires explicit selection. Startup home resolves `JP_SKILLS_HOME`, then `XDG_CONFIG_HOME/jp-skills`, then `~/.config/jp-skills`. State must be outside the bound root.
+Names contain letters, digits, underscore or hyphen. `new` binds an existing directory, defaulting to native cwd. `select` reads the saved binding. Current selection discovers exactly one matching ancestor `.startup/config.md` binding or uses `STARTUP_NAME`. Startup home resolves `JP_SKILLS_HOME`, then `XDG_CONFIG_HOME/jp-skills`, then `~/.config/jp-skills`; state must remain outside the bound repository.
 
-Boot checks actual running `pi.pi.VERSION`, writes a synchronous managed root AGENTS section beside `.startup`, preserves unrelated bytes/config, materializes the real native root transcript when lazily allocated, and only then starts the adapter. Bound root and native cwd are distinct: employee discovery profiles live at actual native cwd `.omp/agents`. Foreign profile/AGENTS ownership fails explicitly. On a boot error retained input/tool/stop guards prevent ordinary work; correct the reported files/config and retry `/startup`. Known OMP with failed companion stays blocked under the canonical dispatch contract.
+Boot verifies the actual OMP version, root identity, unparented transcript/header, canonical source hashes, named profile and Herdr location. It preserves unrelated root AGENTS/configuration bytes, records private runtime configuration and launch intent, then starts or reconnects to the independent runtime. A live or uncertain host is never blindly spawned again. Read-only health checks are bounded; partial PA startup failure keeps the endpoint available and records a manager blocker.
 
-`-- <work>` retains the exact original native human input and attached images, routes its receipt as work and wakes the manager to delegate it. Command words are part of the retained raw evidence. A boot without work records a control receipt. Ordinary later human input remains unclassified until manager `startup_route`; registered commands are control. `STARTUP_NAME` is an optional explicit host selection, not required boot syntax.
+After a boot attempt, failed or incomplete admission blocks native and Startup tools. Source/turn admission failure invokes native abort; a swallowed extension hook exception does not grant work authority. Boot failure produces one stop reminder and then parks. The `/startup` command remains available for explicit correction/retry.
 
-`STARTUP_EXECUTION_LIMIT` is absent or a positive safe integer. The effective explicit ceiling is the smaller of it and saved `binding.json.executionLimit`; native execution capacity further bounds admission, including bounded review/buddy descendants. No absent-limit default of six. Invalid values retain boot guards and fail before store effects; correct the host environment and restart to clear an invalid host configuration. Roster reservation and concurrent execution are different.
+`-- WORK` preserves the exact original command text and images as the work receipt. Ordinary manager input remains unclassified until `startup_route`. Direct input in an employee pane becomes a durable manager observation with the original text/images; it does not change the employee's role or approval authority. Extension-generated notifications are not human receipts.
 
-## Public tools
+## Crews and tools
 
-Load complete canonical [manager](../../skills/startup-role-manager/SKILL.md), assigned role and [shared loop](../../skills/startup-loop/SKILL.md). Role text is the sole persona source; assignment payloads stay separate. `task` retains native ordinary-task grammar and adds:
+The hierarchy is manager -> owning architect -> dev/QA. PA and shared DevOps report to manager. Each event has an immutable team with one architect, one QA and one or more devs, grouped in one Herdr tab. Admission must verify every member before work claims become ready. A complete, finished, idle crew can be explicitly reused for another event with a fresh assignment/generation; membership history is retained.
 
-```text
-task {startup:"hire",requestId,role,additional}
-task {startup:"activate",employeeIds}
-task {startup:"delegate",eventId,developers}
-task {startup:"replace",employeeId,evidence}
-```
+Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md), assigned role and [shared loop](../../skills/startup-loop/SKILL.md). Native `task` remains OMP's bounded-helper tool. It is not overridden with Startup staffing modes. Helpers receive no employee admission and their factories install the employee-tool denial guard before attachment.
 
-Hire/delegate/activate/replace are manager-only. Hire is additive, stable request ID retries add zero, a deliberate later hire uses a new ID. Ready requires actual native canonical-source admission. Both native asynchronous progress and synchronous results are supported without changing OMP settings. A failed later single dispatch retains earlier successful siblings. Correct a source/profile preparation error and retry the same IDs; a changed idle hire source requires explicit `startup_refresh` before team reservation. Each intake event has a fresh complete unit with exactly one architect, one QA and one or more devs. Team membership and developer count are immutable. Reuse idle staff or hire missing capacity, dispatch independent ready teams and sweep before waiting. PA has only its own scoped inbox and manager-provided summaries.
-
-| Operation | Boundary |
+| Public tool | Purpose and boundary |
 | --- | --- |
-| `startup_route {inputId,disposition,reason,amendItemIds}` | Manager high-level disposition; work immediately delegates. |
-| `startup_intake {eventId,input,amendItemIds}` | Manager saves raw externally supplied work, then delegates. |
-| `startup_claim {}` / `startup_settle {claimId,result}` | Own inbox only; result `{id,kind,output,checkpoint,outgoing}`; completed/question/uncertain. |
-| `startup_send {id,recipient,kind,correlation,payload}` | Persist authorized hierarchical cue before native wake. |
-| `startup_input {inputId,offset}` / `startup_image {inputId,index}` | Assigned input pages up to 4096 characters and native image blocks; 512-character preview is not full intake. |
-| `startup_capture {captureId,eventId,rows,receipt}` | Assigned architect scoped queue capture; exact row/revision contract in [queue records](../../skills/startup-intake/references/queue-records.md). |
-| `startup_item` | Typed role-authorized execution, QA, architect gate and manager landing. Read queue records before using. |
-| `startup_staff {recoveryOffset?}` / `startup_dispatch {messageIds}` | Manager staffing, source readiness, capacity/blockers and saved-message wake. Recovery pages expose up to 64 unresolved claims, grants, assignments and pending delivery IDs each, with counts and `nextOffset`; no task bodies. |
-| `startup_block {key,evidence}` | Manager records validated concrete capacity/resource/dependency evidence. |
-| `startup_reconcile {claimId,evidence}` / `startup_resolve {assignmentId,evidence}` | Manager evidence-based uncertain claim and assignment resolution. |
-| `startup_refresh {employeeId,evidence}` / `startup_bind_manager {}` | Idle source refresh or current-root manager recovery; real source admission required. |
-| `startup_release_reconciled {grantId,verification}` | Current root verifies reconciled grants; JSON repair grants require actual native verification. |
-| `startup_finish_team {teamId,evidence}` / `startup_retire {employeeIds,evidence}` | Manager only after unresolved work/mail/claims/grants/duties are resolved; retirement limited to idle DevOps. |
+| `startup_hire {requestId,role,additional}` | Manager reserves additional architect/QA/dev/DevOps identities; stable retries add zero. The single permanent PA is automatic. |
+| `startup_delegate {eventId,developers}` | Manager admits a complete crew for persisted intake; retries retain its original membership. |
+| `startup_activate {employeeIds}` | Manager starts existing prepared identities; uncertain starts require reconciliation. |
+| `startup_replace {employeeId,evidence}` | Manager replacement after explicit failure/identity evidence and unresolved-work reconciliation. |
+| `startup_route {inputId,disposition,reason,amendItemIds}` | Manager classifies a saved native receipt as work/status/control/conversation/decision. |
+| `startup_intake {eventId,input,amendItemIds}` | Manager saves externally supplied work before delegation. |
+| `startup_claim {}` | Claims only the admitted employee's own ready inbox. |
+| `startup_settle {claimId,result}` | Atomically saves result/checkpoint, acknowledgement and outgoing cues. |
+| `startup_send {id,recipient,kind,correlation,payload}` | Persists a role-authorized hierarchical cue. |
+| `startup_input {inputId,offset}` / `startup_image {inputId,index}` | Scoped 4096-character input pages and actual native image blocks; a preview is not the complete input. |
+| `startup_capture {captureId,eventId,rows,receipt}` | Assigned architect captures canonical queue rows/revisions for its event. |
+| `startup_item` | Typed flat item action with `requestId`, `itemId`, `expectedRevision` and action-specific fields. |
+| `startup_staff {}` | Manager roster, crew hierarchy, runtime health, pending intake and unresolved recovery metadata. |
+| `startup_reconcile {claimId,evidence}` / `startup_resolve {assignmentId,evidence}` | Manager evidence-based resolution of uncertain claims/assignments. |
+| `startup_refresh {employeeId,evidence}` | Manager idle canonical-source refresh requiring fresh admission. |
+| `startup_block {key,evidence}` | Manager records supported concrete capacity/dependency evidence. |
+| `startup_finish_team {teamId,evidence}` / `startup_retire {employeeIds,evidence}` | Manager completion/eligible retirement after unresolved work, mail and grants are resolved. |
 
-Question settlement acknowledges its cue but preserves its waiting assignment. A later answer never completes the original item result. Use the explicit block/decision, reconcile if uncertain, resolve, requeue and new-attempt sequence in queue records. Never replay an uncertain mutation automatically.
+Result shape is `{id,kind,output,checkpoint,outgoing}`, with kind `completed`, `question` or `uncertain`. Outgoing cues use `{id,recipient,kind,correlation,payload}`. A question acknowledges its cue but retains the waiting assignment; an answer is not the original completed result. Follow [queue records](../../skills/startup-intake/references/queue-records.md) for block/decision, reconciliation, explicit resolution and a new attempt.
 
-## Monitoring and repair
+Independent QA proof precedes the owning architect's approval gate; manager alone records landing/completion. Other architects, workers, PA, helpers and observed idle/done states cannot approve progression. These are Startup workflow gates. Shared OS/shell credentials do not establish repository-enforced prevention of out-of-band GitHub merges.
 
-Only the current host owns timers; offline means no monitoring. This version supports regular filesystem JSON documents up to 16384 bytes with complete LF-terminated native read evidence. It has no deployment/service-health connector. A matching file acceptance condition proves that condition only.
+## Capacity and supervision
 
-- Manager assigns `startup_duty {id,employeeId,target,probe,acceptance,repairAuthority,cadenceMs,nextDue}`; missing fields are explicit null and remain pending. Target and probe are absolute regular `.json` file paths without selectors or hard links. Acceptance is `{path: string[], equals: JSON}`. Authority is null, `{kind:"read-only"}`, or `{kind:"replace-json",payload:JSON,verification:{path:absoluteJsonPath,acceptance:{path:string[],equals:JSON}}}`. Cadence is a positive integer milliseconds value at most 2147483647; nextDue is an epoch-millisecond timestamp. Never infer a production target or repair authority from hiring.
-- Manager reads `startup_duties {}` for host lifetime, due/pending duty and timestamped observation/blocker state, then sends a scoped summary to PA. Historical observations are not current health.
-- Duty IDs and configured authority are immutable. End resolved old duty with `startup_duty_end {dutyId,evidence}`, then use a new ID for a changed duty.
-- Manager `startup_repair_authorize {id,dutyId}` saves one exact configured replace-json action and assigned post-action probe. The assigned employee alone invokes `startup_repair {authorizationId}`. No employee-selectable target, payload or binding arguments.
-- Existing grants, including released ones, cannot replay repair. A new deliberate action needs a new authorization ID. Uncertain action requires manager `startup_repair_reconcile {grantId,evidence}` and an actual new native verification probe before grant release; reconciliation never repeats the write.
+`STARTUP_EXECUTION_LIMIT`, when supplied, is a positive safe integer constrained by the saved binding ceiling and must allow at least three root slots. Without an explicit ceiling, root admission derives the selected native `task.maxConcurrency` plus two reserved manager/PA slots. Coordinator permits bound root turns; ordinary helper concurrency remains OMP-local per root and is not aggregated into a global helper budget.
 
-## Verification
+The coordinator has separate lease-renewal and serialized supervision timers. Default supervision ticks every second, PA checks are scheduled every 60 seconds with one outstanding check, semantic progress deadline is five minutes, and connection deadline is 30 seconds. The PA remains resident between checks; continuous inference is not required. PA settlement must include a manager report. Missing/offline/overdue PA supervision blocks new delegation and approval/landing while retaining existing history.
 
-`bun run --cwd extensions/startup typecheck` and `bun test extensions/startup/tests` run local checks. Compiled native probe evidence is retained under `probes/`; offline fixture providers exercise the real installed OMP runtime without external services. Installation, source admission and file probes do not establish production deployment health.
+Herdr lifecycle snapshots become timestamped durable manager alerts. Idle/done never settle a claim. Heartbeats and working animation never reset semantic progress. The watchdog checks claims, queue progression, unclassified input, employee presence, manager presence and PA deadlines. Polling can report gaps; it does not promise replay of every unseen intermediate lifecycle transition.
 
-## Cold recovery and acceptance proof
+Employee polling updates control-presence metadata and injects durable own-inbox notifications through native `sendMessage`/next-turn delivery. It never types into the human composer or acknowledges work. Claims and settlements remain explicit. A coordinator-epoch rejection can reconnect the same credential/session metadata; uncertain command writes are never automatically replayed. Admission retries are limited to the explicit no-commit HTTP 425 native-session-report-pending response.
 
-Resume the same saved manager native transcript with the same named profile and isolated environment used to install and boot it:
+## State and recovery boundaries
+
+State is under `<home>/startup/NAME/`: `binding.json`, `staff.sqlite`, canonical queue/resource files, private `runtime-config.json`, `runtime-launch.json`, `runtime-launch.lock`, generated `launches/` manifests/bootstraps and `runtime.log`. Private runtime files are owner-only. Business history and runtime effects share the fenced store; lifecycle is observation evidence, not an alternate work log.
+
+- V7 uses a distinct store host scope ending in `:startup-v7`. Existing V6 databases are refused even after their owner lease expires. There is no automatic scope rewrite or state import.
+- Configured V6 duties block V7 startup. V7 does not expose V6 duty, filesystem repair, repair-authorization or grant-verification parity. Preserve that state for a separately designed migration.
+- An interrupted prepared launch or retained launch lock requires explicit ownership/identity reconciliation. Do not create a second runtime to conceal uncertainty.
+- The detached coordinator survives manager process loss, but it is not installed as an OS-supervised service. Automatic recovery from coordinator process death is not established.
+- Coordinator restart fences unresolved work. Metadata reconnection restores the control channel; technical work remains blocked until saved uncertain claims/grants are reconciled. No uncertain mutation is replayed.
+- Native restore must retain the named profile, explicit Herdr integration, generated bootstrap, bound cwd and original native root transcript. Preservation of those flags by Herdr/native restore remains unproven. Bare `omp --resume` is not acceptance evidence for employee admission.
+- Live Herdr crew creation, direct pane interaction, authentication recovery, pane/process loss and restart/restore remain end-to-end acceptance gates. Local fixtures and compiled OMP guard probes do not claim those results.
+
+## Verification and evidence
 
 ```sh
-omp --profile my-startup --resume /absolute/path/to/saved-manager.jsonl
+bun run --cwd extensions/startup typecheck
+bun test extensions/startup/tests
 ```
 
-The cold probe uses this exact `--resume` form; the installed boot probe also verifies `--session <saved-file>`. Starting a brand-new root with `startup select` is not same-session recovery. After the real default 60000 ms owner lease expires, the current owner calls `startup_staff {}` and follows `recovery.nextOffset` with `startup_staff {recoveryOffset:nextOffset}` to discover saved claim, grant, assignment and pending-message IDs, reconciles uncertain work with fresh native verification, binds its current manager source and uses `startup_dispatch {messageIds:[savedId]}`. No uncertain mutation is replayed. Preserved child transcripts and source admission retain employee identity; runtime observations resume only while the new host runs.
+Tests use real SQLite and owned Unix sockets, fixture Herdr executables, and an owned detached runtime. They cover authority, complete crews, lifecycle without settlement, PA/progress deadlines, raw input/images, role routing, admission failures and installation ownership.
 
-Generated technical employee profiles declare native `spawns: [task]` for bounded procedure supervisors/reviewers. Native recursion, disabled-agent policy, budgets and aggregate capacity still apply. Ordinary helpers receive no Startup employee identity or inbox/hiring authority; PA retains no child-spawn permission.
+The compiled OMP guard probe uses an isolated offline provider and records executable/source hashes, admitted/denied/disconnected/synthetic stages and a guard-removal negative control:
 
-[V6 acceptance](probes/v6-acceptance.md) contains reproducible owned-fixture commands, fingerprints, current proofs and reused component boundaries for VERSION 6.0.0. Normal-profile installation remains an explicit separate action.
+```sh
+python3 extensions/startup/probes/run-v7-guards.py \
+  --evidence extensions/startup/probes/v7-native-guards.json \
+  --omp-source /absolute/path/to/matching/OMP/src/extensibility/extensions/runner.ts
+```
+
+Inspect the artifact's actual status/checks and source hashes before treating it as current proof. [V6 acceptance](probes/v6-acceptance.md) remains historical evidence for the retained V6 implementation. No normal-profile installation, live Herdr control, publication or version change is implied by running repository checks.

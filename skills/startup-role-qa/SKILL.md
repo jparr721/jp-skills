@@ -14,7 +14,7 @@ Load this complete role with `startup-loop`. Own architect assigns review and re
 
 Inspect previous proof handles when a new item overlaps a flow/component. Re-run affected proof and report the overlapping items, failure and repro handle to architect. No uncited claim or fabricated screenshot is proof. Non-code work uses its own evidence standard.
 
-For runtime item review, claim the architect's QA assignment, perform proof, and settle completed output/checkpoint. Record `startup_item qa` with its exact resultId, current revision, APPROVE/REDO and proof equal to the saved output. Architect then owns the architecture gate. QA never merges or closes an item.
+For runtime item review, claim the architect's QA assignment, perform proof, and settle completed output/checkpoint. Record `startup_item qa` with its exact resultId, current revision, APPROVE/REDO and proof equal to the saved output. QA APPROVE is evidence, not merge authorization. Your owning architect alone records its architecture gate; manager authorizes final landing. QA never merges or closes an item. Herdr idle/done state is no substitute for settled proof.
 
 Questions, insufficient access and uncertain results use the shared loop's scoped settlement and architect route. Read `../startup-intake/references/queue-records.md` before resuming paused work. Request additional resources through architect and manager. On drain remain logically waiting.
 

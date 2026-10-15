@@ -15,12 +15,13 @@ type LayoutEnvironment = Readonly<Record<string, string>>;
 export type HerdrRuntime = Readonly<{
   check: () => Promise<void>;
   createCrew: (input: Readonly<{ label: string; cwd: string; env: LayoutEnvironment }>) => Promise<{ tabId: string; rootPaneId: string }>;
+  renameCrew: (input: Readonly<{ tabId: string; label: string }>) => Promise<void>;
   split: (input: Readonly<{ paneId: string; cwd: string; env: LayoutEnvironment }>) => Promise<string>;
   launch: (input: Readonly<{ paneId: string; name: string; args: readonly string[] }>) => Promise<HerdrObservation>;
   observe: () => Promise<readonly HerdrObservation[]>;
 }>;
 type CommandResult = Readonly<{ exitCode: number; stdout: string; stderr: string }>;
-type FailureCode = "command_failed" | "invalid_response" | "dependency_unavailable" | "binding_mismatch" | "invalid_request" | "spawn_failed";
+type FailureCode = "command_failed" | "command_timeout" | "invalid_response" | "dependency_unavailable" | "binding_mismatch" | "invalid_request" | "spawn_failed";
 type Diagnostic = Readonly<{
   code: FailureCode;
   command: readonly string[];
@@ -51,6 +52,7 @@ const textSchema = z.string().min(1).refine((value) => !value.includes("\0"), "N
 const targetSchema = textSchema.refine((value) => !value.startsWith("-"), "Targets cannot begin with a command option");
 const environmentSchema = z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string().refine((value) => !value.includes("\0")));
 const createSchema = z.strictObject({ label: textSchema, cwd: textSchema, env: environmentSchema });
+const renameSchema = z.strictObject({ tabId: targetSchema, label: targetSchema });
 const splitSchema = z.strictObject({ paneId: targetSchema, cwd: textSchema, env: environmentSchema });
 const launchSchema = z.strictObject({ paneId: targetSchema, name: z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/), args: z.array(z.string().refine((value) => !value.includes("\0"))) });
 const locationSchema = z.object({ workspace_id: textSchema, tab_id: textSchema, pane_id: textSchema, terminal_id: textSchema });
@@ -63,6 +65,7 @@ const agentSchema = locationSchema.extend({
   agent_session: z.object({ source: textSchema, agent: textSchema, kind: z.enum(["id", "path"]), value: textSchema }).nullable(),
 });
 const createResultSchema = z.object({ type: z.literal("tab_created"), tab: z.object({ workspace_id: textSchema, tab_id: textSchema }), root_pane: locationSchema });
+const renameResultSchema = z.object({ type: z.literal("tab_info"), tab: z.object({ workspace_id: textSchema, tab_id: textSchema, label: textSchema }) });
 const splitResultSchema = z.object({ type: z.literal("pane_info"), pane: locationSchema });
 const launchResultSchema = z.object({ type: z.literal("agent_started"), agent: agentSchema, argv: z.array(z.string()) });
 const listResultSchema = z.object({ type: z.literal("agent_list"), agents: z.array(agentSchema) });
@@ -91,15 +94,43 @@ function supportedVersion(version: string): boolean {
   return major > 0 || minor > 9 || (minor === 9 && patch >= 5);
 }
 export async function runHerdrCommand(argv: readonly string[]): Promise<CommandResult> {
-  if (argv.length === 0 || argv.some((value) => value.includes("\0")))
-    throw new HerdrRuntimeError({ code: "invalid_request", command: argv, exitCode: null, stdout: "", stderr: "", detail: "A nonempty executable argv without NUL is required" });
-  try {
-    const child = Bun.spawn([...argv], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-    const [exitCode, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
-    return { exitCode, stdout, stderr };
-  } catch (error: unknown) {
-    throw new HerdrRuntimeError({ code: "spawn_failed", command: argv, exitCode: null, stdout: "", stderr: error instanceof Error ? error.message : String(error), detail: "Subprocess did not return a complete result; reconcile before retrying a write" });
-  }
+  return createHerdrCommandRunner({ timeoutMs: 35000 })(argv);
+}
+export function createHerdrCommandRunner(input: Readonly<{ timeoutMs: number }>): (argv: readonly string[]) => Promise<CommandResult> {
+  const timeoutMs = z.number().int().positive().safe().parse(input.timeoutMs);
+  return async (argv): Promise<CommandResult> => {
+    if (argv.length === 0 || argv.some((value) => value.includes("\0")))
+      throw new HerdrRuntimeError({ code: "invalid_request", command: argv, exitCode: null, stdout: "", stderr: "", detail: "A nonempty executable argv without NUL is required" });
+    const deadline = new AbortController();
+    const timer = setTimeout(() => deadline.abort(), timeoutMs);
+    try {
+      const child = Bun.spawn([...argv], { stdin: "ignore", stdout: "pipe", stderr: "pipe", signal: deadline.signal, killSignal: "SIGKILL" });
+      const stdoutChunks: Uint8Array[] = [];
+      const stderrChunks: Uint8Array[] = [];
+      const expired = new Promise<never>((_resolve, reject) => {
+        deadline.signal.addEventListener("abort", () => reject(new Error("Subprocess deadline reached")), { once: true });
+      });
+      let exitCode: number;
+      try {
+        [exitCode] = await Promise.race([Promise.all([
+          child.exited,
+          child.stdout.pipeTo(new WritableStream<Uint8Array>({ write(chunk): void { stdoutChunks.push(chunk); } }), { signal: deadline.signal }),
+          child.stderr.pipeTo(new WritableStream<Uint8Array>({ write(chunk): void { stderrChunks.push(chunk); } }), { signal: deadline.signal }),
+        ]), expired]);
+      } catch (error: unknown) {
+        if (!deadline.signal.aborted) throw error;
+        exitCode = await child.exited;
+      }
+      const stdout: string = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr: string = Buffer.concat(stderrChunks).toString("utf8");
+      if (deadline.signal.aborted)
+        throw new HerdrRuntimeError({ code: "command_timeout", command: argv, exitCode, stdout, stderr, detail: `Herdr command exceeded ${timeoutMs}ms; its result is uncertain, reconcile before retrying a write` });
+      return { exitCode, stdout, stderr };
+    } catch (error: unknown) {
+      if (error instanceof HerdrRuntimeError) throw error;
+      throw new HerdrRuntimeError({ code: "spawn_failed", command: argv, exitCode: null, stdout: "", stderr: error instanceof Error ? error.message : String(error), detail: "Subprocess did not return a complete result; reconcile before retrying a write" });
+    } finally { clearTimeout(timer); }
+  };
 }
 export function createHerdrRuntime(input: Readonly<{
   session: string;
@@ -144,7 +175,7 @@ export function createHerdrRuntime(input: Readonly<{
         fail("dependency_unavailable", server.command, server.result, "Require a running compatible Herdr >=0.9.5 with protocol 22");
       const bundled = await execute(["api", "schema", "--json"], apiSchema, "dependency_unavailable");
       const variants: readonly string[] = bundled.data.schemas.success_response.$defs.ResponseResult.oneOf.map((variant) => variant.properties.type.const);
-      if (!["tab_created", "pane_info", "agent_started", "agent_list"].every((kind) => variants.includes(kind)))
+      if (!["tab_created", "tab_info", "pane_info", "agent_started", "agent_list"].every((kind) => variants.includes(kind)))
         fail("dependency_unavailable", bundled.command, bundled.result, "Bundled schema omits required layout or agent response variants");
     },
     createCrew: async (request): Promise<{ tabId: string; rootPaneId: string }> => {
@@ -154,6 +185,13 @@ export function createHerdrRuntime(input: Readonly<{
       if (created.tab.workspace_id !== config.data.workspaceId || created.root_pane.workspace_id !== config.data.workspaceId || created.root_pane.tab_id !== created.tab.tab_id)
         fail("binding_mismatch", response.command, response.result, "Created layout is outside the selected workspace or tab");
       return { tabId: created.tab.tab_id, rootPaneId: created.root_pane.pane_id };
+    },
+    renameCrew: async (request): Promise<void> => {
+      const parsed = validate(renameSchema, request, [...prefix, "tab", "rename"]);
+      const response = await execute(["tab", "rename", parsed.tabId, parsed.label], z.object({ id: textSchema, result: renameResultSchema }), "invalid_response");
+      const tab = response.data.result.tab;
+      if (tab.workspace_id !== config.data.workspaceId || tab.tab_id !== parsed.tabId || tab.label !== parsed.label)
+        fail("binding_mismatch", response.command, response.result, "Renamed tab does not match the selected workspace, tab or requested label");
     },
     split: async (request): Promise<string> => {
       const parsed = validate(splitSchema, request, [...prefix, "pane", "split"]);

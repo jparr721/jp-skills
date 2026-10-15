@@ -1,6 +1,7 @@
 import { createDuties } from "./duties";
+import { rawInputSchema, imageSchema, inputSummary } from "./inputs";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
@@ -109,6 +110,7 @@ export type NativeContext = Readonly<{
     getSessionFile: () => string | undefined;
   }>;
   getSystemPrompt: () => string[];
+  abort?: () => void;
   invokeTool?: (params: Record<string, unknown>) => Promise<NativeResult>;
   setInterval: (
     callback: () => void,
@@ -285,42 +287,6 @@ const nativeWakeSchema = z
   .passthrough();
 export type StartupAdapter = ReturnType<typeof createAdapter>;
 
-const rawInputSchema = z.object({
-  text: z.string(),
-  images: z.array(jsonSchema),
-});
-const imageSchema = z.object({
-  type: z.literal("image"),
-  data: z.string().min(1),
-  mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
-});
-function inputSummary(inputId: string, raw: Json) {
-  const parsed = rawInputSchema.safeParse(raw);
-  const text = parsed.success
-    ? parsed.data.text
-    : typeof raw === "string"
-      ? raw
-      : encode(raw);
-  const images = parsed.success ? parsed.data.images : [];
-  return {
-    inputId,
-    textPreview: text.slice(0, 512),
-    textLength: text.length,
-    attachmentCount: images.length,
-    attachments: images.slice(0, 8).map((raw, index) => {
-      const image = imageSchema.parse(raw);
-      return {
-        inputId,
-        index,
-        mimeType: image.mimeType,
-        bytes: Buffer.from(image.data, "base64").length,
-        sha256: createHash("sha256").update(image.data).digest("hex"),
-        tool: "startup_image",
-      };
-    }),
-    textTool: "startup_input",
-  };
-}
 function inputMetadata(received: ReceivedInput) {
   return {
     id: received.id,

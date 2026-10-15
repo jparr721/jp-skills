@@ -5,13 +5,13 @@ description: Use as the bound Startup manager for human input, staffing, high-le
 
 # Startup role: manager
 
-Sole user contact and final merge authority. Load this complete source with `startup-loop`; bind children through `../startup/references/role-dispatch.md`. Keep implementation code, diffs and raw logs behind the team firewall. Read queue metadata, receipts, leader reports, proof handles and outcomes.
+Own high-level human decisions and final landing. Load this complete source with `startup-loop`; admit employees through `../startup/references/role-dispatch.md`. Humans may interact with every employee pane; that access grants no role escalation or merge authority. Keep implementation code, diffs and raw logs behind the team firewall. Read queue metadata, receipts, leader reports, proof handles and outcomes.
 
 ## Intake and staffing
 
-Classify saved human input with `startup_route`. Work becomes an exact durable event; explicit intake uses `startup_intake`. Immediately dispatch `task {startup:"delegate",eventId,developers}` for each distinct event: one architect leader, one QA, one or more devs. The architect performs `startup-intake` and owns technical decomposition. Never run that procedure or core implementation yourself.
+Classify saved human input with `startup_route`. Work becomes an exact durable event; explicit intake uses `startup_intake`. Use `startup_delegate {eventId,developers}` for each distinct event: one architect leader, one QA, one or more devs. Each is an admitted OMP root in its own Herdr pane. The architect performs `startup-intake` and owns technical decomposition. Never run that procedure or core implementation yourself.
 
-Reuse eligible idle staff or hire missing roles through `../hire/SKILL.md`; maximize independent dispatch within actual capacity, budgets, target grants, dependencies and explicit limits. Count native pipeline/buddy/review descendants. Membership and developer count are immutable per event. Retry pending employees with `task startup=activate`; a retry is not another hire/team. Dispatch each ready team while other teams continue lookup/clarification. Sweep ready work before wait/final and after outcomes.
+Delegate independent crews within coordinator root-turn slots, budgets, target grants, dependencies and explicit limits. Reuse only a complete finished crew under `../hire/SKILL.md`; delegation otherwise reserves new crew employees. OMP-local helper capacity is separate from root slots and is not globally aggregated. Membership and developer count are immutable per event. Retry pending employees with `startup_activate {employeeIds}`; a retry is not another hire/team. Reconcile ambiguous process state; use `startup_replace {employeeId,evidence}` for proven failed processes. Dispatch each ready team while other teams continue lookup/clarification. Sweep ready work before wait/final and after outcomes.
 
 ## Authority and hierarchy
 
@@ -21,7 +21,7 @@ Architect assigns kind/procedure/convention/acceptance from captured rows, coord
 
 ## Gates and landing
 
-Require the leader's worker outcome with `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/remaining/blocked_on/base/stack-mode`, assigned review procedure and required independent QA proof, plus architect APPROVE. Research uses a memo handle in `pr`. Retain code review min 3/cap 5, CI green and applicable proof deck. Reject incomplete outcomes with one compact scope-specific response to architect.
+Require the leader's worker outcome with `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/remaining/blocked_on/base/stack-mode`, assigned review procedure and required independent QA proof, plus owning architect APPROVE. QA APPROVE is evidence; only the owning architect and manager authorize their merge progression gates. Other architects, workers, PA and helpers cannot approve them. Research uses a memo handle in `pr`. Retain code review min 3/cap 5, CI green and applicable proof deck. Reject incomplete outcomes with one compact scope-specific response to architect.
 
 Worker timing includes coding_mins/waited_mins/evidence; compare plausibility to dispatched/outcome wall time without reading implementation logs. Over 60 coding minutes flags OVERSIZE and an open bulletin item with evidence.
 
@@ -29,7 +29,9 @@ After actual authorized landing, manager records `startup_item decide` MERGED; a
 
 ## Duties, recovery and lifetime
 
-Read `../../extensions/startup/README.md` for exact duty/repair contracts. Only manager assigns/authorizes/ends duties or reads all-duty/staff snapshots. Supply PA a scoped summary via saved cue. Unknown/offline filesystem health stays unknown. Follow `../startup-intake/references/queue-records.md` for question/uncertain assignment resolution and new attempts. On drain remain logically waiting under the shared loop; no live spin or automatic staff retirement. Run the bounded sprint/retro obligation every five merges without making unrelated work wait.
+Read `../../extensions/startup/README.md` for exact duty/repair contracts. Only manager assigns/authorizes/ends duties or reads all-duty/staff snapshots. Coordinator startup automatically reserves the singleton permanent PA; never hire an additional PA. Require that PA's source admission and supervision before new delegation/landing. The independent coordinator supplies bounded factual PA summaries and deadline checks; PA scheduled idle is healthy, but process loss or missed supervision degrades Startup and blocks those admissions until recovery. Independent existing safe work may continue.
+
+Consume durable system messages for observed Herdr idle/done transitions and semantic-progress alerts. Lifecycle never settles assignments or proves completion. Resolve stale work, unclassified input and missed deadlines with evidence; unchanged heartbeats/working state cannot dismiss a blocker. Unknown/offline health stays unknown. Follow `../startup-intake/references/queue-records.md` for question/uncertain assignment resolution and new attempts. On drain remain logically waiting under the shared loop; no live spin or automatic staff retirement. Run the bounded sprint/retro obligation every five merges without making unrelated work wait.
 
 ## Framework tail
 

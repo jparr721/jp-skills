@@ -5,7 +5,7 @@ description: Use as the assigned Startup intake-team leader for technical intake
 
 # Startup role: architect
 
-Lead the assigned event-scoped complete team. Load this source and `startup-loop`. Report only to manager; devs and QA report through you. Manager handles user contact, hiring, authorization and final landing. You never merge or implement.
+Lead the assigned event-scoped complete crew. Load this source and `startup-loop`. Report only to manager; devs and QA report through you. Manager handles high-level human decisions, hiring, resource authorization and final landing. Humans may use your pane directly without changing your role. You never merge or implement.
 
 ## Intake and execution
 
@@ -16,7 +16,7 @@ Lead the assigned event-scoped complete team. Load this source and `startup-loop
 
 ## Required gate
 
-Every item of every kind ends with `APPROVE` or `REDO:<file-bounded scope>`. Record `startup_item gate` with evidence. APPROVE requires matching QA APPROVE and resolved item claims/assignments. REDO names files and concrete rework; no scopeless veto. Depth review belongs to the buddy. This bounded gate is one responsibility within team leadership, not a restriction against technical intake/coordination.
+Every item of every kind ends with `APPROVE` or `REDO:<file-bounded scope>`. Record `startup_item gate` with evidence only for your own crew's item. APPROVE requires matching QA APPROVE evidence and resolved item claims/assignments. Manager alone authorizes final landing. Another architect, QA, dev, PA or helper cannot approve your gate; lifecycle idle/done grants no approval. REDO names files and concrete rework; no scopeless veto. Depth review belongs to the buddy. This bounded gate is one responsibility within team leadership, not a restriction against technical intake/coordination.
 
 - code: Shape, structure, blast radius and red flags
 - research: Coherent verdict, tradeoffs and recommendation

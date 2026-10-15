@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
+import { runtimeAbandonmentSchema, runtimeBindingSchema, type RuntimeAbandonment, type RuntimeBinding } from "./runtime-contracts";
 import {
   authoritySchema,
   bindingSchema,
@@ -156,6 +157,13 @@ const occurrenceSchema = z
 const queueOwnerSchema = z
   .strictObject({ id: idSchema, eventId: idSchema, revision: timeSchema })
   .readonly();
+const itemProgressSchema = z.strictObject({
+  itemId: idSchema,
+  revision: timeSchema,
+  status: z.string().min(1),
+  changedAt: timeSchema,
+}).readonly();
+export type ItemProgress = z.infer<typeof itemProgressSchema>;
 const assignmentSchema = z
   .strictObject({
     id: idSchema,
@@ -591,16 +599,35 @@ export function openStore(args: {
     const path: string = join(stateDirectory, file);
     return existsSync(path) ? readFileSync(path, "utf8") : null;
   }
+  function observeItemProgress(input: Readonly<{ itemId: string; revision: number; status: string; observedAt: number }>): ItemProgress {
+    const next: ItemProgress = itemProgressSchema.parse({ itemId: input.itemId, revision: input.revision, status: input.status, changedAt: input.observedAt });
+    const previous: ItemProgress | null = read("itemProgress", next.itemId, itemProgressSchema);
+    if (previous !== null) {
+      if (next.revision < previous.revision || next.changedAt < previous.changedAt)
+        throw new StoreFenceError("Item progress revision or timestamp regressed");
+      if (next.revision === previous.revision) {
+        if (next.status !== previous.status) throw new StoreConflictError("Item status changed without a new queue revision");
+        return previous;
+      }
+    }
+    put("itemProgress", next.itemId, next);
+    return next;
+  }
   function finalizeCapture(receipt: CaptureReceipt): void {
     const current: Team = team(receipt.teamId);
+    const rows = canonicalQueue().rows;
     for (const item of receipt.items.filter((entry): boolean =>
       receipt.request.rows.some((change): boolean => change.id === entry.id),
-    ))
+    )) {
       put("queueOwner", item.id, {
         id: item.id,
         eventId: current.eventId,
         revision: item.revision,
       });
+      const row = rows.find((entry) => entry.id === item.id);
+      if (row === undefined) throw new StoreRecoveryError("Captured item is missing from the canonical queue");
+      observeItemProgress({ itemId: item.id, revision: item.revision, status: z.string().parse(row.status), observedAt: now() });
+    }
     put("capture", receipt.request.captureId, receipt);
     put("team", current.id, {
       ...current,
@@ -633,6 +660,7 @@ export function openStore(args: {
       eventId: receipt.eventId,
       revision: receipt.revision,
     });
+    observeItemProgress({ itemId: receipt.request.itemId, revision: receipt.revision, status: receipt.status, observedAt: now() });
     put("team", current.id, {
       ...current,
       items: current.items.map((item) =>
@@ -2570,6 +2598,126 @@ export function openStore(args: {
         }
         return retired;
       });
+    },
+    abandonUnadmittedRuntime(input: Readonly<{
+      manager: Binding;
+      employeeId: string;
+      launchId: string;
+      evidence: Json;
+      verifiedAbsentAt: number;
+      connectionDeadlineMs: number;
+    }>): number {
+      return tx((): number => {
+        manager(input.manager);
+        const evidence: Json = jsonSchema.parse(input.evidence);
+        if (evidence === null) throw new StoreRecoveryError("Runtime abandonment requires explicit manager recovery evidence");
+        const previous = read("runtimeAbandonment", input.launchId, runtimeAbandonmentSchema);
+        if (previous !== null) {
+          assertReplay({ employeeId: previous.employeeId, evidence: previous.evidence }, { employeeId: input.employeeId, evidence }, input.launchId);
+          return previous.nextGeneration;
+        }
+        const current: Employee = employee(input.employeeId);
+        const key: string = `${current.id}/${current.generation + 1}`;
+        const saved = read("runtimeBinding", key, runtimeBindingSchema);
+        if (current.role === "manager" || current.nativeHandle !== null || current.source !== null || saved === null || saved.launchId !== input.launchId || saved.state === "ready" || saved.state === "abandoned")
+          throw new StoreAuthorityError("Only a never-admitted pending employee generation may be abandoned");
+        const verifiedAbsentAt: number = timeSchema.parse(input.verifiedAbsentAt);
+        const connectionDeadlineMs: number = z.number().int().positive().safe().parse(input.connectionDeadlineMs);
+        if (verifiedAbsentAt !== now()) throw new StoreRecoveryError("Runtime abandonment requires current absence verification");
+        if (verifiedAbsentAt - Math.max(saved.lastPoll, saved.lastSeen) <= connectionDeadlineMs)
+          throw new StoreRecoveryError("Runtime is too recent to abandon; wait for the connection deadline and verify absence");
+        if (all("claim", claimSchema).some((claim) => claim.employeeId === current.id && claim.status !== "settled") || all("grant", grantSchema).some((grant) => grant.employeeId === current.id && grant.state !== "released"))
+          throw new StoreRecoveryError("Reconcile claims and target grants before abandoning a pending runtime");
+        const nextGeneration: number = timeSchema.parse(saved.generation + 1);
+        const receipt: RuntimeAbandonment = runtimeAbandonmentSchema.parse({ ...input, generation: saved.generation, nextGeneration });
+        put("runtimeAbandonment", saved.launchId, receipt);
+        put("runtimeBinding", key, { ...saved, state: "abandoned", turnActive: false, error: "Abandoned by explicit manager recovery" });
+        put("employee", current.id, { ...current, generation: saved.generation, nativeHandle: null, source: null, error: null });
+        put("replacement", `${current.id}/${nextGeneration}`, { kind: "abandoned-runtime", launchId: saved.launchId, evidence });
+        if (current.assignment !== null) {
+          const assigned: Team = team(current.assignment);
+          put("team", assigned.id, { ...assigned, state: "reserved", generations: { ...assigned.generations, [current.id]: nextGeneration } });
+        }
+        return nextGeneration;
+      });
+    },
+    runtimeAbandonments(): readonly RuntimeAbandonment[] {
+      return all("runtimeAbandonment", runtimeAbandonmentSchema);
+    },
+    observeItemProgress(input: Readonly<{ itemId: string; revision: number; status: string; observedAt: number }>): ItemProgress {
+      return tx(() => observeItemProgress(input));
+    },
+    itemProgress(): readonly ItemProgress[] {
+      return all("itemProgress", itemProgressSchema);
+    },
+    prepareRuntime(input: RuntimeBinding): RuntimeBinding {
+      return tx(() => {
+        const runtime = runtimeBindingSchema.parse(input);
+        const current = employee(runtime.employeeId);
+        const key = `${runtime.employeeId}/${runtime.generation}`;
+        const saved = read("runtimeBinding", key, runtimeBindingSchema);
+        if (saved !== null) {
+          if (saved.state === "abandoned") throw new StoreFenceError("Runtime generation was abandoned by manager recovery");
+          if (saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source))
+            throw new StoreConflictError("Runtime generation already has a different launch reservation");
+          return saved;
+        }
+        if (runtime.generation !== (current.role === "manager" ? current.generation : current.generation + 1))
+          throw new StoreFenceError("Runtime launch must match the next reserved employee generation");
+        if (!runtime.source.rolePath.endsWith(`/startup-role-${current.role}/SKILL.md`) || (current.canonicalRevision !== null && runtime.source.roleRevision !== current.canonicalRevision))
+          throw new StoreAuthorityError("Runtime source does not match the reserved employee role");
+        put("runtimeBinding", key, runtime);
+        return runtime;
+      });
+    },
+    updateRuntime(input: RuntimeBinding): RuntimeBinding {
+      return tx(() => {
+        const runtime = runtimeBindingSchema.parse(input);
+        const key = `${runtime.employeeId}/${runtime.generation}`;
+        const saved = read("runtimeBinding", key, runtimeBindingSchema);
+        if (saved === null || saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source))
+          throw new StoreFenceError("Runtime update does not match its saved launch reservation");
+        if (saved.state === "abandoned") {
+          if (!sameDocument(saved, runtime)) throw new StoreFenceError("Runtime generation was abandoned by manager recovery");
+          return saved;
+        }
+        if ((saved.nativeSession !== null && saved.nativeSession !== runtime.nativeSession) || runtime.lastProgress < saved.lastProgress || runtime.lastSeen < saved.lastSeen)
+          throw new StoreFenceError("Runtime identity or timestamp regressed");
+        if (runtime.state === "ready" && (runtime.nativeSession === null || runtime.paneId === null || runtime.terminalId === null))
+          throw new StoreAuthorityError("Runtime readiness requires pane, terminal and native session evidence");
+        put("runtimeBinding", key, runtime);
+        return runtime;
+      });
+    },
+    runtimeBindings(): readonly RuntimeBinding[] {
+      return all("runtimeBinding", runtimeBindingSchema);
+    },
+    observeRuntime(input: Readonly<{ employeeId: string; generation: number; nativeSession: string; state: NonNullable<RuntimeBinding["observedState"]>; sequence: number; observedAt: number }>): void {
+      tx(() => {
+        const key = `${input.employeeId}/${input.generation}`;
+        const runtime = read("runtimeBinding", key, runtimeBindingSchema);
+        if (runtime === null || runtime.nativeSession !== input.nativeSession)
+          throw new StoreFenceError("Observation does not match the bound native session");
+        if (runtime.state === "abandoned") throw new StoreFenceError("Runtime generation was abandoned by manager recovery");
+        const sequence = timeSchema.parse(input.sequence);
+        if (runtime.stateSequence !== null && sequence < runtime.stateSequence)
+          throw new StoreFenceError("Lifecycle observation sequence regressed");
+        if (runtime.stateSequence === sequence && runtime.observedState !== input.state)
+          throw new StoreConflictError("Lifecycle sequence conflicts with its saved state");
+        const observedAt = timeSchema.parse(input.observedAt);
+        if (observedAt < runtime.lastSeen) throw new StoreFenceError("Observation time regressed");
+        if (runtime.stateSequence !== sequence) {
+          saveCue(employee("manager"), {
+            id: `runtime-${runtime.launchId}-${sequence}-${input.state}`,
+            recipient: "manager", kind: "alert", correlation: runtime.launchId,
+            payload: { kind: "runtime-observation", employeeId: runtime.employeeId, generation: runtime.generation, state: input.state, observedAt, previousSequence: runtime.stateSequence, sequence },
+          }, null);
+        }
+        put("runtimeBinding", key, { ...runtime, stateSequence: sequence, observedState: input.state, lastSeen: observedAt });
+      });
+    },
+    runtimeAlert(input: Readonly<{ id: string; correlation: string; payload: Json }>): Message {
+      return tx(() => saveCue(employee("manager"), { ...input, recipient: "manager", kind: "alert" }, null));
     },
     snapshot(): Snapshot {
       return db

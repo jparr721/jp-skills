@@ -16,6 +16,8 @@
   },
   "include": [
     "index.ts",
+    "v7.ts",
+    "runtime-host.ts",
     "src/**/*.ts",
     "tests/**/*.ts",
     "install.ts"

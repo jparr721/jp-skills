@@ -16,7 +16,7 @@
   },
   "omp": {
     "extensions": [
-      "index.ts"
+      "v7.ts"
     ]
   }
 }

@@ -8,7 +8,7 @@ Retain `id, source, status, repo, remote, target, merge-strategy, branch, worktr
 
 ## Scoped capture
 
-Manager preserves an exact received event through `startup_route` work disposition, or `startup_intake {eventId,input,amendItemIds}`, before `task startup=delegate`. Native receipt ID is the event ID. The same event retry is idempotent; identical later user wording is a new event/team.
+Manager preserves an exact received event through `startup_route` work disposition, or `startup_intake {eventId,input,amendItemIds}`, before `startup_delegate {eventId,developers}`. Native receipt ID is the event ID. The same event retry is idempotent; identical later user wording is a new event/team.
 
 Architect invokes:
 
@@ -40,6 +40,8 @@ Every `startup_item` action requires `{requestId,itemId,expectedRevision,action}
 
 Every accepted action increments revision, including QA assignment/proof. A normal flow is revisions 1 captured QUEUED, 2 assigned, 3 review, 4 QA assignment, 5 QA proof, 6 gate, 7 manager completion. `startup_finish_team` requires captured work and no unresolved owned item, mail, claim, assignment or grant.
 
+QA APPROVE supplies proof; only the owning architect approves its gate and only manager approves final landing. Other architects, workers, PA and helpers cannot authorize merge progression. Herdr lifecycle state never settles claims or approves work. New delegation/landing requires source-admitted mandatory PA supervision.
+
 ## Paused execution
 
 `startup_settle` question acknowledges its cue and settles its claim but leaves the assignment waiting. Uncertain leaves reconciliation. A later answer has another message/claim and cannot supply the original execution's required completed result.
@@ -48,8 +50,8 @@ Every accepted action increments revision, including QA assignment/proof. A norm
 2. Once actual state is known, manager uses `startup_resolve {assignmentId,evidence}` on the old assignment. For uncertainty first `startup_reconcile {claimId,evidence}`; then resolve its waiting assignment. Resolve/release held grants through their supported verified path. Never silently replay uncertain mutation.
 3. Architect/manager records explicit QUEUED resume only from BLOCKED/NEEDS_DECISION after old claims/assignments and team grants resolve. Then `startup_item assign` with a new request ID creates a new attempt/message. The assigned dev must settle this new assignment completed and submit that exact result ID for review.
 
-Capacity-blocked pending delivery is different: the cue is unclaimed and the host retries admission when slots free. Keep existing event/team/employee IDs; do not settle nonexistent claims or hire duplicate retry identities. Manager `startup_block` evidence kinds are capacity, resource with target, dependency with prerequisite itemId, or employee-limit; the runtime validates current reality. Unrelated CI/intake/review is no blanket blocker.
+Capacity-blocked pending delivery is different: the cue is unclaimed and the coordinator retries admission when slots free. Keep existing event/team/employee IDs; do not settle nonexistent claims or hire duplicate retry identities. Manager `startup_block` evidence kinds are capacity, resource with target, dependency with prerequisite itemId, or employee-limit; the runtime validates current reality. Unrelated CI/intake/review is no blanket blocker.
 
-## Prompt-only writer
+## Coordinator ownership
 
-When the active harness contract selects prompt-only mode, architect proposes scoped captures and manager serializes file writes. Reload latest queue/receipts; reconcile changed preimage, preserve unknown fields/container, atomically replace in the selected state directory and read back every prior ID plus each passage mapping. Record receipts before reporting success. This is procedural coordination, not native runtime enforcement.
+The authenticated OMP extension sends commands to the coordinator, the exclusive state writer and lease owner. Preserve runtime receipts and journal recovery; direct queue-file writes are not an alternate execution path. Missing coordinator/OMP/Herdr readiness requires explicit recovery. Lifecycle observations and watchdog alerts preserve work history without manufacturing completion or authority.

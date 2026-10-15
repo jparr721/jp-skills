@@ -169,3 +169,31 @@ process.stdout.write("wrong-version\\n");
     "already in progress",
   );
 });
+
+test("V7 package installs through native link and owned uninstall restores prior profile bytes", () => {
+  const f = fixture();
+  const original: string = '{"settings":{"user":{"keep":true}}}\n';
+  const lock: string = join(f.plugins, "omp-plugins.lock.json");
+  writeFileSync(lock, original);
+  const executable: string = join(f.plugins, "omp-v7-fixture");
+  writeFileSync(executable, `#!${process.execPath}
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+const plugins = ${JSON.stringify(f.plugins)};
+if (process.argv[2] === "--version") process.stdout.write("omp/18.8.9" + String.fromCharCode(10));
+else {
+  const source = process.argv[6];
+  const manifest = JSON.parse(readFileSync(source + "/package.json", "utf8"));
+  if (manifest.omp.extensions.length !== 1 || manifest.omp.extensions[0] !== "v7.ts") throw new Error("V7 entry not selected");
+  mkdirSync(plugins + "/node_modules/@jp-skills", { recursive: true });
+  symlinkSync(source, plugins + "/node_modules/@jp-skills/startup");
+  writeFileSync(plugins + "/omp-plugins.lock.json", JSON.stringify({ plugins: { "@jp-skills/startup": { version: manifest.version, enabledFeatures: null, enabled: true } }, settings: { user: { keep: true } } }, null, 2));
+}
+`, { mode: 0o700 });
+  const installed = manageInstallation({ ...f, omp: executable });
+  expect(installed.action).toBe("install");
+  expect(realpathSync(join(f.plugins, "node_modules/@jp-skills/startup"))).toBe(f.source);
+  expect(JSON.parse(readFileSync(lock, "utf8")).plugins["@jp-skills/startup"].enabled).toBe(true);
+  manageInstallation({ ...f, action: "uninstall", omp: "must-not-execute" });
+  expect(readFileSync(lock, "utf8")).toBe(original);
+  expect(existsSync(join(f.plugins, "node_modules/@jp-skills/startup"))).toBe(false);
+});

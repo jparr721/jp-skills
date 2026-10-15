@@ -19,7 +19,7 @@ import { z } from "zod";
 
 export class StartupInstallError extends Error {}
 const packageName = "@jp-skills/startup";
-const profileSchema = z
+export const ompProfileSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/)
   .refine(
@@ -48,7 +48,7 @@ export function pluginsDirectory(
   profile: string,
   env: NodeJS.ProcessEnv,
 ): string {
-  profileSchema.parse(profile);
+  ompProfileSchema.parse(profile);
   const configName = env.PI_CONFIG_DIR ?? ".omp";
   if (
     !/^[a-zA-Z0-9._-]+$/.test(configName) ||
@@ -112,13 +112,13 @@ export function manageInstallation(options: InstallOptions): Readonly<{
   source: string;
   action: string;
 }> {
-  const profile = profileSchema.parse(options.profile);
+  const profile = ompProfileSchema.parse(options.profile);
   const source = realpathSync(options.source);
   const manifest = z
     .object({
       name: z.literal(packageName),
       version: z.string(),
-      omp: z.object({ extensions: z.tuple([z.literal("index.ts")]) }),
+      omp: z.object({ extensions: z.tuple([z.literal("v7.ts")]) }),
     })
     .parse(JSON.parse(readFileSync(join(source, "package.json"), "utf8")));
   const plugins = pluginsDirectory(profile, options.env);
@@ -279,7 +279,7 @@ export function manageInstallation(options: InstallOptions): Readonly<{
 }
 if (import.meta.main) {
   const [action, profile] = z
-    .tuple([z.enum(["install", "uninstall"]), profileSchema])
+    .tuple([z.enum(["install", "uninstall"]), ompProfileSchema])
     .parse(process.argv.slice(2));
   process.stdout.write(
     JSON.stringify(
