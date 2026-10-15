@@ -82,7 +82,7 @@ Startup family (roles + procedures):
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (6.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (7.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
@@ -185,6 +185,6 @@ New skills follow the same shape: one directory, one `SKILL.md` with `name` + `d
 
 Skill instructions are written as generic actions. Each harness maps actions such as dispatching agents, asking the user, reading files, searching files, editing files, and running commands to its native tools.
 
-The Startup V7 candidate requires OMP 18.8.9, Herdr 0.9.5 with protocol 22, its OMP integration v10, Bun and the companion. It runs one independent coordinator and one OMP root per employee, grouped into hierarchical crews. Linking skills alone does not install the runtime. See [install, boot and tool contracts](extensions/startup/README.md), [design and deployment limits](docs/startup-v7/design.md), and [native guard proof](extensions/startup/probes/v7-native-guards.json). V6 migration and live Herdr restore remain acceptance gates; this candidate does not update the released version or existing profiles. The [V6 acceptance record](extensions/startup/probes/v6-acceptance.md) remains historical. Full-source binding is specified in [role-dispatch](skills/startup/references/role-dispatch.md).
+Startup V7 requires OMP 18.8.9, Herdr 0.9.5 with protocol 22, its OMP integration v10, Bun and the companion. It runs one independent coordinator and one OMP root per employee, grouped into hierarchical crews. Linking skills alone does not install the runtime. See [install, boot and tool contracts](extensions/startup/README.md), [design and deployment limits](docs/startup-v7/design.md), and [native guard proof](extensions/startup/probes/v7-native-guards.json). The [live acceptance report](docs/startup-v7/acceptance.md) proves complete crews, PA supervision, real deadline fault detection and explicit recovery. V6 migration and automatic Herdr restore remain unsupported/unverified; companion installation remains profile-specific. The [V6 acceptance record](extensions/startup/probes/v6-acceptance.md) remains historical. Full-source binding is specified in [role-dispatch](skills/startup/references/role-dispatch.md).
 
 Oh My Pi surfaces linked skills as namespaced slash commands: type `/skill:` (e.g. `/skill:pipeline`), not `/<skill-name>`. Restart `omp` after linking so startup discovery picks them up.

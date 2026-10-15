@@ -1,6 +1,6 @@
 # Startup V7 acceptance - 2026-10-15
 
-Merged into local `main` and installed in the named OMP profile `startup-v7`. New Startup `V7Live` runs in the owned Herdr session `startup-v7-live-20261015`, bound to `/Users/jarredparr/Projects/startup-v7-live`. The package entry is `v7.ts`. The repository's release VERSION remains 6.0.0; this installation is the V7 companion, not a release/tag or V6 state migration.
+Merged into local `main` and installed in the named OMP profile `startup-v7`. New Startup `V7Live` runs in the owned Herdr session `startup-v7-live-20261015`, bound to `/Users/jarredparr/Projects/startup-v7-live`. The package entry is `v7.ts`. The live proof preceded the collection release. The subsequent release is 7.0.0; it does not migrate V6 state.
 
 ## Verified
 

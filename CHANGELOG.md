@@ -2,6 +2,38 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.0] - 2026-10-15
+
+Startup V7 requires Herdr and OMP and runs complete hierarchical crews as independent, directly interactive native sessions.
+
+### Breaking changes
+
+- Startup requires Bun, OMP 18.8.9, Herdr >=0.9.5 with protocol 22, the managed OMP integration v10 and an explicitly selected named OMP profile. Native task-only staffing is no longer the Startup runtime.
+- V7 supports new V7 state. Existing V6 database ownership and configured duties are refused. V6 migration and filesystem duty/repair parity are not implemented; preserve existing staff, queue and history.
+- Startup's package entry is `extensions/startup/v7.ts`. The retained V6 entry and probes are historical/component evidence, not a V7 fallback.
+
+### Added
+
+- One detached coordinator owns durable staffing, immutable event crews, authenticated root admission and supervision independently of manager inference.
+- Each crew has an owning architect, independent QA and one or more developers, with one real OMP pane per employee and one Herdr tab per crew. The manager and mandatory permanent PA have separate panes.
+- Periodic PA checks produce scoped reports to manager. Missing/offline/overdue PA supervision blocks new delegation and landing while preserving existing work and history.
+- Semantic progress deadlines, durable idle/done observations to manager, explicit blockers, generation/epoch fencing and evidence-based recovery prevent silent stale-state acceptance. Heartbeats and working animation do not count as progress.
+- Live acceptance records two complete crews across eight native roots, both documentation items canonically DONE, 35 PA reports, real five-minute architect-stall detection and 30-second PA presence detection, followed by same-identity recovery. [Proof and limits](docs/startup-v7/acceptance.md).
+
+### Fixed
+
+- Native extension registration timing, generated worker imports and transitional Herdr session/readiness fields no longer prevent employee spawning/admission.
+- Native XD tool dispatch preserves employee authority. Herdr's server-wide sequence jumps and working states no longer flood the manager with false gap/lifecycle alerts.
+- Idle recap/auxiliary requests and reattached roots release execution reservations instead of starving other crews.
+- Explicit claim reconciliation restores crew inbox delivery after all uncertain member claims/grants are resolved. Exact retries preserve evidence and completed assignments.
+- Explicit manager selection checks/restarts a provably dead coordinator before polling its existing client.
+
+### Verification and limits
+
+- 242 tests, 1279 assertions, TypeScript checking, six driver tests, eight compiled OMP guard checks and 18 computed live checks passed.
+- Native automatic restore and automatic OS restart after coordinator death/host reboot remain unverified/unsupported. Manual resumes must preserve the profile, cwd, integration, employee bootstrap and original native transcript.
+- Shipping restrictions follow explicit user instructions. Canonical QA, architect gate and manager completion records retain their role checks; repository credential isolation is not required.
+
 ## [6.0.0] - 2026-10-14
 
 Startup V6 adds durable staff, architect-led teams and native OMP inbox/loop support. Machine-specific companion installation remains an explicit separate action.

@@ -30,4 +30,4 @@ Prior-art verdict: adapt existing Herdr CLI/socket protocol and native OMP exten
 
 ## Result
 
-Implemented candidate and proof are recorded in [acceptance](acceptance.md). New-state live Herdr boot, hierarchy, PA supervision, deadline faults and explicit manual resumes are proven in that report. Automatic restore and V6 migration remain explicit gates. Repository-level merge isolation is not required; the user controls shipping restrictions explicitly. The released VERSION remains 6.0.0.
+Implemented candidate and proof are recorded in [acceptance](acceptance.md). New-state live Herdr boot, hierarchy, PA supervision, deadline faults and explicit manual resumes are proven in that report. Automatic restore and V6 migration remain explicit gates. Repository-level merge isolation is not required; the user controls shipping restrictions explicitly. The subsequent collection release is 7.0.0; companion installation remains an explicit named-profile action.
