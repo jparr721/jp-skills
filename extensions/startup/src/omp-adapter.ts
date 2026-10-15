@@ -111,6 +111,8 @@ export type NativeContext = Readonly<{
   }>;
   getSystemPrompt: () => string[];
   abort?: () => void;
+  isIdle?: () => boolean;
+  hasPendingMessages?: () => boolean;
   invokeTool?: (params: Record<string, unknown>) => Promise<NativeResult>;
   setInterval: (
     callback: () => void,

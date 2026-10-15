@@ -86,6 +86,8 @@ function nativeFixture() {
   const handlers = new Map<string, (event: unknown, ctx: NativeContext) => unknown>();
   const messages: Readonly<{ content: string; triggerTurn: boolean; deliverAs: string }>[] = [];
   const timers = new Set<ReturnType<typeof setInterval>>();
+  let idle: boolean = false;
+  let pendingMessages: boolean = false;
   const ctx: NativeContext = {
     agent: { id: "root-1", kind: "main" },
     cwd: "/fixture/repo",
@@ -95,6 +97,8 @@ function nativeFixture() {
     },
     getSystemPrompt: () => ["base prompt"],
     abort: () => {},
+    isIdle: () => idle,
+    hasPendingMessages: () => pendingMessages,
     setInterval(callback, ms) {
       const timer: ReturnType<typeof setInterval> = setInterval(callback, ms);
       timers.add(timer);
@@ -114,8 +118,25 @@ function nativeFixture() {
     if (handler === undefined) throw new Error(`Missing bridge handler ${name}`);
     return handler(event, context);
   }
-  return { host, ctx, messages, timers, emit };
+  return { host, ctx, messages, timers, emit, setRunState: (nextIdle: boolean, nextPendingMessages: boolean): void => { idle = nextIdle; pendingMessages = nextPendingMessages; } };
 }
+
+test("native idle reconciliation releases capacity held by a context-only side request", async () => {
+  const fixture = serverFixture();
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: [], waitReason: null, toolBlockReason: null });
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await native.emit("context", { messages: [] }, native.ctx);
+  native.setRunState(true, true);
+  await bridge.poll();
+  expect(fixture.requests.filter((r) => r.path === "/command")).toHaveLength(1);
+  native.setRunState(true, false);
+  await bridge.poll();
+  await bridge.poll();
+  expect(fixture.requests.filter((r) => r.path === "/command").map((r) => r.body)).toEqual([{ kind: "begin_turn" }, { kind: "end_turn" }]);
+});
 
 test("a fresh helper extension denies employee tools before any client attachment", async () => {
   const native = nativeFixture();

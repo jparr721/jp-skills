@@ -41,6 +41,8 @@ function fixture() {
     sessionManager: { getSessionId: () => "native-root", getSessionFile: () => file },
     getSystemPrompt: () => [],
     abort: () => { aborts += 1; },
+    isIdle: () => false,
+    hasPendingMessages: () => false,
     setInterval(callback, ms) { const timer = setInterval(callback, ms); timers.add(timer); return timer; },
     clearTimer(timer) { clearInterval(timer); timers.delete(timer); },
   };

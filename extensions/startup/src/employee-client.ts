@@ -151,6 +151,11 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     throw new EmployeeClientError("Only an actual OMP root may install the employee bridge");
   const abort = input.ctx.abort;
   if (typeof abort !== "function") throw new EmployeeClientError("V7 requires the native abort capability before employee admission");
+  const isIdle = input.ctx.isIdle;
+  const hasPendingMessages = input.ctx.hasPendingMessages;
+  if (typeof isIdle !== "function" || typeof hasPendingMessages !== "function") throw new EmployeeClientError("V7 requires native run-state callbacks before employee admission");
+  const nativeIdle: () => boolean = isIdle;
+  const nativePending: () => boolean = hasPendingMessages;
   const abortTurn: () => void = abort;
   const rootId: string = input.ctx.agent.id;
   const rootSession: string = input.ctx.sessionManager.getSessionId();
@@ -161,6 +166,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   let closed: boolean = false;
   let continuedReason: string | null = null;
   let releasePending: boolean = false;
+  let turnHeld: boolean = false;
   let turnBlocked: string | null = null;
   function isRoot(ctx: NativeContext): boolean {
     return ctx.agent.kind === "main" && ctx.agent.id === rootId &&
@@ -169,7 +175,8 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   async function refresh(): Promise<void> {
     try {
       const next: EmployeePoll = await input.client.poll();
-      if (releasePending) { await input.client.request({ kind: "end_turn" }); releasePending = false; }
+      if (turnHeld && nativeIdle() && !nativePending()) releasePending = true;
+      if (releasePending) { await input.client.request({ kind: "end_turn" }); releasePending = false; turnHeld = false; }
       if (closed) return;
       current = next;
       failure = null;
@@ -221,7 +228,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     input.client.close();
   }
   async function admitTurn(): Promise<void> {
-    try { await poll(); await input.client.request({ kind: "begin_turn" }); turnBlocked = null; }
+    try { await poll(); await input.client.request({ kind: "begin_turn" }); turnHeld = true; turnBlocked = null; }
     catch (error: unknown) {
       turnBlocked = error instanceof Error ? error.message : String(error);
       abortTurn();
@@ -264,7 +271,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     const parsed = z.object({ willContinue: z.boolean().optional() }).passthrough().parse(event);
     if (parsed.willContinue !== true) {
       releasePending = true;
-      try { await input.client.request({ kind: "end_turn" }); releasePending = false; }
+      try { await input.client.request({ kind: "end_turn" }); releasePending = false; turnHeld = false; }
       catch (error: unknown) {
         host.sendMessage({ customType: "startup-capacity-release", content: "Startup capacity release is pending; the control connection will reconcile it on recovery.", display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
         throw error;
