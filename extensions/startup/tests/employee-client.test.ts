@@ -124,6 +124,7 @@ test("a fresh helper extension denies employee tools before any client attachmen
   for (const event of [
     { toolName: "startup_claim", input: {} },
     { toolName: "task", input: { startup: { role: "manager" } } },
+    { toolName: "write", input: { path: "xd://startup_claim", content: "{}" } },
   ]) expect(await native.emit("tool_call", event, helper)).toEqual({ block: true, reason: "Native helper has no Startup employee authority" });
   expect(await native.emit("tool_call", { toolName: "read", input: {} }, helper)).toBeUndefined();
   expect(await native.emit("tool_call", { toolName: "startup_claim", input: {} }, native.ctx)).toBeUndefined();
@@ -327,6 +328,8 @@ test("reconciliation blocks technical mutations while retaining typed reporting 
   await bridge.poll();
   expect(await native.emit("tool_call", { toolName: "bash", input: { command: "write" } }, native.ctx)).toEqual({ block: true, reason: "Claim requires reconciliation" });
   expect(await native.emit("tool_call", { toolName: "startup_send", input: {} }, native.ctx)).toBeUndefined();
+  expect(await native.emit("tool_call", { toolName: "write", input: { path: "xd://startup_reconcile", content: "{}" } }, native.ctx)).toBeUndefined();
+  expect(await native.emit("tool_call", { toolName: "read", input: { path: "xd://startup_reconcile" } }, native.ctx)).toBeUndefined();
 });
 
 test("a missed native capacity release is retried after read-only connection recovery", async () => {

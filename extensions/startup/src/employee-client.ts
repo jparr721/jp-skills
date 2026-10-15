@@ -31,7 +31,9 @@ export type EmployeeBridgeHost = Pick<HostAPI, "on" | "sendMessage">;
 function isEmployeeTool(event: unknown): boolean {
   const parsed = toolSchema.parse(event);
   const taskInput = z.record(z.string(), z.unknown()).safeParse(parsed.input);
-  return parsed.toolName.startsWith("startup_") || (parsed.toolName === "task" && taskInput.success && Object.hasOwn(taskInput.data, "startup"));
+  const uriInput = z.object({ path: z.string() }).safeParse(parsed.input);
+  const employeeUri = ["read", "write"].includes(parsed.toolName) && uriInput.success && /^xd:\/\/startup_[a-z0-9_]+(?:[/?#]|$)/.test(uriInput.data.path);
+  return employeeUri || parsed.toolName.startsWith("startup_") || (parsed.toolName === "task" && taskInput.success && Object.hasOwn(taskInput.data, "startup"));
 }
 export function installEmployeeToolGuard(host: EmployeeBridgeHost): void {
   host.on("tool_call", (event, ctx) => {
