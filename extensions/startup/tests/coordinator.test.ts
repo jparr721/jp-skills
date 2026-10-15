@@ -152,6 +152,17 @@ test("boot requires a source-bound PA and reserves one permanent PA on retries",
   expect(f.store.snapshot().teams).toHaveLength(0);
 });
 
+test("generated employee bootstrap imports without native OMP package aliases", async () => {
+  const f = fixture(8);
+  await f.ready();
+  const pa = f.store.runtimeBindings().find((entry) => entry.employeeId !== "manager");
+  if (!pa) throw new Error("Missing PA launch");
+  const path = join(f.config.stateDirectory, "launches", `${pa.launchId}.ts`);
+  const child = Bun.spawn([process.execPath, "-e", "await import(process.argv[1]);", path], { stdout: "pipe", stderr: "pipe" });
+  const error = await new Response(child.stderr).text();
+  expect({ exitCode: await child.exited, error }).toEqual({ exitCode: 0, error: "" });
+});
+
 test("a crew is atomic membership and cannot claim before every member binds", async () => {
   const f = fixture(8);
   const { manager } = await f.ready();

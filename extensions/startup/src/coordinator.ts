@@ -88,7 +88,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
         throw new StoreConflictError("Launch manifest ownership conflicts with its reserved generation");
     } else writeFileSync(path, manifest, { mode: 0o600, flag: "wx" });
     const bootstrap = join(launchDirectory, `${current.launchId}.ts`);
-    const content = `import { installLaunchedEmployee } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/v7.ts"))};\nimport type { HostAPI } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/index.ts"))};\nexport default (host: HostAPI): void => installLaunchedEmployee(host, ${JSON.stringify(path)});\n`;
+    const content = `import { installLaunchedEmployee } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/src/employee-entry.ts"))};\nimport type { HostAPI } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/index.ts"))};\nexport default (host: HostAPI): void => installLaunchedEmployee(host, ${JSON.stringify(path)});\n`;
     if (existsSync(bootstrap)) {
       if (lstatSync(bootstrap).isSymbolicLink() || readFileSync(bootstrap, "utf8") !== content)
         throw new StoreConflictError("Launch bootstrap ownership conflicts with its reserved generation");
