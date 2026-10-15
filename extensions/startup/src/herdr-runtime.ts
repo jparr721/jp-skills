@@ -69,7 +69,8 @@ const renameResultSchema = z.object({ type: z.literal("tab_info"), tab: z.object
 const splitResultSchema = z.object({ type: z.literal("pane_info"), pane: locationSchema });
 const launchResultSchema = z.object({ type: z.literal("agent_started"), agent: agentSchema, argv: z.array(z.string()) });
 const pendingAgentSchema = locationSchema.extend({ launch_pending: z.literal(true), name: textSchema, agent_status: z.literal("unknown"), state_change_seq: z.number().int().nonnegative().safe() });
-const listResultSchema = z.object({ type: z.literal("agent_list"), agents: z.array(z.union([agentSchema, pendingAgentSchema])) });
+const unrecognizedAgentSchema = locationSchema.extend({ agent: z.null().optional(), name: textSchema.nullable().optional(), agent_status: z.enum(["working", "idle", "done", "blocked", "unknown"]), state_change_seq: z.number().int().nonnegative().safe().optional(), interactive_ready: z.boolean().optional(), agent_session: z.null().optional() });
+const listResultSchema = z.object({ type: z.literal("agent_list"), agents: z.array(z.union([agentSchema, pendingAgentSchema, unrecognizedAgentSchema])) });
 const statusSchema = z.object({ running: z.boolean(), version: textSchema, protocol: z.number().int(), compatible: z.boolean(), endpoint_compatible: z.boolean() });
 const apiSchema = z.object({ protocol: z.literal(22), schema_version: z.literal(1), schemas: z.object({ success_response: z.object({ $defs: z.object({
   AgentInfo: z.object({ properties: z.object({ state_change_seq: z.object({ type: z.literal("integer") }), interactive_ready: z.object({ type: z.literal("boolean") }), agent_session: z.record(z.string(), z.unknown()) }) }),
@@ -212,9 +213,9 @@ export function createHerdrRuntime(input: Readonly<{
     observe: async (): Promise<readonly HerdrObservation[]> => {
       const response = await execute(["agent", "list"], z.object({ id: textSchema, result: listResultSchema }), "invalid_response");
       const agents = response.data.result.agents.filter((agent) => agent.workspace_id === config.data.workspaceId && ("launch_pending" in agent || agent.agent === "omp"));
-      if (agents.some((agent) => "agent_session" in agent && agent.agent_session !== null && agent.agent_session.agent !== "omp"))
+      if (agents.some((agent) => "agent_session" in agent && agent.agent_session !== undefined && agent.agent_session !== null && agent.agent_session.agent !== "omp"))
         fail("binding_mismatch", response.command, response.result, "OMP native session identity belongs to a different agent kind");
-      return agents.map((agent): HerdrObservation => "launch_pending" in agent ? { name: agent.name, workspaceId: agent.workspace_id, tabId: agent.tab_id, paneId: agent.pane_id, terminalId: agent.terminal_id, nativeSession: null, state: "unknown", stateSequence: agent.state_change_seq, interactiveReady: false } : normalize(agent));
+      return agents.map((agent): HerdrObservation => "launch_pending" in agent ? { name: agent.name, workspaceId: agent.workspace_id, tabId: agent.tab_id, paneId: agent.pane_id, terminalId: agent.terminal_id, nativeSession: null, state: "unknown", stateSequence: agent.state_change_seq, interactiveReady: false } : normalize(validate(agentSchema, agent, [...prefix, "agent", "list"])));
     },
   };
 }

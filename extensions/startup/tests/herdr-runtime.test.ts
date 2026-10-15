@@ -102,6 +102,13 @@ test("launch-pending agents without session fields do not break observation of r
     expect.objectContaining({ name: "s-pending", nativeSession: null, state: "unknown", interactiveReady: false }),
   ]);
 });
+test("an exited named occupant with omitted agent fields does not block live observations", async () => {
+  const h = harness([response({ type: "agent_list", agents: [agent(), {
+    workspace_id: "w1", tab_id: "w1:t3", pane_id: "w1:p4", terminal_id: "term-4",
+    name: "exited-root", agent_status: "idle", state_change_seq: 3, interactive_ready: true,
+  }] })]);
+  expect(await h.runtime.observe()).toEqual([expect.objectContaining({ name: "crew-dev" })]);
+});
 test("rejects cross-workspace layout and unexpected launched identity", async () => {
   await expect(harness([response({ type: "tab_created", tab: { tab_id: "w2:t2", workspace_id: "w2" }, root_pane: { ...agent(), workspace_id: "w2" } })]).runtime.createCrew({ label: "x", cwd: "/repo", env: {} })).rejects.toThrow("binding_mismatch");
   for (const patch of [{ pane_id: "w1:p9" }, { name: "wrong" }, { agent: "codex" }, { interactive_ready: false }]) {
