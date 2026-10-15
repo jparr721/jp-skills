@@ -108,6 +108,16 @@ function fixture() {
   return { root, skillsRoot, cwd, file, ctx, host, tools, commands, messages, requests, admissions, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; } };
 }
 
+test("manager extension loads before native action methods become available", () => {
+  const f = fixture();
+  const host: HostAPI = { ...f.host, getCommands: () => { throw new Error("Extension runtime not initialized"); } };
+  expect(() => installStartupV7(host, {
+    home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment,
+    launch: async (config) => ({ ...config, socketPath: f.socketPath }),
+  })).not.toThrow();
+  expect(f.commands.has("startup")).toBe(true);
+});
+
 test("launched root verifies source and transcript before admission, exposes dedicated tools and preserves interactive input", async () => {
   const f = fixture(); f.useEnvironment();
   installLaunchedEmployee(f.host, f.manifest("dev"));

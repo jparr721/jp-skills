@@ -201,7 +201,6 @@ function integrationPath(environment: Environment): string {
   return path;
 }
 export function installStartupV7(host: HostAPI, input: EntryConfig): void {
-  if (host.getCommands().some((command) => command.name === "startup")) throw new StartupBootError("Startup V7 must load without another Startup extension");
   let admitted: Admission | null = null;
   let selection: Selection | null = null;
   let initializing: Promise<void> | null = null;
