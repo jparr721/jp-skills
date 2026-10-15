@@ -31,6 +31,7 @@ function integrationPath(environment: Environment): string {
 export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   let admitted: Admission | null = null;
   let selection: Selection | null = null;
+  let runtimeConfig: RuntimeHostConfig | null = null;
   let initializing: Promise<void> | null = null;
   let attempted: boolean = false;
   let failure: string | null = null;
@@ -54,6 +55,8 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     if (admitted !== null) {
       if (!sameRoot(admitted, ctx) || next.name !== selection?.name || next.boundRoot !== selection.boundRoot)
         throw new StartupBootError("Startup already belongs to another selected manager root");
+      if (runtimeConfig === null) throw new StartupBootError("Admitted manager lost its coordinator configuration");
+      runtimeConfig = await input.launch(runtimeConfig);
       await admitted.client.poll();
       failure = null;
       failureTurnPending = false;
@@ -73,6 +76,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       home: next.home, herdrSession: location.session, workspaceId: location.workspaceId,
       herdrBinary: input.environment.HERDR_BIN_PATH ?? "herdr", herdrIntegration: integrationPath(input.environment), ownerGeneration: 1,
     });
+    runtimeConfig = config;
     admitted = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, skillsRoot: next.skillsRoot }, input.environment);
     selection = next;
     failure = null;

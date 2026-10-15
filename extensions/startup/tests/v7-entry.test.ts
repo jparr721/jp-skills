@@ -68,10 +68,12 @@ function fixture() {
   const admissions: Json[] = [];
   const socketPath: string = join(root, "runtime.sock");
   let projection: string = "Complete canonical dev persona\nComplete canonical shared loop";
+  let available: boolean = true;
   const server = Bun.serve({ unix: socketPath, async fetch(request: Request): Promise<Response> {
     const path: string = new URL(request.url).pathname;
     if (path === "/health") return Response.json({ status: "running" });
     if (path === "/admit") { admissions.push(z.json().parse(await request.json())); return Response.json({ connection: "private-token" }); }
+    if (path === "/poll" && !available) return new Response("Owned coordinator stopped", { status: 503 });
     if (path === "/poll") return Response.json({ projection, pendingMessageIds: [], waitReason: null, toolBlockReason: null });
     const command: Json = z.json().parse(await request.json());
     requests.push(command);
@@ -107,7 +109,7 @@ function fixture() {
     writeFileSync(path, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: profile.employeeId, generation: 1, profile: "isolated-test", skillsRoot }), { mode: 0o600 });
     return path;
   }
-  return { root, skillsRoot, cwd, file, ctx, host, tools, commands, messages, requests, admissions, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; } };
+  return { root, skillsRoot, cwd, file, ctx, host, tools, commands, messages, requests, admissions, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; }, setAvailable(value: boolean) { available = value; } };
 }
 
 test("manager extension loads before native action methods become available", () => {
@@ -168,7 +170,8 @@ test("manager boot preserves native command work and binds independent runtime c
   const command = f.commands.get("startup");
   if (!command) throw new Error("Missing Startup command");
   await command.handler("new alpha --  fix exact work  ", f.ctx);
-  expect(launched).toHaveLength(1);
+  expect(launched).toHaveLength(2);
+  expect(f.admissions).toHaveLength(1);
   expect(f.requests.filter((request) => z.object({ kind: z.literal("receive") }).safeParse(request).success)).toHaveLength(1);
 });
 
@@ -375,5 +378,24 @@ test("named OMP profile accepted by installer is accepted by employee admission"
   writeFileSync(path, JSON.stringify({ ...manifest, profile: "startup.v7" }));
   installLaunchedEmployee(f.host, path);
   await f.emit("session_start", {}, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+});
+
+
+test("explicit manager select recovers a stopped coordinator in the same native root", async () => {
+  const f = fixture();
+  const launched: RuntimeHostConfig[] = [];
+  installStartupV7(f.host, {
+    home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment,
+    launch: async (config) => { launched.push(config); f.setAvailable(true); return { ...config, socketPath: f.socketPath }; },
+  });
+  await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, f.ctx);
+  f.setAvailable(false);
+  await f.emit("input", { text: "/startup select alpha", source: "interactive", images: [] }, f.ctx);
+  expect(launched).toHaveLength(2);
+  const initial = launched[0];
+  if (!initial) throw new Error("Missing initial launch config");
+  expect(launched[1]).toEqual({ ...initial, socketPath: f.socketPath });
+  expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
   expect(f.admissions).toHaveLength(1);
 });
