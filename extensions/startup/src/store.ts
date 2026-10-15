@@ -2132,23 +2132,36 @@ export function openStore(args: {
       tx((): void => {
         manager(input.manager);
         const saved = read("claim", idSchema.parse(input.claimId), claimSchema);
-        if (saved === null || saved.status !== "reconciliation")
+        if (saved === null)
+          throw new StoreConflictError("Claim is not awaiting reconciliation");
+        const evidence: Json = jsonSchema.parse(input.evidence);
+        if (evidence === null)
+          throw new StoreRecoveryError("Claim reconciliation requires recorded evidence");
+        const prior = read("claimReconciliation", saved.id, jsonSchema);
+        if (saved.status === "settled" && prior !== null)
+          assertReplay(prior, evidence, `claim reconciliation ${saved.id}`);
+        else if (saved.status !== "reconciliation")
           throw new StoreConflictError("Claim is not awaiting reconciliation");
         const message = read("message", saved.messageId, messageSchema);
         if (message === null)
           throw new StoreRecoveryError(
             "Reconciliation claim lost incoming message",
           );
-        if (input.evidence === null)
-          throw new StoreRecoveryError(
-            "Claim reconciliation requires recorded evidence",
-          );
-        put("claimReconciliation", saved.id, jsonSchema.parse(input.evidence));
+        put("claimReconciliation", saved.id, evidence);
         put("claim", saved.id, { ...saved, status: "settled" });
         put("message", message.id, { ...message, status: "acknowledged" });
         const assignment = read("assignment", message.id, assignmentSchema);
-        if (assignment !== null)
+        if (assignment !== null && saved.status === "reconciliation")
           put("assignment", assignment.id, { ...assignment, state: "waiting" });
+        const current: Employee = employee(saved.employeeId);
+        if (current.assignment !== null) {
+          const assigned: Team = team(current.assignment);
+          const ids: readonly string[] = members(assigned);
+          if (assigned.state === "reconciliation" && ready(assigned) &&
+            !all("claim", claimSchema).some((claim) => ids.includes(claim.employeeId) && claim.status === "reconciliation") &&
+            !all("grant", grantSchema).some((grant) => ids.includes(grant.employeeId) && grant.state === "reconciliation"))
+            put("team", assigned.id, { ...assigned, state: "waiting" });
+        }
       });
     },
     setDuty(input: { readonly manager: Binding; readonly duty: Duty }): Duty {

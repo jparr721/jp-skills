@@ -455,3 +455,22 @@ test("prepared recovery checks live launch alias and rejects the abandoned crede
   expect(await f.coordinator.command(manager, { kind: "replace", employeeId: id, evidence: "Verified unknown shell stopped" })).toEqual({ generation: 2 });
   expect(f.store.runtimeBindings().findLast((r) => r.employeeId === id)).toMatchObject({ generation: 2, state: "prepared" });
 });
+
+test("manager reconciliation restores crew inbox delivery without replaying uncertain work", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  const team = await f.delegate(manager, "recover-crew");
+  const architect = await f.admit(team.architect);
+  await f.admit(team.qa);
+  await f.admit(team.devs[0]!);
+  const claimed = z.object({ claim: z.object({ id: z.string() }) }).parse(await f.coordinator.command(architect, { kind: "claim" }));
+  await f.coordinator.command(architect, { kind: "settle", claimId: claimed.claim.id, result: { id: "uncertain-intake", kind: "uncertain", output: "Interrupted metadata operation", checkpoint: null, outgoing: [] } });
+  await f.coordinator.command(manager, { kind: "send", cue: { id: "resume-cue", recipient: team.architect, kind: "answer", correlation: team.eventId, payload: "Preserved receipts verified; continue next work" } });
+  expect((await f.coordinator.poll(architect)).pendingMessageIds).toEqual([]);
+  await f.coordinator.command(manager, { kind: "reconcile", claimId: claimed.claim.id, evidence: "Verified saved receipts; no mutation replay" });
+  expect(f.store.snapshot().teams[0]?.state).toBe("waiting");
+  expect((await f.coordinator.poll(architect)).pendingMessageIds).toEqual(["resume-cue"]);
+  expect(f.store.snapshot().results).toHaveLength(1);
+  await f.coordinator.command(manager, { kind: "reconcile", claimId: claimed.claim.id, evidence: "Verified saved receipts; no mutation replay" });
+  await expect(f.coordinator.command(manager, { kind: "reconcile", claimId: claimed.claim.id, evidence: "Conflicting evidence" })).rejects.toThrow("conflicts");
+});

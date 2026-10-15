@@ -1703,3 +1703,26 @@ test("reclaimed read-only occurrence coalesces overdue schedule before the next 
   expect(recovered.snapshot().occurrences).toHaveLength(1);
   recovered.close();
 });
+
+test("crew recovery waits until every uncertain member claim is reconciled", (): void => {
+  const f = fixture();
+  const t = active(f, "recover-all", []);
+  const bindings = [t.architectBinding, t.qaBinding];
+  const claims = bindings.map((binding) => {
+    const claim = f.store.claimNext({ employee: binding });
+    if (claim === null) throw new Error("Missing crew assignment");
+    return { binding, claim };
+  });
+  for (const { binding, claim } of claims)
+    f.store.settleClaim({ employee: binding, claimId: claim.claim.id, result: { ...completed(`uncertain-${binding.employeeId}`), kind: "uncertain" } });
+  for (const [index, { claim }] of claims.entries()) {
+    f.store.reconcileClaim({ manager: f.store.managerBinding, claimId: claim.claim.id, evidence: "Verified metadata outcome" });
+    expect(f.store.snapshot().teams[0]?.state).toBe(index === 0 ? "reconciliation" : "waiting");
+  }
+  const firstClaim = claims[0];
+  if (!firstClaim) throw new Error("Missing first claim");
+  f.store.resolveAssignment({ manager: f.store.managerBinding, assignmentId: firstClaim.claim.message.id, evidence: "Complete" });
+  f.store.reconcileClaim({ manager: f.store.managerBinding, claimId: firstClaim.claim.claim.id, evidence: "Verified metadata outcome" });
+  expect(f.store.snapshot().assignments.find((a) => a.id === firstClaim.claim.message.id)?.state).toBe("complete");
+  f.store.close();
+});
