@@ -2706,7 +2706,7 @@ export function openStore(args: {
           throw new StoreConflictError("Lifecycle sequence conflicts with its saved state");
         const observedAt = timeSchema.parse(input.observedAt);
         if (observedAt < runtime.lastSeen) throw new StoreFenceError("Observation time regressed");
-        if (runtime.stateSequence !== sequence) {
+        if (runtime.stateSequence !== sequence && input.state !== "working") {
           saveCue(employee("manager"), {
             id: `runtime-${runtime.launchId}-${sequence}-${input.state}`,
             recipient: "manager", kind: "alert", correlation: runtime.launchId,

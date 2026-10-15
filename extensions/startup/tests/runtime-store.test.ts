@@ -63,6 +63,14 @@ test("runtime alerts deduplicate durably and stale session observations cannot o
   expect(store.snapshot().messages.filter((m) => m.id === "missing-pa")).toHaveLength(1);
 });
 
+test("working observations remain queryable without waking the manager", () => {
+  const { store, launch } = fixture();
+  store.prepareRuntime(launch);
+  store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "working", sequence: 4, observedAt: 120 });
+  expect(store.snapshot().messages).toHaveLength(0);
+  expect(store.runtimeBindings()[0]?.observedState).toBe("working");
+});
+
 test("item progress advances only for a new revision and survives restart without a replay reset", () => {
   const f = fixture();
   const first = { itemId: "ITEM-1", revision: 1, status: "QUEUED", observedAt: 100 };

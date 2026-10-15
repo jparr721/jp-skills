@@ -432,8 +432,6 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
         alertOnce({ id: `gap-${saved.launchId}-${saved.stateSequence}`, correlation: saved.launchId, payload: { kind: "observation-gap", employeeId: saved.employeeId, observedAt: now() } });
         continue;
       }
-      if (saved.stateSequence !== null && observation.stateSequence > saved.stateSequence + 1)
-        alertOnce({ id: `gap-${saved.launchId}-${saved.stateSequence}-${observation.stateSequence}`, correlation: saved.launchId, payload: { kind: "observation-gap", employeeId: saved.employeeId, previousSequence: saved.stateSequence, sequence: observation.stateSequence, observedAt: now() } });
       if (saved.error !== null) store.updateRuntime({ ...saved, error: null });
       store.observeRuntime({ employeeId: saved.employeeId, generation: saved.generation, nativeSession: saved.nativeSession!, state: observation.state, sequence: observation.stateSequence, observedAt: now() });
     }

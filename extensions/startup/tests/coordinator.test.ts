@@ -199,7 +199,7 @@ test("idle/done alerts reach manager and never settle a worker claim", async () 
   expect(f.store.snapshot().results).toHaveLength(0);
 });
 
-test("a skipped lifecycle sequence alerts the manager without inventing missing events", async () => {
+test("global lifecycle counter jumps are valid while sequence regression degrades supervision", async () => {
   const f = fixture(8);
   const { manager, pa } = await f.ready();
   await f.coordinator.tick();
@@ -207,9 +207,10 @@ test("a skipped lifecycle sequence alerts the manager without inventing missing 
   const index = f.observations.findIndex((o) => o.paneId === runtime.paneId);
   f.observations[index] = { ...f.observations[index]!, state: "done", stateSequence: 4 };
   await f.coordinator.tick();
-  expect(f.store.snapshot().messages.some((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"observation-gap"'))).toBe(true);
+  expect(f.store.snapshot().messages.some((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"observation-gap"'))).toBe(false);
   f.observations[index] = { ...f.observations[index]!, stateSequence: 2 };
   await f.coordinator.tick();
+  expect(f.store.snapshot().messages.some((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"observation-gap"'))).toBe(true);
   expect(JSON.stringify(await f.coordinator.command(manager, { kind: "staff" }))).toContain("pa-offline");
 });
 
