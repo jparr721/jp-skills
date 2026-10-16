@@ -2,6 +2,19 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.1] - 2026-10-15
+
+### Fixed
+
+- Startup tries installed OMP and Herdr binaries first. Release numbers, including newer major versions, are compatibility hints rather than startup blockers or reasons to create an isolated installation.
+- Removed the OMP 18.8.9 pin, Herdr 0.9.5 minimum, protocol/schema-number pins and integration-v10 pin. Admission still checks native root hooks, transcripts, managed integration identity, reported Herdr compatibility and required API capabilities.
+- Installer and native guard probes identify OMP without pinning its release. The probe records the actual executable version and judges behavioral checks.
+- Regression coverage includes OMP 18.10.4 and newer majors, capable Herdr 0.9.4 and newer majors, compatible protocol metadata changes and integration revisions around v10. Missing capabilities remain actionable errors.
+
+### Verification
+
+- 254 tests, 1316 assertions, TypeScript checking, six driver tests and eight installed-OMP native guard checks passed.
+
 ## [7.0.0] - 2026-10-15
 
 Startup V7 requires Herdr and OMP and runs complete hierarchical crews as independent, directly interactive native sessions.

@@ -2,7 +2,15 @@
 
 Merged into local `main` and installed in the named OMP profile `startup-v7`. New Startup `V7Live` runs in the owned Herdr session `startup-v7-live-20261015`, bound to `/Users/jarredparr/Projects/startup-v7-live`. The package entry is `v7.ts`. The live proof preceded the collection release. The subsequent release is 7.0.0; it does not migrate V6 state.
 
-## Verified
+## 7.0.1 compatibility patch
+
+Startup now tries the installed binaries and checks capabilities instead of release numbers. Regression fixtures cover OMP 18.10.4 and newer major versions, capable Herdr 0.9.4 and newer majors, protocol/schema metadata changes, and managed integration revisions around v10. Missing native abort and missing/incompatible Herdr APIs still block with concrete diagnostics.
+
+The patch passes 254 tests (1316 assertions), TypeScript checking, six driver tests and all eight native guard checks. A version-reporting wrapper reproduced a native-probe failure caused solely by its version label while every behavioral check passed; the corrected probe passes that same run. The refreshed native artifact records the actual installed executable and its version.
+
+The live snapshots and source hashes below retain the original 7.0.0 run; they are not relabeled as a live run on other OMP/Herdr releases.
+
+## 7.0.0 live baseline
 
 | Check | Result |
 | --- | --- |

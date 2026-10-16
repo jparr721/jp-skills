@@ -66,7 +66,7 @@ The live run proved two complete crews, direct pane input observations, periodic
 | `runtime-host.ts`, `src/v7-launch.ts` | Detached process intent, private configuration, lease renewal, health endpoint and tick lifetime |
 | `src/employee-client.ts` | Authenticated Unix transport, epoch readmission, canonical context, native abort/preflight guards and inbox wakes |
 | `src/coordinator.ts` | Actor derivation, complete crew allocation, runtime admission, PA checks and semantic-progress supervision |
-| `src/herdr-runtime.ts` | Verified protocol-22 wire schema, bounded CLI calls, pane layout, agent start and observation |
+| `src/herdr-runtime.ts` | Required Herdr wire capabilities, bounded CLI calls, pane layout, agent start and observation |
 | `src/store.ts`, `src/runtime-contracts.ts` | Existing audited workflow/gates plus generation-bound runtime records and atomic manager observations |
 | `src/inputs.ts` | Shared exact raw input, bounded previews/pages and native attachment metadata |
 
