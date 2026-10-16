@@ -2,7 +2,7 @@
 
 The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP root in a directly interactive Herdr pane. The manager's inference or process can stop while the coordinator continues observing.
 
-V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path. The skill collection release is 7.0.3. Companion installation remains an explicit named-profile action.
+V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path. The skill collection release is 7.0.4. Companion installation remains an explicit named-profile action.
 
 The 7.0.2 [recovery proof](../../docs/startup-v7/recovery-acceptance.json) and [screenshot deck](../../docs/slides/startup-v7-recovery-2026-10-15.html) record a live local Herdr run with both session variables unset: a forced employee boot error alerted the manager, the original process recovered automatically in the same pane, PA reports continued, and all owned proof processes were shut down. This does not establish remote Linux compatibility or indefinite liveness.
 

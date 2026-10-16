@@ -2,6 +2,18 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.4] - 2026-10-15
+
+### Fixed
+
+- Native re-admission re-reads the current launch after its asynchronous Herdr lookup so it cannot overwrite observations committed while that lookup was pending. Runtime updates reject lifecycle checkpoint regression.
+- Historical observation alerts replay against their stable launch/employee/generation/state/sequence identity while retaining their original timestamp, payload and acknowledgement. This repairs a legacy stale checkpoint without rewriting immutable alerts; conflicting identities remain errors.
+- Includes the supervision isolation, PA continuity, health reporting, queue-format preservation and polling improvements from 7.0.3.
+
+### Verification
+
+- 280 tests, 1411 assertions, TypeScript checking and six driver tests passed. Additional cases cover concurrent observation/admission, historical alert replay, checkpoint regression and conflicting alert identity. Installed-OMP guard checks also passed for the unchanged employee bridge.
+
 ## [7.0.3] - 2026-10-15
 
 ### Fixed
