@@ -682,3 +682,29 @@ test("settlement recovery metadata crosses the real authenticated Unix transport
     expect(f.store.snapshot().messages.filter((m) => JSON.stringify(m.payload).includes('"kind":"settlement-blocked"'))).toHaveLength(1);
   } finally { client.close(); }
 });
+
+test("new ready work releases a no-claim retry latch without releasing an active rejected claim", async () => {
+  const f = fixture(8);
+  await f.ready();
+  servers.push(serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }));
+  const runtime = f.store.employeeRuntime("manager", 1);
+  if (!runtime) throw new Error("Missing manager runtime");
+  const client = await connectEmployee({ socketPath: f.config.socketPath, credential: f.config.managerCredential, nativeSession: f.config.managerFile, paneId: f.config.managerPaneId, source: runtime.source });
+  try {
+    await client.poll();
+    const command = { kind: "settle", result: { id: "no-claim", kind: "completed", output: "done", checkpoint: null, outgoing: [] } };
+    await expect(client.request(command)).rejects.toMatchObject({ recovery: { code: "no_active_claim" } });
+    await expect(client.request(command)).rejects.toMatchObject({ repeated: true });
+    f.store.sendCue({ sender: f.store.managerBinding, cue: { id: "new-work", recipient: "manager", kind: "report", correlation: "test", payload: null } });
+    await client.poll();
+    expect(client.settlementBlock()).toBeNull();
+    await client.request({ kind: "claim" });
+    await client.poll();
+    const wrong = { ...command, claimId: "mistyped" };
+    await expect(client.request(wrong)).rejects.toMatchObject({ recovery: { code: "claim_not_found" } });
+    await expect(client.request(wrong)).rejects.toMatchObject({ repeated: true });
+    f.store.sendCue({ sender: f.store.managerBinding, cue: { id: "unrelated-mail", recipient: "manager", kind: "report", correlation: "test", payload: null } });
+    await client.poll();
+    expect(client.settlementBlock()).not.toBeNull();
+  } finally { client.close(); }
+});
