@@ -2,6 +2,18 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.5] - 2026-10-15
+
+### Fixed
+
+- A failed Herdr observation read means unknown manager presence when its control connection remains fresh. Do not fabricate manager-offline duties that fill the PA inbox and delay its scheduled checks.
+- Includes all supervision isolation, queue preservation, health reporting, polling and admission-replay fixes from 7.0.3 and 7.0.4.
+
+### Verification
+
+- 281 tests, 1414 assertions and TypeScript checking passed, with six driver tests and eight installed-OMP guard checks also verified for this patch series.
+- A separate native Startup on Aspen exercises the production runtime factory with real OMP manager/PA sessions, real-time 60-second checks and controlled read failures. The live Startup is monitored independently; its queue and Herdr observations are not modified for fault injection. See the Aspen acceptance evidence for phase results and deployment preservation checks.
+
 ## [7.0.4] - 2026-10-15
 
 ### Fixed
