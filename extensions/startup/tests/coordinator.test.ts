@@ -741,6 +741,24 @@ test("a completed item dev receives its exact pending review continuation until 
 });
 
 
+test("manager projection names the exact next prioritized claim and clears it while claimed", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  let index = 0;
+  while (f.store.claimNext({ employee: f.store.managerBinding }) !== null) f.store.settleClaim({ employee: f.store.managerBinding, result: { id: `drain-next-${index++}`, kind: "completed", output: {}, checkpoint: null, outgoing: [] } });
+  const team = await f.delegate(manager, "next-proof");
+  const architect = await f.admit(team.architect);
+  f.store.runtimeAlert({ id: "old-pane-notice", correlation: "next-proof", payload: { kind: "direct-pane-input", employeeId: team.architect } });
+  await f.coordinator.command(architect, { kind: "send", cue: { id: "next-technical-proof", recipient: "manager", kind: "report", correlation: "next-proof", payload: "Current technical proof" } });
+  const poll = await f.coordinator.poll(manager);
+  const line = poll.projection.split("\n").find((entry) => entry.startsWith("STARTUP_INBOX="));
+  if (line === undefined) throw new Error("Missing inbox projection");
+  expect(JSON.parse(line.slice("STARTUP_INBOX=".length))).toMatchObject({ selection: "priority", nextClaim: { tool: "startup_claim", arguments: {}, messageId: "next-technical-proof", kind: "report", sender: team.architect } });
+  expect(poll.projection).toContain("no older administrative message must be consumed first");
+  expect(await f.coordinator.command(manager, { kind: "claim" })).toHaveProperty("message.id", "next-technical-proof");
+  expect((await f.coordinator.poll(manager)).projection).toContain('"nextClaim":null');
+});
+
 test("historical lifecycle admin stays visible without waking or continuing the manager", async () => {
   const f = fixture(8);
   const { manager } = await f.ready();
