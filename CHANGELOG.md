@@ -2,6 +2,20 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.9] - 2026-10-16
+
+### Fixed
+
+- Resuming the original manager transcript automatically restores admission using its saved private configuration, pane and named profile. Failed admission blocks technical tools and retries in the same pane. Foreign roots cannot inherit the manager binding.
+- Health now exposes authenticated manager connectivity and degrades when its polls go stale while keeping coordinator admission available for recovery.
+- Sequence-only Herdr updates and idle/done display alternation no longer generate repeated completion alerts. Superseded pending lifecycle alerts are acknowledged with durable receipts; their original payloads, audit history, claimed mail and technical reports remain intact.
+- Idle staff from finished crews can retire through the existing guarded command. Manager, PA, active crews and unresolved work remain protected.
+
+### Verification
+
+- 315 tests, 1580 assertions, TypeScript checking, six probe-driver tests and eight compiled-OMP guard checks passed. Regression tests first reproduced manager admission loss, repeated lifecycle alerts, backlog compaction, stale manager health and finished-crew retirement.
+- Aspen installation and bounded live recovery/progress evidence are recorded in docs/startup-v7/aspen-manager-recovery-acceptance.json after deployment.
+
 ## [7.0.8] - 2026-10-15
 
 ### Fixed
