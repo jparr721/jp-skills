@@ -71,6 +71,17 @@ test("working observations remain queryable without waking the manager", () => {
   expect(store.runtimeBindings()[0]?.observedState).toBe("working");
 });
 
+test("seen completions can alternate done and idle at the same sequence without changing progress or duplicating alerts", () => {
+  const { store, launch } = fixture();
+  store.prepareRuntime(launch);
+  for (const [index, state] of ["done", "idle", "done", "idle"].entries()) {
+    store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: state === "done" ? "done" : "idle", sequence: 4, observedAt: 110 + index });
+  }
+  expect(store.runtimeBindings()[0]).toMatchObject({ observedState: "idle", stateSequence: 4, lastProgress: 100, lastSeen: 113 });
+  expect(store.snapshot().messages).toHaveLength(1);
+  expect(() => store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "working", sequence: 4, observedAt: 114 })).toThrow("conflicts");
+});
+
 test("item progress advances only for a new revision and survives restart without a replay reset", () => {
   const f = fixture();
   const first = { itemId: "ITEM-1", revision: 1, status: "QUEUED", observedAt: 100 };

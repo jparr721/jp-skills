@@ -3,8 +3,8 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { openCoordinator, serveCoordinator, type Coordinator } from "./src/coordinator";
-import { createHerdrRuntime, runHerdrCommand } from "./src/herdr-runtime";
-import { openStore } from "./src/store";
+import { createHerdrRuntime, runHerdrCommand, type HerdrRuntime } from "./src/herdr-runtime";
+import { openStore, type StartupStore } from "./src/store";
 import { readPrivateJson, runtimeHostConfigSchema, type RuntimeHostConfig } from "./src/v7-launch";
 
 export type RuntimeHost = Readonly<{
@@ -25,6 +25,10 @@ export async function startRuntimeHost(input: RuntimeHostConfig): Promise<Runtim
     owner: { id: randomUUID(), managerGeneration: config.ownerGeneration, leaseMs: 60000 }, now: Date.now,
   });
   const herdr = createHerdrRuntime({ session: config.herdrSession, workspaceId: config.workspaceId, binary: config.herdrBinary, run: runHerdrCommand });
+  return serveRuntimeHost({ config, store, herdr });
+}
+export async function serveRuntimeHost(input: Readonly<{ config: RuntimeHostConfig; store: StartupStore; herdr: HerdrRuntime }>): Promise<RuntimeHost> {
+  const { config, store, herdr } = input;
   const snapshot = store.snapshot();
   if (snapshot.duties.length > 0) {
     store.close();
@@ -65,7 +69,7 @@ export async function startRuntimeHost(input: RuntimeHostConfig): Promise<Runtim
     store.runtimeAlert({ id: `runtime-startup-blocked-${store.ownerEpoch}`, correlation: "manager-supervision", payload: { kind: "startup-blocked", managerReady: coordinator.health().status === "running", error: startupFailure, observedAt: Date.now() } });
   }
   tickTimer = setInterval(() => {
-    if (closed || tickWork !== null || coordinator.health().status !== "running") return;
+    if (closed || tickWork !== null || coordinator.health().status === "starting") return;
     const pending: Promise<void> = coordinator.tick().catch((error: unknown) => report(config, "supervision", error));
     tickWork = pending;
     void pending.then(() => { tickWork = null; });

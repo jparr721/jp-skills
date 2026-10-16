@@ -82,6 +82,10 @@ import {
   type ItemTransition,
 } from "./items";
 const storedSchema = z.strictObject({ payload: z.string() });
+type QueueDocument = Readonly<{ before: string | null; rows: readonly z.infer<typeof rowSchema>[] }> & (
+  Readonly<{ container: null; key: null }> |
+  Readonly<{ container: Readonly<Record<string, Json>>; key: "items" | "rows" }>
+);
 const leaseSchema = z.strictObject({
   token: z.string(),
   epoch: timeSchema,
@@ -635,23 +639,32 @@ export function openStore(args: {
       state: "active",
     });
   }
-  function canonicalQueue() {
+  function canonicalQueue(): QueueDocument {
     const before = readFile("queue.json");
     if (before === null)
-      return { before, rows: z.array(rowSchema).parse([]), container: null };
+      return { before, rows: z.array(rowSchema).parse([]), container: null, key: null };
     const document = jsonSchema.parse(JSON.parse(before));
     if (Array.isArray(document))
       return {
         before,
         rows: z.array(rowSchema).parse(document),
         container: null,
+        key: null,
       };
     const container = z.record(z.string(), jsonSchema).parse(document);
+    if (Object.hasOwn(container, "items") && Object.hasOwn(container, "rows"))
+      throw new StoreRecoveryError("Canonical queue contains both items and rows; preserve the document and resolve its ownership");
+    const key: "items" | "rows" = Object.hasOwn(container, "rows") ? "rows" : "items";
+    const parsed = z.array(rowSchema).safeParse(container[key]);
+    if (!parsed.success) throw new StoreRecoveryError(`Canonical queue ${key} must be a valid row array: ${parsed.error.message}`);
     return {
       before,
-      rows: z.array(rowSchema).parse(container.items),
-      container,
+      rows: parsed.data,
+      container, key,
     };
+  }
+  function queueText(document: ReturnType<typeof canonicalQueue>, rows: readonly z.infer<typeof rowSchema>[]): string {
+    return JSON.stringify(document.container === null ? rows : { ...document.container, [document.key]: rows }, null, 2) + "\n";
   }
   function finalizeItem(receipt: ItemTransition): void {
     const current = team(receipt.teamId);
@@ -743,6 +756,19 @@ export function openStore(args: {
 
   return {
     ownerEpoch: epoch,
+    getEmployee: employee,
+    getTeam: team,
+    hasMessage(id: string): boolean { return read("message", id, messageSchema) !== null; },
+    employees(): readonly Employee[] { return all("employee", employeeSchema); },
+    employeeView(employeeId: string) {
+      const current = employee(employeeId);
+      return {
+        team: current.assignment === null ? null : team(current.assignment),
+        messages: all("message", messageSchema).filter((message) => message.recipient === current.id && message.status === "pending"),
+        claims: all("claim", claimSchema).filter((claim) => claim.employeeId === current.id && claim.status !== "settled"),
+        grants: all("grant", grantSchema).filter((grant) => grant.employeeId === current.id && grant.state === "reconciliation"),
+      };
+    },
     managerBinding: bindingSchema.parse({
       employeeId: "manager",
       generation: owner.managerGeneration,
@@ -1346,16 +1372,8 @@ export function openStore(args: {
           assertReplay(previous.request, capture, capture.captureId);
           return previous;
         }
-        const before: string | null = readFile("queue.json");
-        const document: Json =
-          before === null ? [] : jsonSchema.parse(JSON.parse(before));
-        const arrayShape: boolean = Array.isArray(document);
-        const container = arrayShape
-          ? null
-          : z.record(z.string(), jsonSchema).parse(document);
-        const rows = z
-          .array(rowSchema)
-          .parse(arrayShape ? document : container?.items);
+        const document = canonicalQueue();
+        const { before, rows } = document;
         if (new Set(rows.map((row): string => row.id)).size !== rows.length)
           throw new StoreRecoveryError(
             "Canonical queue contains duplicate IDs",
@@ -1471,12 +1489,7 @@ export function openStore(args: {
             )
             .map((change) => change.row),
         ];
-        const after: string =
-          JSON.stringify(
-            arrayShape ? nextRows : { ...container, items: nextRows },
-            null,
-            2,
-          ) + "\n";
+        const after: string = queueText(document, nextRows);
         const saved: CaptureReceipt = captureRecordSchema.parse({
           request: capture,
           teamId: current.id,
@@ -1862,19 +1875,7 @@ export function openStore(args: {
             : {}),
           startup_state_refs: [...refs, request.requestId],
         });
-        const after =
-          JSON.stringify(
-            document.container === null
-              ? document.rows.map((old) => (old.id === row.id ? nextRow : old))
-              : {
-                  ...document.container,
-                  items: document.rows.map((old) =>
-                    old.id === row.id ? nextRow : old,
-                  ),
-                },
-            null,
-            2,
-          ) + "\n";
+        const after = queueText(document, document.rows.map((old) => old.id === row.id ? nextRow : old));
         const receipt = itemTransitionSchema.parse({
           request,
           actorId: sender.id,
@@ -2715,7 +2716,8 @@ export function openStore(args: {
         const sequence = timeSchema.parse(input.sequence);
         if (runtime.stateSequence !== null && sequence < runtime.stateSequence)
           throw new StoreFenceError("Lifecycle observation sequence regressed");
-        if (runtime.stateSequence === sequence && runtime.observedState !== input.state)
+        const seenCompletion = ["done", "idle"].includes(runtime.observedState ?? "") && ["done", "idle"].includes(input.state);
+        if (runtime.stateSequence === sequence && runtime.observedState !== input.state && !seenCompletion)
           throw new StoreConflictError("Lifecycle sequence conflicts with its saved state");
         const observedAt = timeSchema.parse(input.observedAt);
         if (observedAt < runtime.lastSeen) throw new StoreFenceError("Observation time regressed");

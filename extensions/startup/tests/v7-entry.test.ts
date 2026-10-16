@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { HostAPI } from "../index";
 import type { NativeContext, NativeRef } from "../src/omp-adapter";
-import type { Json } from "../src/contracts";
+import { sourceSchema, type Json } from "../src/contracts";
 import { connectEmployee } from "../src/employee-client";
 import { loadProfile } from "../src/profiles";
 import { startRuntimeHost } from "../runtime-host";
@@ -373,6 +373,44 @@ process.stdout.write(JSON.stringify(result));
   };
   return { config, stateFile };
 }
+
+test("production timer keeps issuing PA checks while queue reads fail and recovers from degraded health", async () => {
+  const f = fixture(); f.useEnvironment();
+  const { config: initial } = runtimeFixture(f);
+  const config = { ...initial, policy: { ...initial.policy, tickMs: 10, paCadenceMs: 20 } };
+  mkdirSync(config.stateDirectory, { recursive: true });
+  const queue = join(config.stateDirectory, "queue.json");
+  writeFileSync(queue, '{"rows":');
+  const runtime = await startRuntimeHost(config);
+  let client: Awaited<ReturnType<typeof connectEmployee>> | null = null;
+  try {
+    const database = new Database(join(config.stateDirectory, "staff.sqlite"), { readonly: true });
+    const saved = z.object({ payload: z.string() }).parse(database.query("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId') != 'manager'").get());
+    database.close();
+    const pa = z.object({ employeeId: z.string(), launchId: z.string() }).parse(JSON.parse(saved.payload));
+    const manifest = z.object({ credential: z.string(), source: sourceSchema }).parse(JSON.parse(readFileSync(join(config.stateDirectory, "launches", `${pa.launchId}.json`), "utf8")));
+    client = await connectEmployee({ socketPath: config.socketPath, credential: manifest.credential, source: manifest.source, nativeSession: join(f.root, "fake-pa.jsonl"), paneId: "w1:p2" });
+    for (let index = 0; index < 2; index += 1) {
+      const deadline = Date.now() + 5000;
+      while (!(await client.poll()).pendingMessageIds.some((id) => id.startsWith("pa-check-"))) {
+        if (Date.now() >= deadline) throw new Error("Production timer starved the PA");
+        await Bun.sleep(20);
+      }
+      while (true) {
+        const claim = z.object({ claim: z.object({ id: z.string() }), message: z.object({ id: z.string() }) }).parse(await client.request({ kind: "claim" }));
+        await client.request({ kind: "settle", claimId: claim.claim.id, result: { id: `timer-result-${index}-${claim.claim.id}`, kind: "completed", output: "PA check during queue failure", checkpoint: null, outgoing: [{ id: `timer-report-${claim.claim.id}`, recipient: "manager", kind: "report", correlation: "manager-supervision", payload: "PA remains active" }] } });
+        if (claim.message.id.startsWith("pa-check-")) break;
+      }
+      expect((await fetch("http://localhost/health", { unix: config.socketPath })).status).toBe(503);
+    }
+    writeFileSync(queue, '{"rows":[]}');
+    const deadline = Date.now() + 5000;
+    while ((await fetch("http://localhost/health", { unix: config.socketPath })).status !== 200) {
+      if (Date.now() >= deadline) throw new Error("Degraded coordinator never resumed supervision");
+      await Bun.sleep(20);
+    }
+  } finally { client?.close(); await runtime.close(); }
+});
 
 test("runtime serves admission before launching roots and owns separate V7 state", async () => {
   const f = fixture(); f.useEnvironment();

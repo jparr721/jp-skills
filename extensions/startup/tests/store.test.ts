@@ -550,6 +550,36 @@ function queuePath(f: ReturnType<typeof fixture>): string {
   return join(f.home, "startup", "test", "queue.json");
 }
 
+test.each(["rows", "items"])("canonical %s queues preserve their container through capture and item transitions", (key: string) => {
+  const f = fixture();
+  const t = active(f, "shape-event", []);
+  const legacy = { id: "legacy", status: "DONE", retained: true };
+  writeFileSync(queuePath(f), JSON.stringify({ format: "aspen", unknown: { retained: true }, [key]: [legacy] }));
+  expect(f.store.queueItems()).toEqual([legacy]);
+  f.store.captureIntake({ architect: t.architectBinding, capture: { captureId: "shape-capture", eventId: "shape-event", rows: [{ id: "new", expectedRevision: null, fields: fields("Preserve queue shape") }], receipt: "captured" } });
+  const captured = JSON.parse(readFileSync(queuePath(f), "utf8"));
+  expect(captured.format).toBe("aspen");
+  expect(captured.unknown).toEqual({ retained: true });
+  expect(captured[key]).toHaveLength(2);
+  expect(Object.hasOwn(captured, key === "rows" ? "items" : "rows")).toBe(false);
+  expect(f.store.queueItems()).toHaveLength(2);
+  f.store.transitionItem({ employee: f.store.managerBinding, request: { action: "decide", requestId: "shape-block", itemId: "new", expectedRevision: 1, status: "BLOCKED", evidence: "control proof" } });
+  const transitioned = JSON.parse(readFileSync(queuePath(f), "utf8"));
+  expect(transitioned[key][0]).toEqual(legacy);
+  expect(transitioned[key][1].status).toBe("BLOCKED");
+  expect(Object.hasOwn(transitioned, key === "rows" ? "items" : "rows")).toBe(false);
+  f.store.close();
+});
+
+test("ambiguous queue containers fail without changing either row collection", () => {
+  const f = fixture();
+  const original = JSON.stringify({ rows: [{ id: "a" }], items: [{ id: "b" }] });
+  writeFileSync(queuePath(f), original);
+  expect(() => f.store.queueItems()).toThrow("both");
+  expect(readFileSync(queuePath(f), "utf8")).toBe(original);
+  f.store.close();
+});
+
 test("architect capture preserves queue shape, legacy rows, unknown fields and immutable receipts", (): void => {
   const f = fixture();
   const t = active(f, "event", []);

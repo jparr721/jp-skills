@@ -125,15 +125,77 @@ test("lost Herdr supervision degrades fresh PA connections and persists a manage
   const f = fixture(8);
   const { manager, paConnection } = await f.ready();
   f.failObservation(new Error("observer connection unavailable"));
-  await expect(f.coordinator.tick()).rejects.toThrow("observer connection unavailable");
+  await expect(f.coordinator.tick()).resolves.toBeUndefined();
   await f.coordinator.poll(paConnection);
-  expect(JSON.stringify(await f.coordinator.command(manager, { kind: "staff" }))).toContain("pa-offline");
-  expect(f.store.snapshot().messages.some((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"observer-unavailable"'))).toBe(true);
+  expect(JSON.stringify(await f.coordinator.command(manager, { kind: "staff" }))).toContain("pa-observer-unavailable");
+  expect(f.store.snapshot().messages.some((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"herdr-unavailable"'))).toBe(true);
   await f.coordinator.command(manager, { kind: "intake", eventId: "event", input: "work", amendItemIds: [] });
   await expect(f.coordinator.command(manager, { kind: "delegate", eventId: "event", developers: 1 })).rejects.toThrow("PA");
   f.failObservation(null);
   await f.coordinator.tick();
   expect(JSON.stringify(await f.coordinator.command(manager, { kind: "staff" }))).toContain('"health":"ready"');
+});
+
+test("one conflicting employee observation cannot prevent other observations or PA scheduling", async () => {
+  const f = fixture(8);
+  const { manager, pa } = await f.ready();
+  const team = await f.delegate(manager, "observation-fault");
+  await f.admit(team.architect);
+  const saved = f.store.runtimeBindings().find((r) => r.employeeId === team.architect);
+  if (!saved?.nativeSession) throw new Error("Missing architect runtime");
+  f.store.observeRuntime({ employeeId: saved.employeeId, generation: saved.generation, nativeSession: saved.nativeSession, state: "working", sequence: 1, observedAt: 1000 });
+  await expect(f.coordinator.tick()).resolves.toBeUndefined();
+  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && m.id.startsWith("pa-check-"))).toBe(true);
+  expect(f.store.runtimeBindings().find((r) => r.employeeId === pa)?.stateSequence).toBe(1);
+  expect(f.coordinator.health().status).toBe("degraded");
+});
+
+test("a malformed queue cannot starve PA scheduling, and health recovers after a valid rows document is restored", async () => {
+  const f = fixture(8);
+  const { pa } = await f.ready();
+  const queue = join(f.config.stateDirectory, "queue.json");
+  writeFileSync(queue, '{"rows":');
+  await expect(f.coordinator.tick()).resolves.toBeUndefined();
+  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && m.id.startsWith("pa-check-"))).toBe(true);
+  expect(f.coordinator.health().status).toBe("degraded");
+  const server = serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }); servers.push(server);
+  expect((await fetch("http://localhost/health", { unix: f.config.socketPath })).status).toBe(503);
+  writeFileSync(queue, JSON.stringify({ format: "aspen", rows: [], retained: "metadata" }));
+  await f.coordinator.tick();
+  expect(f.coordinator.health().status).toBe("running");
+  expect((await fetch("http://localhost/health", { unix: f.config.socketPath })).status).toBe(200);
+});
+
+test("failed observation collection still schedules a PA check and marks health degraded", async () => {
+  const f = fixture(8);
+  const { pa } = await f.ready();
+  f.failObservation(new Error("controlled observation outage"));
+  await expect(f.coordinator.tick()).resolves.toBeUndefined();
+  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && m.id.startsWith("pa-check-"))).toBe(true);
+  expect(f.coordinator.health().status).toBe("degraded");
+  f.failObservation(null);
+  await f.coordinator.tick();
+  expect(f.coordinator.health().status).toBe("running");
+});
+
+test("PA control polling does not depend on loading unrelated global history", async () => {
+  const f = fixture(8);
+  const { paConnection } = await f.ready();
+  const snapshot = f.store.snapshot;
+  f.store.snapshot = () => { throw new Error("unrelated global history unavailable"); };
+  try { await expect(f.coordinator.poll(paConnection)).resolves.toMatchObject({ toolBlockReason: null, waitReason: null }); }
+  finally { f.store.snapshot = snapshot; }
+});
+
+test("health reports stale supervision even when the native manager still exists", async () => {
+  const f = fixture(8);
+  await f.ready();
+  await f.coordinator.tick();
+  expect(f.coordinator.health()).toMatchObject({ status: "running", supervision: { lastCompletedAt: 1000, lastSuccessAt: 1000, errors: [] } });
+  f.advance(2500);
+  expect(f.coordinator.health().status).toBe("degraded");
+  await f.coordinator.tick();
+  expect(f.coordinator.health()).toMatchObject({ status: "running", supervision: { lastCompletedAt: 2500 } });
 });
 
 test("unclassified human input receives its own stale alert despite other manager activity", async () => {

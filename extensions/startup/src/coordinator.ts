@@ -44,9 +44,14 @@ const commandSchema = z.discriminatedUnion("kind", [
 const admissionSchema = z.strictObject({ credential: idSchema, nativeSession: idSchema, paneId: idSchema, source: sourceSchema });
 const launchFailureSchema = z.strictObject({ credential: idSchema, error: z.string().min(1).max(8192) });
 type Poll = Readonly<{ toolBlockReason: string | null; projection: string; pendingMessageIds: readonly string[]; waitReason: string | null }>;
+type SupervisionFailure = Readonly<{ component: "herdr" | "observation" | "queue"; employeeId: string | null; error: string }>;
+type CoordinatorHealth = Readonly<{
+  status: "starting" | "running" | "degraded";
+  supervision: Readonly<{ lastStartedAt: number | null; lastCompletedAt: number | null; lastSuccessAt: number | null; errors: readonly SupervisionFailure[] }>;
+}>;
 export type Coordinator = Readonly<{
   start: () => Promise<void>;
-  health: () => Readonly<{ status: "starting" | "running" }>;
+  health: () => CoordinatorHealth;
   admit: (input: Readonly<{ credential: string; nativeSession: string; paneId: string; source: Source }>) => Promise<{ connection: string }>;
   launchFailure: (input: z.infer<typeof launchFailureSchema>) => void;
   command: (connection: string, command: Json) => Promise<Json>;
@@ -63,14 +68,15 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   const connections = new Map<string, Readonly<{ employeeId: string; generation: number; epoch: number }>>();
   let serial: Promise<void> = Promise.resolve();
   let ticking: Promise<void> | null = null;
+  const openedAt = now();
+  let supervision: CoordinatorHealth["supervision"] = { lastStartedAt: null, lastCompletedAt: null, lastSuccessAt: null, errors: [] };
+  let observerAvailable: boolean = true;
   const launchDirectory = join(config.stateDirectory, "launches");
   if (existsSync(launchDirectory) && lstatSync(launchDirectory).isSymbolicLink())
     throw new StoreAuthorityError("Launch directory cannot be a symlink");
   mkdirSync(launchDirectory, { recursive: true, mode: 0o700 });
   function employee(id: string): Employee {
-    const current = store.snapshot().employees.find((entry) => entry.id === id && entry.employment === "hired");
-    if (!current) throw new StoreAuthorityError(`Unknown active employee ${id}`);
-    return current;
+    return store.getEmployee(id);
   }
   function runtime(id: string): RuntimeBinding {
     const current = employee(id);
@@ -136,6 +142,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     if (!current || current.source === null || current.error !== null) return "pa-not-admitted";
     const bound = runtime(current.id);
     if (bound.state !== "ready" || bound.error !== null || now() - bound.lastPoll > policy.connectionDeadlineMs) return "pa-offline";
+    if (!observerAvailable) return "pa-observer-unavailable";
     const outstanding = store.snapshot().messages.find((m) => m.recipient === current.id && m.id.startsWith("pa-check-") && m.status !== "acknowledged");
     if (outstanding) {
       const payload = z.object({ scheduledAt: z.number() }).parse(outstanding.payload);
@@ -145,7 +152,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   }
   function currentRuntimes(): readonly RuntimeBinding[] {
     const records = store.runtimeBindings();
-    return store.snapshot().employees.filter((e) => e.employment === "hired").flatMap((e) => {
+    return store.employees().filter((e) => e.employment === "hired").flatMap((e) => {
       const found = records.findLast((r) => r.employeeId === e.id && r.generation >= e.generation);
       return found ? [found] : [];
     });
@@ -162,7 +169,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   }
   function crewBlock(current: Employee): string | null {
     if (current.assignment === null) return null;
-    const team = store.snapshot().teams.find((entry) => entry.id === current.assignment);
+    const team = store.getTeam(current.assignment);
     return team && !["ready", "active", "waiting"].includes(team.state) ? `Assigned crew is ${team.state}; complete admission or manager reconciliation is required` : null;
   }
   async function launch(id: string, location: Readonly<{ tabId: string; paneId: string }>): Promise<void> {
@@ -300,7 +307,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       case "staff": {
         manager(connection);
         const snapshot = store.snapshot();
-        output = { health: paState() ?? "ready", manager: { id: "manager", pa: snapshot.employees.filter((e) => e.role === "pa"), crews: snapshot.teams.map((team) => ({ id: team.id, eventId: team.eventId, state: team.state, architect: { id: team.architect, qa: team.qa, devs: team.devs }, items: team.items })) }, employees: snapshot.employees.map((e) => ({ id: e.id, role: e.role, assignment: e.assignment, generation: e.generation, error: e.error })), runtime: store.runtimeBindings().map(({ credentialDigest: _credential, ...rest }) => rest), recovery: { claims: snapshot.claims.filter((c) => c.status !== "settled"), grants: snapshot.grants.filter((g) => g.state !== "released"), assignments: snapshot.assignments.filter((a) => a.state !== "complete") }, inputs: snapshot.inputs.map((i) => ({ id: i.id, disposition: i.disposition })), intakes: snapshot.intakes.map((i) => ({ eventId: i.request.eventId, teamId: i.teamId })) }; break;
+        output = { health: paState() ?? "ready", supervision, manager: { id: "manager", pa: snapshot.employees.filter((e) => e.role === "pa"), crews: snapshot.teams.map((team) => ({ id: team.id, eventId: team.eventId, state: team.state, architect: { id: team.architect, qa: team.qa, devs: team.devs }, items: team.items })) }, employees: snapshot.employees.map((e) => ({ id: e.id, role: e.role, assignment: e.assignment, generation: e.generation, error: e.error })), runtime: store.runtimeBindings().map(({ credentialDigest: _credential, ...rest }) => rest), recovery: { claims: snapshot.claims.filter((c) => c.status !== "settled"), grants: snapshot.grants.filter((g) => g.state !== "released"), assignments: snapshot.assignments.filter((a) => a.state !== "complete") }, inputs: snapshot.inputs.map((i) => ({ id: i.id, disposition: i.disposition })), intakes: snapshot.intakes.map((i) => ({ eventId: i.request.eventId, teamId: i.teamId })) }; break;
       }
       case "intake": manager(connection); output = store.recordIntake({ manager: current.binding, event: { eventId: request.eventId, input: request.input, amendItemIds: request.amendItemIds } }); break;
       case "route": manager(connection); output = store.routeInput({ manager: current.binding, inputId: request.inputId, disposition: { kind: request.disposition, reason: request.reason, amendItemIds: request.amendItemIds } }); break;
@@ -405,97 +412,115 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     if (before !== encode(store.snapshot())) progress(current.employee.id);
     return output === undefined ? null : json(output);
   }
-  function waitReason(current: Employee): string | null {
-    const snapshot = store.snapshot();
-    if (snapshot.claims.some((claim) => claim.employeeId === current.id && claim.status !== "settled")) return "Settle or explicitly reconcile your outstanding claim before ending.";
-    if (snapshot.messages.some((message) => message.recipient === current.id && message.status === "pending") && (current.assignment === null || snapshot.teams.find((t) => t.id === current.assignment)?.state !== "reserved")) return "Claim your pending durable inbox before ending.";
+  function waitReason(current: Employee, view: ReturnType<StartupStore["employeeView"]>): string | null {
+    if (view.claims.length > 0) return "Settle or explicitly reconcile your outstanding claim before ending.";
+    if (view.messages.length > 0 && view.team?.state !== "reserved") return "Claim your pending durable inbox before ending.";
     if (current.role !== "manager") return null;
+    const snapshot = store.snapshot();
     if (paState() !== null) return `PA supervision is degraded: ${paState()}. Report and recover the existing PA identity.`;
     if (snapshot.inputs.some((i) => i.disposition === null)) return "Classify saved human inputs before ending.";
     if (snapshot.intakes.some((i) => i.teamId === null)) return "Delegate every saved independent work event before ending.";
-    const ready = store.queueItems().find((row) => ["QUEUED", "READY_TO_LAND"].includes(z.string().parse(row.status)));
-    return ready ? `Advance ready item ${ready.id} or record its concrete blocker before ending.` : null;
+    try {
+      const ready = store.queueItems().find((row) => ["QUEUED", "READY_TO_LAND"].includes(z.string().parse(row.status)));
+      return ready ? `Advance ready item ${ready.id} or record its concrete blocker before ending.` : null;
+    } catch (error: unknown) {
+      return `Canonical queue unavailable; preserve its contents and repair the reported read error: ${error instanceof Error ? error.message : String(error)}`;
+    }
   }
   async function poll(connection: string): Promise<Poll> {
     const current = actor(connection);
     store.updateRuntime({ ...current.runtime, lastPoll: now() });
-    const snapshot = store.snapshot();
-    const team = current.employee.assignment === null ? null : snapshot.teams.find((t) => t.id === current.employee.assignment);
-    const admitted = (!team || !["reserved", "reconciliation", "finished"].includes(team.state)) && turnAvailable(current.employee);
-    return { toolBlockReason: crewBlock(current.employee) ?? (snapshot.claims.some((c) => c.employeeId === current.employee.id && c.status === "reconciliation") || snapshot.grants.some((g) => g.employeeId === current.employee.id && g.state === "reconciliation") ? "Reconcile saved uncertain claims and grants through the manager before technical work." : null), projection: `${profileText(profile(current.employee, current.employee.generation))}\nSTARTUP_CHECKPOINT=${encode(current.employee.checkpoint)}\nSTARTUP_TEAM=${encode(team ?? null)}`, pendingMessageIds: admitted ? snapshot.messages.filter((m) => m.recipient === current.employee.id && m.status === "pending").map((m) => m.id) : [], waitReason: turnAvailable(current.employee) ? waitReason(current.employee) : null };
+    const view = store.employeeView(current.employee.id);
+    const available = turnAvailable(current.employee);
+    const admitted = (!view.team || !["reserved", "reconciliation", "finished"].includes(view.team.state)) && available;
+    return { toolBlockReason: crewBlock(current.employee) ?? (view.claims.some((c) => c.status === "reconciliation") || view.grants.length > 0 ? "Reconcile saved uncertain claims and grants through the manager before technical work." : null), projection: `${profileText(profile(current.employee, current.employee.generation))}\nSTARTUP_CHECKPOINT=${encode(current.employee.checkpoint)}\nSTARTUP_TEAM=${encode(view.team)}`, pendingMessageIds: admitted ? view.messages.map((m) => m.id) : [], waitReason: available ? waitReason(current.employee, view) : null };
   }
   function alertOnce(value: Readonly<{ id: string; correlation: string; payload: Json }>): void {
-    if (!store.snapshot().messages.some((message) => message.id === value.id)) store.runtimeAlert(value);
+    if (!store.hasMessage(value.id)) store.runtimeAlert(value);
   }
   async function supervise(): Promise<void> {
     store.renewLease();
+    supervision = { ...supervision, lastStartedAt: now() };
+    const errors: SupervisionFailure[] = [];
+    function failure(component: SupervisionFailure["component"], employeeId: string | null, error: unknown): void {
+      const detail = (error instanceof Error ? error.message : String(error)).replaceAll(config.managerCredential, "[redacted]");
+      errors.push({ component, employeeId, error: detail });
+      alertOnce({ id: `supervision-${component}-${employeeId ?? "all"}-${digest(detail).slice(0, 12)}`, correlation: "manager-supervision", payload: { kind: `${component}-unavailable`, employeeId, error: detail, observedAt: now() } });
+    }
     let observations: readonly HerdrObservation[] = [];
-    let observationFailure: Error | null = null;
     try { observations = await herdr.observe(); }
     catch (error: unknown) {
-      observationFailure = error instanceof Error ? error : new Error(String(error));
-      alertOnce({ id: `observer-unavailable-${store.ownerEpoch}-${digest(observationFailure.message).slice(0, 12)}`, correlation: "manager-supervision", payload: { kind: "observer-unavailable", error: observationFailure.message, observedAt: now() } });
+      failure("herdr", null, error);
     }
-    for (const saved of currentRuntimes().filter((r) => r.state === "ready" && r.employeeId !== "manager")) {
-      const observation = observations.find((o) => o.nativeSession === saved.nativeSession && o.terminalId === saved.terminalId);
-      if (!observation) {
-        store.updateRuntime({ ...saved, error: "Herdr session not observed" });
-        alertOnce({ id: `offline-${saved.launchId}-${saved.stateSequence}`, correlation: saved.launchId, payload: { kind: "employee-offline", employeeId: saved.employeeId, observedAt: now() } });
-        continue;
-      }
-      if (observation.stateSequence < (saved.stateSequence ?? 0)) {
-        store.updateRuntime({ ...saved, error: "Herdr lifecycle sequence regressed; reconcile session identity" });
-        alertOnce({ id: `gap-${saved.launchId}-${saved.stateSequence}`, correlation: saved.launchId, payload: { kind: "observation-gap", employeeId: saved.employeeId, observedAt: now() } });
-        continue;
-      }
-      if (saved.error !== null) store.updateRuntime({ ...saved, error: null });
-      store.observeRuntime({ employeeId: saved.employeeId, generation: saved.generation, nativeSession: saved.nativeSession!, state: observation.state, sequence: observation.stateSequence, observedAt: now() });
+    observerAvailable = !errors.some((error) => error.component === "herdr");
+    for (const saved of currentRuntimes().filter((r) => observerAvailable && r.state === "ready" && r.employeeId !== "manager")) {
+      try {
+        const observation = observations.find((o) => o.nativeSession === saved.nativeSession && o.terminalId === saved.terminalId);
+        if (!observation) {
+          errors.push({ component: "observation", employeeId: saved.employeeId, error: "Herdr session not observed" });
+          store.updateRuntime({ ...saved, error: "Herdr session not observed" });
+          alertOnce({ id: `offline-${saved.launchId}-${saved.stateSequence}`, correlation: saved.launchId, payload: { kind: "employee-offline", employeeId: saved.employeeId, observedAt: now() } });
+          continue;
+        }
+        if (observation.stateSequence < (saved.stateSequence ?? 0)) {
+          errors.push({ component: "observation", employeeId: saved.employeeId, error: "Herdr lifecycle sequence regressed; reconcile session identity" });
+          store.updateRuntime({ ...saved, error: "Herdr lifecycle sequence regressed; reconcile session identity" });
+          alertOnce({ id: `gap-${saved.launchId}-${saved.stateSequence}`, correlation: saved.launchId, payload: { kind: "observation-gap", employeeId: saved.employeeId, observedAt: now() } });
+          continue;
+        }
+        if (saved.error !== null) store.updateRuntime({ ...saved, error: null });
+        store.observeRuntime({ employeeId: saved.employeeId, generation: saved.generation, nativeSession: saved.nativeSession!, state: observation.state, sequence: observation.stateSequence, observedAt: now() });
+      } catch (error: unknown) { failure("observation", saved.employeeId, error); }
     }
     const managerRuntime = runtime("manager");
     const managerObserved = observations.some((o) => o.nativeSession === managerRuntime.nativeSession && o.terminalId === managerRuntime.terminalId);
     const managerOffline = !managerObserved || now() - managerRuntime.lastPoll > policy.connectionDeadlineMs;
-    const pa = store.snapshot().employees.find((e) => e.role === "pa" && e.employment === "hired");
+    const snapshot = store.snapshot();
+    const pa = snapshot.employees.find((e) => e.role === "pa" && e.employment === "hired");
     if (pa?.source !== null && pa !== undefined) {
       if (managerOffline) {
         const id = `manager-offline-${managerRuntime.launchId}-${managerRuntime.lastPoll}`;
         alertOnce({ id, correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, observedAt: now() } });
-        if (!store.snapshot().messages.some((m) => m.id === `${id}-pa`)) store.sendCue({ sender: store.managerBinding, cue: { id: `${id}-pa`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, observedAt: now() } } });
+        if (!store.hasMessage(`${id}-pa`)) store.sendCue({ sender: store.managerBinding, cue: { id: `${id}-pa`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, observedAt: now() } } });
       }
-      const checks = store.snapshot().messages.filter((m) => m.recipient === pa.id && m.id.startsWith("pa-check-"));
+      const checks = snapshot.messages.filter((m) => m.recipient === pa.id && m.id.startsWith("pa-check-"));
       const outstanding = checks.some((m) => m.status !== "acknowledged");
       const last = checks.at(-1);
       const lastDue = last ? z.object({ scheduledAt: z.number() }).parse(last.payload).scheduledAt : 0;
-      if (!outstanding && now() - lastDue >= policy.paCadenceMs) store.sendCue({ sender: store.managerBinding, cue: { id: `pa-check-${runtime(pa.id).launchId}-${now()}`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "pa-check", scheduledAt: now(), managerPresence: managerOffline ? "offline" : "online", unclassifiedInputs: store.snapshot().inputs.filter((i) => i.disposition === null).length, unresolvedClaims: store.snapshot().claims.filter((c) => c.status !== "settled").length, pendingMessages: store.snapshot().messages.filter((m) => m.status === "pending").length, crews: store.snapshot().teams.map((t) => ({ id: t.id, state: t.state })) } } });
+      if (!outstanding && now() - lastDue >= policy.paCadenceMs) store.sendCue({ sender: store.managerBinding, cue: { id: `pa-check-${runtime(pa.id).launchId}-${now()}`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "pa-check", scheduledAt: now(), managerPresence: managerOffline ? "offline" : "online", unclassifiedInputs: snapshot.inputs.filter((i) => i.disposition === null).length, unresolvedClaims: snapshot.claims.filter((c) => c.status !== "settled").length, pendingMessages: snapshot.messages.filter((m) => m.status === "pending").length, crews: snapshot.teams.map((t) => ({ id: t.id, state: t.state })) } } });
     }
     const health = paState();
     if (health !== null) alertOnce({ id: `pa-health-${health}-${pa ? runtime(pa.id).launchId : "missing"}`, correlation: "manager-supervision", payload: { kind: health, observedAt: now() } });
-    for (const saved of store.snapshot().inputs) {
+    for (const saved of snapshot.inputs) {
       if (saved.disposition === null && now() - saved.receivedAt > policy.progressDeadlineMs)
         alertOnce({ id: `stale-input-${saved.id}`, correlation: saved.id, payload: { kind: "stale-input", inputId: saved.id, receivedAt: saved.receivedAt } });
     }
-    for (const row of store.queueItems()) {
-      if (typeof row.status !== "string" || terminalItemStatuses.includes(row.status) || ["BLOCKED", "NEEDS_DECISION"].includes(row.status)) continue;
-      const snapshot = store.snapshot();
-      const owner = snapshot.queueRevisions.find((revision) => revision.id === row.id);
-      const team = snapshot.teams.find((t) => t.eventId === owner?.eventId);
-      if (!team) continue;
-      const execution = snapshot.itemExecutions.find((e) => e.itemId === row.id);
-      const responsible = row.status === "READY_TO_LAND" ? "manager" : row.status === "EXECUTING" && execution ? execution.employeeId : team.architect;
-      if (!owner) continue;
-      const progress = store.observeItemProgress({ itemId: row.id, revision: owner.revision, status: row.status, observedAt: now() });
-      if (now() - progress.changedAt > policy.progressDeadlineMs) alertOnce({ id: `stale-item-${row.id}-${progress.revision}-${row.status}`, correlation: row.id, payload: { kind: "stale-item", itemId: row.id, state: row.status, responsible, revision: progress.revision, lastProgress: progress.changedAt } });
-    }
+    try {
+      for (const row of store.queueItems()) {
+        if (typeof row.status !== "string" || terminalItemStatuses.includes(row.status) || ["BLOCKED", "NEEDS_DECISION"].includes(row.status)) continue;
+        const owner = snapshot.queueRevisions.find((revision) => revision.id === row.id);
+        const team = snapshot.teams.find((t) => t.eventId === owner?.eventId);
+        if (!team) continue;
+        const execution = snapshot.itemExecutions.find((e) => e.itemId === row.id);
+        const responsible = row.status === "READY_TO_LAND" ? "manager" : row.status === "EXECUTING" && execution ? execution.employeeId : team.architect;
+        if (!owner) continue;
+        const progress = store.observeItemProgress({ itemId: row.id, revision: owner.revision, status: row.status, observedAt: now() });
+        if (now() - progress.changedAt > policy.progressDeadlineMs) alertOnce({ id: `stale-item-${row.id}-${progress.revision}-${row.status}`, correlation: row.id, payload: { kind: "stale-item", itemId: row.id, state: row.status, responsible, revision: progress.revision, lastProgress: progress.changedAt } });
+      }
+    } catch (error: unknown) { failure("queue", null, error); }
+    const messages = store.snapshot().messages;
     for (const saved of currentRuntimes()) {
       if (["prepared", "starting", "uncertain"].includes(saved.state) && now() - saved.lastSeen > policy.connectionDeadlineMs)
         alertOnce({ id: `launch-stalled-${saved.launchId}`, correlation: saved.launchId, payload: { kind: "launch-stalled", employeeId: saved.employeeId, state: saved.state, error: saved.error, preparedAt: saved.lastSeen } });
-      const outstanding = store.snapshot().messages.some((m) => m.recipient === saved.employeeId && m.status !== "acknowledged");
+      const outstanding = messages.some((m) => m.recipient === saved.employeeId && m.status !== "acknowledged");
       if (outstanding && now() - saved.lastProgress > policy.progressDeadlineMs) alertOnce({ id: `stale-${saved.launchId}-${saved.lastProgress}`, correlation: saved.launchId, payload: { kind: "stale-progress", employeeId: saved.employeeId, lastProgress: saved.lastProgress } });
     }
-    if (observationFailure !== null) throw observationFailure;
+    const completedAt = now();
+    supervision = { ...supervision, lastCompletedAt: completedAt, lastSuccessAt: errors.length === 0 ? completedAt : supervision.lastSuccessAt, errors };
   }
   return {
     start, admit, poll, launchFailure,
-    health: () => ({ status: store.runtimeBindings().some((r) => r.employeeId === "manager" && r.paneId !== null && r.nativeSession !== null) ? "running" : "starting" }),
+    health: () => ({ status: !store.runtimeBindings().some((r) => r.employeeId === "manager" && r.paneId !== null && r.nativeSession !== null) ? "starting" : supervision.errors.length > 0 || now() - (supervision.lastCompletedAt ?? openedAt) > policy.connectionDeadlineMs ? "degraded" : "running", supervision }),
     command(connection, command) {
       const kind = commandSchema.parse(command).kind;
       if (["claim", "begin_turn", "end_turn", "staff", "settle", "send", "item", "capture", "input", "image", "receive"].includes(kind)) return execute(connection, command);
