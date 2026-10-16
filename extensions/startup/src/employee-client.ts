@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { jsonSchema, sourceSchema, type Json, type Source } from "./contracts";
+import { encode, idSchema, jsonSchema, sourceSchema, settlementRecoverySchema, type SettlementRecovery, type Json, type Source } from "./contracts";
 import type { HostAPI } from "../index";
 import type { NativeContext } from "./omp-adapter";
 
@@ -26,6 +26,7 @@ export type EmployeeClient = Readonly<{
   request: (command: Json) => Promise<Json>;
   poll: () => Promise<EmployeePoll>;
   close: () => void;
+  settlementBlock: () => string | null;
 }>;
 export type EmployeeBridgeHost = Pick<HostAPI, "on" | "sendMessage">;
 function isEmployeeTool(event: unknown): boolean {
@@ -62,7 +63,17 @@ export class EmployeeTransportError extends EmployeeClientError {
 }
 class EmployeeHttpError extends EmployeeClientError {
   readonly status: number;
-  constructor(status: number, message: string) { super(message); this.status = status; }
+  readonly recovery: SettlementRecovery | null;
+  constructor(status: number, message: string, recovery: SettlementRecovery | null) { super(message); this.status = status; this.recovery = recovery; }
+}
+export class EmployeeSettlementError extends EmployeeClientError {
+  readonly recovery: SettlementRecovery;
+  readonly repeated: boolean;
+  constructor(message: string, recovery: SettlementRecovery, repeated: boolean) {
+    super(`${message}; action=${recovery.action}; retryable=false${repeated ? "; duplicate settlement suppressed locally; native turn will park" : ""}`);
+    this.recovery = recovery;
+    this.repeated = repeated;
+  }
 }
 
 export async function reportLaunchFailure(input: Readonly<{ socketPath: string; credential: string; error: string }>): Promise<void> {
@@ -89,6 +100,9 @@ export async function connectEmployee(input: Readonly<{
   const admitted = admissionSchema.parse(input);
   let connection: string | null = null;
   let closed: boolean = false;
+  let claimState: string | null = null;
+  let settlementBlocked: EmployeeSettlementError | null = null;
+  const rejectedSettlements = new Map<string, EmployeeSettlementError>();
   const shutdown: AbortController = new AbortController();
   function redact(value: string): string {
     let safe: string = value.replaceAll(admitted.credential, "[redacted]");
@@ -125,8 +139,14 @@ export async function connectEmployee(input: Readonly<{
         reason: redact(error instanceof Error ? error.message : String(error)),
       });
     }
-    if (!response.ok)
-      throw new EmployeeHttpError(response.status, `Startup ${method} ${path} HTTP ${response.status}: ${redact(text)}`);
+    if (!response.ok) {
+      let recovery: SettlementRecovery | null = null;
+      try {
+        const parsed = z.object({ recovery: settlementRecoverySchema }).safeParse(JSON.parse(redact(text)));
+        if (parsed.success) recovery = parsed.data.recovery;
+      } catch (error: unknown) { if (!(error instanceof SyntaxError)) throw error; }
+      throw new EmployeeHttpError(response.status, `Startup ${method} ${path} HTTP ${response.status}: ${redact(text)}`, recovery);
+    }
     try {
       return jsonSchema.parse(JSON.parse(text));
     } catch (error: unknown) {
@@ -160,7 +180,32 @@ export async function connectEmployee(input: Readonly<{
   }
   await awaitAdmission();
   return {
-    request: (command: Json): Promise<Json> => exchange("POST", "/command", command),
+    async request(command: Json): Promise<Json> {
+      const settle = z.object({ kind: z.literal("settle"), result: z.record(z.string(), jsonSchema) }).passthrough().safeParse(command);
+      const fingerprint: string | null = settle.success ? encode({ ...settle.data, result: { ...settle.data.result, id: null } }) : null;
+      const exactFingerprint: string = encode(command);
+      const rejected = rejectedSettlements.get(exactFingerprint) ?? (fingerprint === null ? undefined : rejectedSettlements.get(fingerprint));
+      if (rejected !== undefined) {
+        settlementBlocked = rejected;
+        throw new EmployeeSettlementError(rejected.message, rejected.recovery, true);
+      }
+      try {
+        const receipt = await exchange("POST", "/command", command);
+        const settled = settle.success ? z.object({ claimId: idSchema }).safeParse(receipt) : null;
+        if (settled?.success) {
+          for (const [key, failure] of rejectedSettlements) if (failure.recovery.claimId === settled.data.claimId) rejectedSettlements.delete(key);
+          if (settlementBlocked?.recovery.claimId === settled.data.claimId) settlementBlocked = null;
+        }
+        return receipt;
+      } catch (error: unknown) {
+        if (fingerprint === null || !(error instanceof EmployeeHttpError) || ![400, 409].includes(error.status)) throw error;
+        const recovery: SettlementRecovery = error.recovery ?? { code: "request_invalid", retryable: false, action: "Inspect this command error and correct the settlement request or ask the manager to reconcile its saved claim. Do not repeat unchanged arguments.", employeeId: null, generation: null, claimId: null };
+        const failure = new EmployeeSettlementError(error.message, recovery, false);
+        rejectedSettlements.set(recovery.code === "result_replay_conflict" ? exactFingerprint : fingerprint, failure);
+        throw failure;
+      }
+    },
+    settlementBlock: () => settlementBlocked?.message ?? null,
     async poll(): Promise<EmployeePoll> {
       let body: Json;
       try { body = await exchange("GET", "/poll", null); }
@@ -173,6 +218,9 @@ export async function connectEmployee(input: Readonly<{
       const parsed = pollSchema.safeParse(body);
       if (!parsed.success)
         throw new EmployeeClientError(`Startup GET /poll HTTP 200 returned an invalid employee projection: ${redact(parsed.error.message)}`);
+      const nextClaimState: string | null = /^STARTUP_CLAIMS=(.+)$/m.exec(parsed.data.projection)?.[1] ?? null;
+      if (nextClaimState !== null && claimState !== null && nextClaimState !== claimState) { rejectedSettlements.clear(); settlementBlocked = null; }
+      claimState = nextClaimState;
       return parsed.data;
     },
     close(): void {
@@ -224,7 +272,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
       current = next;
       if (failure !== null) {
         const outageMs: number = Date.now() - (failureStartedAt ?? Date.now());
-        const resumeWork: boolean = next.waitReason !== null && nativeIdle() && !nativePending();
+        const resumeWork: boolean = input.client.settlementBlock() === null && next.waitReason !== null && nativeIdle() && !nativePending();
         host.sendMessage({ customType: "startup-connection-restored", content: `Startup coordinator connection restored; authenticated polling resumed. outageMs=${outageMs}`, display: true }, { triggerTurn: resumeWork, deliverAs: "nextTurn" });
         process.stderr.write(JSON.stringify({ level: "info", component: "startup-connection", state: "restored", outageMs, observedAt: Date.now() }) + "\n");
       }
@@ -232,7 +280,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
       failureStartedAt = null;
       failureIdentity = null;
       for (const id of notified.keys()) if (!next.pendingMessageIds.includes(id)) notified.delete(id);
-      for (const id of next.pendingMessageIds) {
+      for (const id of input.client.settlementBlock() === null ? next.pendingMessageIds : []) {
         const notifiedAt = notified.get(id);
         if (notifiedAt !== undefined && Date.now() - notifiedAt < 30000) continue;
         host.sendMessage({
@@ -318,6 +366,8 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     if (turnBlocked !== null) return { block: true, reason: turnBlocked };
     if (failure !== null)
       return { block: true, reason: `Startup coordinator unavailable: ${failure}` };
+    if (!employeeTool && input.client.settlementBlock() !== null)
+      return { block: true, reason: input.client.settlementBlock() ?? "Settlement requires correction" };
     if (!employeeTool && current?.toolBlockReason !== null && current?.toolBlockReason !== undefined)
       return { block: true, reason: current.toolBlockReason };
     if (employeeTool && current === null)
@@ -345,6 +395,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
       return { continue: true, additionalContext: failureReason };
     }
     await poll();
+    if (input.client.settlementBlock() !== null) return;
     const reason: string | null = projection().waitReason;
     if (reason === null) { continuedReason = null; return; }
     if (continuedReason === reason) return;

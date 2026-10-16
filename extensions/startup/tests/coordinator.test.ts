@@ -639,3 +639,46 @@ test("root capacity polling reconciliation never loads semantic work history", a
     }
   } finally { f.store.snapshot = snapshot; }
 });
+
+test("settlement binds the current own claim and replays its result after the next claim", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  f.store.sendCue({ sender: f.store.managerBinding, cue: { id: "first-report", recipient: "manager", kind: "report", correlation: "test", payload: null } });
+  const first = await f.coordinator.command(manager, { kind: "claim" });
+  const result = { id: "first-result", kind: "completed", output: "observed", checkpoint: null, outgoing: [] };
+  const settled = await f.coordinator.command(manager, { kind: "settle", result });
+  expect(settled).toMatchObject({ claimId: z.object({ claim: z.object({ id: z.string() }) }).parse(first).claim.id, result });
+  f.store.sendCue({ sender: f.store.managerBinding, cue: { id: "second-report", recipient: "manager", kind: "report", correlation: "test", payload: null } });
+  const second = z.object({ claim: z.object({ id: z.string() }) }).parse(await f.coordinator.command(manager, { kind: "claim" }));
+  expect(await f.coordinator.command(manager, { kind: "settle", result })).toEqual(settled);
+  expect(f.store.snapshot().claims.find((c) => c.id === second.claim.id)?.status).toBe("active");
+  await expect(f.coordinator.command(manager, { kind: "settle", result: { ...result, output: "changed" } })).rejects.toMatchObject({ recovery: { code: "result_replay_conflict", retryable: false } });
+});
+
+test("a mistyped legacy claim has an actionable nonretryable error and one manager alert", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  f.store.sendCue({ sender: f.store.managerBinding, cue: { id: "report", recipient: "manager", kind: "report", correlation: "test", payload: null } });
+  const claimed = z.object({ claim: z.object({ id: z.string() }) }).parse(await f.coordinator.command(manager, { kind: "claim" }));
+  const command = { kind: "settle", claimId: "mistyped", result: { id: "result", kind: "completed", output: "done", checkpoint: null, outgoing: [] } };
+  for (let attempt = 0; attempt < 3; attempt += 1)
+    await expect(f.coordinator.command(manager, command)).rejects.toMatchObject({ recovery: { code: "claim_not_found", retryable: false, employeeId: "manager", generation: 1, action: expect.stringContaining("result") } });
+  expect(f.store.snapshot().messages.filter((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"settlement-blocked"'))).toHaveLength(1);
+  expect(f.store.snapshot().claims.find((c) => c.id === claimed.claim.id)?.status).toBe("active");
+  await expect(f.coordinator.command(manager, { kind: "settle", result: command.result })).resolves.toMatchObject({ claimId: claimed.claim.id });
+});
+
+test("settlement recovery metadata crosses the real authenticated Unix transport", async () => {
+  const f = fixture(8);
+  await f.ready();
+  servers.push(serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }));
+  const runtime = f.store.employeeRuntime("manager", 1);
+  if (!runtime) throw new Error("Missing manager runtime");
+  const client = await connectEmployee({ socketPath: f.config.socketPath, credential: f.config.managerCredential, nativeSession: f.config.managerFile, paneId: f.config.managerPaneId, source: runtime.source });
+  try {
+    const command = { kind: "settle", claimId: "mistyped", result: { id: "result", kind: "completed", output: "done", checkpoint: null, outgoing: [] } };
+    await expect(client.request(command)).rejects.toMatchObject({ recovery: { code: "claim_not_found", retryable: false, action: expect.stringContaining("startup_settle {result}") }, repeated: false });
+    await expect(client.request(command)).rejects.toMatchObject({ repeated: true });
+    expect(f.store.snapshot().messages.filter((m) => JSON.stringify(m.payload).includes('"kind":"settlement-blocked"'))).toHaveLength(1);
+  } finally { client.close(); }
+});

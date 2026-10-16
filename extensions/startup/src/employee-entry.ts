@@ -6,7 +6,7 @@ import type { HostAPI } from "../index";
 import { ompProfileSchema } from "../install";
 import { StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, roleSchema, sourceSchema, type Json } from "./contracts";
-import { connectEmployee, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
+import { connectEmployee, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
 import { itemActionSchema } from "./items";
 import { herdrContext } from "./herdr-runtime";
 import type { NativeContext, NativeResult } from "./omp-adapter";
@@ -99,13 +99,21 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
       execute: async (_id, params, _signal, _update, ctx) => {
         const current: Admission | null = admission();
         if (current === null || !sameRoot(current, ctx)) throw new StartupBootError("Startup tool requires the admitted native root session");
-        return nativeResult(await current.client.request(command(schema.parse(params))));
+        const stopped: boolean = current.client.settlementBlock() !== null;
+        try { return nativeResult(await current.client.request(command(schema.parse(params)))); }
+        catch (error: unknown) {
+          if (error instanceof EmployeeSettlementError && error.repeated) {
+            ctx.abort?.();
+            if (!stopped) host.sendMessage({ customType: "startup-settlement-blocked", content: error.message, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+          }
+          throw error;
+        }
       },
     });
   }
   const direct = (kind: string) => (params: Readonly<Record<string, Json>>): Json => ({ kind, ...params });
   register("startup_claim", {}, direct("claim"));
-  register("startup_settle", { claimId: text, result: { native: b.unknown(), schema: resultSchema } }, direct("settle"));
+  register("startup_settle", { result: { native: b.unknown(), schema: resultSchema } }, direct("settle"));
   register("startup_send", {
     id: text, recipient: text, kind: { native: b.enum(["assignment", "report", "question", "answer", "alert", "duty"]), schema: cueSchema.unwrap().shape.kind }, correlation: text, payload: json,
   }, (params) => ({ kind: "send", cue: cueSchema.parse(params) }));

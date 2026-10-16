@@ -239,6 +239,24 @@ export class StoreAuthorityError extends Error {}
 export class StoreFenceError extends Error {}
 export class StoreRecoveryError extends Error {}
 
+export const settlementRecoverySchema = z.strictObject({
+  code: z.enum(["claim_not_found", "claim_not_owned", "claim_generation_stale", "claim_requires_reconciliation", "claim_already_settled", "no_active_claim", "ambiguous_claim", "result_replay_conflict", "settlement_conflict", "request_invalid"]),
+  retryable: z.literal(false),
+  action: z.string().min(1),
+  employeeId: idSchema.nullable(),
+  generation: timeSchema.nullable(),
+  claimId: idSchema.nullable(),
+}).readonly();
+export type SettlementRecovery = z.infer<typeof settlementRecoverySchema>;
+export class ClaimSettlementError extends StoreFenceError {
+  readonly recovery: SettlementRecovery;
+  constructor(recovery: SettlementRecovery) {
+    super(`${recovery.code}: ${recovery.action}; employee=${recovery.employeeId ?? "unknown"}; generation=${recovery.generation ?? "unknown"}; claim=${recovery.claimId ?? "current"}`);
+    this.recovery = settlementRecoverySchema.parse(recovery);
+  }
+}
+
+
 export function encode(value: unknown): string {
   const parsed: Json = jsonSchema.parse(value);
   function sorted(entry: Json): Json {

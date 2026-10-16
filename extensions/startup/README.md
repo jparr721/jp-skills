@@ -70,7 +70,7 @@ Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md
 | `startup_route {inputId,disposition,reason,amendItemIds}` | Manager classifies a saved native receipt as work/status/control/conversation/decision. |
 | `startup_intake {eventId,input,amendItemIds}` | Manager saves externally supplied work before delegation. |
 | `startup_claim {}` | Claims only the admitted employee's own ready inbox. |
-| `startup_settle {claimId,result}` | Atomically saves result/checkpoint, acknowledgement and outgoing cues. |
+| `startup_settle {result}` | Atomically settles the authenticated employee's current claim, result/checkpoint, acknowledgement and outgoing cues. |
 | `startup_send {id,recipient,kind,correlation,payload}` | Persists a role-authorized hierarchical cue. |
 | `startup_input {inputId,offset}` / `startup_image {inputId,index}` | Scoped 4096-character input pages and actual native image blocks; a preview is not the complete input. |
 | `startup_capture {captureId,eventId,rows,receipt}` | Assigned architect captures canonical queue rows/revisions for its event. |
@@ -82,6 +82,10 @@ Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md
 | `startup_finish_team {teamId,evidence}` / `startup_retire {employeeIds,evidence}` | Manager completion/eligible retirement after unresolved work, mail and grants are resolved. |
 
 Result shape is `{id,kind,output,checkpoint,outgoing}`, with kind `completed`, `question` or `uncertain`. Outgoing cues use `{id,recipient,kind,correlation,payload}`. A question acknowledges its cue but retains the waiting assignment; an answer is not the original completed result. Follow [queue records](../../skills/startup-intake/references/queue-records.md) for block/decision, reconciliation, explicit resolution and a new attempt.
+
+Settlement selects the single outstanding claim inside the store transaction; agents do not copy claim UUIDs. The original result ID and exact payload recover a saved receipt even after another claim is active. Changed payload under the same result ID is rejected. Old clients may still send an explicit claim ID, or the literal `"current"` to select their own claim without copying it; an incorrect explicit ID is never silently corrected.
+
+Settlement errors return `recovery: {code,retryable:false,action,employeeId,generation,claimId}` alongside the HTTP error/message. Missing claims, foreign ownership, stale generations, reconciliation, already-settled claims and result replay conflicts are distinct. A durable deduplicated `settlement-blocked` alert goes TO manager. Follow the corrective action instead of repeating a rejected request. New native clients suppress identical rejected settlement payloads locally, including retries that only change the result ID (except where an ID collision is the actual error), abort the duplicate turn and stop automatic stop/cue continuations for that blocked claim. Polling stays active. Corrected results can proceed; a successful settlement or observed claim-state change clears the guard. Re-admission and heartbeats alone do not clear it. Existing processes must resume with the upgraded client for this native guard.
 
 Independent QA proof precedes the owning architect's approval gate; manager alone records landing/completion. Other architects, workers, PA, helpers and observed idle/done states cannot approve progression. These are Startup workflow gates for recording review and completion. Shipping permissions follow explicit user instructions; repository-level merge denial and credential isolation are not V7 requirements.
 

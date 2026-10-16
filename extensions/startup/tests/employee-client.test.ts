@@ -455,3 +455,70 @@ test("recovery wakes an idle root to settle its stranded claim without waking a 
   await bridge.poll();
   expect(native.messages.at(-1)).toMatchObject({ triggerTurn: true, deliverAs: "nextTurn" });
 });
+
+test("deterministic settlement retries are suppressed across healthy polling and park the native loop", async () => {
+  const fixture = serverFixture();
+  fixture.setPoll({ projection: 'canonical\nSTARTUP_CLAIMS={"generation":1,"claims":[{"id":"one","status":"active"}]}', pendingMessageIds: ["new-mail"], toolBlockReason: null, waitReason: "Settle your outstanding claim" });
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  fixture.commandError(Response.json({ error: "ClaimSettlementError", message: "Inspect the existing cue", recovery: { code: "settlement_conflict", retryable: false, action: "Correct result.outgoing; do not repeat the unchanged request", employeeId: "dev-1", generation: 1, claimId: "one" } }, { status: 409 }));
+  const command = { kind: "settle", result: { id: "result", kind: "completed", output: "done", checkpoint: null, outgoing: [] } };
+  await expect(client.request(command)).rejects.toThrow("Correct result.outgoing");
+  await bridge.poll();
+  await expect(client.request({ ...command, result: { ...command.result, id: "different-id" } })).rejects.toMatchObject({ repeated: true });
+  expect(fixture.requests.filter((r) => r.path === "/command")).toHaveLength(1);
+  expect(await native.emit("session_stop", {}, native.ctx)).toBeUndefined();
+  const notices = native.messages.length;
+  await bridge.poll();
+  expect(native.messages).toHaveLength(notices);
+  fixture.setPoll({ projection: 'canonical\nSTARTUP_CLAIMS={"generation":1,"claims":[]}', pendingMessageIds: [], toolBlockReason: null, waitReason: null });
+  await bridge.poll();
+  fixture.commandError(Response.json({ accepted: true }));
+  await expect(client.request(command)).resolves.toEqual({ accepted: true });
+});
+
+test("corrected settlement payload and corrected result-ID collision can proceed without restarting", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const command = { kind: "settle", result: { id: "collision", kind: "completed", output: "new work", checkpoint: null, outgoing: [] } };
+  fixture.commandError(Response.json({ recovery: { code: "result_replay_conflict", retryable: false, action: "Inspect the receipt and correct the result ID", employeeId: "dev-1", generation: 1, claimId: "claim" } }, { status: 409 }));
+  await expect(client.request(command)).rejects.toMatchObject({ repeated: false });
+  fixture.commandError(Response.json({ accepted: true, claimId: "claim" }));
+  await expect(client.request({ ...command, result: { ...command.result, id: "corrected" } })).resolves.toEqual({ accepted: true, claimId: "claim" });
+  expect(client.settlementBlock()).toBeNull();
+  fixture.commandError(Response.json({ recovery: { code: "settlement_conflict", retryable: false, action: "Correct outgoing cue payload", employeeId: "dev-1", generation: 1, claimId: "claim" } }, { status: 409 }));
+  await expect(client.request(command)).rejects.toMatchObject({ repeated: false });
+  await expect(client.request(command)).rejects.toMatchObject({ repeated: true });
+  fixture.commandError(Response.json({ accepted: true, claimId: "claim" }));
+  await expect(client.request({ ...command, result: { ...command.result, output: "corrected output" } })).resolves.toEqual({ accepted: true, claimId: "claim" });
+  expect(client.settlementBlock()).toBeNull();
+});
+
+test("settlement connection authorization and transport failures are not cached as deterministic rejection", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const command = { kind: "settle", result: { id: "result", kind: "completed", output: "done", checkpoint: null, outgoing: [] } };
+  for (const status of [401, 403, 500, 503]) {
+    fixture.commandError(new Response("Connection admission unavailable", { status }));
+    await expect(client.request(command)).rejects.toThrow(`HTTP ${status}`);
+    fixture.commandError(Response.json({ accepted: true }));
+    await expect(client.request(command)).resolves.toEqual({ accepted: true });
+  }
+});
+
+test("replaying claim A does not release a rejected settlement for claim B", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const blocked = { kind: "settle", result: { id: "b", kind: "completed", output: "B", checkpoint: null, outgoing: [] } };
+  fixture.commandError(Response.json({ recovery: { code: "settlement_conflict", retryable: false, action: "Correct B", employeeId: "manager", generation: 1, claimId: "claim-b" } }, { status: 409 }));
+  await expect(client.request(blocked)).rejects.toMatchObject({ repeated: false });
+  await expect(client.request(blocked)).rejects.toMatchObject({ repeated: true });
+  fixture.commandError(Response.json({ claimId: "claim-a", result: { id: "a" } }));
+  await client.request({ kind: "settle", result: { ...blocked.result, id: "a", output: "A" } });
+  expect(client.settlementBlock()).not.toBeNull();
+  await expect(client.request(blocked)).rejects.toMatchObject({ repeated: true });
+  expect(fixture.requests.filter((r) => r.path === "/command")).toHaveLength(2);
+});

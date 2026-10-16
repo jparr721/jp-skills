@@ -1756,3 +1756,82 @@ test("crew recovery waits until every uncertain member claim is reconciled", ():
   expect(f.store.snapshot().assignments.find((a) => a.id === firstClaim.claim.message.id)?.state).toBe("complete");
   f.store.close();
 });
+
+
+for (const scenario of [
+  { name: "missing", patch: {}, target: "missing", code: "claim_not_found" },
+  { name: "foreign", patch: { employeeId: "another-employee" }, target: "explicit", code: "claim_not_owned" },
+  { name: "generation", patch: { generation: 99 }, target: "current", code: "claim_generation_stale" },
+  { name: "epoch", patch: { ownerEpoch: 99 }, target: "current", code: "claim_requires_reconciliation" },
+  { name: "reconciliation", patch: { status: "reconciliation" }, target: "current", code: "claim_requires_reconciliation" },
+  { name: "settled", patch: { status: "settled" }, target: "explicit", code: "claim_already_settled" },
+]) test(`settlement error distinguishes ${scenario.name} and explains recovery`, () => {
+  const f = fixture();
+  f.store.sendCue({ sender: f.store.managerBinding, cue: cue("report", "manager", "report") });
+  const claimed = f.store.claimNext({ employee: f.store.managerBinding });
+  if (claimed === null) throw new Error("Missing report");
+  const db = new Database(f.path);
+  db.query("UPDATE records SET payload=? WHERE kind='claim' AND id=?").run(JSON.stringify({ ...claimed.claim, ...scenario.patch }), claimed.claim.id);
+  db.close();
+  const claimId = scenario.target === "missing" ? "missing" : scenario.target === "explicit" ? claimed.claim.id : "current";
+  let caught: unknown;
+  try { f.store.settleClaim({ employee: f.store.managerBinding, claimId, result: completed("result") }); }
+  catch (error: unknown) { caught = error; }
+  expect(caught).toMatchObject({ recovery: { code: scenario.code, retryable: false, employeeId: "manager", generation: 1, action: expect.any(String) } });
+  expect(f.store.snapshot().results).toHaveLength(0);
+  f.store.close();
+});
+
+test("implicit settlement refuses absent or ambiguous claims and replays uncertain receipts", () => {
+  const f = fixture();
+  expect(() => f.store.settleClaim({ employee: f.store.managerBinding, result: completed("missing") })).toThrow("no_active_claim");
+  f.store.sendCue({ sender: f.store.managerBinding, cue: cue("report", "manager", "report") });
+  const claimed = f.store.claimNext({ employee: f.store.managerBinding });
+  if (claimed === null) throw new Error("Missing report");
+  const db = new Database(f.path);
+  db.query("INSERT INTO records(kind,id,payload) VALUES('claim','duplicate',?)").run(JSON.stringify({ ...claimed.claim, id: "duplicate" }));
+  expect(() => f.store.settleClaim({ employee: f.store.managerBinding, result: completed("ambiguous") })).toThrow("ambiguous_claim");
+  db.query("DELETE FROM records WHERE kind='claim' AND id='duplicate'").run(); db.close();
+  const result = { ...completed("uncertain"), kind: "uncertain" as const };
+  const saved = f.store.settleClaim({ employee: f.store.managerBinding, result });
+  expect(f.store.settleClaim({ employee: f.store.managerBinding, result })).toEqual(saved);
+  expect(f.store.snapshot().claims[0]?.status).toBe("reconciliation");
+  f.store.close();
+});
+
+test("a global result-ID collision does not disclose a foreign claim and a fresh ID can settle own work", () => {
+  const f = fixture();
+  f.store.sendCue({ sender: f.store.managerBinding, cue: cue("manager-report", "manager", "report") });
+  f.store.claimNext({ employee: f.store.managerBinding });
+  const managerReceipt = f.store.settleClaim({ employee: f.store.managerBinding, result: completed("shared") });
+  const id = first(hire(f, "devops", "hire-collision", 1));
+  const binding = bind(f, id, "devops", 1, null);
+  f.store.sendCue({ sender: f.store.managerBinding, cue: cue("worker-report", id, "assignment") });
+  const own = f.store.claimNext({ employee: binding });
+  if (!own) throw new Error("Missing own claim");
+  let caught: unknown;
+  try { f.store.settleClaim({ employee: binding, result: completed("shared") }); }
+  catch (error: unknown) { caught = error; }
+  expect(caught).toMatchObject({ recovery: { code: "result_replay_conflict", claimId: null } });
+  expect(JSON.stringify(caught)).not.toContain(managerReceipt.claimId);
+  expect(f.store.settleClaim({ employee: binding, result: completed("unique") }).claimId).toBe(own.claim.id);
+  f.store.close();
+});
+
+test("a prior-generation result ID is a replay conflict while fresh current-generation work can settle", () => {
+  const f = fixture();
+  f.store.sendCue({ sender: f.store.managerBinding, cue: cue("old-report", "manager", "report") });
+  f.store.claimNext({ employee: f.store.managerBinding });
+  f.store.settleClaim({ employee: f.store.managerBinding, result: completed("shared") });
+  f.store.sendCue({ sender: f.store.managerBinding, cue: cue("new-report", "manager", "report") });
+  const manager = f.store.snapshot().employees.find((e) => e.id === "manager");
+  if (!manager) throw new Error("Missing manager");
+  const db = new Database(f.path);
+  db.query("UPDATE records SET payload=? WHERE kind='employee' AND id='manager'").run(JSON.stringify({ ...manager, generation: 2, nativeHandle: "new-native" })); db.close();
+  const binding = { ...f.store.managerBinding, generation: 2, nativeHandle: "new-native" };
+  const own = f.store.claimNext({ employee: binding });
+  if (!own) throw new Error("Missing current claim");
+  expect(() => f.store.settleClaim({ employee: binding, result: completed("shared") })).toThrow("result_replay_conflict");
+  expect(f.store.settleClaim({ employee: binding, result: completed("unique") }).claimId).toBe(own.claim.id);
+  f.store.close();
+});

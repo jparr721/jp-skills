@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, sourceSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, type Binding, type Employee, type Json, type Source } from "./contracts";
+import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, sourceSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, ClaimSettlementError, type Binding, type Employee, type Json, type Source } from "./contracts";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
 import { itemActionSchema, terminalItemStatuses } from "./items";
 import { loadProfile, profileText, verifyProfile, type Profile } from "./profiles";
@@ -21,7 +21,7 @@ const commandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("begin_turn") }),
   z.strictObject({ kind: z.literal("end_turn") }),
   z.strictObject({ kind: z.literal("staff") }),
-  z.strictObject({ kind: z.literal("settle"), claimId: idSchema, result: resultSchema }),
+  z.strictObject({ kind: z.literal("settle"), claimId: idSchema.optional(), result: resultSchema }),
   z.strictObject({ kind: z.literal("send"), cue: cueSchema }),
   z.strictObject({ kind: z.literal("item"), request: itemActionSchema }),
   z.strictObject({ kind: z.literal("capture"), capture: captureSchema }),
@@ -287,9 +287,18 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       case "end_turn":
         store.updateRuntime({ ...current.runtime, turnActive: false }); output = { released: true }; break;
       case "claim": output = store.claimNext({ employee: current.binding }); break;
-      case "settle":
-        if (current.employee.role === "pa" && !request.result.outgoing.some((cue) => cue.recipient === "manager" && cue.kind === "report")) throw new StoreAuthorityError("PA check settlement requires a manager report");
-        output = store.settleClaim({ employee: current.binding, claimId: request.claimId, result: request.result }); break;
+      case "settle": {
+        try {
+          if (current.employee.role === "pa" && !request.result.outgoing.some((cue) => cue.recipient === "manager" && cue.kind === "report")) throw new StoreConflictError("PA check settlement requires an outgoing report TO manager");
+          output = store.settleClaim({ employee: current.binding, ...(request.claimId === undefined ? {} : { claimId: request.claimId }), result: request.result });
+        } catch (error: unknown) {
+          const rejected = error instanceof ClaimSettlementError ? error : error instanceof StoreConflictError ? new ClaimSettlementError({ code: "settlement_conflict", retryable: false, action: `${error.message}. Inspect the saved receipt and correct the result or outgoing cue payload; do not repeat the unchanged request.`, employeeId: current.employee.id, generation: current.employee.generation, claimId: store.employeeView(current.employee.id).claims[0]?.id ?? request.claimId ?? null }) : null;
+          if (rejected === null) throw error;
+          alertOnce({ id: `settlement-blocked-${digest(encode({ epoch: store.ownerEpoch, employeeId: current.employee.id, generation: current.employee.generation, claimId: rejected.recovery.claimId, code: rejected.recovery.code })).slice(0, 32)}`, correlation: current.employee.id, payload: { kind: "settlement-blocked", ...rejected.recovery, observedAt: now() } });
+          throw rejected;
+        }
+        break;
+      }
       case "send": output = store.sendCue({ sender: current.binding, cue: request.cue }); break;
       case "capture": output = store.captureIntake({ architect: current.binding, capture: request.capture }); break;
       case "item":
@@ -435,7 +444,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const view = store.employeeView(current.employee.id);
     const available = turnAvailable(current.employee);
     const admitted = (!view.team || !["reserved", "reconciliation", "finished"].includes(view.team.state)) && available;
-    return { toolBlockReason: crewBlock(current.employee) ?? (view.claims.some((c) => c.status === "reconciliation") || view.grants.length > 0 ? "Reconcile saved uncertain claims and grants through the manager before technical work." : null), projection: `${profileText(profile(current.employee, current.employee.generation))}\nSTARTUP_CHECKPOINT=${encode(current.employee.checkpoint)}\nSTARTUP_TEAM=${encode(view.team)}`, pendingMessageIds: admitted ? view.messages.map((m) => m.id) : [], waitReason: available ? waitReason(current.employee, view) : null };
+    return { toolBlockReason: crewBlock(current.employee) ?? (view.claims.some((c) => c.status === "reconciliation") || view.grants.length > 0 ? "Reconcile saved uncertain claims and grants through the manager before technical work." : null), projection: `${profileText(profile(current.employee, current.employee.generation))}\nSTARTUP_CHECKPOINT=${encode(current.employee.checkpoint)}\nSTARTUP_TEAM=${encode(view.team)}\nSTARTUP_CLAIMS=${encode({ employeeId: current.employee.id, generation: current.employee.generation, claims: view.claims })}\nSettle your current claim with startup_settle {result}. Do not copy claim IDs. If an existing native tool requires claimId, use the literal "current". On a nonretryable settlement error, follow its action; never repeat unchanged arguments.`, pendingMessageIds: admitted ? view.messages.map((m) => m.id) : [], waitReason: available ? waitReason(current.employee, view) : null };
   }
   function alertOnce(value: Readonly<{ id: string; correlation: string; payload: Json }>): void {
     if (!store.hasMessage(value.id)) store.runtimeAlert(value);
@@ -559,7 +568,7 @@ export function serveCoordinator(input: Readonly<{ coordinator: Coordinator; soc
       return Response.json({ error: "unknown_endpoint" }, { status: 404 });
     } catch (error: unknown) {
       const status = error instanceof AdmissionPendingError ? 425 : error instanceof z.ZodError ? 400 : error instanceof StoreAuthorityError ? 403 : error instanceof StoreConflictError || error instanceof StoreFenceError ? 409 : 500;
-      return Response.json({ error: error instanceof Error ? error.constructor.name : "RuntimeError", message: error instanceof Error ? error.message : String(error) }, { status });
+      return Response.json({ error: error instanceof Error ? error.constructor.name : "RuntimeError", message: error instanceof Error ? error.message : String(error), ...(error instanceof ClaimSettlementError ? { recovery: error.recovery } : {}) }, { status });
     }
   } });
   chmodSync(input.socketPath, 0o600);

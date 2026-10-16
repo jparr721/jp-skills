@@ -69,6 +69,7 @@ function fixture() {
   const socketPath: string = join(root, "runtime.sock");
   let projection: string = "Complete canonical dev persona\nComplete canonical shared loop";
   let available: boolean = true;
+  let commandResponse: Response | null = null;
   const server = Bun.serve({ unix: socketPath, async fetch(request: Request): Promise<Response> {
     const path: string = new URL(request.url).pathname;
     if (path === "/health") return Response.json({ status: "running" });
@@ -79,7 +80,7 @@ function fixture() {
     requests.push(command);
     if (z.object({ kind: z.literal("image") }).safeParse(command).success)
       return Response.json({ type: "image", data: "fixture-image", mimeType: "image/png" });
-    return Response.json(command);
+    return commandResponse?.clone() ?? Response.json(command);
   } });
   cleanup.push(() => server.stop(true));
   async function emit(name: string, event: unknown, context: NativeContext): Promise<unknown> {
@@ -109,7 +110,7 @@ function fixture() {
     writeFileSync(path, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: profile.employeeId, generation: 1, profile: "isolated-test", skillsRoot }), { mode: 0o600 });
     return path;
   }
-  return { root, skillsRoot, cwd, file, ctx, host, tools, commands, messages, requests, admissions, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; }, setAvailable(value: boolean) { available = value; } };
+  return { root, skillsRoot, cwd, file, ctx, host, tools, commands, messages, requests, admissions, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; }, setAvailable(value: boolean) { available = value; }, setCommandResponse(value: Response) { commandResponse = value; } };
 }
 
 test("manager extension loads before native action methods become available", () => {
@@ -574,4 +575,34 @@ test.each([9, 10, 11])("managed Herdr integration revision %s is validated by ru
   installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
   await f.emit("input", { text: "/startup new capable", source: "interactive", images: [] }, f.ctx);
   expect(f.admissions).toHaveLength(1);
+});
+
+test("native settlement accepts the result without a copied claim ID", async () => {
+  const f = fixture(); f.useEnvironment();
+  installLaunchedEmployee(f.host, f.manifest("dev"));
+  await f.emit("session_start", {}, f.ctx);
+  const settle = f.tools.get("startup_settle");
+  if (!settle) throw new Error("Missing settlement tool");
+  const result = { id: "result", kind: "completed", output: "done", checkpoint: null, outgoing: [] };
+  await settle.execute("settle", { result }, undefined, undefined, f.ctx);
+  expect(f.requests.at(-1)).toEqual({ kind: "settle", result });
+});
+
+
+test("duplicate native settlement errors abort once without another command and do not loop on stop", async () => {
+  const f = fixture(); f.useEnvironment();
+  installLaunchedEmployee(f.host, f.manifest("dev"));
+  await f.emit("session_start", {}, f.ctx);
+  f.setCommandResponse(Response.json({ error: "ClaimSettlementError", message: "Claim needs reconciliation", recovery: { code: "claim_requires_reconciliation", retryable: false, action: "Ask manager to reconcile; do not retry", employeeId: "dev-1", generation: 1, claimId: "claim" } }, { status: 409 }));
+  const settle = f.tools.get("startup_settle");
+  if (!settle) throw new Error("Missing settlement tool");
+  const params = { result: { id: "result", kind: "completed", output: "done", checkpoint: null, outgoing: [] } };
+  await expect(settle.execute("first", params, undefined, undefined, f.ctx)).rejects.toThrow("reconcile");
+  expect(f.getAborts()).toBe(0);
+  for (let attempt = 0; attempt < 3; attempt += 1)
+    await expect(settle.execute("repeat", params, undefined, undefined, f.ctx)).rejects.toThrow("suppressed locally");
+  expect(f.requests.filter((r) => z.object({ kind: z.literal("settle") }).safeParse(r).success)).toHaveLength(1);
+  expect(f.getAborts()).toBe(3);
+  expect(f.messages.filter((m) => m.includes("suppressed locally"))).toHaveLength(1);
+  expect(await f.emit("session_stop", {}, f.ctx)).toBeUndefined();
 });

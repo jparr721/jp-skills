@@ -41,6 +41,8 @@ import {
   StoreAuthorityError,
   StoreConflictError,
   StoreFenceError,
+  ClaimSettlementError,
+  type SettlementRecovery,
   StoreRecoveryError,
   type Authority,
   type Bind,
@@ -2059,44 +2061,32 @@ export function openStore(args: {
     },
     settleClaim(input: {
       readonly employee: Binding;
-      readonly claimId: string;
+      readonly claimId?: string;
       readonly result: Result;
     }): Settlement {
       return tx((): Settlement => {
         const current: Employee = actor(input.employee);
         const result: Result = resultSchema.parse(input.result);
-        const claim: Claim | null = read(
-          "claim",
-          idSchema.parse(input.claimId),
-          claimSchema,
-        );
-        if (
-          claim === null ||
-          claim.employeeId !== current.id ||
-          claim.generation !== current.generation
-        )
-          throw new StoreFenceError(
-            "Claim does not belong to this native employee generation",
-          );
+        function reject(code: SettlementRecovery["code"], action: string, claimId: string | null): never {
+          throw new ClaimSettlementError({ code, retryable: false, action, employeeId: current.id, generation: current.generation, claimId });
+        }
         const saved = read("result", result.id, resultRecordSchema);
+        const explicit: string | null = input.claimId === undefined || input.claimId === "current" ? null : idSchema.parse(input.claimId);
+        const unresolved: readonly Claim[] = explicit !== null || saved !== null ? [] : selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.status') IN ('active','reconciliation') ORDER BY rowid", [current.id], claimSchema);
+        if (unresolved.length > 1) reject("ambiguous_claim", "Multiple outstanding claims require manager inspection and evidence-based reconciliation. Do not guess a claim or repeat settlement.", null);
+        const selectedId: string | null = explicit ?? saved?.claimId ?? unresolved[0]?.id ?? null;
+        if (selectedId === null) reject("no_active_claim", "No outstanding claim. Use startup_claim before settling; inspect the saved result if an earlier attempt may have completed.", null);
+        const claim: Claim | null = read("claim", selectedId, claimSchema);
+        if (claim === null) reject("claim_not_found", 'Claim ID does not exist. Do not retry it. Use startup_settle {result} for your current claim; legacy tools may use claimId="current".', selectedId);
+        if (saved !== null && explicit === null && (claim.employeeId !== current.id || claim.generation !== current.generation)) reject("result_replay_conflict", "This result ID is already used outside your current employee generation. Use a unique result ID for genuinely new work; ask the manager to reconcile old work. Do not retry unchanged.", null);
+        if (claim.employeeId !== current.id) reject("claim_not_owned", "This claim belongs to another employee. Settle only your own current claim with startup_settle {result}.", selectedId);
+        if (claim.generation !== current.generation) reject("claim_generation_stale", "This claim belongs to a prior native generation. Ask the manager to use startup_reconcile with verified evidence. Do not replay work.", claim.id);
         if (saved !== null) {
-          assertReplay(
-            { claimId: saved.claimId, result: saved.result },
-            { claimId: claim.id, result },
-            result.id,
-          );
+          if (saved.claimId !== claim.id || !sameDocument(saved.result, result)) reject("result_replay_conflict", "This result ID already names a different claim or payload. Reuse the exact original result to recover its receipt, or use a unique result ID for genuinely new work. Do not retry changed content under the same ID.", claim.id);
           return saved;
         }
-        if (claim.ownerEpoch !== epoch || claim.status !== "active")
-          throw new StoreFenceError(
-            "Claim is settled or requires explicit reconciliation",
-          );
-        if (
-          all("result", resultRecordSchema).some(
-            (entry): boolean => entry.claimId === claim.id,
-          )
-        )
-          throw new StoreConflictError("Claim already has a result");
+        if (claim.ownerEpoch !== epoch || claim.status === "reconciliation") reject("claim_requires_reconciliation", "The saved claim requires explicit manager reconciliation with evidence through startup_reconcile. Do not retry settlement or replay the work.", claim.id);
+        if (claim.status === "settled" || all("result", resultRecordSchema).some((entry): boolean => entry.claimId === claim.id)) reject("claim_already_settled", "This claim already has a result. Reuse the original result ID and exact payload to recover its receipt; do not create another result.", claim.id);
         const incoming: Message | null = read(
           "message",
           claim.messageId,

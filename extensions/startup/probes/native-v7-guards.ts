@@ -37,6 +37,7 @@ export default function guardProbe(pi: ExtensionAPI): void {
       if (stage === "disconnected") throw new Error("Fixture coordinator connection failed");
       return { projection, pendingMessageIds: [], toolBlockReason: null, waitReason: null };
     },
+    settlementBlock: () => null,
     close(): void { record({ kind: "client_close" }); },
   };
   pi.on("before_subagent_spawn", () => ({ model: "startup-v7-guard/offline" }));
