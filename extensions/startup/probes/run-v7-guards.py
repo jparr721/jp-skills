@@ -25,7 +25,7 @@ def run_stage(omp: str, repo: Path, workspace: Path, stage: str, module: Path) -
     agent_dir.mkdir()
     (profiles / "v7-guard-helper.md").write_text(
         "---\nname: v7-guard-helper\ndescription: Isolated guard fixture\n"
-        "model: startup-v7-guard/offline\ntools: [startup_guard_probe]\nblocking: false\nread-summarize: false\n---\nHELPER_NATIVE_GUARD\n"
+        "model: startup-v7-guard/offline\ntools: [startup_guard_probe]\nblocking: true\nread-summarize: false\n---\nHELPER_NATIVE_GUARD\n"
     )
     config = work / "config.yml"
     config.write_text("task:\n  batch: true\n  speculativeLaunch: false\nasync:\n  enabled: true\nproviders:\n  cacheWarming: false\nmemories:\n  enabled: false\nmcp:\n  enableProjectConfig: false\n")
