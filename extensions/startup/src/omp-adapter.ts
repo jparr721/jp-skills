@@ -1111,21 +1111,15 @@ export function createAdapter(
     const ref: NativeRef = nativeRef(ctx);
     if (ref.id === rootId) {
       verifyProfile(managerProfile);
+      const managerView = store.employeeView("manager");
+      const claimedId = managerView.claims[0]?.messageId;
+      const managerCue = claimedId === undefined
+        ? managerView.messages.find((entry) => blockedMessage(entry) === null)
+        : store.snapshot().messages.find((entry) => entry.id === claimedId);
       return projectEmployee({
         profile: managerProfile,
         checkpoint: snapshotEmployee("manager").checkpoint,
-        cue: managerReady
-          ? projectedCue(
-              store
-                .snapshot()
-                .messages.find(
-                  (entry) =>
-                    entry.recipient === "manager" &&
-                    entry.status !== "acknowledged" &&
-                    blockedMessage(entry) === null,
-                ) ?? null,
-            )
-          : null,
+        cue: managerReady ? projectedCue(managerCue ?? null) : null,
         team: {
           items: itemInfo()
             .filter((item) => !terminalItemStatuses.includes(item.status))
@@ -1136,6 +1130,7 @@ export function createAdapter(
             .slice(0, 8)
             .map(inputMetadata),
           mode: managerReady ? "ready" : "recovery",
+          inbox: { deferredMessageCount: managerView.deferredMessageCount, latestPaReport: managerView.latestPaReport?.payload ?? null },
           unresolvedManagerClaims: store
             .snapshot()
             .claims.filter(
@@ -1247,6 +1242,11 @@ export function createAdapter(
       throw new StoreAuthorityError(
         "Manager notification requires the actual current owning root session",
       );
+    if (!store.employeeView("manager").messages.some((entry) => entry.id === message.id)) {
+      const deferred: Json = { kind: "manager-notification-deferred", messageId: message.id };
+      deliveries.set(message.id, deferred);
+      return deferred;
+    }
     try {
       input.notifyManager(message.id);
     } catch (error: unknown) {
@@ -2158,8 +2158,10 @@ export function createAdapter(
       if (info.status === "READY_TO_LAND")
         return `Record authorized manager landing/close or a concrete blocker for item ${info.id} before waiting or ending.`;
     }
+    const managerMessageIds = new Set(store.employeeView("manager").messages.map((message) => message.id));
     const pending = snapshot.messages.find((message) => {
       if (
+        (message.recipient === "manager" && !managerMessageIds.has(message.id)) ||
         message.status !== "pending" ||
         blocked(message.recipient) ||
         blockedMessage(message) !== null

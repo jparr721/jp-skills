@@ -1858,3 +1858,61 @@ test("a prior-generation result ID is a replay conflict while fresh current-gene
   expect(f.store.settleClaim({ employee: binding, result: completed("unique") }).claimId).toBe(own.claim.id);
   f.store.close();
 });
+
+
+test("manager claims technical reports ahead of retained lifecycle backlog", () => {
+  const f = fixture();
+  const t = active(f, "technical-priority", []);
+  for (let index = 0; index < 200; index += 1) f.store.runtimeAlert({
+    id: `old-admin-${index}`, correlation: "old-runtime",
+    payload: { kind: "runtime-observation", employeeId: t.dev, state: "idle", observedAt: 1, sequence: index },
+  });
+  f.store.sendCue({ sender: t.architectBinding, cue: { id: "fresh-code-proof", recipient: "manager", kind: "report", correlation: "technical-priority", payload: { kind: "item-architect-gate", itemId: "PR4537", verdict: "APPROVE", head: "new-code" } } });
+  expect(f.store.claimNext({ employee: f.store.managerBinding })?.message.id).toBe("fresh-code-proof");
+  expect(f.store.snapshot().messages.filter((m) => m.id.startsWith("old-admin-") && m.status === "pending")).toHaveLength(200);
+  f.store.close();
+});
+
+
+test("routine PA reports remain durable summaries while PA alerts and technical reports are claimable", () => {
+  const f = fixture();
+  const t = active(f, "pa-delivery", []);
+  const pa = bind(f, first(hire(f, "pa", "pa-delivery-hire", 1)), "pa", 1, null);
+  for (let index = 0; index < 2; index += 1) f.store.sendCue({ sender: pa, cue: { id: `routine-pa-${index}`, recipient: "manager", kind: "report", correlation: "manager-supervision", payload: { managerPresence: "online", scheduledAt: index } } });
+  f.store.sendCue({ sender: t.architectBinding, cue: { id: "technical-first", recipient: "manager", kind: "report", correlation: "pa-delivery", payload: "actual code proof" } });
+  expect(f.store.claimNext({ employee: f.store.managerBinding })?.message.id).toBe("technical-first");
+  f.store.settleClaim({ employee: f.store.managerBinding, result: completed("technical-receipt") });
+  f.store.sendCue({ sender: pa, cue: { id: "pa-real-alert", recipient: "manager", kind: "alert", correlation: "manager-supervision", payload: { error: "supervision needs attention" } } });
+  expect(f.store.claimNext({ employee: f.store.managerBinding })?.message.id).toBe("pa-real-alert");
+  f.store.settleClaim({ employee: f.store.managerBinding, result: completed("alert-receipt") });
+  const view = f.store.employeeView("manager");
+  expect(view.messages).toEqual([]);
+  expect(view.deferredMessageCount).toBe(2);
+  expect(view.latestPaReport?.id).toBe("routine-pa-1");
+  expect(f.store.claimNext({ employee: f.store.managerBinding })).toBeNull();
+  expect(f.store.snapshot().messages.filter((m) => m.id.startsWith("routine-pa-") && m.status === "pending")).toHaveLength(2);
+  f.store.close();
+});
+
+test("technical priority preserves sequence, exclusions and unresolved-claim fencing", () => {
+  const f = fixture();
+  const t = active(f, "priority-order", []);
+  for (const id of ["proof-one", "proof-two"]) f.store.sendCue({ sender: t.architectBinding, cue: { id, recipient: "manager", kind: "report", correlation: "priority-order", payload: "proof" } });
+  expect(f.store.employeeView("manager").messages.map((m) => m.id)).toEqual(["proof-one", "proof-two"]);
+  expect(f.store.claimNext({ employee: f.store.managerBinding, excludedMessageIds: ["proof-one"] })?.message.id).toBe("proof-two");
+  expect(() => f.store.claimNext({ employee: f.store.managerBinding })).toThrow("unresolved claim");
+  f.store.settleClaim({ employee: f.store.managerBinding, result: completed("proof-two-receipt") });
+  expect(f.store.claimNext({ employee: f.store.managerBinding })?.message.id).toBe("proof-one");
+  f.store.close();
+});
+
+test("claim selection does not decode unrelated historical inboxes or claims", () => {
+  const f = fixture();
+  f.store.runtimeAlert({ id: "real-new-error", correlation: "current", payload: { kind: "boot-failed", employeeId: "unavailable" } });
+  const database = new Database(f.path);
+  database.query("INSERT INTO records VALUES('message','unrelated-history',?)").run(JSON.stringify({ recipient: "foreign", status: "acknowledged" }));
+  database.query("INSERT INTO records VALUES('claim','unrelated-claim',?)").run(JSON.stringify({ employeeId: "foreign", status: "settled" }));
+  database.close();
+  expect(f.store.claimNext({ employee: f.store.managerBinding })?.message.id).toBe("real-new-error");
+  f.store.close();
+});

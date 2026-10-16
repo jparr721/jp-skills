@@ -6,6 +6,14 @@ Use selected `<home>/startup/<name>/` throughout; an item's repo does not select
 
 Retain `id, source, status, repo, remote, target, merge-strategy, branch, worktree, base, stack-mode, report-handle, kind, procedure, convention-source, requested_roles`. New intake rows also carry `request, acceptance, blocked_on, intake_refs`. Source metadata is not the task payload. Missing requested_roles on legacy rows behaves as `[]`; recover absent request/acceptance from identified evidence or leave NEEDS_DECISION. Preserve ambiguous legacy ownership and original files.
 
+## Manager inbox delivery
+
+Manager claiming and automatic wakes use the same ordered actionable inbox: current failures and questions first, crew technical reports next, then other unresolved alerts, preserving message sequence within each class. Workers retain their own FIFO inboxes. Use `startup_claim`; the projected ready list already reflects delivery priority.
+
+Routine PA reports and lifecycle idle/done observations remain durable TO manager. They do not require a manager inference turn or automatic historical-mail drain. `STARTUP_INBOX` supplies the deferred count and latest PA report when the manager next works. Current PA alerts/questions remain actionable; scheduled PA checks and authenticated polling continue.
+
+Recovered presence, superseded item revisions, classified inputs and settled-claim alerts are deferred only with current state evidence. A missing Herdr observation remains actionable even while control polling is fresh. Unknown alert payloads stay eligible. Deferred messages keep their IDs, payloads and pending state for inspection; deferral never acknowledges or deletes them. When only deferred history remains, preserve it and wait rather than looping through administrative acknowledgements.
+
 ## Repository acquisition
 
 Before assigning or executing repository work, resolve its checkout and authoritative remote from the saved row, linked ticket/PR, or the organization's repository metadata. Missing local repositories are setup work: clone the confirmed remote into the configured project workspace and continue. This applies to newly split service repositories and required cross-repository dependencies. Include the resolved remote, checkout path and required branch/base in the crew handoff.

@@ -449,7 +449,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const view = store.employeeView(current.employee.id);
     const available = turnAvailable(current.employee);
     const admitted = (!view.team || !["reserved", "reconciliation", "finished"].includes(view.team.state)) && available;
-    return { toolBlockReason: crewBlock(current.employee) ?? (view.claims.some((c) => c.status === "reconciliation") || view.grants.length > 0 ? "Reconcile saved uncertain claims and grants through the manager before technical work." : null), projection: `${profileText(profile(current.employee, current.employee.generation))}\nSTARTUP_CHECKPOINT=${encode(current.employee.checkpoint)}\nSTARTUP_TEAM=${encode(view.team)}\nSTARTUP_CLAIMS=${encode({ employeeId: current.employee.id, generation: current.employee.generation, claims: view.claims, readyMessageIds: view.claims.length === 0 ? view.messages.map((message) => message.id) : [] })}\nSTARTUP_ITEM_REVIEW=${encode(view.itemReview)}\nSettle only an outstanding current claim with startup_settle {result}. Do not copy claim IDs. If an existing native tool requires claimId, use the literal "current". On a nonretryable settlement error, follow its action; never repeat unchanged arguments.`, pendingMessageIds: admitted ? view.messages.map((m) => m.id) : [], waitReason: available ? waitReason(current.employee, view) : null };
+    return { toolBlockReason: crewBlock(current.employee) ?? (view.claims.some((c) => c.status === "reconciliation") || view.grants.length > 0 ? "Reconcile saved uncertain claims and grants through the manager before technical work." : null), projection: `${profileText(profile(current.employee, current.employee.generation))}\nSTARTUP_CHECKPOINT=${encode(current.employee.checkpoint)}\nSTARTUP_TEAM=${encode(view.team)}\nSTARTUP_CLAIMS=${encode({ employeeId: current.employee.id, generation: current.employee.generation, claims: view.claims, readyMessageIds: view.claims.length === 0 ? view.messages.map((message) => message.id) : [] })}\nSTARTUP_INBOX=${encode({ deferredMessageCount: view.deferredMessageCount, latestPaReport: view.latestPaReport?.payload ?? null })}\nSTARTUP_ITEM_REVIEW=${encode(view.itemReview)}\nSettle only an outstanding current claim with startup_settle {result}. Do not copy claim IDs. If an existing native tool requires claimId, use the literal "current". On a nonretryable settlement error, follow its action; never repeat unchanged arguments.`, pendingMessageIds: admitted ? view.messages.map((m) => m.id) : [], waitReason: available ? waitReason(current.employee, view) : null };
   }
   function alertOnce(value: Readonly<{ id: string; correlation: string; payload: Json }>): void {
     if (!store.hasMessage(value.id)) store.runtimeAlert(value);
@@ -490,6 +490,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     }
     const managerRuntime = runtime("manager");
     const managerObserved = observations.some((o) => o.nativeSession === managerRuntime.nativeSession && o.terminalId === managerRuntime.terminalId);
+    if (observerAvailable && managerObserved) store.updateRuntime({ ...managerRuntime, lastSeen: now() });
     const managerOffline = (observerAvailable && !managerObserved) || now() - managerRuntime.lastPoll > policy.connectionDeadlineMs;
     const managerPresence = managerOffline ? "offline" : observerAvailable ? "online" : "unknown";
     const snapshot = store.supervisionView();
@@ -497,8 +498,8 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     if (pa?.source !== null && pa !== undefined) {
       if (managerOffline) {
         const id = `manager-offline-${managerRuntime.launchId}-${managerRuntime.lastPoll}`;
-        alertOnce({ id, correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, observedAt: now() } });
-        if (!store.hasMessage(`${id}-pa`)) store.sendCue({ sender: store.managerBinding, cue: { id: `${id}-pa`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, observedAt: now() } } });
+        alertOnce({ id, correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, herdrObserved: observerAvailable ? managerObserved : null, observedAt: now() } });
+        if (!store.hasMessage(`${id}-pa`)) store.sendCue({ sender: store.managerBinding, cue: { id: `${id}-pa`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, herdrObserved: observerAvailable ? managerObserved : null, observedAt: now() } } });
       }
       const checks = snapshot.messages.filter((m) => m.recipient === pa.id && m.id.startsWith("pa-check-"));
       const outstanding = checks.some((m) => m.status !== "acknowledged");

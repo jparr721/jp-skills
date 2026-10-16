@@ -228,6 +228,12 @@ export type Snapshot = Readonly<{
 }>;
 
 // This connector is host-only. The adapter supplies scope, authority and bindings from native evidence.
+const supervisionAlertSchema = z.object({
+  kind: z.string(), employeeId: z.string().optional(), observedAt: z.number().optional(),
+  lastProgress: z.number().optional(), itemId: z.string().optional(), revision: z.number().optional(),
+  inputId: z.string().optional(), claimId: z.string().nullable().optional(), herdrObserved: z.boolean().nullable().optional(),
+});
+
 export function openStore(args: {
   readonly path: string;
   readonly scope: Scope;
@@ -274,6 +280,7 @@ export function openStore(args: {
   );
   db.exec(`
     CREATE INDEX IF NOT EXISTS records_message_recipient_status ON records(json_extract(payload,'$.recipient'),json_extract(payload,'$.status')) WHERE kind='message';
+    CREATE INDEX IF NOT EXISTS records_message_delivery ON records(json_extract(payload,'$.recipient'),json_extract(payload,'$.status'),json_extract(payload,'$.kind'),json_extract(payload,'$.sender')) WHERE kind='message';
     CREATE INDEX IF NOT EXISTS records_claim_employee_status ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.status')) WHERE kind='claim';
     CREATE INDEX IF NOT EXISTS records_grant_employee_state ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.state')) WHERE kind='grant';
     CREATE INDEX IF NOT EXISTS records_item_execution_employee_generation ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.generation')) WHERE kind='itemExecution';
@@ -305,6 +312,73 @@ export function openStore(args: {
   function selected<T>(sql: string, params: readonly (string | number)[], schema: z.ZodType<T>): readonly T[] {
     return db.query(sql).all(...params).map((row: unknown): T => schema.parse(JSON.parse(storedSchema.parse(row).payload)));
   }
+  function pendingInbox(current: Employee): Readonly<{ messages: readonly Message[]; deferredMessageCount: number; latestPaReport: Message | null }> {
+    const where = "kind='message' AND json_extract(payload,'$.recipient')=? AND json_extract(payload,'$.status')='pending'";
+    if (current.role !== "manager") return { messages: selected(`SELECT payload FROM records WHERE ${where} ORDER BY rowid`, [current.id], messageSchema), deferredMessageCount: 0, latestPaReport: null };
+    const paReport = "(json_extract(payload,'$.kind')='report' AND json_extract(payload,'$.sender') IN (SELECT id FROM records WHERE kind='employee' AND json_extract(payload,'$.role')='pa'))";
+    const pending = selected(`SELECT payload FROM records WHERE ${where} AND NOT COALESCE(${paReport}, 0) ORDER BY rowid`, [current.id], messageSchema);
+    const count = z.object({ count: z.number().int().nonnegative() }).parse(db.query(`SELECT count(*) AS count FROM records WHERE ${where} AND ${paReport}`).get(current.id)).count;
+    const latestPaReport = selected(`SELECT payload FROM records WHERE ${where} AND ${paReport} ORDER BY rowid DESC LIMIT 1`, [current.id], messageSchema)[0] ?? null;
+    const runtimes = new Map<string, RuntimeBinding | null>();
+    function runtimeFor(id: string): RuntimeBinding | null {
+      if (!runtimes.has(id)) {
+        const member = read("employee", id, employeeSchema);
+        runtimes.set(id, member === null ? null : read("runtimeBinding", `${id}/${member.generation}`, runtimeBindingSchema));
+      }
+      return runtimes.get(id) ?? null;
+    }
+    function priority(message: Message): 0 | 1 | 2 | null {
+      if (message.sender !== "manager") return message.kind === "alert" || message.kind === "question" ? 0 : 1;
+      const parsed = supervisionAlertSchema.safeParse(message.payload);
+      if (!parsed.success) return 2;
+      const data = parsed.data;
+      if (data.kind === "runtime-observation") return null;
+      if (data.kind === "direct-pane-input") return 0;
+      if (["boot-failed", "launch-uncertain", "layout-uncertain", "launch-stalled"].includes(data.kind)) {
+        const runtime = data.employeeId === undefined ? null : runtimeFor(data.employeeId);
+        return runtime?.state === "ready" && runtime.error === null ? null : 0;
+      }
+      const presenceId = data.kind === "manager-offline" ? "manager" : data.employeeId;
+      if (["employee-offline", "manager-offline", "observation-gap"].includes(data.kind) && presenceId !== undefined && data.observedAt !== undefined) {
+        const member = read("employee", presenceId, employeeSchema);
+        const runtime = runtimeFor(presenceId);
+        const recoveredAt = runtime === null ? 0 : data.kind === "manager-offline"
+          ? data.herdrObserved === true ? runtime.lastPoll : Math.min(runtime.lastSeen, runtime.lastPoll)
+          : data.kind === "observation-gap" ? runtime.lastSeen : runtime.lastPoll;
+        if (member?.employment === "retired" || (runtime !== null && runtime.error === null && recoveredAt > data.observedAt)) return null;
+        return data.kind === "observation-gap" ? 2 : 0;
+      }
+      if (data.kind === "stale-progress" && data.employeeId !== undefined && data.lastProgress !== undefined) {
+        const runtime = runtimeFor(data.employeeId);
+        if (runtime !== null && runtime.lastProgress > data.lastProgress) return null;
+      }
+      if (data.kind === "stale-item" && data.itemId !== undefined && data.revision !== undefined) {
+        const owner = read("queueOwner", data.itemId, queueOwnerSchema);
+        if (owner !== null && owner.revision !== data.revision) return null;
+      }
+      if (data.kind === "stale-input" && data.inputId !== undefined) {
+        const input = read("receivedInput", data.inputId, receivedInputSchema);
+        if (input !== null && input.disposition !== null) return null;
+      }
+      if (data.kind === "settlement-blocked" && data.claimId !== undefined && data.claimId !== null) {
+        const claim = read("claim", data.claimId, claimSchema);
+        if (claim?.status === "settled") return null;
+      }
+      return 2;
+    }
+    const ranked: { message: Message; priority: 0 | 1 | 2 }[] = [];
+    let deferredMessageCount = count;
+    for (const message of pending) {
+      const rank = priority(message);
+      if (rank === null) deferredMessageCount += 1;
+      else ranked.push({ message, priority: rank });
+    }
+    return {
+      messages: ranked.sort((a, b) => a.priority - b.priority || a.message.sequence - b.message.sequence).map((entry) => entry.message),
+      deferredMessageCount,
+      latestPaReport,
+    };
+  }
   function employeeView(employeeId: string) {
     const current = employee(employeeId);
     let itemReview: { itemId: string; resultId: string; revision: number } | null = null;
@@ -322,10 +396,13 @@ export function openStore(args: {
         break;
       }
     }
+    const inbox = pendingInbox(current);
     return {
       itemReview,
+      deferredMessageCount: inbox.deferredMessageCount,
+      latestPaReport: inbox.latestPaReport,
       team: current.assignment === null ? null : team(current.assignment),
-      messages: selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.recipient')=? AND json_extract(payload,'$.status')='pending' ORDER BY rowid", [current.id], messageSchema),
+      messages: inbox.messages,
       claims: selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.status') IN ('active','reconciliation') ORDER BY rowid", [current.id], claimSchema),
       grants: selected("SELECT payload FROM records WHERE kind='grant' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.state')='reconciliation' ORDER BY rowid", [current.id], grantSchema),
     };
@@ -2054,10 +2131,7 @@ export function openStore(args: {
             "Inbox admission requires complete canonical role and loop source receipts",
           );
         if (
-          all("claim", claimSchema).some(
-            (claim): boolean =>
-              claim.employeeId === current.id && claim.status !== "settled",
-          )
+          selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.status') IN ('active','reconciliation') LIMIT 1", [current.id], claimSchema).length > 0
         )
           throw new StoreConflictError(
             `Employee ${current.id} already has an unresolved claim`,
@@ -2074,11 +2148,8 @@ export function openStore(args: {
           );
         if (current.assignment !== null && !ready(team(current.assignment)))
           return null;
-        const message: Message | undefined = all("message", messageSchema).find(
-          (cue): boolean =>
-            cue.recipient === current.id &&
-            cue.status === "pending" &&
-            !input.excludedMessageIds?.includes(cue.id),
+        const message: Message | undefined = pendingInbox(current).messages.find(
+          (cue): boolean => !input.excludedMessageIds?.includes(cue.id),
         );
         if (message === undefined) return null;
         const claim: Claim = claimSchema.parse({

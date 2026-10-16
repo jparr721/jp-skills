@@ -739,3 +739,100 @@ test("a completed item dev receives its exact pending review continuation until 
   await f.coordinator.command(manager, { kind: "item", request: { action: "decide", requestId: "block-rework", itemId: "REWORK", expectedRevision: 2, status: "BLOCKED", evidence: "Explicit scope decision" } });
   expect((await f.coordinator.poll(dev)).waitReason).toBeNull();
 });
+
+
+test("historical lifecycle admin stays visible without waking or continuing the manager", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  let index = 0;
+  while (f.store.claimNext({ employee: f.store.managerBinding }) !== null) f.store.settleClaim({ employee: f.store.managerBinding, result: { id: `drain-admin-${index++}`, kind: "completed", output: {}, checkpoint: null, outgoing: [] } });
+  f.store.runtimeAlert({ id: "retained-admin-only", correlation: "old-runtime", payload: { kind: "runtime-observation", employeeId: "manager", state: "idle", sequence: 1, observedAt: 1 } });
+  const poll = await f.coordinator.poll(manager);
+  expect(poll.pendingMessageIds).toEqual([]);
+  expect(poll.waitReason).toBeNull();
+  expect(poll.projection).toContain('"deferredMessageCount":1');
+  expect(f.store.snapshot().messages.find((m) => m.id === "retained-admin-only")?.status).toBe("pending");
+});
+
+
+test("recovered presence is deferred while current failures and unknown alerts still wake the manager", async () => {
+  const f = fixture(8);
+  const { manager, pa } = await f.ready();
+  let index = 0;
+  while (f.store.claimNext({ employee: f.store.managerBinding }) !== null) f.store.settleClaim({ employee: f.store.managerBinding, result: { id: `drain-presence-${index++}`, kind: "completed", output: {}, checkpoint: null, outgoing: [] } });
+  f.store.runtimeAlert({ id: "old-manager-offline", correlation: "manager-supervision", payload: { kind: "manager-offline", observedAt: 900 } });
+  f.store.runtimeAlert({ id: "old-pa-offline", correlation: "pa", payload: { kind: "employee-offline", employeeId: pa, observedAt: 900 } });
+  f.store.runtimeAlert({ id: "old-pa-boot", correlation: "pa", payload: { kind: "boot-failed", employeeId: pa } });
+  f.store.runtimeAlert({ id: "unknown-alert", correlation: "unknown", payload: "legacy actionable report" });
+  f.advance(1500);
+  f.store.runtimeAlert({ id: "current-pa-offline", correlation: "pa", payload: { kind: "employee-offline", employeeId: pa, observedAt: 1400 } });
+  const poll = await f.coordinator.poll(manager);
+  expect(poll.pendingMessageIds).toEqual(["current-pa-offline", "unknown-alert"]);
+  expect(poll.waitReason).toContain("pending durable inbox");
+  expect(poll.projection).toContain('"deferredMessageCount":3');
+});
+
+
+test("120 routine PA reports preserve supervision history without manager inference eligibility", async () => {
+  const f = fixture(8);
+  const { manager, pa } = await f.ready();
+  const employee = f.store.getEmployee(pa);
+  if (employee.nativeHandle === null) throw new Error("PA admission missing");
+  const binding = { employeeId: pa, generation: employee.generation, nativeHandle: employee.nativeHandle };
+  for (let check = 0; check < 120; check += 1) {
+    f.store.sendCue({ sender: binding, cue: { id: `routine-pa-check-${check}`, recipient: "manager", kind: "report", correlation: "manager-supervision", payload: { check, managerPresence: "online" } } });
+    const poll = await f.coordinator.poll(manager);
+    expect(poll.pendingMessageIds).toEqual([]);
+    expect(poll.waitReason).toBeNull();
+  }
+  expect(f.store.employeeView("manager").latestPaReport?.payload).toEqual({ check: 119, managerPresence: "online" });
+  expect(f.store.snapshot().messages.filter((message) => message.id.startsWith("routine-pa-check-") && message.status === "pending")).toHaveLength(120);
+});
+
+
+test("a recovered manager disconnect creates a fresh alert episode without a Herdr state change", async () => {
+  const f = fixture(8);
+  const { manager, paConnection } = await f.ready();
+  f.advance(2200);
+  await f.coordinator.poll(paConnection);
+  await f.coordinator.tick();
+  f.advance(2300);
+  await f.coordinator.poll(manager);
+  expect(f.store.employeeView("manager").messages.some((message) => JSON.stringify(message.payload).includes('"kind":"manager-offline"'))).toBe(false);
+  f.advance(3500);
+  await f.coordinator.poll(paConnection);
+  await f.coordinator.tick();
+  const episodes = f.store.snapshot().messages.filter((message) => message.recipient === "manager" && JSON.stringify(message.payload).includes('"kind":"manager-offline"'));
+  expect(episodes).toHaveLength(2);
+  expect(f.store.employeeView("manager").messages.some((message) => message.id === episodes[1]?.id)).toBe(true);
+});
+
+
+test("fresh control polling does not hide a missing worker Herdr session", async () => {
+  const f = fixture(8);
+  const { manager, pa, paConnection } = await f.ready();
+  f.observations.splice(f.observations.findIndex((observation) => observation.paneId === f.store.employeeRuntime(pa, 1)?.paneId), 1);
+  f.advance(1200);
+  await f.coordinator.tick();
+  f.advance(1300);
+  await f.coordinator.poll(paConnection);
+  const poll = await f.coordinator.poll(manager);
+  expect(poll.pendingMessageIds.some((id) => id.startsWith("offline-"))).toBe(true);
+});
+
+test("manager Herdr presence loss stays actionable until observation recovers", async () => {
+  const f = fixture(8);
+  const { manager, paConnection } = await f.ready();
+  const observation = f.observations.shift();
+  if (observation === undefined) throw new Error("Manager fixture missing");
+  f.advance(1200);
+  await f.coordinator.poll(manager);
+  await f.coordinator.poll(paConnection);
+  await f.coordinator.tick();
+  f.advance(1300);
+  expect((await f.coordinator.poll(manager)).pendingMessageIds.some((id) => id.startsWith("manager-offline-"))).toBe(true);
+  f.observations.unshift(observation);
+  f.advance(1400);
+  await f.coordinator.tick();
+  expect((await f.coordinator.poll(manager)).pendingMessageIds.some((id) => id.startsWith("manager-offline-"))).toBe(false);
+});

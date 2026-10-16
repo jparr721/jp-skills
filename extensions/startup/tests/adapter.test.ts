@@ -3212,3 +3212,13 @@ test("failed preparation preserves a legitimate earlier in-flight activation", a
   await f.project(hire.employees[0]!);
   expect(f.adapter.store.snapshot().employees.find((entry) => entry.id === ids[0])?.nativeHandle).toContain("child-1");
 });
+
+
+test("legacy native manager wake, projection and wait guard share deferred inbox delivery", async () => {
+  const f = fixture();
+  await f.adapter.send(f.ctx, { id: "deferred-manager-observation", recipient: "manager", kind: "alert", correlation: "old-runtime", payload: { kind: "runtime-observation", state: "idle" } });
+  expect(f.managerNotifications).toEqual([]);
+  expect(f.adapter.waitGuard()).toBeNull();
+  expect(await f.adapter.projection(f.ctx)).toContain("STARTUP_CUE=null");
+  expect(f.adapter.store.snapshot().messages.find((m) => m.id === "deferred-manager-observation")?.status).toBe("pending");
+});

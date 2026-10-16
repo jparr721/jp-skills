@@ -69,14 +69,17 @@ test("increasing Herdr sequences cannot flood an unchanged completion episode", 
 });
 
 test("legacy observation compaction preserves claimed mail, task reports, latest observations and audit", () => {
-  const { store, launch } = fixture();
+  const { store, launch, path } = fixture();
   store.prepareRuntime(launch);
   store.bindEmployee({ manager: store.managerBinding, binding: { ...store.managerBinding, assignment: null, source: launch.source } });
   for (let sequence = 1; sequence <= 4; sequence += 1) {
     store.runtimeAlert({ id: `legacy-${sequence}`, correlation: launch.launchId, payload: { kind: "runtime-observation", employeeId: "manager", generation: 1, state: "done", sequence } });
   }
-  const claimed = store.claimNext({ employee: store.managerBinding });
-  expect(claimed?.message.id).toBe("legacy-1");
+  const legacy = new Database(path);
+  legacy.query("UPDATE records SET payload=json_set(payload,'$.status','claimed') WHERE kind='message' AND id='legacy-1'").run();
+  legacy.query("INSERT INTO records VALUES('claim','legacy-claim',?)").run(JSON.stringify({ id: "legacy-claim", employeeId: "manager", messageId: "legacy-1", ownerEpoch: store.ownerEpoch, generation: store.managerBinding.generation, status: "active" }));
+  legacy.close();
+  expect(store.snapshot().messages.find((message) => message.id === "legacy-1")?.status).toBe("claimed");
   store.runtimeAlert({ id: "task-report", correlation: "work", payload: { kind: "stale-item", itemId: "important" } });
   const result = store.compactRuntimeObservations();
   expect(result).toEqual({ acknowledged: 2 });
