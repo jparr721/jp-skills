@@ -55,5 +55,83 @@
     "/Users/jarredparr/Projects/jp-skills/skills/startup-role-dev/SKILL.md": "542e339fca6b221dfd81779f0daed5d4115f959880ee7613c00d671795f82337",
     "/Users/jarredparr/Projects/jp-skills/skills/startup-loop/SKILL.md": "0315ca11700a2e2808b6bde2e372e83fc29d971e5c67d998d1d6fc514097a360",
     "/Users/jarredparr/.config/jp-skills/servers/aspen-startup-7.0.11/omp-18.11.1-source/pi-coding-agent/src/session/agent-session.ts": "96243670963d4b2934ac049ae7d5b1070cf0cf255be1bbea061ba0f7217ee889"
+  },
+  "liveDeployment": {
+    "observedAt": 1792170058197,
+    "installedVersion": "7.0.12",
+    "sourceCommit": "9f3015aae1ccad6096c00d4b7f8deb4ec1e4b722",
+    "refreshedClients": 59,
+    "allResumedAfterUpgrade": true,
+    "continuationPromptsIssued": 0,
+    "coordinatorPid": 3847511,
+    "ownerEpoch": 9,
+    "activeRoots": 59,
+    "freshPolls5s": 59,
+    "supervisors": [
+      {
+        "role": "pa",
+        "employeeId": "ae4db612-cd83-46a2-8357-0147e3225d28",
+        "pid": 72691,
+        "paneId": "w2:pC",
+        "pollAgeMs": 658
+      },
+      {
+        "role": "manager",
+        "employeeId": "manager",
+        "pid": 73090,
+        "paneId": "w2:pB",
+        "pollAgeMs": 185
+      }
+    ],
+    "claims": {
+      "active": 2
+    },
+    "preserved": {
+      "employee": {
+        "originalCount": 68,
+        "allIdsRetained": true
+      },
+      "team": {
+        "originalCount": 20,
+        "allIdsRetained": true
+      },
+      "claim": {
+        "originalCount": 1900,
+        "allIdsRetained": true
+      },
+      "message": {
+        "originalCount": 16597,
+        "allIdsRetained": true,
+        "allPayloadsRetained": true
+      },
+      "result": {
+        "originalCount": 1864,
+        "allIdsRetained": true,
+        "allValuesUnchanged": true
+      },
+      "runtimeBindingIdentity": true,
+      "teamIdentity": true,
+      "queueBytes": true
+    },
+    "healthStatus": 200,
+    "health": {
+      "status": "running",
+      "readyForAdmission": true,
+      "manager": {
+        "connected": true,
+        "lastPoll": 1792170058012
+      },
+      "supervision": {
+        "lastStartedAt": 1792170058421,
+        "lastCompletedAt": 1792170058480,
+        "lastSuccessAt": 1792170058480,
+        "errors": []
+      }
+    },
+    "healthMs": 4.98,
+    "sourceHashes": {
+      "extensions/startup/src/employee-client.ts": "05f98167819708faa9fd102f64675411dc9795151fbc1d5f7779f34748c99fbc",
+      "extensions/startup/src/employee-entry.ts": "909b90821da2693b066ef936b4870e12dd13797aa7fa5c9224b4ff06046e7441"
+    }
   }
 }

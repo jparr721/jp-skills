@@ -34,3 +34,12 @@ After the manager's 7.0.11 refresh, the 10:32:29-10:37:29 AM MDT observation win
 OpenRouter documents that its default conversation affinity hashes the first system/developer message and first non-system message. Keeping those stable supports both prefix reuse and provider affinity: [OpenRouter prompt caching](https://openrouter.ai/docs/guides/best-practices/prompt-caching).
 
 Actual post-deployment cache-hit rates remain unmeasured while the provider key is budget-blocked. Existing blocked crew handoffs, stale completed crews and periodic supervisor inference are separate productivity/cost issues; this patch does not claim to resolve them all.
+
+
+## Aspen deployment
+
+Release 7.0.12 was fully installed through Ansible, verifying all 145 skill links and the ownership-checked companion while preserving profile configuration. All 59 native clients resumed in their original panes/transcripts/generations/launch identities. Coordinator PID3847511 and owner epoch9 were retained.
+
+The preservation check confirms all 68 employee records, 20 crew records, 1,900 original claim IDs, 16,597 original message IDs/payloads and 1,864 original result values remain. Queue bytes and crew/runtime identities match the pre-upgrade snapshot. Both existing active claims remain recorded. No continuation prompt was issued by the refresh controller. Final health returned HTTP200, with 59/59 fresh authenticated polls; this is control-channel evidence, not a provider-cache or productivity claim.
+
+Machine-readable test/native/deployment evidence: [cache acceptance](cache-acceptance.json).
