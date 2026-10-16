@@ -1653,5 +1653,46 @@
       }
     ],
     "scope": "Later transcript scan after final cutover; its bounds differ from the health sampling window. Old conversation arguments caused one-time claimId field errors; saved interrupted claims still require manager reconciliation."
+  },
+  "finalHealth": {
+    "status": "PASS",
+    "installedVersion": "7.0.8",
+    "coordinatorPid": 3370175,
+    "healthStatus": 200,
+    "elapsedMs": 4.68,
+    "health": {
+      "status": "running",
+      "supervision": {
+        "lastStartedAt": 1792124476145,
+        "lastCompletedAt": 1792124476196,
+        "lastSuccessAt": 1792124476196,
+        "errors": []
+      }
+    },
+    "freshNativeRoots": 62,
+    "skillLinks": 145,
+    "supervisorPollAgesMs": {
+      "ae4db612-cd83-46a2-8357-0147e3225d28": 808,
+      "manager": 90
+    },
+    "observedAt": 1792124476214
+  },
+  "maintenanceCleanup": {
+    "status": "PASS",
+    "exactTemporaryHelperPathsRemoved": [
+      "/tmp/startup-707-upgrade.py",
+      "/tmp/startup-707-deploy.py",
+      "/tmp/startup-707-resume-clients.py",
+      "/tmp/startup-707-resume-baseline.json",
+      "/tmp/startup-707-adopt-pa.py",
+      "/tmp/startup-707-adopt-manager.py",
+      "/tmp/startup-707-restore-manager.py",
+      "/tmp/startup-708-upgrade.py",
+      "/tmp/startup-708-deploy.py",
+      "/tmp/startup-708-unblock-manager.py",
+      "/tmp/startup-708-native-status.py",
+      "/tmp/startup-708-keep-advisor-off.py"
+    ],
+    "liveStartupStillRunning": true
   }
 }
