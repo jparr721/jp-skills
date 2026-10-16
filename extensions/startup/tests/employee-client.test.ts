@@ -7,6 +7,7 @@ import {
   connectEmployee,
   installEmployeeBridge,
   installEmployeeToolGuard,
+  EmployeeTransportError,
   type EmployeeClient,
   type EmployeeBridgeHost,
 } from "../src/employee-client";
@@ -52,7 +53,7 @@ function serverFixture() {
       if (path === "/command")
         return commandResponse ?? Response.json({ accepted: true, messageStatus: "pending" });
       if (path === "/poll" && rejectPollOnce) { rejectPollOnce = false; return Response.json({ error: "old coordinator epoch" }, { status: 403 }); }
-      if (path === "/poll") return pollPending ?? pollResponse ?? Response.json(pollValue);
+      if (path === "/poll") return pollPending ?? pollResponse?.clone() ?? Response.json(pollValue);
       return new Response("unknown route", { status: 404 });
     },
   });
@@ -63,6 +64,7 @@ function serverFixture() {
   return {
     socketPath,
     requests,
+    disconnect(): void { server.stop(true); },
     loseEpoch(): void { rejectPollOnce = true; },
     setPoll(value: Json): void { pollValue = value; },
     commandError(value: Response): void { commandResponse = value; },
@@ -378,4 +380,64 @@ test("a missed native capacity release is retried after read-only connection rec
   fixture.commandError(Response.json({ released: true }));
   await bridge.poll();
   expect(fixture.requests.filter((r) => r.path === "/command").map((r) => r.body)).toEqual([{ kind: "begin_turn" }, { kind: "end_turn" }, { kind: "end_turn" }]);
+});
+
+
+test("transport errors retain socket, error code and timing without exposing credentials", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "startup-missing-"));
+  cleanup.push(() => rmSync(directory, { recursive: true, force: true }));
+  const socketPath = join(directory, "missing.sock");
+  let caught: unknown = null;
+  try { await connectEmployee({ socketPath, credential: "private-credential", nativeSession: "session", paneId: "pane", source }); }
+  catch (error: unknown) { caught = error; }
+  expect(caught).toBeInstanceOf(Error);
+  const detail = caught instanceof Error ? caught.message : "missing error";
+  expect(detail).toContain("POST /admit");
+  expect(detail).toContain(socketPath);
+  expect(detail).toMatch(/code=[A-Za-z_]+/);
+  expect(detail).toMatch(/elapsedMs=\d+/);
+  expect(detail).toContain("timeoutMs=10000");
+  expect(detail).not.toContain("private-credential");
+});
+
+test("bridge emits one recovery notice per failed connection episode and no initial success notice", async () => {
+  const fixture = serverFixture();
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: [], toolBlockReason: null, waitReason: null });
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  expect(native.messages).toHaveLength(0);
+  for (let episode = 1; episode <= 2; episode += 1) {
+    fixture.pollError(new Response("brief outage", { status: 503 }));
+    await expect(bridge.poll()).rejects.toThrow("503");
+    await expect(bridge.poll()).rejects.toThrow("503");
+    expect(native.messages.filter((m) => m.content.includes("unavailable"))).toHaveLength(episode);
+    fixture.pollError(Response.json({ projection: "canonical", pendingMessageIds: [], toolBlockReason: null, waitReason: null }));
+    await bridge.poll();
+    await bridge.poll();
+    const recovered = native.messages.filter((m) => m.content.includes("restored"));
+    expect(recovered).toHaveLength(episode);
+    expect(recovered.at(-1)).toMatchObject({ triggerTurn: false, deliverAs: "nextTurn" });
+    expect(recovered.at(-1)?.content).toContain("polling");
+    expect(await native.emit("tool_call", { toolName: "startup_send", input: {} }, native.ctx)).toBeUndefined();
+  }
+});
+
+test("repeated transport failures with different elapsed times emit one unavailable notice", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  fixture.disconnect();
+  let transport: unknown = null;
+  try { await client.poll(); } catch (error: unknown) { transport = error; }
+  if (!(transport instanceof EmployeeTransportError)) throw new Error("Expected the real Unix transport error");
+  const diagnostic = transport.diagnostic;
+  let elapsedMs = 1;
+  const bridge = installEmployeeBridge(native.host, { client: { ...client, poll: async () => { throw new EmployeeTransportError({ ...diagnostic, elapsedMs: elapsedMs++ }); } }, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await expect(bridge.poll()).rejects.toThrow("/poll");
+  await expect(bridge.poll()).rejects.toThrow("/poll");
+  expect(native.messages.filter((m) => m.content.includes("unavailable"))).toHaveLength(1);
 });

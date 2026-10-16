@@ -43,6 +43,23 @@ export function installEmployeeToolGuard(host: EmployeeBridgeHost): void {
   });
 }
 export class EmployeeClientError extends Error {}
+export type TransportDiagnostic = Readonly<{
+  method: "GET" | "POST";
+  path: string;
+  socketPath: string;
+  code: string;
+  causeCode: string | null;
+  elapsedMs: number;
+  timeoutMs: number;
+  reason: string;
+}>;
+export class EmployeeTransportError extends EmployeeClientError {
+  readonly diagnostic: TransportDiagnostic;
+  constructor(diagnostic: TransportDiagnostic) {
+    super(`Startup ${diagnostic.method} ${diagnostic.path} failed: ${diagnostic.reason}; socket=${diagnostic.socketPath}; code=${diagnostic.code}; causeCode=${diagnostic.causeCode ?? "unknown"}; elapsedMs=${diagnostic.elapsedMs}; timeoutMs=${diagnostic.timeoutMs}`);
+    this.diagnostic = diagnostic;
+  }
+}
 class EmployeeHttpError extends EmployeeClientError {
   readonly status: number;
   constructor(status: number, message: string) { super(message); this.status = status; }
@@ -85,18 +102,28 @@ export async function connectEmployee(input: Readonly<{
     if (method === "POST") headers.set("Content-Type", "application/json");
     let response: Response;
     let text: string;
+    const startedAt: number = Date.now();
+    const timeoutMs: number = 10000;
+    const signal: AbortSignal = AbortSignal.any([shutdown.signal, AbortSignal.timeout(timeoutMs)]);
     try {
       response = await fetch(`http://localhost${path}`, {
         unix: admitted.socketPath,
         method,
         headers,
         ...(method === "POST" ? { body: JSON.stringify(jsonSchema.parse(body)) } : {}),
-        signal: AbortSignal.any([shutdown.signal, AbortSignal.timeout(10000)]),
+        signal,
       });
       text = await response.text();
     } catch (error: unknown) {
-      const reason: string = error instanceof Error ? error.message : String(error);
-      throw new EmployeeClientError(`Startup ${method} ${path} failed: ${redact(reason)}`);
+      const fields = z.object({ code: z.union([z.string(), z.number()]).optional(), cause: z.unknown().optional(), name: z.string().optional() }).safeParse(error);
+      const cause = z.object({ code: z.union([z.string(), z.number()]).optional() }).safeParse(fields.success ? fields.data.cause : undefined);
+      throw new EmployeeTransportError({
+        method, path, socketPath: redact(admitted.socketPath),
+        code: redact(String(fields.success && fields.data.code !== undefined ? fields.data.code : signal.aborted && signal.reason instanceof Error ? signal.reason.name : fields.success ? fields.data.name ?? "UNKNOWN" : "UNKNOWN")),
+        causeCode: cause.success && cause.data.code !== undefined ? redact(String(cause.data.code)) : null,
+        elapsedMs: Date.now() - startedAt, timeoutMs,
+        reason: redact(error instanceof Error ? error.message : String(error)),
+      });
     }
     if (!response.ok)
       throw new EmployeeHttpError(response.status, `Startup ${method} ${path} HTTP ${response.status}: ${redact(text)}`);
@@ -176,6 +203,8 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   const notified: Map<string, number> = new Map();
   let current: EmployeePoll | null = null;
   let failure: string | null = null;
+  let failureStartedAt: number | null = null;
+  let failureIdentity: string | null = null;
   let pending: Promise<void> | null = null;
   let closed: boolean = false;
   let continuedReason: string | null = null;
@@ -193,7 +222,14 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
       if (releasePending) { await input.client.request({ kind: "end_turn" }); releasePending = false; turnHeld = false; }
       if (closed) return;
       current = next;
+      if (failure !== null) {
+        const outageMs: number = Date.now() - (failureStartedAt ?? Date.now());
+        host.sendMessage({ customType: "startup-connection-restored", content: `Startup coordinator connection restored; authenticated polling resumed. outageMs=${outageMs}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+        process.stderr.write(JSON.stringify({ level: "info", component: "startup-connection", state: "restored", outageMs, observedAt: Date.now() }) + "\n");
+      }
       failure = null;
+      failureStartedAt = null;
+      failureIdentity = null;
       for (const id of notified.keys()) if (!next.pendingMessageIds.includes(id)) notified.delete(id);
       for (const id of next.pendingMessageIds) {
         const notifiedAt = notified.get(id);
@@ -208,13 +244,19 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     } catch (error: unknown) {
       if (closed) return;
       const reason: string = error instanceof Error ? error.message : String(error);
-      if (failure !== reason)
+      const identity: string = error instanceof EmployeeTransportError
+        ? JSON.stringify({ ...error.diagnostic, elapsedMs: 0 }) : reason;
+      if (failureStartedAt === null) failureStartedAt = Date.now();
+      if (failureIdentity !== identity) {
         host.sendMessage({
           customType: "startup-connection-error",
           content: `Startup coordinator unavailable: ${reason}`,
           display: true,
         }, { triggerTurn: false, deliverAs: "nextTurn" });
+        process.stderr.write(JSON.stringify({ level: "warn", component: "startup-connection", state: "unavailable", error: reason, ...(error instanceof EmployeeTransportError ? { transport: error.diagnostic } : {}), observedAt: Date.now() }) + "\n");
+      }
       failure = reason;
+      failureIdentity = identity;
       throw error;
     }
   }
