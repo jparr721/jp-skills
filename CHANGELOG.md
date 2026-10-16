@@ -2,6 +2,20 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.12] - 2026-10-16
+
+### Fixed
+
+- Verified canonical role/loop instructions remain stable in the native system prompt. Changing checkpoint, claim and team state is appended after conversation history as ephemeral user-role data, preserving the existing prompt prefix and opening-message routing affinity.
+- Live state no longer changes the system prompt or prepends a developer message on every model call. It does not accumulate in native history. Existing root/helper authority and admission guards remain enforced.
+- Client-only fix: coordinator/store code and business state are unchanged. Resume existing native clients to load the new prompt layout.
+
+### Verification
+
+- Regression reproduced before the fix; 318 tests, 1603 assertions, TypeScript checking and six probe-driver tests pass.
+- Eleven installed OMP18.11.1 offline-provider guard checks pass, including real native prompt-prefix stability across a state-changing tool call. No paid provider calls were used for this proof. Actual cache-hit percentages remain unmeasured while Aspen's OpenRouter key is budget-blocked.
+- Source-backed token-volume investigation: docs/startup-v7/cache-and-volume.md.
+
 ## [7.0.11] - 2026-10-16
 
 ### Fixed
