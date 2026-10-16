@@ -1,0 +1,59 @@
+{
+  "release": "7.0.12",
+  "regressionFailedBeforeFix": true,
+  "tests": 318,
+  "assertions": 1603,
+  "typecheck": "PASS",
+  "probeDriverTests": 6,
+  "nativeRuntime": "omp/18.11.1",
+  "nativeExecutableSha256": "bdeb1626b99dc29d844146ea7940d367e61b1032b77e1c77880125f379ca2dda",
+  "paidProviderRequests": 0,
+  "normalProfileUsed": false,
+  "checks": {
+    "compiled_omp_identified": true,
+    "all_native_stages_complete": true,
+    "canonical_role_loop_in_actual_root_provider": true,
+    "actual_native_helper_startup_tool_denied": true,
+    "begin_turn_denial_blocks_native_write_and_bash": true,
+    "failed_connection_blocks_native_write_and_bash": true,
+    "denied_synthetic_context_blocks_provider": true,
+    "negative_control_detects_missing_tool_guard": true,
+    "cache_system_prompt_is_stable": true,
+    "cache_conversation_prefix_is_preserved": true,
+    "cache_live_state_is_trailing_user_data": true
+  },
+  "nativeCacheProbe": {
+    "providerRequests": 2,
+    "systemPromptsIdentical": true,
+    "previousConversationPrefixPreserved": true,
+    "contexts": [
+      {
+        "roles": [
+          "user",
+          "user"
+        ],
+        "liveStateCopies": 1,
+        "trailingState": "STARTUP_CHECKPOINT=0"
+      },
+      {
+        "roles": [
+          "user",
+          "assistant",
+          "toolResult",
+          "user"
+        ],
+        "liveStateCopies": 1,
+        "trailingState": "STARTUP_CHECKPOINT=1"
+      }
+    ]
+  },
+  "providerCacheHitRate": "Not measured: Aspen OpenRouter key is budget-blocked. Offline proof verifies prompt layout, not backend cache reuse.",
+  "sourceHashes": {
+    "/Users/jarredparr/Projects/jp-skills/extensions/startup/src/employee-client.ts": "05f98167819708faa9fd102f64675411dc9795151fbc1d5f7779f34748c99fbc",
+    "/Users/jarredparr/Projects/jp-skills/extensions/startup/probes/run-v7-guards.py": "477d46271a78d03854c95e3ddc22d6d69b34180708ca3c216c788c9bf67766a8",
+    "/Users/jarredparr/Projects/jp-skills/extensions/startup/probes/native-v7-guards.ts": "174009b8d529e8b0d615b3ec97a2d524cc098104a296a992c59eca91bc85efe0",
+    "/Users/jarredparr/Projects/jp-skills/skills/startup-role-dev/SKILL.md": "542e339fca6b221dfd81779f0daed5d4115f959880ee7613c00d671795f82337",
+    "/Users/jarredparr/Projects/jp-skills/skills/startup-loop/SKILL.md": "0315ca11700a2e2808b6bde2e372e83fc29d971e5c67d998d1d6fc514097a360",
+    "/Users/jarredparr/.config/jp-skills/servers/aspen-startup-7.0.11/omp-18.11.1-source/pi-coding-agent/src/session/agent-session.ts": "96243670963d4b2934ac049ae7d5b1070cf0cf255be1bbea061ba0f7217ee889"
+  }
+}
