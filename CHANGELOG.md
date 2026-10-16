@@ -2,6 +2,18 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.11] - 2026-10-16
+
+### Fixed
+
+- Aggregate inbox wakes start only while the native session is idle. Busy sessions receive no extra queued inference turns, and idle sessions can recover already queued messages instead of waiting indefinitely behind them. This corrects the PA duty edge case reproduced during sustained live acceptance of 7.0.10.
+- Coordinator and store modules are identical to 7.0.10; client refresh does not require restarting the coordinator or fencing active crew work.
+
+### Verification
+
+- 317 tests, 1587 assertions, TypeScript checking, six probe-driver tests and eight compiled-OMP guard checks passed. The additional regression fails on 7.0.10 and covers both busy-turn suppression and idle pending-message recovery.
+- Live recovery, reconciliation, native PA duty checks and crew progress evidence: docs/startup-v7/aspen-manager-recovery-acceptance.json.
+
 ## [7.0.10] - 2026-10-16
 
 ### Fixed
