@@ -331,6 +331,26 @@ test("new inbox messages coalesce behind one scheduled native wake", async () =>
   expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(1);
 });
 
+test("context-only native continuation consumes its queued wake and admits the next scheduled duty", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  native.setRunState(true, false);
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  for (let check = 0; check < 5; check += 1) {
+    fixture.setPoll({ projection: `check-${check}`, pendingMessageIds: [`duty-${check}`], toolBlockReason: null, waitReason: "Drain duty" });
+    await bridge.poll();
+    expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(check + 1);
+    native.setRunState(false, false);
+    await native.emit("context", { messages: [] }, native.ctx);
+    await native.emit("agent_end", { willContinue: false }, native.ctx);
+    native.setRunState(true, false);
+    await bridge.poll();
+    expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(check + 1);
+  }
+});
+
 test("provider failure parks inference while polling continues, until explicit root input", async () => {
   const fixture = serverFixture();
   const client = await connect(fixture);

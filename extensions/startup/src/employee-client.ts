@@ -395,7 +395,8 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   host.on("context", async (event, ctx) => {
     if (closed || !isRoot(ctx)) return;
     const parsed = contextSchema.parse(event);
-    await admitTurn();
+    wakeQueued = true;
+    try { await admitTurn(); } finally { wakeQueued = false; }
     const state: string = projectedState();
     return { messages: state.length === 0 ? parsed.messages : [
       ...parsed.messages,
