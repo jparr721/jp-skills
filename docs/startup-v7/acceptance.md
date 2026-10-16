@@ -62,3 +62,15 @@ herdr session attach startup-v7-live-20261015
 ```
 
 Manager: `w1:p5`. PA: `w1:p6`. Crew one: `w1:p7`, `w1:p8`, `w1:p9`. Crew two: `w1:pA`, `w1:pB`, `w1:pC`. In the manager pane, `/startup status` reads the canonical roster and recovery metadata.
+
+## 7.0.5 Aspen supervision recovery
+
+[Machine-readable Aspen proof](aspen-supervision-acceptance.json) records the final release source hashes, native identities, settled PA receipts, health samples, read-fault adapter and cleanup. Release [7.0.5](https://github.com/jparr721/jp-skills/releases/tag/v7.0.5) is published and installed on Aspen through Ansible.
+
+- Preserved the original 68 employees, 20 crew hierarchies, 60 snapshotted employee processes, manager and PA processes, native transcript bindings, 136 launch files and exact queue bytes. Private online SQLite backups remain on Aspen. Existing interrupted claims are retained for explicit reconciliation.
+- A separate native OMP manager and mandatory PA ran in actual Herdr panes against real SQLite and the production runtime factory. The PA settled two scheduled checks with reports to manager during queue read failures and two during observation collection failures. Both fault alerts were acknowledged by the manager.
+- During each failure, health truthfully returned HTTP 503 with its diagnostic while supervision and PA scheduling continued. It returned HTTP 200 after each fault cleared without restarting the probe coordinator. No false manager-offline duties were created.
+- The live sythelabs Startup stayed HTTP 200 throughout the fault proof, advancing from 13 to 19 PA reports. After the final coordinator update, a separate 110-second observation recorded two more settled PA checks, fresh polling and HTTP 200 in all 12 samples, with 1-40 ms health response times.
+- Stopped only the three isolated proof processes and their two Herdr tabs; removed their temporary harness files. The live Startup, crews and original manager/PA processes remain running.
+
+Validation: 281 tests, 1414 assertions and TypeScript checking pass. The unchanged native employee bridge also passed six driver tests and eight installed-OMP guard checks during this patch series. This is bounded fault-recovery evidence, not a guarantee against future host or provider failures.
