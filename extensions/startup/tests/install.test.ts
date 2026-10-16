@@ -170,7 +170,7 @@ process.stdout.write("wrong-version\\n");
   );
 });
 
-test("V7 package installs through native link and owned uninstall restores prior profile bytes", () => {
+test.each(["18.8.9", "18.10.4", "19.0.0", "19.0.0-preview.1"])("V7 installer accepts OMP %s and restores prior profile bytes on uninstall", (version: string) => {
   const f = fixture();
   const original: string = '{"settings":{"user":{"keep":true}}}\n';
   const lock: string = join(f.plugins, "omp-plugins.lock.json");
@@ -179,7 +179,7 @@ test("V7 package installs through native link and owned uninstall restores prior
   writeFileSync(executable, `#!${process.execPath}
 import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 const plugins = ${JSON.stringify(f.plugins)};
-if (process.argv[2] === "--version") process.stdout.write("omp/18.8.9" + String.fromCharCode(10));
+if (process.argv[2] === "--version") process.stdout.write(${JSON.stringify("omp/")} + ${JSON.stringify(version)} + String.fromCharCode(10));
 else {
   const source = process.argv[6];
   const manifest = JSON.parse(readFileSync(source + "/package.json", "utf8"));

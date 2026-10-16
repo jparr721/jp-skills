@@ -24,8 +24,8 @@ type EntryConfig = Readonly<{
 function integrationPath(environment: Environment): string {
   const path: string = realpathSync(environment.STARTUP_HERDR_OMP_EXTENSION ?? join(environment.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"), "extensions", "herdr-omp-agent-state.ts"));
   const source: string = readFileSync(path, "utf8");
-  if (!/^\/\/ HERDR_INTEGRATION_ID=omp$/m.test(source) || !/^\/\/ HERDR_INTEGRATION_VERSION=10$/m.test(source))
-    throw new StartupBootError("Startup requires the managed Herdr OMP integration v10; configure STARTUP_HERDR_OMP_EXTENSION with its canonical file");
+  if (!/^\/\/ HERDR_INTEGRATION_ID=omp$/m.test(source) || !/^\/\/ HERDR_INTEGRATION_VERSION=[1-9]\d*$/m.test(source))
+    throw new StartupBootError("Startup requires the managed Herdr OMP integration headers; configure STARTUP_HERDR_OMP_EXTENSION with its canonical file");
   return path;
 }
 export function installStartupV7(host: HostAPI, input: EntryConfig): void {

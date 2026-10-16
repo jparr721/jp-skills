@@ -13,8 +13,8 @@ function agent() {
     focused: false, revision: 18, state_change_seq: 42, completion_seq: 42,
     agent_session: { source: "herdr:omp", agent: "omp", kind: "path", value: "/sessions/dev.jsonl" } };
 }
-function schemaFixture(): ProcessResult {
-  return output({ protocol: 22, schema_version: 1, schemas: { success_response: { $defs: {
+function schemaFixture(protocol: number, schemaVersion: number): ProcessResult {
+  return output({ protocol, schema_version: schemaVersion, schemas: { success_response: { $defs: {
     AgentInfo: { properties: { state_change_seq: { type: "integer" }, interactive_ready: { type: "boolean" }, agent_session: {} } },
     ResponseResult: { oneOf: ["tab_created", "tab_info", "pane_info", "agent_started", "agent_list"].map((type) => ({ properties: { type: { const: type } } })) },
   } } } });
@@ -36,15 +36,15 @@ function harness(results: readonly ProcessResult[]) {
   return { runtime, calls };
 }
 test("checks actual status envelope and bundled schema in the named session", async () => {
-  const h = harness([serverFixture({}), schemaFixture()]);
+  const h = harness([serverFixture({}), schemaFixture(22, 1)]);
   await h.runtime.check();
   expect(h.calls).toEqual([
     ["/bin/herdr", "--session", "startup-test", "status", "server", "--json"],
     ["/bin/herdr", "--session", "startup-test", "api", "schema", "--json"],
   ]);
 });
-test("rejects incompatible, stopped and unsupported servers before further commands", async () => {
-  for (const patch of [{ compatible: false }, { endpoint_compatible: false }, { running: false }, { protocol: 21 }, { version: "0.9.4" }]) {
+test("rejects incompatible and stopped servers before further commands", async () => {
+  for (const patch of [{ compatible: false }, { endpoint_compatible: false }, { running: false }]) {
     const h = harness([serverFixture(patch)]);
     await expect(h.runtime.check()).rejects.toBeInstanceOf(HerdrRuntimeError);
     expect(h.calls).toHaveLength(1);
@@ -232,4 +232,19 @@ test("timeout also bounds pipe reads when an owned descendant inherits the CLI o
       }
     }
   }
+});
+
+
+test("Herdr compatibility follows capabilities rather than release or protocol numbers", async () => {
+  for (const version of ["0.9.4", "0.9.5", "0.10.0", "1.0.0", "1.0.0-preview.1"])
+    for (const protocol of [21, 22, 23]) {
+      const h = harness([serverFixture({ version, protocol }), schemaFixture(protocol, 2)]);
+      await h.runtime.check();
+      expect(h.calls).toHaveLength(2);
+    }
+});
+
+test("Herdr uses reported compatibility and required schema fields rather than protocol metadata equality", async () => {
+  await expect(harness([serverFixture({ version: "1.0.0" }), output({ protocol: 22, schema_version: 2, schemas: {} })]).runtime.check()).rejects.toThrow("dependency_unavailable");
+  await harness([serverFixture({ version: "1.0.0", protocol: 23 }), schemaFixture(22, 1)]).runtime.check();
 });

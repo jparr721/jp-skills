@@ -23,7 +23,6 @@ export type Admission = Readonly<{ client: EmployeeClient; context: NativeContex
 export const inputSchema = z.object({ text: z.string(), source: z.enum(["interactive", "rpc", "extension"]), images: z.array(jsonSchema).optional() });
 export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<string> {
   if (typeof ctx.abort !== "function") throw new StartupBootError("Startup V7 requires the actual native abort capability before admission");
-  if (host.pi.VERSION !== "18.8.9") throw new StartupBootError(`Startup V7 requires OMP 18.8.9; actual host is ${host.pi.VERSION}`);
   const ref = host.pi.AgentRegistry.global().get(ctx.agent.id);
   if (ctx.agent.kind !== "main" || ref?.kind !== "main" || ref.parentId !== undefined ||
     ref.session?.sessionManager.getSessionId() !== ctx.sessionManager.getSessionId())

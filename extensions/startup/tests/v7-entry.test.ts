@@ -175,23 +175,25 @@ test("manager boot preserves native command work and binds independent runtime c
   expect(f.requests.filter((request) => z.object({ kind: z.literal("receive") }).safeParse(request).success)).toHaveLength(1);
 });
 
-test("outside Herdr, unnamed profiles and wrong OMP versions cannot launch a coordinator", async () => {
-  for (const kind of ["outside", "profile", "version"]) {
+test("outside Herdr, unnamed profiles and missing native abort cannot launch a coordinator", async () => {
+  for (const kind of ["outside", "profile", "abort"]) {
     const f = fixture();
     let launched: boolean = false;
-    const host: HostAPI = kind === "version" ? { ...f.host, pi: { ...f.host.pi, VERSION: "18.8.8" } } : f.host;
+    const host: HostAPI = f.host;
+    const { abort: _abort, ...withoutAbort } = f.ctx;
+    const context: NativeContext = kind === "abort" ? withoutAbort : f.ctx;
     const environment = { ...f.environment };
     if (kind === "outside") delete environment.HERDR_ENV;
     if (kind === "profile") delete environment.OMP_PROFILE;
     installStartupV7(host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment, launch: async (config) => { launched = true; return config; } });
-    expect(await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, f.ctx)).toEqual({ handled: true });
+    expect(await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, context)).toEqual({ handled: true });
     expect(launched).toBe(false);
     expect(f.messages.join("\n")).toContain("blocked");
     expect(f.admissions).toHaveLength(0);
-    expect(f.getAborts()).toBeGreaterThan(0);
-    expect(await f.emit("tool_call", { toolName: "bash", input: { command: "must not execute" } }, f.ctx)).toMatchObject({ block: true });
-    expect(await f.emit("session_stop", {}, f.ctx)).toMatchObject({ continue: true });
-    expect(await f.emit("session_stop", {}, f.ctx)).toBeUndefined();
+    if (kind !== "abort") expect(f.getAborts()).toBeGreaterThan(0);
+    expect(await f.emit("tool_call", { toolName: "bash", input: { command: "must not execute" } }, context)).toMatchObject({ block: true });
+    expect(await f.emit("session_stop", {}, context)).toMatchObject({ continue: true });
+    expect(await f.emit("session_stop", {}, context)).toBeUndefined();
   }
 });
 
@@ -397,5 +399,25 @@ test("explicit manager select recovers a stopped coordinator in the same native 
   if (!initial) throw new Error("Missing initial launch config");
   expect(launched[1]).toEqual({ ...initial, socketPath: f.socketPath });
   expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
+  expect(f.admissions).toHaveLength(1);
+});
+
+
+test.each(["18.8.8", "18.10.4", "19.0.0", "19.0.0-preview.1"])("native manager admission accepts capable OMP %s", async (version: string) => {
+  const f = fixture();
+  const host: HostAPI = { ...f.host, pi: { ...f.host.pi, VERSION: version } };
+  installStartupV7(host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+  await f.emit("input", { text: "/startup new capable", source: "interactive", images: [] }, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+  expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
+});
+
+test.each([9, 10, 11])("managed Herdr integration revision %s is validated by runtime capabilities", async (revision: number) => {
+  const f = fixture();
+  const path = f.environment.STARTUP_HERDR_OMP_EXTENSION;
+  if (!path) throw new Error("Missing integration fixture");
+  writeFileSync(path, `// HERDR_INTEGRATION_ID=omp\n// HERDR_INTEGRATION_VERSION=${revision}\n`);
+  installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+  await f.emit("input", { text: "/startup new capable", source: "interactive", images: [] }, f.ctx);
   expect(f.admissions).toHaveLength(1);
 });

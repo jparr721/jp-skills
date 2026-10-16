@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -104,7 +105,7 @@ def main() -> int:
     stages = {stage["stage"]: stage for stage in evidence["stages"]}
     admitted = stages["admitted"]
     providers = [event for event in admitted["events"] if event["kind"] == "provider" and not event["helper"]]
-    checks = {"compiled_omp_18_8_9": version == "omp/18.8.9",
+    checks = {"compiled_omp_identified": re.fullmatch(r"omp/\S+", version) is not None,
               "all_native_stages_complete": all(stage["exitCode"] == 0 and stage["report"] and stage["report"]["status"] == "COMPLETE" for stage in stages.values()),
               "canonical_role_loop_in_actual_root_provider": bool(providers) and all(event["roleComplete"] and event["loopComplete"] and event["developerProjection"] for event in providers),
               "actual_native_helper_startup_tool_denied": any(event["kind"] == "provider" and event["helper"] and any(result["toolName"] == "startup_guard_probe" and result.get("isError") and "Native helper has no Startup employee authority" in str(result["content"]) for result in event["priorToolResults"]) for event in admitted["events"]) and not any(event["kind"] == "sentinel_executed" for event in admitted["events"]),

@@ -70,8 +70,8 @@ const renameResultSchema = z.object({ type: z.literal("tab_info"), tab: z.object
 const splitResultSchema = z.object({ type: z.literal("pane_info"), pane: locationSchema });
 const launchResultSchema = z.object({ type: z.literal("agent_started"), agent: agentSchema, argv: z.array(z.string()) });
 const listResultSchema = z.object({ type: z.literal("agent_list"), agents: z.array(agentSchema) });
-const statusSchema = z.object({ running: z.boolean(), version: textSchema, protocol: z.number().int(), compatible: z.boolean(), endpoint_compatible: z.boolean() });
-const apiSchema = z.object({ protocol: z.literal(22), schema_version: z.literal(1), schemas: z.object({ success_response: z.object({ $defs: z.object({
+const statusSchema = z.object({ running: z.boolean(), version: textSchema, protocol: z.number().int().positive().safe(), compatible: z.boolean(), endpoint_compatible: z.boolean() });
+const apiSchema = z.object({ protocol: z.number().int().positive().safe(), schema_version: z.number().int().positive().safe(), schemas: z.object({ success_response: z.object({ $defs: z.object({
   AgentInfo: z.object({ properties: z.object({ state_change_seq: z.object({ type: z.literal("integer") }), interactive_ready: z.object({ type: z.literal("boolean") }), agent_session: z.record(z.string(), z.unknown()) }) }),
   ResponseResult: z.object({ oneOf: z.array(z.object({ properties: z.object({ type: z.object({ const: z.string() }) }) })) }),
 }) }) }) });
@@ -85,14 +85,6 @@ function normalize(agent: z.infer<typeof agentSchema>): HerdrObservation {
 }
 function environmentArgs(environment: LayoutEnvironment): readonly string[] {
   return Object.entries(environment).sort(([left], [right]) => left.localeCompare(right)).flatMap(([name, value]) => ["--env", `${name}=${value}`]);
-}
-function supportedVersion(version: string): boolean {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  if (!match) return false;
-  const major: number = Number(match[1]);
-  const minor: number = Number(match[2]);
-  const patch: number = Number(match[3]);
-  return major > 0 || minor > 9 || (minor === 9 && patch >= 5);
 }
 export async function runHerdrCommand(argv: readonly string[]): Promise<CommandResult> {
   return createHerdrCommandRunner({ timeoutMs: 35000 })(argv);
@@ -172,8 +164,8 @@ export function createHerdrRuntime(input: Readonly<{
   return {
     check: async (): Promise<void> => {
       const server = await execute(["status", "server", "--json"], statusSchema, "dependency_unavailable");
-      if (!server.data.running || !server.data.compatible || !server.data.endpoint_compatible || server.data.protocol !== 22 || !supportedVersion(server.data.version))
-        fail("dependency_unavailable", server.command, server.result, "Require a running compatible Herdr >=0.9.5 with protocol 22");
+      if (!server.data.running || !server.data.compatible || !server.data.endpoint_compatible)
+        fail("dependency_unavailable", server.command, server.result, "Require a running Herdr server with compatible client and endpoint APIs");
       const bundled = await execute(["api", "schema", "--json"], apiSchema, "dependency_unavailable");
       const variants: readonly string[] = bundled.data.schemas.success_response.$defs.ResponseResult.oneOf.map((variant) => variant.properties.type.const);
       if (!["tab_created", "tab_info", "pane_info", "agent_started", "agent_list"].every((kind) => variants.includes(kind)))

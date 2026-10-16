@@ -4,14 +4,16 @@ The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state
 
 V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path. The skill collection release is 7.0.0. Companion installation remains an explicit named-profile action.
 
-## Requirements and isolated installation
+## Requirements and installation
 
-- Bun and actual OMP 18.8.9, including native root session, persistent transcript and `ctx.abort` support.
-- Running compatible Herdr >=0.9.5, protocol 22, with installed OMP integration v10.
+- Bun and OMP with native root sessions, persistent transcripts, `ctx.abort`, `isIdle()` and `hasPendingMessages()` support.
+- A running Herdr server reporting client/endpoint compatibility, the required layout and agent APIs, and its managed OMP integration.
 - An existing Herdr pane with inherited `HERDR_ENV=1`, `HERDR_SESSION`, `HERDR_WORKSPACE_ID`, `HERDR_PANE_ID` and socket context. No focused-pane discovery from outside Herdr.
 - A named OMP profile supplied through `OMP_PROFILE`, with canonical role/loop sources available locally.
 
-For an explicitly requested isolated installation, run from this repository:
+Use the existing binaries and the explicitly selected named OMP profile. Versions are diagnostic metadata, not compatibility gates: newer releases, including new major versions, are presumed usable until a required capability fails. OMP 18.8.9 and Herdr 0.9.5/protocol 22/integration v10 are the live-tested baseline, not required versions. Herdr 0.9.4 is accepted when its live APIs satisfy the same checks.
+
+For the explicitly selected `startup-v7` profile, run from this repository:
 
 ```sh
 bun install --cwd extensions/startup --frozen-lockfile
@@ -20,7 +22,7 @@ export STARTUP_HERDR_OMP_EXTENSION="$HOME/.omp/agent/extensions/herdr-omp-agent-
 OMP_PROFILE=startup-v7 omp --profile startup-v7 --extension "$STARTUP_HERDR_OMP_EXTENSION"
 ```
 
-The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and `HERDR_INTEGRATION_VERSION=10` headers. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. Without it, entry uses `PI_CODING_AGENT_DIR/extensions/herdr-omp-agent-state.ts`, or `~/.omp/agent/extensions/herdr-omp-agent-state.ts`. Custom configuration locations should supply the explicit path. Worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle.
+The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and a positive numeric `HERDR_INTEGRATION_VERSION` header. The revision identifies the managed file; it is not pinned to v10. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. Without it, entry uses `PI_CODING_AGENT_DIR/extensions/herdr-omp-agent-state.ts`, or `~/.omp/agent/extensions/herdr-omp-agent-state.ts`. Custom configuration locations should supply the explicit path. Worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle.
 
 The installer links the package through native `omp --profile PROFILE plugin link`. `OMP_BINARY` selects the intended executable. Close that profile's sessions before changing installation; use the same profile/environment for installation and execution. `PI_CONFIG_DIR` must be a single directory name beneath the real home. Existing native XDG named-profile storage is respected. Installer checks, mutexes and ownership receipts refuse foreign or changed links/configuration.
 

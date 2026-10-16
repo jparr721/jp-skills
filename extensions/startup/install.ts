@@ -207,9 +207,9 @@ export function manageInstallation(options: InstallOptions): Readonly<{
       env: options.env,
       encoding: "utf8",
     });
-    if (version.status !== 0 || version.stdout.trim() !== "omp/18.8.9")
+    if (version.status !== 0 || !/^omp\/\S+$/.test(version.stdout.trim()))
       throw new StartupInstallError(
-        `Installer requires OMP 18.8.9; status=${version.status}, stdout=${version.stdout}, stderr=${version.stderr}`,
+        `Installer requires OMP with a working --version command; executable=${options.omp}, status=${version.status}, stdout=${version.stdout}, stderr=${version.stderr}`,
       );
     if (
       checkParents(join(plugins, "node_modules", "@jp-skills")) !== parents ||
