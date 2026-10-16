@@ -2,6 +2,19 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.2] - 2026-10-15
+
+### Fixed
+
+- Missing optional Herdr environment variables no longer produce rootless Zod boot errors. Manager context is resolved through the Herdr CLI, including the default server; employees no longer require unused workspace/session variables. Missing employee profile variables use the saved launch profile, and missing manager profile variables select OMP's native default profile.
+- Native boot hooks contain errors and leave existing panes recoverable. Failed employee admission retries every five seconds in the same pane; `/startup-retry` retries immediately. Closed bridges stop handling events so recovery does not retain stale tool blockers or duplicate turn requests.
+- Authenticated boot failure reports retain the launch, redact its credential and send a durable manager alert immediately. Interactive Herdr readiness cannot conceal a failure already reported during launch. Abandoned/superseded credentials remain fenced, and delayed failure reports cannot downgrade an admitted runtime.
+- CLI failures include command, exit status and response details. Coordinator/reporting outages remain visible and can recover without spawning duplicate panes or replaying work.
+
+### Verification
+
+- 266 tests, 1360 assertions, TypeScript checking, six driver tests and eight installed-OMP native guard checks passed. Live read-only Herdr checks confirmed current-pane discovery and default-session selection; the reported Linux session was not retested.
+
 ## [7.0.1] - 2026-10-15
 
 ### Fixed
