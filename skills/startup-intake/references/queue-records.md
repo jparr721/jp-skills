@@ -6,6 +6,14 @@ Use selected `<home>/startup/<name>/` throughout; an item's repo does not select
 
 Retain `id, source, status, repo, remote, target, merge-strategy, branch, worktree, base, stack-mode, report-handle, kind, procedure, convention-source, requested_roles`. New intake rows also carry `request, acceptance, blocked_on, intake_refs`. Source metadata is not the task payload. Missing requested_roles on legacy rows behaves as `[]`; recover absent request/acceptance from identified evidence or leave NEEDS_DECISION. Preserve ambiguous legacy ownership and original files.
 
+## Repository acquisition
+
+Before assigning or executing repository work, resolve its checkout and authoritative remote from the saved row, linked ticket/PR, or the organization's repository metadata. Missing local repositories are setup work: clone the confirmed remote into the configured project workspace and continue. This applies to newly split service repositories and required cross-repository dependencies. Include the resolved remote, checkout path and required branch/base in the crew handoff.
+
+Reuse an existing checkout after verifying its remote; preserve its changes, worktrees and branch. A path occupied by another repository requires a distinct checkout path. Verify a new clone's remote and requested ref before running its documented setup. A missing package/build output alone does not establish a missing repository: inspect workspace manifests and setup instructions first. Never derive a remote solely from a package name.
+
+Clone within the assignment's existing scope and host authorization. Follow the named server's Ansible workflow where required. If the remote, ref or access cannot be resolved, report the exact missing input or command failure once through the architect, retain the checkpoint, and continue independent ready work. Retry only after the relevant condition changes.
+
 ## Scoped capture
 
 Manager preserves an exact received event through `startup_route` work disposition, or `startup_intake {eventId,input,amendItemIds}`, before `startup_delegate {eventId,developers}`. Native receipt ID is the event ID. The same event retry is idempotent; identical later user wording is a new event/team.

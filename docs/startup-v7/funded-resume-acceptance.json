@@ -1,0 +1,272 @@
+{
+  "release": "7.0.14",
+  "sourceFixCommit": "5ca3641",
+  "tests": {
+    "count": 327,
+    "assertions": 1663,
+    "typecheck": "pass",
+    "offlineNativeChecks": {
+      "compiled_omp_identified": true,
+      "all_native_stages_complete": true,
+      "canonical_role_loop_in_actual_root_provider": true,
+      "actual_native_helper_startup_tool_denied": true,
+      "begin_turn_denial_blocks_native_write_and_bash": true,
+      "failed_connection_blocks_native_write_and_bash": true,
+      "denied_synthetic_context_blocks_provider": true,
+      "negative_control_detects_missing_tool_guard": true,
+      "cache_system_prompt_is_stable": true,
+      "cache_conversation_prefix_is_preserved": true,
+      "cache_live_state_is_trailing_user_data": true,
+      "provider_error_parks_100_inbox_changes_and_queued_retry": true
+    }
+  },
+  "usageComparison": {
+    "before5m": {
+      "start": 1792168349617,
+      "end": 1792168649617,
+      "minutes": 5.0,
+      "roles": {
+        "manager": {
+          "requests": 20,
+          "input": 4225181,
+          "output": 3333,
+          "cacheRead": 482132,
+          "cacheWrite": 0,
+          "totalTokens": 4710646,
+          "recordedCost": 0.424148964
+        },
+        "architect": {
+          "requests": 11,
+          "input": 535269,
+          "output": 2157,
+          "cacheRead": 487387,
+          "cacheWrite": 0,
+          "totalTokens": 1024813,
+          "recordedCost": 0.05493307400000001
+        },
+        "qa": {
+          "requests": 34,
+          "input": 322689,
+          "output": 9551,
+          "cacheRead": 1761410,
+          "cacheWrite": 0,
+          "totalTokens": 2093650,
+          "recordedCost": 0.03770192
+        },
+        "pa": {
+          "requests": 15,
+          "input": 4576919,
+          "output": 4593,
+          "cacheRead": 1003295,
+          "cacheWrite": 0,
+          "totalTokens": 5584807,
+          "recordedCost": 0.46061709
+        }
+      },
+      "providerErrors": {}
+    },
+    "last5m": {
+      "start": 1792173231905,
+      "end": 1792173531905,
+      "minutes": 5.0,
+      "roles": {
+        "manager": {
+          "requests": 21,
+          "input": 137832,
+          "output": 15455,
+          "cacheRead": 6878405,
+          "cacheWrite": 0,
+          "totalTokens": 7031692,
+          "recordedCost": 0.030631010000000004
+        },
+        "pa": {
+          "requests": 14,
+          "input": 11614,
+          "output": 6277,
+          "cacheRead": 5659822,
+          "cacheWrite": 0,
+          "totalTokens": 5677713,
+          "recordedCost": 0.013736444
+        }
+      },
+      "providerErrors": {}
+    }
+  },
+  "billing": {
+    "start": {
+      "at": 1792173171890,
+      "source": "OpenRouter GET /api/v1/key",
+      "data": {
+        "limit": 150,
+        "limit_remaining": 38.41648062,
+        "limit_reset": "weekly",
+        "usage": 111.58351938,
+        "usage_daily": 111.58351938,
+        "usage_weekly": 111.58351938,
+        "usage_monthly": 111.58351938,
+        "byok_usage": 0,
+        "include_byok_in_limit": false
+      }
+    },
+    "end": {
+      "at": 1792173531563,
+      "source": "OpenRouter GET /api/v1/key",
+      "data": {
+        "limit": 150,
+        "limit_remaining": 38.22759601200001,
+        "limit_reset": "weekly",
+        "usage": 111.772403988,
+        "usage_daily": 111.772403988,
+        "usage_weekly": 111.772403988,
+        "usage_monthly": 111.772403988,
+        "byok_usage": 0,
+        "include_byok_in_limit": false
+      }
+    },
+    "scope": "OpenRouter key counter; separate timing/scope from OMP metadata"
+  },
+  "deployment": {
+    "observedAt": 1792173983170,
+    "installedVersion": "7.0.14",
+    "sourceCommit": "f56a061b3a12d2b2611ebc4af70caf17da5e319d",
+    "refreshedClients": 59,
+    "allResumedAfterUpgrade": true,
+    "continuationPromptsIssued": 0,
+    "coordinatorPid": 3847511,
+    "ownerEpoch": 9,
+    "activeRoots": 59,
+    "freshPolls5s": 59,
+    "supervisors": [
+      {
+        "role": "pa",
+        "employeeId": "ae4db612-cd83-46a2-8357-0147e3225d28",
+        "pid": 778848,
+        "paneId": "w2:pC",
+        "pollAgeMs": 733
+      },
+      {
+        "role": "manager",
+        "employeeId": "manager",
+        "pid": 783656,
+        "paneId": "w2:pB",
+        "pollAgeMs": 174
+      }
+    ],
+    "claims": {
+      "active": 2
+    },
+    "preserved": {
+      "employee": {
+        "originalCount": 68,
+        "allIdsRetained": true
+      },
+      "team": {
+        "originalCount": 20,
+        "allIdsRetained": true
+      },
+      "claim": {
+        "originalCount": 1933,
+        "allIdsRetained": true
+      },
+      "message": {
+        "originalCount": 16879,
+        "allIdsRetained": true,
+        "allPayloadsRetained": true
+      },
+      "result": {
+        "originalCount": 1897,
+        "allIdsRetained": true,
+        "allValuesUnchanged": true
+      },
+      "runtimeBindingIdentity": true,
+      "teamIdentity": true,
+      "queueBytes": false
+    },
+    "healthStatus": 200,
+    "health": {
+      "status": "running",
+      "readyForAdmission": true,
+      "manager": {
+        "connected": true,
+        "lastPoll": 1792173982996
+      },
+      "supervision": {
+        "lastStartedAt": 1792173983606,
+        "lastCompletedAt": 1792173983661,
+        "lastSuccessAt": 1792173983661,
+        "errors": []
+      }
+    },
+    "healthMs": 4.5,
+    "sourceHashes": {
+      "extensions/startup/src/employee-client.ts": "c60d5bf248e74aceba5709b0e4c2d6a92ae70f7e39637d66beef15866fa2aabf",
+      "extensions/startup/src/employee-entry.ts": "8b807d7579fd11a13ad2998bcb100f7a1521f6e872eeae4c2ebafa90ffa48aef"
+    },
+    "backup": "/home/jsp/.config/jp-skills/startup/sythelabs/backups/wake-continuation-7.0.14-20261016T175010Z"
+  },
+  "progress": [
+    {
+      "item": "PR4556-SLICEA-20261016",
+      "action": "assign",
+      "revision": 4,
+      "status": "EXECUTING",
+      "auditSequence": 9576977
+    },
+    {
+      "item": "PR4556-SLICEA-20261016",
+      "action": "review",
+      "revision": 5,
+      "status": "REVIEW",
+      "auditSequence": 9598133
+    },
+    {
+      "item": "PR4556-SLICEA-20261016",
+      "action": "qa_assign",
+      "revision": 6,
+      "status": "REVIEW",
+      "auditSequence": 9610735
+    },
+    {
+      "item": "pr-4537-01",
+      "action": "gate",
+      "revision": 17,
+      "status": "QUEUED",
+      "auditSequence": 9629505
+    },
+    {
+      "item": "pr-4537-01",
+      "action": "assign",
+      "revision": 18,
+      "status": "EXECUTING",
+      "auditSequence": 9630392
+    },
+    {
+      "item": "PR4556-SLICEA-20261016",
+      "action": "qa",
+      "revision": 7,
+      "status": "REVIEW",
+      "auditSequence": 9713221
+    },
+    {
+      "item": "PR4556-SLICEA-20261016",
+      "action": "gate",
+      "revision": 8,
+      "status": "READY_TO_LAND",
+      "auditSequence": 9715296
+    }
+  ],
+  "pa": {
+    "settledResultsSinceResume": 23,
+    "checkpoint": {
+      "lastPaCheck": 1792173882458
+    },
+    "cadenceMs": 60000
+  },
+  "limitations": [
+    "Four early upstream provider404 errors required one explicit recovery each; no later provider errors in sampled recovery window.",
+    "Corrected command errors occurred; this is not an error-free run.",
+    "PR4556 proof and canonical gate advanced; no new code commit or merge asserted.",
+    "PR4537 has verified build findings but bounded rework remains pending.",
+    "Manager administrative inbox backlog remains."
+  ]
+}

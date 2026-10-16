@@ -33,7 +33,7 @@ After the manager's 7.0.11 refresh, the 10:32:29-10:37:29 AM MDT observation win
 
 OpenRouter documents that its default conversation affinity hashes the first system/developer message and first non-system message. Keeping those stable supports both prefix reuse and provider affinity: [OpenRouter prompt caching](https://openrouter.ai/docs/guides/best-practices/prompt-caching).
 
-Actual post-deployment cache-hit rates remain unmeasured while the provider key is budget-blocked. Existing blocked crew handoffs, stale completed crews and periodic supervisor inference are separate productivity/cost issues; this patch does not claim to resolve them all.
+At the 7.0.12 deployment, post-deployment cache-hit rates remained unmeasured while the provider key was budget-blocked. Existing blocked crew handoffs, stale completed crews and periodic supervisor inference are separate productivity/cost issues; this patch does not claim to resolve them all.
 
 
 ## Aspen deployment
@@ -59,3 +59,30 @@ Test and deployment evidence: [cost-control acceptance](cost-control-acceptance.
 Aspen's Ansible upgrade verified 145 skill links and refreshed all 59 native clients in their original panes/transcripts/generations/launches. Coordinator PID3847511 and epoch9 were retained. All 68 employee records, 20 crews, 1,900 original claim IDs, 16,755 original message IDs/payloads, 1,864 immutable result values and exact queue bytes were preserved. Both active claims remain recorded.
 
 Across 201.534 seconds and five live samples, all 59 authenticated roots stayed fresh, health returned HTTP200, and there were zero new native model requests, recorded tokens, recorded cost or inbox wakes. Manager and PA poll ages stayed at or below 750ms and 716ms respectively. Both have restored their provider-error pause; this proves connected control clients with inference stopped, not settled PA duties or technical progress. Adding provider budget alone does not clear this pause. No budget or credential was changed by the deployment.
+
+
+## Funded resume and repeated PA duties (7.0.14)
+
+The user's funded resume began at 17:35:04 UTC on 2026-10-16. Version 7.0.14 fixes a queued-wake latch: native OMP can start through its context hook without before_agent_start, leaving the old latch set and preventing the next PA duty. The regression fails on the second duty before the fix and verifies five successive context-only duties afterward. All 327 tests (1,663 assertions), TypeScript checking and 12 installed OMP offline guard checks pass.
+
+All 59 roots loaded 7.0.14 through Ansible, retaining native panes, transcripts, generations and launch IDs. Busy workers were deferred until idle. Coordinator PID3847511 and epoch9 remain unchanged; coordinator/store code remains identical to 7.0.9. The preservation check retained 68 employees, 20 crews, 1,933 claims, 16,879 original messages/payloads and 1,897 immutable results. Queue phases legitimately advanced during funded work.
+
+Comparable five-minute native-usage windows:
+
+| Role | Requests before / after | Cache reuse before / after | Recorded cost/min before / after |
+| --- | ---: | ---: | ---: |
+| Manager | 20 / 21 | 10.24% / 98.04% | $0.08483 / $0.00613 |
+| PA | 15 / 14 | 17.98% / 99.80% | $0.09212 / $0.00275 |
+| Combined | 35 / 35 | - | $0.17695 / $0.00887 |
+
+Cache reuse is cacheRead/(input+cacheRead+cacheWrite), weighted by tokens. Supervisor recorded cost per minute decreased 94.99% with the same request count. This is native cost metadata, not a reconciled bill. Separately, the read-only OpenRouter key counter verified the user's $150 weekly limit and increased $0.188884608 across 5.99455 minutes ($0.03151/min), leaving $38.227596012. The key-wide counter and native windows have different scopes and timing.
+
+Four early upstream HTTP404 errors paused inference. Each affected root received one explicit authorized recovery; no further provider errors appeared in the following 16-minute sample. Identical-rejection and provider-pause guards remain active. Some corrected argument and no-active-claim errors occurred, so this is not a claim of error-free execution.
+
+After the PA refresh, at least seven consecutive new scheduled checks settled about 60 seconds apart. Each produced one compact report TO manager, without additional reminder sends. The live follow-up counted 23 PA settlements since funded resume, including finite catch-up work. All 59 authenticated polls were fresh; manager/PA ages were 174ms/733ms at the preservation check. Lifecycle alerts remained at 32 pending; the manager's older administrative backlog remains.
+
+Real work advanced: PR4556 moved EXECUTING -> REVIEW -> QA APPROVE -> READY_TO_LAND revision8 at verified head 5d14585f462c9fd739e06bc8c630d6b6156e64ca, retaining its R4 proof deck. PR4537 moved through scoped REDO to EXECUTING revision18 and produced concrete build findings at head3011521a, including missing build-output validation and an unresolved workspace dependency. Its code rework remains pending. No new Warlock commit or merge is asserted by this proof.
+
+Missing repositories are now explicit setup work in the intake [repository acquisition procedure](../../skills/startup-intake/references/queue-records.md#repository-acquisition). Crews resolve authoritative remotes, clone into their configured workspace, preserve existing checkouts and report actual access/identity blockers once. Missing package outputs first require manifest/setup inspection.
+
+Machine-readable evidence: [funded resume acceptance](funded-resume-acceptance.json).
