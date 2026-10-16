@@ -82,6 +82,32 @@ test("seen completions can alternate done and idle at the same sequence without 
   expect(() => store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "working", sequence: 4, observedAt: 114 })).toThrow("conflicts");
 });
 
+test("an existing immutable observation alert survives replay from a legacy stale runtime checkpoint", () => {
+  const { store, launch } = fixture();
+  store.prepareRuntime(launch);
+  const payload = { kind: "runtime-observation", employeeId: "manager", generation: 1, state: "done", observedAt: 109, previousSequence: 1, sequence: 4 };
+  store.runtimeAlert({ id: "runtime-launch-manager-4-done", correlation: launch.launchId, payload });
+  store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "done", sequence: 4, observedAt: 120 });
+  expect(store.snapshot().messages).toHaveLength(1);
+  expect(store.snapshot().messages[0]?.payload).toEqual(payload);
+  expect(store.runtimeBindings()[0]).toMatchObject({ stateSequence: 4, observedState: "done", lastSeen: 120, lastProgress: 100 });
+});
+
+test("a stale runtime update cannot erase a newer lifecycle observation checkpoint", () => {
+  const { store, launch } = fixture();
+  store.prepareRuntime(launch);
+  store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "working", sequence: 4, observedAt: 120 });
+  expect(() => store.updateRuntime({ ...launch, lastSeen: 120 })).toThrow("observation");
+});
+
+test("observation replay rejects an existing alert with a different employee identity", () => {
+  const { store, launch } = fixture();
+  store.prepareRuntime(launch);
+  store.runtimeAlert({ id: "runtime-launch-manager-4-done", correlation: launch.launchId, payload: { kind: "runtime-observation", employeeId: "other", generation: 1, state: "done", sequence: 4 } });
+  expect(() => store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "done", sequence: 4, observedAt: 120 })).toThrow("launch identity");
+  expect(store.runtimeBindings()[0]?.stateSequence).toBeNull();
+});
+
 test("item progress advances only for a new revision and survives restart without a replay reset", () => {
   const f = fixture();
   const first = { itemId: "ITEM-1", revision: 1, status: "QUEUED", observedAt: 100 };

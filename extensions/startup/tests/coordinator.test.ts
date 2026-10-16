@@ -36,6 +36,7 @@ function fixture(executionLimit: number) {
   let layoutFailure: Error | null = null;
   let layoutCalls = 0;
   let observationFailure: Error | null = null;
+  let observationBarrier: Promise<void> | null = null;
   const herdr: HerdrRuntime = {
     check: async () => {},
     renameCrew: async () => {},
@@ -53,7 +54,7 @@ function fixture(executionLimit: number) {
       observations.push(observation);
       return observation;
     },
-    observe: async () => { if (observationFailure) throw observationFailure; return observations; },
+    observe: async () => { if (observationBarrier) await observationBarrier; if (observationFailure) throw observationFailure; return observations; },
   };
   const config = { name: "test", stateDirectory, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(root, "c.sock"), profile: "test", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit } };
   const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => now });
@@ -80,8 +81,22 @@ function fixture(executionLimit: number) {
     if (!team) throw new Error("Missing team");
     return team;
   }
-  return { coordinator, store, config, observations, ready, admit, delegate, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
+  return { coordinator, store, config, observations, ready, admit, delegate, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
 }
+
+test("admission preserves observation progress committed while its Herdr read is pending", async () => {
+  const f = fixture(8);
+  const { pa } = await f.ready();
+  const saved = f.store.runtimeBindings().find((r) => r.employeeId === pa);
+  if (!saved?.nativeSession) throw new Error("PA identity missing");
+  const barrier = Promise.withResolvers<void>();
+  f.delayObservation(barrier.promise);
+  const admitting = f.admit(pa);
+  f.store.observeRuntime({ employeeId: pa, generation: saved.generation, nativeSession: saved.nativeSession, state: "done", sequence: 10, observedAt: 1000 });
+  barrier.resolve();
+  await expect(admitting).resolves.toBeString();
+  expect(f.store.runtimeBindings().find((r) => r.employeeId === pa)).toMatchObject({ stateSequence: 10, observedState: "done" });
+});
 
 test("a failed unadmitted boot immediately persists a redacted manager alert and can later admit", async () => {
   const f = fixture(8);

@@ -2697,6 +2697,8 @@ export function openStore(args: {
         }
         if ((saved.nativeSession !== null && saved.nativeSession !== runtime.nativeSession) || runtime.lastProgress < saved.lastProgress || runtime.lastSeen < saved.lastSeen)
           throw new StoreFenceError("Runtime identity or timestamp regressed");
+        if (saved.stateSequence !== null && (runtime.stateSequence === null || runtime.stateSequence < saved.stateSequence))
+          throw new StoreFenceError("Runtime lifecycle observation checkpoint regressed");
         if (runtime.state === "ready" && (runtime.nativeSession === null || runtime.paneId === null || runtime.terminalId === null))
           throw new StoreAuthorityError("Runtime readiness requires pane, terminal and native session evidence");
         put("runtimeBinding", key, runtime);
@@ -2722,8 +2724,14 @@ export function openStore(args: {
         const observedAt = timeSchema.parse(input.observedAt);
         if (observedAt < runtime.lastSeen) throw new StoreFenceError("Observation time regressed");
         if (runtime.stateSequence !== sequence && input.state !== "working") {
-          saveCue(employee("manager"), {
-            id: `runtime-${runtime.launchId}-${sequence}-${input.state}`,
+          const id = `runtime-${runtime.launchId}-${sequence}-${input.state}`;
+          const prior = read("message", id, messageSchema);
+          if (prior !== null) {
+            const payload = z.object({ kind: z.literal("runtime-observation"), employeeId: z.literal(runtime.employeeId), generation: z.literal(runtime.generation), state: z.literal(input.state), sequence: z.literal(sequence) }).safeParse(prior.payload);
+            if (!payload.success || prior.recipient !== "manager" || prior.correlation !== runtime.launchId || prior.kind !== "alert")
+              throw new StoreConflictError("Saved runtime observation alert conflicts with its launch identity");
+          } else saveCue(employee("manager"), {
+            id,
             recipient: "manager", kind: "alert", correlation: runtime.launchId,
             payload: { kind: "runtime-observation", employeeId: runtime.employeeId, generation: runtime.generation, state: input.state, observedAt, previousSequence: runtime.stateSequence, sequence },
           }, null);
