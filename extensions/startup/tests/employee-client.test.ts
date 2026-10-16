@@ -214,10 +214,25 @@ test("invalid admission receipt and malformed poll response fail at the boundary
   await expect(client.poll()).rejects.toThrow("JSON");
 });
 
+test("an idle native session recovers a stranded queued wake without queuing turns while busy", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  expect(native.messages).toHaveLength(0);
+  native.setRunState(true, true);
+  await bridge.poll();
+  expect(native.messages).toHaveLength(1);
+  expect(native.messages[0]?.triggerTurn).toBe(true);
+});
+
 test("a thousand durable messages produce one native wake and wait behind an already queued wake", async () => {
   const fixture = serverFixture();
   const client = await connect(fixture);
   const native = nativeFixture();
+  native.setRunState(true, false);
   const pending = Array.from({ length: 1000 }, (_, i) => `cue-${i}`);
   fixture.setPoll({ projection: "canonical", pendingMessageIds: pending, toolBlockReason: null, waitReason: "Drain inbox" });
   const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
@@ -229,7 +244,7 @@ test("a thousand durable messages produce one native wake and wait behind an alr
   fixture.setPoll({ projection: "canonical", pendingMessageIds: [...pending, "later-cue"], toolBlockReason: null, waitReason: "Drain inbox" });
   await bridge.poll();
   expect(native.messages).toHaveLength(1);
-  native.setRunState(false, false);
+  native.setRunState(true, false);
   await bridge.poll();
   expect(native.messages).toHaveLength(2);
 });
@@ -238,6 +253,7 @@ test("bridge injects canonical projection only into the bound root and deduplica
   const fixture = serverFixture();
   const client = await connect(fixture);
   const native = nativeFixture();
+  native.setRunState(true, false);
   const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
@@ -245,6 +261,7 @@ test("bridge injects canonical projection only into the bound root and deduplica
   expect(native.messages).toEqual([
     { content: "Startup inbox has 1 durable message(s). Claim your own inbox and follow the canonical loop.", triggerTurn: true, deliverAs: "nextTurn" },
   ]);
+  native.setRunState(false, false);
   expect(await native.emit("before_agent_start", { systemPrompt: ["native"] }, native.ctx)).toEqual({ systemPrompt: ["native", "COMPLETE CANONICAL ROLE AND LOOP"] });
   const result = await native.emit("context", { messages: [{ role: "user", content: "hello" }] }, native.ctx);
   const context = z.object({ messages: z.array(z.object({ role: z.string(), content: z.unknown() }).passthrough()) }).parse(result);
@@ -258,10 +275,11 @@ test("bridge injects canonical projection only into the bound root and deduplica
   expect(await native.emit("tool_call", { toolName: "startup_claim", input: {} }, native.ctx)).toBeUndefined();
   expect(await native.emit("session_stop", {}, native.ctx)).toEqual({ continue: true, additionalContext: "Settle your active claim before waiting" });
   fixture.setPoll({ projection: "UPDATED", pendingMessageIds: ["own-cue-1", "own-cue-2"], toolBlockReason: null, waitReason: null });
+  native.setRunState(true, false);
   await bridge.poll();
   expect(native.messages).toHaveLength(2);
   expect(await native.emit("session_stop", {}, native.ctx)).toBeUndefined();
-  expect(fixture.requests.filter((entry) => entry.path === "/command").map((r) => r.body)).toEqual([{ kind: "begin_turn" }, { kind: "begin_turn" }]);
+  expect(fixture.requests.filter((entry) => entry.path === "/command" && z.object({ kind: z.literal("begin_turn") }).safeParse(entry.body).success).map((r) => r.body)).toEqual([{ kind: "begin_turn" }, { kind: "begin_turn" }]);
   expect(JSON.stringify(native.messages)).not.toContain("private-");
   bridge.close();
   expect(native.timers.size).toBe(0);

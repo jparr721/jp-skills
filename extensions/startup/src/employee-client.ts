@@ -284,7 +284,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
         const notifiedAt = notified.get(id);
         return notifiedAt === undefined || Date.now() - notifiedAt >= 30000;
       }) : [];
-      if (due.length > 0 && !nativePending()) {
+      if (due.length > 0 && nativeIdle()) {
         host.sendMessage({
           customType: "startup-cue",
           content: `Startup inbox has ${next.pendingMessageIds.length} durable message(s). Claim your own inbox and follow the canonical loop.`,
