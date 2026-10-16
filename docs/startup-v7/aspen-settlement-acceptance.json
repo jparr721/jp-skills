@@ -1,0 +1,1657 @@
+{
+  "status": "PASS",
+  "release": {
+    "version": "7.0.8",
+    "url": "https://github.com/jparr721/jp-skills/releases/tag/v7.0.8",
+    "commit": "aabe7a06e38fc1d47cf21c2f7c8ce552110a6813",
+    "sourceSha256": {
+      "extensions/startup/src/store.ts": "dd4515e29f770174987e6834d0ca2d5d2c48a358a6414855c84a3081999bb250",
+      "extensions/startup/src/coordinator.ts": "aa3d8e0a2e0d12c5bfc9ab1e532df24f2cdb3944e65f7a0afa6a2e29845daa70",
+      "extensions/startup/src/employee-client.ts": "72985890fd0afa2cc3977a3b9a7b111a3a203778b22831fd982f77775eb5d703",
+      "extensions/startup/src/employee-entry.ts": "351c0a06608cfc9f7096cf3cda2e0ce738b4ad425493a5bf74c3c7954eee99d1",
+      "extensions/startup/src/contracts.ts": "c6b7d56c723d90e2e5ae0d9b3e46d38c790e300982ab3300ea59048fb0684c16"
+    },
+    "nativeClientSourcesIdenticalTo707": true
+  },
+  "checks": {
+    "employeesRetained": true,
+    "crewMembershipRetained": true,
+    "runtimeIdentityRetained": true,
+    "allNativeClientsResumed": true,
+    "originalLaunchBytesRetained": true,
+    "claimHistoryRetained": true,
+    "resultHistoryRetained": true,
+    "all145SkillLinks": true,
+    "ownedCompanionInstalled": true,
+    "installedVersion708": true,
+    "releasedCommitInstalled": true,
+    "nativeClientSourcesMatchFinalRelease": true,
+    "actualNativeSettlementWithoutClaimIds": true,
+    "actualNativePaSettlementWithoutClaimIds": true,
+    "twoAdditionalPaChecks": true,
+    "nativeManagerReady": true,
+    "allNativeRootsKeepPolling": true,
+    "healthyFreshSupervisionAndSupervisors": true,
+    "compiledNativeDuplicateGuard": true,
+    "publishedRelease": true,
+    "actualFullSkillsUpgrade": true
+  },
+  "fullUpgrade": {
+    "oldVersion": "7.0.7",
+    "installedVersion": "7.0.8",
+    "skillLinks": 145,
+    "legacyRecordsMigrated": [],
+    "ownedCompanionVerified": true,
+    "legacyNativeLinkReinstalledWithReceipt": false,
+    "profileConfigurationPreserved": true,
+    "pluginBackup": null,
+    "sourceCommit": "aabe7a06e38fc1d47cf21c2f7c8ce552110a6813"
+  },
+  "preservation": {
+    "employeeCount": 68,
+    "crewCount": 20,
+    "nativeRootsResumed": 62,
+    "preservedLaunchFiles": 136,
+    "backup": "/home/jsp/.config/jp-skills/startup/sythelabs/backups/upgrade-7.0.8-20261016T040459Z",
+    "queueBytesPreservedAtCutover": true,
+    "reconciliationClaimsRetained": 29
+  },
+  "nativeClients": [
+    {
+      "employeeId": "ae4db612-cd83-46a2-8357-0147e3225d28",
+      "role": "pa",
+      "oldPid": 3230507,
+      "newPid": 3348667,
+      "paneId": "w2:pC",
+      "generation": 1,
+      "launchId": "cd03a90c-9656-4d58-8389-4f61716ce875",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-19-11-336Z_01a14213-b968-7000-b6d0-17dc7850cf33.jsonl",
+      "startedAt": 1792122706980,
+      "freshPoll": 1792122860757,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": true,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "manager",
+      "role": "manager",
+      "oldPid": 3246097,
+      "newPid": 3355381,
+      "paneId": "w2:pB",
+      "generation": 1,
+      "launchId": "eb908ba1-6588-4fff-b4a8-eee8b01496dd",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-19-02-392Z_01a14213-9678-7000-b916-be21530e1bea.jsonl",
+      "startedAt": 1792123165180,
+      "freshPoll": 1792123202666,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": true,
+      "forcedStopAfterGrace": true
+    },
+    {
+      "employeeId": "0a165757-9372-4d7e-892e-b7c34e9b6404",
+      "role": "qa",
+      "oldPid": 2910147,
+      "newPid": 3356237,
+      "paneId": "w2:p16",
+      "generation": 1,
+      "launchId": "5be29ad0-1bf8-443d-8cdd-f8f49afc46a8",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-49-28-493Z_01a1422f-73ad-7000-a934-8d102aded884.jsonl",
+      "startedAt": 1792123210984,
+      "freshPoll": 1792123214388,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "09f3df4f-b0f0-46d8-ad80-fb4909118f24",
+      "role": "architect",
+      "oldPid": 2902510,
+      "newPid": 3356238,
+      "paneId": "w2:pW",
+      "generation": 1,
+      "launchId": "f7cd66ad-dda8-476e-bddb-98e2cba088c6",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-47-36-254Z_01a1422d-bd3e-7000-b2fb-7729c9436939.jsonl",
+      "startedAt": 1792123210984,
+      "freshPoll": 1792123214432,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "0a8dff07-0941-4e37-9937-b9fef473d779",
+      "role": "dev",
+      "oldPid": 2875487,
+      "newPid": 3356234,
+      "paneId": "w2:pN",
+      "generation": 1,
+      "launchId": "7dc5bef3-8d86-4741-93ed-20ab82891702",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-41-30-122Z_01a14228-270a-7000-9c64-919e591669f0.jsonl",
+      "startedAt": 1792123210985,
+      "freshPoll": 1792123214418,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "14f868be-97b4-4127-972e-864185fb4fe3",
+      "role": "architect",
+      "oldPid": 2889549,
+      "newPid": 3356719,
+      "paneId": "w2:pS",
+      "generation": 1,
+      "launchId": "e25ac81d-3c3c-40c2-ab21-3bc7a7466358",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-43-54-893Z_01a1422a-5c8d-7000-b769-8ee0a5d1cc38.jsonl",
+      "startedAt": 1792123215209,
+      "freshPoll": 1792123218754,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "0b11160c-7971-42b8-8ed0-44ae22b57540",
+      "role": "dev",
+      "oldPid": 3004569,
+      "newPid": 3356715,
+      "paneId": "w2:p2B",
+      "generation": 1,
+      "launchId": "ec6e6e29-0f53-484e-b790-ff2ebd28ffc8",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T01-08-58-233Z_01a14241-4cf9-7000-9ef1-e7e8c16f4093.jsonl",
+      "startedAt": 1792123215208,
+      "freshPoll": 1792123218602,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "0e2bfdb4-5454-4ffb-a06f-8502c0550101",
+      "role": "qa",
+      "oldPid": 2874327,
+      "newPid": 3356718,
+      "paneId": "w2:pM",
+      "generation": 1,
+      "launchId": "acfb4dd1-f346-488c-ae68-080da1002724",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-41-27-450Z_01a14228-1c9a-7000-93b0-4e062a4ca8c4.jsonl",
+      "startedAt": 1792123215208,
+      "freshPoll": 1792123218596,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "2d1e9fb1-fa62-45a3-99dd-683ab0dd9703",
+      "role": "dev",
+      "oldPid": 2914690,
+      "newPid": 3357198,
+      "paneId": "w2:p1D",
+      "generation": 1,
+      "launchId": "134a234c-ec39-4220-986a-c5fd4fe3a07e",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-50-48-797Z_01a14230-ad5d-7000-9c50-36f44af96f3d.jsonl",
+      "startedAt": 1792123219411,
+      "freshPoll": 1792123222990,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "1becb422-b90c-42e0-b855-1465004db93f",
+      "role": "dev",
+      "oldPid": 2922266,
+      "newPid": 3357197,
+      "paneId": "w2:p1W",
+      "generation": 1,
+      "launchId": "921a9d08-c4b1-4a18-a9f5-245322d9cac9",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-52-17-535Z_01a14232-07ff-7000-b35c-9aa9423d1bf5.jsonl",
+      "startedAt": 1792123219411,
+      "freshPoll": 1792123222986,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "2e6cffe1-2e9f-43e7-9cce-8595ce51cae7",
+      "role": "dev",
+      "oldPid": 2917637,
+      "newPid": 3357199,
+      "paneId": "w2:p1K",
+      "generation": 1,
+      "launchId": "d8a8e3ef-2bd9-4443-a6c0-4480ea7c7a90",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-21-037Z_01a14231-2b4d-7000-83bd-68e9603ae2cb.jsonl",
+      "startedAt": 1792123219412,
+      "freshPoll": 1792123222984,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "35784666-f318-4033-8265-9ac5cdf6a7b6",
+      "role": "dev",
+      "oldPid": 2920207,
+      "newPid": 3357671,
+      "paneId": "w2:p1S",
+      "generation": 1,
+      "launchId": "f500d455-f63e-400b-b03e-48facd763f8e",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-56-330Z_01a14231-b52a-7000-b347-b78e660d4646.jsonl",
+      "startedAt": 1792123223590,
+      "freshPoll": 1792123226928,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "310a55d3-bba5-42c8-b864-005528f313b0",
+      "role": "architect",
+      "oldPid": 2924444,
+      "newPid": 3357664,
+      "paneId": "w2:p1X",
+      "generation": 1,
+      "launchId": "b7a62c5d-51c1-4ed2-ad87-354ff7313e15",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-52-29-091Z_01a14232-3523-7000-8795-ef73b23bc3a9.jsonl",
+      "startedAt": 1792123223587,
+      "freshPoll": 1792123226980,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "3152da36-12e0-4d8d-80dd-96e60c165943",
+      "role": "architect",
+      "oldPid": 2918135,
+      "newPid": 3357655,
+      "paneId": "w2:p1M",
+      "generation": 1,
+      "launchId": "8602e4f9-f95c-4da5-ae6d-e4cc202ebfb5",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-27-068Z_01a14231-42dc-7000-9ef1-37bd2c082e31.jsonl",
+      "startedAt": 1792123223586,
+      "freshPoll": 1792123229097,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "3e794b02-86a5-4810-8e51-7b5f310595d1",
+      "role": "qa",
+      "oldPid": 2921119,
+      "newPid": 3358153,
+      "paneId": "w2:p1V",
+      "generation": 1,
+      "launchId": "5fa4d6a6-9d8a-4567-ac07-249f354ca4fd",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-52-09-156Z_01a14231-e744-7000-80b6-7951247ef186.jsonl",
+      "startedAt": 1792123227763,
+      "freshPoll": 1792123231113,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "40de95d8-e0e6-4aed-87d8-f36ddd2f8b97",
+      "role": "dev",
+      "oldPid": 2918993,
+      "newPid": 3358471,
+      "paneId": "w2:p1P",
+      "generation": 1,
+      "launchId": "f4674cc6-ab7c-4a6d-b0b3-62e182be6e51",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-38-194Z_01a14231-6e52-7000-acdf-6753489332b7.jsonl",
+      "startedAt": 1792123229755,
+      "freshPoll": 1792123233162,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "3cf8f490-c2d3-41b5-88e3-24a161a23f59",
+      "role": "dev",
+      "oldPid": 2936933,
+      "newPid": 3358154,
+      "paneId": "w2:p25",
+      "generation": 1,
+      "launchId": "f4be9d33-4175-4298-bff4-4ee8133c5e17",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-53-54-317Z_01a14233-820d-7000-8943-5e84310dbd8f.jsonl",
+      "startedAt": 1792123227762,
+      "freshPoll": 1792123233282,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "46e578d6-7244-402b-a2ee-902a3a347fd2",
+      "role": "qa",
+      "oldPid": 2929419,
+      "newPid": 3358652,
+      "paneId": "w2:p21",
+      "generation": 1,
+      "launchId": "2714ece8-ea29-4c3b-a9aa-0adbf1b160df",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-53-02-258Z_01a14232-b6b2-7000-bf34-1df1d07b2b05.jsonl",
+      "startedAt": 1792123231912,
+      "freshPoll": 1792123235276,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "48c630ba-41a6-4eaf-b4c1-471ebc851fe8",
+      "role": "qa",
+      "oldPid": 2939567,
+      "newPid": 3358817,
+      "paneId": "w2:p27",
+      "generation": 1,
+      "launchId": "1df12fe6-b082-4ec0-81f9-217f8de7aa14",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-54-24-235Z_01a14233-f6eb-7000-83fa-ef5fb2590dd4.jsonl",
+      "startedAt": 1792123233905,
+      "freshPoll": 1792123237235,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "495431e2-8023-4c5e-a030-afe80f40332b",
+      "role": "dev",
+      "oldPid": 2908105,
+      "newPid": 3358834,
+      "paneId": "w2:p14",
+      "generation": 1,
+      "launchId": "7565a962-a79f-487e-b012-0631a4a35f88",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-48-55-437Z_01a1422e-f28d-7000-8480-594c32265aaa.jsonl",
+      "startedAt": 1792123233936,
+      "freshPoll": 1792123237295,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "4c105df4-a1fc-4991-bd99-753edeb508ce",
+      "role": "qa",
+      "oldPid": 2918527,
+      "newPid": 3359098,
+      "paneId": "w2:p1N",
+      "generation": 1,
+      "launchId": "88c7a1f7-cb02-41a5-b7c6-e8236f4ea404",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-32-176Z_01a14231-56d0-7000-8a6a-32feb9021992.jsonl",
+      "startedAt": 1792123236063,
+      "freshPoll": 1792123239373,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "5af72c97-6437-4684-bb57-164c5f4145f4",
+      "role": "architect",
+      "oldPid": 2886129,
+      "newPid": 3359291,
+      "paneId": "w2:pP",
+      "generation": 1,
+      "launchId": "704eb76e-5e52-40fc-9fa1-f6f8a7bb2d22",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-43-18-637Z_01a14229-ceed-7000-8b89-8ea75ed8f973.jsonl",
+      "startedAt": 1792123238080,
+      "freshPoll": 1792123241590,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "500b4755-a3fd-4c25-81c4-ef441c5672b1",
+      "role": "architect",
+      "oldPid": 2916921,
+      "newPid": 3359275,
+      "paneId": "w2:p1H",
+      "generation": 1,
+      "launchId": "55d32226-280d-47f8-8bbc-1b4c8fa843d2",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-11-371Z_01a14231-058b-7000-9add-ef80206669c1.jsonl",
+      "startedAt": 1792123238059,
+      "freshPoll": 1792123243480,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "5f2999c3-c328-40f6-9b38-7720e5f8b7e5",
+      "role": "dev",
+      "oldPid": 2912765,
+      "newPid": 3359597,
+      "paneId": "w2:p1A",
+      "generation": 1,
+      "launchId": "cb7e9d13-1dd9-4c42-8015-8f1aa096cf8a",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-50-08-046Z_01a14230-0e2e-7000-a0e7-494967c3f0a0.jsonl",
+      "startedAt": 1792123240214,
+      "freshPoll": 1792123243589,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "661ffef3-7169-4515-aa8f-21f0a3a0c98c",
+      "role": "qa",
+      "oldPid": 2914470,
+      "newPid": 3359771,
+      "paneId": "w2:p1C",
+      "generation": 1,
+      "launchId": "fdaa5504-8ca0-4f68-b3fa-42f317622078",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-50-44-373Z_01a14230-9c15-7000-9ed5-196c5a6d749d.jsonl",
+      "startedAt": 1792123242240,
+      "freshPoll": 1792123245571,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+      "role": "architect",
+      "oldPid": 2938231,
+      "newPid": 3359964,
+      "paneId": "w2:p26",
+      "generation": 1,
+      "launchId": "eccaf0d8-2c61-4e63-b262-ba88c586ca60",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-54-13-819Z_01a14233-ce3b-7000-a439-56a517d0d3c6.jsonl",
+      "startedAt": 1792123244221,
+      "freshPoll": 1792123247626,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "6c907777-36df-4607-a081-6ab34691867b",
+      "role": "qa",
+      "oldPid": 2919957,
+      "newPid": 3359983,
+      "paneId": "w2:p1R",
+      "generation": 1,
+      "launchId": "1abe5d92-bd35-4428-82bb-a92c7eda3e40",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-50-856Z_01a14231-9fc8-7000-94ee-9ff6aa515161.jsonl",
+      "startedAt": 1792123244368,
+      "freshPoll": 1792123247741,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "6cbfb83e-37b6-482f-bdf3-30407ec95040",
+      "role": "qa",
+      "oldPid": 2907769,
+      "newPid": 3360255,
+      "paneId": "w2:p13",
+      "generation": 1,
+      "launchId": "5ef4a9b2-7b11-4cf1-ac25-bb68794c8088",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-48-52-204Z_01a1422e-e5ec-7000-9c57-f4478d3fb8ab.jsonl",
+      "startedAt": 1792123246388,
+      "freshPoll": 1792123249771,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "747abd1c-9d26-48bb-8602-0e2d37396ee1",
+      "role": "qa",
+      "oldPid": 2886535,
+      "newPid": 3360423,
+      "paneId": "w2:pQ",
+      "generation": 1,
+      "launchId": "a3ba3e84-640c-4bf8-b1d0-46d2047dfd33",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-43-21-715Z_01a14229-daf3-7000-b2cd-013cb2252667.jsonl",
+      "startedAt": 1792123248365,
+      "freshPoll": 1792123251731,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "74f1611a-7400-4141-8e20-319fccda4244",
+      "role": "architect",
+      "oldPid": 2904426,
+      "newPid": 3360448,
+      "paneId": "w2:pZ",
+      "generation": 1,
+      "launchId": "e023ec2b-41d5-48c4-9c96-e433cb959754",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-48-12-592Z_01a1422e-4b2f-7000-9dde-5717077afb92.jsonl",
+      "startedAt": 1792123248531,
+      "freshPoll": 1792123252032,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "768098e0-daeb-4a3f-901d-4a029abb9d07",
+      "role": "dev",
+      "oldPid": 2902992,
+      "newPid": 3360711,
+      "paneId": "w2:pY",
+      "generation": 1,
+      "launchId": "10908183-83d1-458a-9684-d7b8805bc686",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-47-42-402Z_01a1422d-d542-7000-90f5-6d3885695ca9.jsonl",
+      "startedAt": 1792123250536,
+      "freshPoll": 1792123253937,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "7a71ee37-ce90-4bbd-b189-d7cfcf7332e8",
+      "role": "dev",
+      "oldPid": 2886932,
+      "newPid": 3360883,
+      "paneId": "w2:pR",
+      "generation": 1,
+      "launchId": "b772ddc1-2784-48c0-820b-23721df5932b",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-43-24-843Z_01a14229-e72b-7000-8120-0ca8cd9dde75.jsonl",
+      "startedAt": 1792123252518,
+      "freshPoll": 1792123255919,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "8034130c-5a95-4712-b747-cf39f2e152db",
+      "role": "architect",
+      "oldPid": 2920596,
+      "newPid": 3360910,
+      "paneId": "w2:p1T",
+      "generation": 1,
+      "launchId": "ec0a5656-da4a-4969-9ed3-c5fadef66349",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-52-03-442Z_01a14231-d0f2-7000-9d76-f7a2e26ec19d.jsonl",
+      "startedAt": 1792123252811,
+      "freshPoll": 1792123258249,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "87c7744e-8b15-4054-90d0-e230d5b090dc",
+      "role": "architect",
+      "oldPid": 3003087,
+      "newPid": 3361270,
+      "paneId": "w2:p29",
+      "generation": 1,
+      "launchId": "ca79849d-c9ae-4553-9a9c-b5ce0c4eb101",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T01-08-38-726Z_01a14241-00c6-7000-b083-c69df7e8c4d8.jsonl",
+      "startedAt": 1792123256669,
+      "freshPoll": 1792123260025,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "883263f4-19f9-4449-825e-7ace78c94159",
+      "role": "qa",
+      "oldPid": 2902780,
+      "newPid": 3361459,
+      "paneId": "w2:pX",
+      "generation": 1,
+      "launchId": "84fd2fc3-ec09-48b0-84a6-2fb070bc55e8",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-47-39-289Z_01a1422d-c919-7000-8529-94dbea851f90.jsonl",
+      "startedAt": 1792123258983,
+      "freshPoll": 1792123262335,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "8cfec5ef-abe3-40ad-a8b8-bba108a3a66c",
+      "role": "dev",
+      "oldPid": 2910339,
+      "newPid": 3361624,
+      "paneId": "w2:p17",
+      "generation": 1,
+      "launchId": "f48dadf1-2040-46fc-a555-c4dae6ca373a",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-49-31-574Z_01a1422f-7fb6-7000-a774-d0d7883ad264.jsonl",
+      "startedAt": 1792123260820,
+      "freshPoll": 1792123264341,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0",
+      "role": "architect",
+      "oldPid": 2928246,
+      "newPid": 3361799,
+      "paneId": "w2:p10",
+      "generation": 1,
+      "launchId": "3a47ba05-f781-4573-8e91-5281b7e9c49a",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-52-55-394Z_01a14232-9be2-7000-8765-48d45ddd878f.jsonl",
+      "startedAt": 1792123263138,
+      "freshPoll": 1792123268576,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "95040990-9fa3-430c-92c1-29847d5459d0",
+      "role": "architect",
+      "oldPid": 2915558,
+      "newPid": 3361998,
+      "paneId": "w2:p1E",
+      "generation": 1,
+      "launchId": "06f996a8-3193-48a3-af0d-10e872233d5a",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-50-54-401Z_01a14230-c341-7000-a395-ca43c2cc65bb.jsonl",
+      "startedAt": 1792123264982,
+      "freshPoll": 1792123270941,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "9b99bb66-1383-4675-80c3-cc539b2ac992",
+      "role": "architect",
+      "oldPid": 2909978,
+      "newPid": 3362318,
+      "paneId": "w2:p15",
+      "generation": 1,
+      "launchId": "5e40a955-8a75-4bb6-9b21-c5ef2c3d5e64",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-49-25-485Z_01a1422f-67ed-7000-af03-240376f89838.jsonl",
+      "startedAt": 1792123271153,
+      "freshPoll": 1792123274511,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "9e9549fc-9b35-4777-bc7e-f899de1c11a1",
+      "role": "dev",
+      "oldPid": 2926630,
+      "newPid": 3362511,
+      "paneId": "w2:p1Z",
+      "generation": 1,
+      "launchId": "00e9d04c-91f7-4b55-b54c-4a7762c7fd4a",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-52-46-657Z_01a14232-79c1-7000-acbd-635852c5f02d.jsonl",
+      "startedAt": 1792123275307,
+      "freshPoll": 1792123278684,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "9e9d1744-3a59-47fa-be02-e3742c9c7216",
+      "role": "qa",
+      "oldPid": 2870302,
+      "newPid": 3362964,
+      "paneId": "w2:pH",
+      "generation": 1,
+      "launchId": "7b99752a-d08e-46d9-bbcf-f31ed2c21360",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-40-50-595Z_01a14227-8ca3-7000-9b0f-61d1ea3f3f1b.jsonl",
+      "startedAt": 1792123279461,
+      "freshPoll": 1792123282801,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "97cdb746-4957-4ecd-89b2-9d2ca574b910",
+      "role": "qa",
+      "oldPid": 2890112,
+      "newPid": 3362775,
+      "paneId": "w2:pT",
+      "generation": 1,
+      "launchId": "f4a99ff9-6a01-442c-b79b-51f7d599decb",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-43-58-022Z_01a1422a-68c6-7000-b31a-026bbf130c12.jsonl",
+      "startedAt": 1792123269321,
+      "freshPoll": 1792123283420,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "c1c13996-4dad-4a64-96a3-45d85c668ce3",
+      "role": "qa",
+      "oldPid": 2917320,
+      "newPid": 3363204,
+      "paneId": "w2:p1J",
+      "generation": 1,
+      "launchId": "aa0e7172-7b09-4caf-acd4-70d6e7312956",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-16-118Z_01a14231-1816-7000-9489-e1c2d5eb337e.jsonl",
+      "startedAt": 1792123283611,
+      "freshPoll": 1792123286993,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "c611ce40-2764-45fe-97b7-9276c76b4aa0",
+      "role": "architect",
+      "oldPid": 2907124,
+      "newPid": 3363497,
+      "paneId": "w2:p12",
+      "generation": 1,
+      "launchId": "b3b2b7b2-e649-429c-8024-a6b7af907c8e",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-48-48-926Z_01a1422e-d91e-7000-a68d-d3053d60947f.jsonl",
+      "startedAt": 1792123287752,
+      "freshPoll": 1792123291206,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "827385ef-ddca-4b05-a925-708dfd0927a2",
+      "role": "dev",
+      "oldPid": 2890398,
+      "newPid": 3363679,
+      "paneId": "w2:pV",
+      "generation": 1,
+      "launchId": "b1fbbb2a-0b41-448a-b2ff-4fe7261871c2",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-44-01-190Z_01a1422a-7526-7000-8757-d2d9c63c1f8b.jsonl",
+      "startedAt": 1792123290848,
+      "freshPoll": 1792123296276,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "d5fe0db7-c19d-4947-8da0-6be34d138d5f",
+      "role": "qa",
+      "oldPid": 2904659,
+      "newPid": 3363801,
+      "paneId": "w2:p0",
+      "generation": 1,
+      "launchId": "5c24b203-45fb-4a58-989d-cdcdb43fedbb",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-48-15-714Z_01a1422e-5762-7000-8018-763060005240.jsonl",
+      "startedAt": 1792123292002,
+      "freshPoll": 1792123297519,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "c4463250-1731-4fc1-a54b-56804b4e36a3",
+      "role": "architect",
+      "oldPid": 2934666,
+      "newPid": 3364035,
+      "paneId": "w2:p23",
+      "generation": 1,
+      "launchId": "84cc017b-105f-4621-9138-7de7adb963d8",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-53-31-628Z_01a14233-296c-7000-8f19-e3e76096686e.jsonl",
+      "startedAt": 1792123284113,
+      "freshPoll": 1792123299798,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "db9e6c81-589c-474a-a5f9-f65693a42ac9",
+      "role": "qa",
+      "oldPid": 2916048,
+      "newPid": 3364418,
+      "paneId": "w2:p1F",
+      "generation": 1,
+      "launchId": "d49b2047-b923-4d42-948c-538feffe2fbf",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-50-59-062Z_01a14230-d576-7000-83a1-ed745dfa6e82.jsonl",
+      "startedAt": 1792123298182,
+      "freshPoll": 1792123301541,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "d8a6fba1-54a7-426e-9d27-9429b5f42cd2",
+      "role": "architect",
+      "oldPid": 2914087,
+      "newPid": 3364276,
+      "paneId": "w2:p1B",
+      "generation": 1,
+      "launchId": "9b42e26e-a104-4a76-9145-04079f378bd5",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-50-40-380Z_01a14230-8c7c-7000-964f-29d3af1b5ae6.jsonl",
+      "startedAt": 1792123297018,
+      "freshPoll": 1792123302481,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "de7315a4-3af2-4b0e-9f56-3723a49be10a",
+      "role": "architect",
+      "oldPid": 2919531,
+      "newPid": 3364639,
+      "paneId": "w2:p1Q",
+      "generation": 1,
+      "launchId": "12b28e1f-1e85-4847-8568-96b46cb4863a",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-45-116Z_01a14231-895c-7000-9046-b0793cf699cb.jsonl",
+      "startedAt": 1792123300305,
+      "freshPoll": 1792123303698,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "e8be2f54-da02-4393-8ee0-f31a3254bfcb",
+      "role": "dev",
+      "oldPid": 2870667,
+      "newPid": 3364827,
+      "paneId": "w2:pJ",
+      "generation": 1,
+      "launchId": "0b7034f3-edf4-43ce-a285-8e3f4cbe3394",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-40-53-745Z_01a14227-98f1-7000-bca7-36a4cbd09756.jsonl",
+      "startedAt": 1792123302439,
+      "freshPoll": 1792123305820,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "eb7a7aa7-5792-43ba-8222-5190e0578999",
+      "role": "dev",
+      "oldPid": 2904922,
+      "newPid": 3364905,
+      "paneId": "w2:p11",
+      "generation": 1,
+      "launchId": "b2eabddd-7cee-4da3-a3d2-178c74498d8e",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-48-18-816Z_01a1422e-6380-7000-a986-2e9ff2989374.jsonl",
+      "startedAt": 1792123303188,
+      "freshPoll": 1792123306631,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "ebfbba00-09ff-480e-93b2-5aed75a026e3",
+      "role": "qa",
+      "oldPid": 2925625,
+      "newPid": 3365098,
+      "paneId": "w2:p1Y",
+      "generation": 1,
+      "launchId": "82362e13-5849-427b-ac41-18ae589b9431",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-52-39-821Z_01a14232-5f0d-7000-ae07-cf302160a556.jsonl",
+      "startedAt": 1792123304464,
+      "freshPoll": 1792123307845,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "ecdcb22d-7340-4de0-8359-c510a30fc28a",
+      "role": "architect",
+      "oldPid": 2869802,
+      "newPid": 3365298,
+      "paneId": "w2:pG",
+      "generation": 1,
+      "launchId": "516a1a61-7c8c-442b-ac9a-a22b96479b5d",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-40-47-481Z_01a14227-8079-7000-b22b-0fa9ee44569d.jsonl",
+      "startedAt": 1792123306605,
+      "freshPoll": 1792123310216,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+      "role": "dev",
+      "oldPid": 2940673,
+      "newPid": 3365363,
+      "paneId": "w2:p28",
+      "generation": 1,
+      "launchId": "48dfd285-e004-46de-bac1-042b622c4da5",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-54-35-806Z_01a14234-241e-7000-8a4d-cb96985fc96c.jsonl",
+      "startedAt": 1792123307332,
+      "freshPoll": 1792123310717,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "efc90409-cfce-4d6b-974a-2012c28ea030",
+      "role": "qa",
+      "oldPid": 3003714,
+      "newPid": 3365580,
+      "paneId": "w2:p2A",
+      "generation": 1,
+      "launchId": "a19352fd-97b3-4f92-b52c-6c14e0d1d7e9",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T01-08-47-893Z_01a14241-2495-7000-8623-a4e6b651888f.jsonl",
+      "startedAt": 1792123308616,
+      "freshPoll": 1792123311944,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "f0b3ef36-ee85-4328-a667-ba94347b500b",
+      "role": "qa",
+      "oldPid": 2935552,
+      "newPid": 3365771,
+      "paneId": "w2:p24",
+      "generation": 1,
+      "launchId": "f8d0e251-e00c-4d01-924c-68b876a028f5",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-53-41-848Z_01a14233-5158-7000-88e0-59de45578b47.jsonl",
+      "startedAt": 1792123310960,
+      "freshPoll": 1792123314341,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "f4941b88-4c91-42ae-be81-eacf244c7bc1",
+      "role": "architect",
+      "oldPid": 2873941,
+      "newPid": 3365832,
+      "paneId": "w2:pK",
+      "generation": 1,
+      "launchId": "888fff08-869a-495b-807d-f6a1531d70a6",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-41-24-010Z_01a14228-0f2a-7000-8ad1-426fe49fdcb5.jsonl",
+      "startedAt": 1792123311476,
+      "freshPoll": 1792123314898,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "f605931a-8e28-420b-a26f-808143d398e8",
+      "role": "qa",
+      "oldPid": 2912570,
+      "newPid": 3366033,
+      "paneId": "w2:p19",
+      "generation": 1,
+      "launchId": "8614e292-dd9c-44fa-aec0-662482885e00",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-50-04-948Z_01a14230-0214-7000-bb4e-802666e9ca37.jsonl",
+      "startedAt": 1792123312768,
+      "freshPoll": 1792123316206,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "fb115a98-2a78-43ce-afe8-453cab4fb851",
+      "role": "dev",
+      "oldPid": 2932298,
+      "newPid": 3366301,
+      "paneId": "w2:p22",
+      "generation": 1,
+      "launchId": "2328d7ab-d358-4b72-ad02-5dc0b88ac32b",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-53-17-547Z_01a14232-f26b-7000-b38b-daf6507fe580.jsonl",
+      "startedAt": 1792123315616,
+      "freshPoll": 1792123318987,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "f8763a35-7f8e-41fc-8b3b-83cb0040197b",
+      "role": "dev",
+      "oldPid": 2916505,
+      "newPid": 3366239,
+      "paneId": "w2:p1G",
+      "generation": 1,
+      "launchId": "8fb2c894-b8e6-4bff-8971-ad5fbd10b3eb",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-51-05-454Z_01a14230-ee6e-7000-a7db-7ef2975a778f.jsonl",
+      "startedAt": 1792123315102,
+      "freshPoll": 1792123321200,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    },
+    {
+      "employeeId": "e6f11c19-17b7-4049-a08b-d38ec0d75177",
+      "role": "architect",
+      "oldPid": 2912317,
+      "newPid": 3368008,
+      "paneId": "w2:p18",
+      "generation": 1,
+      "launchId": "1c84ba73-4ace-475e-adb4-4b28ab632554",
+      "nativeSession": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-50-01-767Z_01a1422f-f5a7-7000-bed8-79ebd08b25d3.jsonl",
+      "startedAt": 1792123412989,
+      "freshPoll": 1792123416307,
+      "loadedRelease": "7.0.7",
+      "pausedActiveTurn": false,
+      "forcedStopAfterGrace": false
+    }
+  ],
+  "postUpgradeObservation": {
+    "durationSeconds": 75.27,
+    "healthSamples": 16,
+    "allHealthResponses200": true,
+    "healthLatencyMs": {
+      "p50": 1.15,
+      "p99": 69.64,
+      "max": 69.64
+    },
+    "minimumFreshNativeRoots": 62,
+    "additionalSettledPaChecks": 2,
+    "newPaCheckReceipts": [
+      {
+        "claimId": "6ee49743-b079-4861-8ffe-ab0167fa83aa",
+        "resultId": "pa-check-cd03a90c-9656-4d58-8389-4f61716ce875-1792123749901",
+        "messageId": "pa-check-cd03a90c-9656-4d58-8389-4f61716ce875-1792123749901"
+      },
+      {
+        "claimId": "f661c59f-63f6-4b58-bcb6-c5866619eeb3",
+        "resultId": "pa-check-cd03a90c-9656-4d58-8389-4f61716ce875-1792123810354",
+        "messageId": "pa-check-cd03a90c-9656-4d58-8389-4f61716ce875-1792123810354"
+      }
+    ],
+    "samples": [
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123782919,
+            "lastCompletedAt": 1792123782970,
+            "lastSuccessAt": 1792123782970,
+            "errors": []
+          }
+        },
+        "elapsedMs": 1.15,
+        "observedAt": 1792123783701,
+        "managerPollAgeMs": 720,
+        "paPollAgeMs": 927,
+        "completedPaChecks": 127,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123787933,
+            "lastCompletedAt": 1792123787995,
+            "lastSuccessAt": 1792123787995,
+            "errors": []
+          }
+        },
+        "elapsedMs": 1.2,
+        "observedAt": 1792123788710,
+        "managerPollAgeMs": 406,
+        "paPollAgeMs": 935,
+        "completedPaChecks": 127,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123793091,
+            "lastCompletedAt": 1792123793145,
+            "lastSuccessAt": 1792123793145,
+            "errors": []
+          }
+        },
+        "elapsedMs": 0.97,
+        "observedAt": 1792123793718,
+        "managerPollAgeMs": 541,
+        "paPollAgeMs": 935,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123798143,
+            "lastCompletedAt": 1792123798225,
+            "lastSuccessAt": 1792123798225,
+            "errors": []
+          }
+        },
+        "elapsedMs": 0.88,
+        "observedAt": 1792123798726,
+        "managerPollAgeMs": 684,
+        "paPollAgeMs": 853,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123803146,
+            "lastCompletedAt": 1792123803221,
+            "lastSuccessAt": 1792123803221,
+            "errors": []
+          }
+        },
+        "elapsedMs": 0.75,
+        "observedAt": 1792123803736,
+        "managerPollAgeMs": 341,
+        "paPollAgeMs": 940,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123808281,
+            "lastCompletedAt": 1792123808330,
+            "lastSuccessAt": 1792123808330,
+            "errors": []
+          }
+        },
+        "elapsedMs": 69.64,
+        "observedAt": 1792123808814,
+        "managerPollAgeMs": 552,
+        "paPollAgeMs": 1013,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123813284,
+            "lastCompletedAt": 1792123813355,
+            "lastSuccessAt": 1792123813355,
+            "errors": []
+          }
+        },
+        "elapsedMs": 1.24,
+        "observedAt": 1792123813824,
+        "managerPollAgeMs": 559,
+        "paPollAgeMs": 19,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123818311,
+            "lastCompletedAt": 1792123818407,
+            "lastSuccessAt": 1792123818407,
+            "errors": []
+          }
+        },
+        "elapsedMs": 1.05,
+        "observedAt": 1792123818833,
+        "managerPollAgeMs": 37,
+        "paPollAgeMs": 19,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123823330,
+            "lastCompletedAt": 1792123823382,
+            "lastSuccessAt": 1792123823382,
+            "errors": []
+          }
+        },
+        "elapsedMs": 0.68,
+        "observedAt": 1792123823845,
+        "managerPollAgeMs": 533,
+        "paPollAgeMs": 32,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123828343,
+            "lastCompletedAt": 1792123828389,
+            "lastSuccessAt": 1792123828389,
+            "errors": []
+          }
+        },
+        "elapsedMs": 2.28,
+        "observedAt": 1792123828858,
+        "managerPollAgeMs": 535,
+        "paPollAgeMs": 39,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123833353,
+            "lastCompletedAt": 1792123833425,
+            "lastSuccessAt": 1792123833425,
+            "errors": []
+          }
+        },
+        "elapsedMs": 56.95,
+        "observedAt": 1792123833924,
+        "managerPollAgeMs": 283,
+        "paPollAgeMs": 102,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123838448,
+            "lastCompletedAt": 1792123838500,
+            "lastSuccessAt": 1792123838500,
+            "errors": []
+          }
+        },
+        "elapsedMs": 1.2,
+        "observedAt": 1792123838937,
+        "managerPollAgeMs": 574,
+        "paPollAgeMs": 114,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123843449,
+            "lastCompletedAt": 1792123843558,
+            "lastSuccessAt": 1792123843558,
+            "errors": []
+          }
+        },
+        "elapsedMs": 0.72,
+        "observedAt": 1792123843946,
+        "managerPollAgeMs": 577,
+        "paPollAgeMs": 122,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123848450,
+            "lastCompletedAt": 1792123848528,
+            "lastSuccessAt": 1792123848528,
+            "errors": []
+          }
+        },
+        "elapsedMs": 1.01,
+        "observedAt": 1792123848956,
+        "managerPollAgeMs": 279,
+        "paPollAgeMs": 124,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123853452,
+            "lastCompletedAt": 1792123853505,
+            "lastSuccessAt": 1792123853505,
+            "errors": []
+          }
+        },
+        "elapsedMs": 0.72,
+        "observedAt": 1792123853964,
+        "managerPollAgeMs": 583,
+        "paPollAgeMs": 125,
+        "completedPaChecks": 128,
+        "freshNativeRoots": 62
+      },
+      {
+        "status": 200,
+        "body": {
+          "status": "running",
+          "supervision": {
+            "lastStartedAt": 1792123858453,
+            "lastCompletedAt": 1792123858501,
+            "lastSuccessAt": 1792123858501,
+            "errors": []
+          }
+        },
+        "elapsedMs": 1.47,
+        "observedAt": 1792123858975,
+        "managerPollAgeMs": 569,
+        "paPollAgeMs": 130,
+        "completedPaChecks": 129,
+        "freshNativeRoots": 62
+      }
+    ],
+    "actualNativeSettlements": [
+      {
+        "employeeId": "ae4db612-cd83-46a2-8357-0147e3225d28",
+        "recordedAt": "2026-10-16T04:07:49.299Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "claimId": "51ebecc0-64e5-4b32-87d5-f53e3fef4528",
+        "resultId": "pa-check-cd03a90c-9656-4d58-8389-4f61716ce875-1792123606189",
+        "resultKind": "completed"
+      },
+      {
+        "employeeId": "ae4db612-cd83-46a2-8357-0147e3225d28",
+        "recordedAt": "2026-10-16T04:08:28.093Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "claimId": "6efb0977-dafe-490b-b9d9-158f66cf0e5f",
+        "resultId": "manager-offline-eb908ba1-6588-4fff-b4a8-eee8b01496dd-1792123610055-pa",
+        "resultKind": "completed"
+      },
+      {
+        "employeeId": "ae4db612-cd83-46a2-8357-0147e3225d28",
+        "recordedAt": "2026-10-16T04:09:09.207Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "claimId": "e6ea126a-34ba-4f47-811a-e98289ffd39f",
+        "resultId": "pa-check-cd03a90c-9656-4d58-8389-4f61716ce875-1792123669684",
+        "resultKind": "completed"
+      },
+      {
+        "employeeId": "ae4db612-cd83-46a2-8357-0147e3225d28",
+        "recordedAt": "2026-10-16T04:09:50.090Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "claimId": "6ee49743-b079-4861-8ffe-ab0167fa83aa",
+        "resultId": "pa-check-cd03a90c-9656-4d58-8389-4f61716ce875-1792123749901",
+        "resultKind": "completed"
+      },
+      {
+        "employeeId": "ae4db612-cd83-46a2-8357-0147e3225d28",
+        "recordedAt": "2026-10-16T04:10:54.276Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "claimId": "f661c59f-63f6-4b58-bcb6-c5866619eeb3",
+        "resultId": "pa-check-cd03a90c-9656-4d58-8389-4f61716ce875-1792123810354",
+        "resultKind": "completed"
+      },
+      {
+        "employeeId": "manager",
+        "recordedAt": "2026-10-16T04:09:57.153Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "claimId": "83b57be9-7f1a-4f39-9e54-2daeb77fc090",
+        "resultId": "runtime-cd03a90c-9656-4d58-8389-4f61716ce875-749-done",
+        "resultKind": "completed"
+      },
+      {
+        "employeeId": "manager",
+        "recordedAt": "2026-10-16T04:10:18.638Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "claimId": "83b57be9-7f1a-4f39-9e54-2daeb77fc090",
+        "resultId": "runtime-cd03a90c-9656-4d58-8389-4f61716ce875-749-done",
+        "resultKind": "completed"
+      },
+      {
+        "employeeId": "9b99bb66-1383-4675-80c3-cc539b2ac992",
+        "recordedAt": "2026-10-16T04:07:16.086Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "claimId": "54d09c77-8ccb-45ab-b1b1-511efe0b2f96",
+        "resultId": "architect-relay-dev-reconcile-pr-4565",
+        "resultKind": "completed"
+      }
+    ],
+    "settlementErrorsRecorded": {
+      "40de95d8-e0e6-4aed-87d8-f36ddd2f8b97": 3,
+      "46e578d6-7244-402b-a2ee-902a3a347fd2": 2,
+      "8cfec5ef-abe3-40ad-a8b8-bba108a3a66c": 2,
+      "9b99bb66-1383-4675-80c3-cc539b2ac992": 1,
+      "f605931a-8e28-420b-a26f-808143d398e8": 2,
+      "e6f11c19-17b7-4049-a08b-d38ec0d75177": 1
+    },
+    "rawTraceSha256": "2ba1974444db22440ba11b5e5fc51bd3ff959cb6be7dee4fd0a0a6b2c669e973"
+  },
+  "actualNativeManagerReadiness": {
+    "recordedAt": "2026-10-16T04:17:30.361Z",
+    "source": "startup_staff",
+    "health": "ready",
+    "employeeCount": 68,
+    "crewCount": 20,
+    "supervision": {
+      "lastStartedAt": 1792124249210,
+      "lastCompletedAt": 1792124249287,
+      "lastSuccessAt": 1792124249287,
+      "errors": []
+    }
+  },
+  "compiledNativeSettlementProof": {
+    "status": "PASS",
+    "checks": {
+      "nativeStageCompleted": true,
+      "actualNativeToolOmittedClaimId": true,
+      "onlyOneRejectedHttpWrite": true,
+      "duplicateAbortedBeforeThirdProviderCall": true,
+      "nativeWritesBlockedAfterDuplicate": true
+    },
+    "actualSettlementCommands": [
+      {
+        "kind": "settle",
+        "result": {
+          "id": "attempt-1",
+          "kind": "completed",
+          "output": "Observed test cue",
+          "checkpoint": null,
+          "outgoing": []
+        }
+      }
+    ],
+    "rootProviderCount": 2,
+    "sourceSha256": {
+      "/Users/jarredparr/Projects/jp-skills/extensions/startup/src/employee-client.ts": "72985890fd0afa2cc3977a3b9a7b111a3a203778b22831fd982f77775eb5d703",
+      "/Users/jarredparr/Projects/jp-skills/extensions/startup/src/employee-entry.ts": "351c0a06608cfc9f7096cf3cda2e0ce738b4ad425493a5bf74c3c7954eee99d1"
+    },
+    "probeSha256": "eed01834cccbe3569667476d6d1de8c2880b3ad2396d660a81ad3d6a72960893",
+    "stage": {
+      "exitCode": 0,
+      "report": {
+        "status": "COMPLETE",
+        "stage": "settlement",
+        "beginCount": 3,
+        "providerCount": 2,
+        "rootProviderCount": 2
+      },
+      "actualProviderRequests": 2,
+      "actualRootProviderRequests": 2,
+      "writeExists": false,
+      "bashExists": false,
+      "stdoutSha256": "c24366eee30b4cafdc3aab8cd5e7542171eafbf58cb99aeddfabe42829e1712e"
+    },
+    "network": "Offline deterministic provider and isolated Unix-socket fixture; no normal profile or external provider used."
+  },
+  "validation": {
+    "tests": 309,
+    "assertions": 1531,
+    "typecheck": "PASS",
+    "driverTests": 6,
+    "nativeGuards": {
+      "status": "PASS",
+      "installedVersion": "omp/18.11.1",
+      "executableSha256": "bdeb1626b99dc29d844146ea7940d367e61b1032b77e1c77880125f379ca2dda",
+      "checks": {
+        "compiled_omp_identified": true,
+        "all_native_stages_complete": true,
+        "canonical_role_loop_in_actual_root_provider": true,
+        "actual_native_helper_startup_tool_denied": true,
+        "begin_turn_denial_blocks_native_write_and_bash": true,
+        "failed_connection_blocks_native_write_and_bash": true,
+        "denied_synthetic_context_blocks_provider": true,
+        "negative_control_detects_missing_tool_guard": true
+      }
+    }
+  },
+  "incidentRecovery": {
+    "actualClaimId": "c3cbc698-752c-42c1-8e79-f4cfdc27462b",
+    "mistypedClaimId": "c3cbc698-752c-42c1-8f79-f4cfdc27462b",
+    "claimStatusAfterNativeManagerReconciliation": "settled",
+    "nativeManagerSuccesses": [
+      {
+        "recordedAt": "2026-10-16T04:01:24.394Z",
+        "tool": "startup_reconcile",
+        "argumentKeys": [
+          "claimId",
+          "evidence"
+        ]
+      },
+      {
+        "recordedAt": "2026-10-16T04:01:41.847Z",
+        "tool": "startup_settle",
+        "argumentKeys": [
+          "result"
+        ]
+      },
+      {
+        "recordedAt": "2026-10-16T04:09:57.153Z",
+        "tool": "startup_settle",
+        "argumentKeys": [
+          "result"
+        ]
+      },
+      {
+        "recordedAt": "2026-10-16T04:10:18.638Z",
+        "tool": "startup_settle",
+        "argumentKeys": [
+          "result"
+        ]
+      }
+    ]
+  },
+  "operationalRecovery": [
+    "The first PA native resume hit a retained Herdr name, then a start command timeout after the process had launched. The PA was temporarily offline during recovery. The fresh same-pane authenticated process was verified and adopted rather than duplicated.",
+    "The original manager did not exit after bounded graceful shutdown. Its identity was rechecked before forced stop; the original pane, transcript, launch ID and generation were retained.",
+    "Declined a pre-existing unrelated advisor.enabled permission prompt. A later question was not changed when its expected state was absent; no global advisor setting was modified by maintenance.",
+    "All 62 native roots were resumed with 7.0.7 client code. Release 7.0.8 changed only coordinator recovery state; native client source bytes are identical. The full upgrade ran again for 7.0.8 and only its coordinator restarted.",
+    "Native /startup status control input was accepted, but its literal custom panel was not observed. The actual native startup_staff call returned ready after the health observation window."
+  ],
+  "scope": [
+    "No employee, crew membership, generation or native transcript was replaced. Native processes were intentionally resumed in place.",
+    "Original claim/result history, launch bytes and queue bytes at cutover were preserved. Interrupted technical work remains recorded for explicit reconciliation; no technical completion was manufactured.",
+    "Two additional settled PA checks and fresh polling from all 62 roots are bounded post-upgrade evidence. They do not establish that all technical assignments are finished."
+  ],
+  "postUpgradeErrorClassification": {
+    "counts": {
+      "Unrecognized key": 6,
+      "other": 1,
+      "claim_requires_reconciliation": 7,
+      "Invalid input": 1
+    },
+    "events": [
+      {
+        "employeeId": "40de95d8-e0e6-4aed-87d8-f36ddd2f8b97",
+        "time": "2026-10-16T04:07:07.460Z",
+        "argumentKeys": [
+          "claimId",
+          "result"
+        ],
+        "errorKind": "Unrecognized key"
+      },
+      {
+        "employeeId": "40de95d8-e0e6-4aed-87d8-f36ddd2f8b97",
+        "time": "2026-10-16T04:07:09.155Z",
+        "argumentKeys": [],
+        "errorKind": "other"
+      },
+      {
+        "employeeId": "40de95d8-e0e6-4aed-87d8-f36ddd2f8b97",
+        "time": "2026-10-16T04:07:11.077Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "errorKind": "claim_requires_reconciliation"
+      },
+      {
+        "employeeId": "46e578d6-7244-402b-a2ee-902a3a347fd2",
+        "time": "2026-10-16T04:06:35.528Z",
+        "argumentKeys": [
+          "claimId",
+          "result"
+        ],
+        "errorKind": "Unrecognized key"
+      },
+      {
+        "employeeId": "46e578d6-7244-402b-a2ee-902a3a347fd2",
+        "time": "2026-10-16T04:06:42.340Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "errorKind": "claim_requires_reconciliation"
+      },
+      {
+        "employeeId": "8cfec5ef-abe3-40ad-a8b8-bba108a3a66c",
+        "time": "2026-10-16T04:06:48.325Z",
+        "argumentKeys": [
+          "claimId",
+          "result"
+        ],
+        "errorKind": "Unrecognized key"
+      },
+      {
+        "employeeId": "8cfec5ef-abe3-40ad-a8b8-bba108a3a66c",
+        "time": "2026-10-16T04:06:54.877Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "errorKind": "claim_requires_reconciliation"
+      },
+      {
+        "employeeId": "9b99bb66-1383-4675-80c3-cc539b2ac992",
+        "time": "2026-10-16T04:07:11.867Z",
+        "argumentKeys": [
+          "claimId",
+          "result"
+        ],
+        "errorKind": "Unrecognized key"
+      },
+      {
+        "employeeId": "d8a6fba1-54a7-426e-9d27-9429b5f42cd2",
+        "time": "2026-10-16T04:12:50.232Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "errorKind": "claim_requires_reconciliation"
+      },
+      {
+        "employeeId": "e6f11c19-17b7-4049-a08b-d38ec0d75177",
+        "time": "2026-10-16T04:07:16.845Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "errorKind": "claim_requires_reconciliation"
+      },
+      {
+        "employeeId": "e6f11c19-17b7-4049-a08b-d38ec0d75177",
+        "time": "2026-10-16T04:14:03.888Z",
+        "argumentKeys": [
+          "claimId",
+          "result"
+        ],
+        "errorKind": "Unrecognized key"
+      },
+      {
+        "employeeId": "e6f11c19-17b7-4049-a08b-d38ec0d75177",
+        "time": "2026-10-16T04:14:05.620Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "errorKind": "claim_requires_reconciliation"
+      },
+      {
+        "employeeId": "f605931a-8e28-420b-a26f-808143d398e8",
+        "time": "2026-10-16T04:06:43.885Z",
+        "argumentKeys": [
+          "claimId",
+          "result"
+        ],
+        "errorKind": "Unrecognized key"
+      },
+      {
+        "employeeId": "f605931a-8e28-420b-a26f-808143d398e8",
+        "time": "2026-10-16T04:06:47.127Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "errorKind": "claim_requires_reconciliation"
+      },
+      {
+        "employeeId": "manager",
+        "time": "2026-10-16T04:18:32.832Z",
+        "argumentKeys": [
+          "result"
+        ],
+        "errorKind": "Invalid input"
+      }
+    ],
+    "scope": "Later transcript scan after final cutover; its bounds differ from the health sampling window. Old conversation arguments caused one-time claimId field errors; saved interrupted claims still require manager reconciliation."
+  }
+}
