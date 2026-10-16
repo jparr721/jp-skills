@@ -1,6 +1,6 @@
 {
   "version": "7.0.13",
-  "status": "LOCAL_PASS",
+  "status": "PASS",
   "unit": {
     "tests": 326,
     "assertions": 1653,
@@ -43,5 +43,58 @@
   },
   "billingSavingsMeasured": false,
   "paidVerificationCalls": 0,
-  "deployment": null
+  "deployment": {
+    "observedAt": 1792171379069,
+    "installedVersion": "7.0.13",
+    "sourceCommit": "a6437c31fe828f213c86d6b8e20809c8d0f3ad86",
+    "refreshedClients": 59,
+    "coordinatorPid": 3847511,
+    "ownerEpoch": 9,
+    "activeRoots": 59,
+    "claims": {
+      "active": 2
+    },
+    "preserved": {
+      "employee": {
+        "originalCount": 68,
+        "allIdsRetained": true
+      },
+      "team": {
+        "originalCount": 20,
+        "allIdsRetained": true
+      },
+      "claim": {
+        "originalCount": 1900,
+        "allIdsRetained": true
+      },
+      "message": {
+        "originalCount": 16755,
+        "allIdsRetained": true,
+        "allPayloadsRetained": true
+      },
+      "result": {
+        "originalCount": 1864,
+        "allIdsRetained": true,
+        "allValuesUnchanged": true
+      },
+      "runtimeBindingIdentity": true,
+      "teamIdentity": true,
+      "queueBytes": true
+    },
+    "healthStatus": 200,
+    "observation": {
+      "durationSeconds": 201.534,
+      "sampleCount": 5,
+      "freshAuthenticatedRootsAtEverySample": 59,
+      "newRequests": 0,
+      "newRecordedTokens": 0,
+      "newRecordedCost": 0,
+      "newNativeInboxWakes": 0,
+      "managerMaximumPollAgeMs": 750,
+      "paMaximumPollAgeMs": 716,
+      "providerInference": "Paused after the known provider errors; explicit interactive/RPC input required to resume.",
+      "cacheReadShare": null,
+      "billingSavingsMeasured": false
+    }
+  }
 }
