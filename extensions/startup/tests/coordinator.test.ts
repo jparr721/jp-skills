@@ -710,3 +710,32 @@ test("new ready work releases a no-claim retry latch without releasing an active
     expect(client.settlementBlock()).not.toBeNull();
   } finally { client.close(); }
 });
+
+
+test("a completed item dev receives its exact pending review continuation until review or explicit block", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  const team = await f.delegate(manager, "review-continuation");
+  const architect = await f.admit(team.architect);
+  await f.admit(team.qa);
+  const dev = await f.admit(team.devs[0]!);
+  await f.coordinator.command(architect, { kind: "capture", capture: {
+    captureId: "capture-continuation", eventId: "review-continuation", rows: [{ id: "REWORK", expectedRevision: null,
+      fields: { status: "QUEUED", procedure: "code-review", request: "review original head", acceptance: "proof", blocked_on: [] } }], receipt: "captured",
+  } });
+  let index = 0;
+  for (const connection of [architect, dev]) {
+    while (await f.coordinator.command(connection, { kind: "claim" }) !== null) {
+      await f.coordinator.command(connection, { kind: "settle", result: { id: `drain-${index++}`, kind: "completed", output: {}, checkpoint: null, outgoing: [] } });
+    }
+  }
+  await f.coordinator.command(architect, { kind: "item", request: { action: "assign", requestId: "assign-rework", itemId: "REWORK", expectedRevision: 1, employeeId: team.devs[0]!, evidence: "Implement rework" } });
+  await f.coordinator.command(dev, { kind: "claim" });
+  await f.coordinator.command(dev, { kind: "settle", result: { id: "rework-code-result", kind: "completed", output: { commit: "new-head" }, checkpoint: null, outgoing: [] } });
+  const pending = await f.coordinator.poll(dev);
+  expect(pending.waitReason).toContain("startup_item review");
+  expect(pending.projection).toContain('"resultId":"rework-code-result"');
+  expect(pending.projection).toContain('"revision":2');
+  await f.coordinator.command(manager, { kind: "item", request: { action: "decide", requestId: "block-rework", itemId: "REWORK", expectedRevision: 2, status: "BLOCKED", evidence: "Explicit scope decision" } });
+  expect((await f.coordinator.poll(dev)).waitReason).toBeNull();
+});

@@ -46,6 +46,10 @@ Every `startup_item` action requires `{requestId,itemId,expectedRevision,action}
 | decide | status, evidence | Manager/own architect BLOCKED/NEEDS_DECISION; explicit resolved resume to QUEUED |
 | decide | status MERGED/DONE/REJECTED, evidence | Manager only; actual landing/acceptance required for MERGED/DONE from READY_TO_LAND |
 
+Assignment `evidence` is the current attempt's executable directive, including file-bounded REDO scope and acceptance. The delivered `item-execution` cue carries it verbatim as `directive`, names `reportTo`, and retains original intake under `snapshot`. Execute the current directive within explicit user restrictions; an old review-only snapshot does not erase authorized implementation rework.
+
+Settlement of a current item dev assignment automatically saves one linked `item-result` report TO its owning architect, including result ID, outcome and output. Receipt replay reuses that report. Completed settlement still requires the dev's `startup_item review` transition; the coordinator projects the exact saved result ID/current revision and retains a pending-review continuation until submission or an explicit item block. This report alone grants no QA, gate or landing approval.
+
 Every accepted action increments revision, including QA assignment/proof. A normal flow is revisions 1 captured QUEUED, 2 assigned, 3 review, 4 QA assignment, 5 QA proof, 6 gate, 7 manager completion. `startup_finish_team` requires captured work and no unresolved owned item, mail, claim, assignment or grant.
 
 QA APPROVE supplies proof; only the owning architect approves its gate and only manager approves final landing. Other architects, workers, PA and helpers cannot authorize merge progression. Herdr lifecycle state never settles claims or approves work. New delegation/landing requires source-admitted mandatory PA supervision.

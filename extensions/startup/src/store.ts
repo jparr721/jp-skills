@@ -276,6 +276,8 @@ export function openStore(args: {
     CREATE INDEX IF NOT EXISTS records_message_recipient_status ON records(json_extract(payload,'$.recipient'),json_extract(payload,'$.status')) WHERE kind='message';
     CREATE INDEX IF NOT EXISTS records_claim_employee_status ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.status')) WHERE kind='claim';
     CREATE INDEX IF NOT EXISTS records_grant_employee_state ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.state')) WHERE kind='grant';
+    CREATE INDEX IF NOT EXISTS records_item_execution_employee_generation ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.generation')) WHERE kind='itemExecution';
+    CREATE INDEX IF NOT EXISTS records_result_claim ON records(json_extract(payload,'$.claimId')) WHERE kind='result';
     CREATE INDEX IF NOT EXISTS records_runtime_employee_generation ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.generation')) WHERE kind='runtimeBinding';
   `);
   const token: string = randomUUID();
@@ -305,7 +307,23 @@ export function openStore(args: {
   }
   function employeeView(employeeId: string) {
     const current = employee(employeeId);
+    let itemReview: { itemId: string; resultId: string; revision: number } | null = null;
+    if (current.role === "dev") {
+      for (const execution of selected("SELECT payload FROM records WHERE kind='itemExecution' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.generation')=?", [current.id, current.generation], itemExecutionSchema)) {
+        if (execution.reviewResultId !== null) continue;
+        const ownership = read("queueOwner", execution.itemId, queueOwnerSchema);
+        const assigned = read("itemTransition", execution.attemptId, itemTransitionSchema);
+        if (ownership === null || assigned?.revision !== ownership.revision || assigned.status !== "EXECUTING") continue;
+        const claim = selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.status')='settled' AND json_extract(payload,'$.messageId')=?", [current.id, execution.messageId], claimSchema)[0];
+        if (claim === undefined || claim.generation !== current.generation) continue;
+        const result = selected("SELECT payload FROM records WHERE kind='result' AND json_extract(payload,'$.claimId')=?", [claim.id], resultRecordSchema)[0];
+        if (result?.result.kind !== "completed") continue;
+        itemReview = { itemId: execution.itemId, resultId: result.result.id, revision: ownership.revision };
+        break;
+      }
+    }
     return {
+      itemReview,
       team: current.assignment === null ? null : team(current.assignment),
       messages: selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.recipient')=? AND json_extract(payload,'$.status')='pending' ORDER BY rowid", [current.id], messageSchema),
       claims: selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.status') IN ('active','reconciliation') ORDER BY rowid", [current.id], claimSchema),
@@ -1721,6 +1739,9 @@ export function openStore(args: {
               eventId: ownership.eventId,
               teamId: current.id,
               revision: ownership.revision + 1,
+              directive: request.evidence,
+              reportTo: current.architect,
+              instruction: "Execute directive as the current attempt scope; snapshot preserves original intake. Implement requested rework even when the original procedure was review-only. Preserve explicit user restrictions. After completed settlement, submit startup_item review with the saved resultId and current revision. Settlement reports the result to reportTo automatically.",
               snapshot: row,
             });
             execution = itemExecutionSchema.parse({
@@ -2109,7 +2130,29 @@ export function openStore(args: {
         );
         if (incoming === null)
           throw new StoreRecoveryError("Claim lost its incoming message");
-        const messages: readonly Message[] = result.outgoing.map(
+        const execution: ItemExecution | null = current.role === "dev" && incoming.kind === "assignment"
+          ? read("itemExecution", incoming.correlation, itemExecutionSchema)
+          : null;
+        const handoff: readonly Cue[] = execution !== null && execution.messageId === incoming.id && execution.employeeId === current.id && execution.generation === current.generation
+          ? [{
+              id: `item-result-${incoming.id}`,
+              recipient: team(execution.teamId).architect,
+              kind: "report",
+              correlation: execution.itemId,
+              payload: {
+                kind: "item-result",
+                itemId: execution.itemId,
+                attemptId: execution.attemptId,
+                resultId: result.id,
+                outcome: result.kind,
+                output: result.output,
+                nextAction: result.kind === "completed"
+                  ? "Assigned dev submits startup_item review with this resultId and current revision; architect coordinates QA after REVIEW."
+                  : "Architect handles the saved question or uncertainty through Paused execution before another attempt.",
+              },
+            }]
+          : [];
+        const messages: readonly Message[] = [...result.outgoing, ...handoff].map(
           (cue): Message => saveCue(current, cue, current.assignment),
         );
         const settlement: Settlement = { claimId: claim.id, result, messages };

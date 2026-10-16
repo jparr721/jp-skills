@@ -18,7 +18,7 @@ import {
   type StartupAdapter,
 } from "../src/omp-adapter";
 import { z } from "zod";
-import type { Employee } from "../src/contracts";
+import type { Employee, Result } from "../src/contracts";
 import type { ItemAction } from "../src/items";
 const directories: string[] = [];
 function sources(): string {
@@ -2368,6 +2368,48 @@ test("item assignment and role-gated canonical completion preserve revision and 
     unknown: { retained: true },
     receipts: ["legacy"],
   });
+});
+
+test.each([
+  "Fix apps/scan-service/package.json and reject zero verified tasks; implement and test, not review-only.",
+  { procedure: "pipeline", request: "Implement the two-file REDO", acceptance: ["changed commit", "zero-task regression"] },
+])("item execution delivers current rework directive and architect destination: %j", async (directive) => {
+  const f = fixture();
+  const { team, contexts } = await capturedTeam(f, "rework-scope", ["rework-item"]);
+  await f.adapter.item(contexts.get(team.architect)!, {
+    action: "assign", requestId: "rework-assign", itemId: "rework-item",
+    expectedRevision: 1, employeeId: team.devs[0], evidence: directive,
+  });
+  const claim = f.adapter.claim(contexts.get(team.devs[0]!)!)!;
+  expect(claim.message.payload).toMatchObject({
+    kind: "item-execution", directive, reportTo: team.architect,
+  });
+  expect(claim.message.payload).toHaveProperty("snapshot.request", "Work rework-item");
+});
+
+const itemResultKinds: Result["kind"][] = ["completed", "question", "uncertain"];
+test.each(itemResultKinds)("item %s settlement durably reports the exact result to its architect once", async (kind) => {
+  const f = fixture();
+  const { team, contexts } = await capturedTeam(f, "result-handoff", ["handoff-item"]);
+  const dev = contexts.get(team.devs[0]!)!;
+  await f.adapter.item(contexts.get(team.architect)!, {
+    action: "assign", requestId: "handoff-assign", itemId: "handoff-item",
+    expectedRevision: 1, employeeId: team.devs[0], evidence: "Implement bounded rework",
+  });
+  const claim = f.adapter.claim(dev)!;
+  const request = {
+    employee: f.adapter.caller(dev),
+    result: { id: "handoff-result", kind, output: { commit: "fixed-head", proof: "regression" }, checkpoint: {}, outgoing: [] },
+  };
+  const settled = f.adapter.store.settleClaim(request);
+  expect(settled.messages).toHaveLength(1);
+  expect(settled.messages[0]).toMatchObject({
+    id: `item-result-${claim.message.id}`, recipient: team.architect, kind: "report", correlation: "handoff-item",
+    payload: { kind: "item-result", itemId: "handoff-item", resultId: "handoff-result", outcome: kind, output: request.result.output },
+  });
+  expect(f.adapter.store.settleClaim(request)).toEqual(settled);
+  expect(f.adapter.store.snapshot().messages.filter((message) => message.id === settled.messages[0]!.id)).toHaveLength(1);
+  expect(f.adapter.store.snapshot().itemExecutions.find((execution) => execution.itemId === "handoff-item")?.reviewResultId).toBeNull();
 });
 
 test("item review and landing continuation stay guarded after reports settle", async () => {
