@@ -2,6 +2,19 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.7] - 2026-10-15
+
+### Fixed
+
+- Native startup_settle accepts result only. The authenticated store selects the employee's current claim atomically; agents no longer copy claim UUIDs. Exact saved-result replay runs before current-claim selection, preserving a later active claim after response loss or retries.
+- Keep existing explicit settlement wire requests compatible, including claimId="current" for running legacy clients. Incorrect explicit IDs are rejected rather than silently retargeted. Canonical role/loop hashes remain unchanged for live crews.
+- Distinguish missing claims, foreign ownership, stale generations, reconciliation, already-settled claims, ambiguous claims and result-ID conflicts. HTTP errors include machine-readable recovery code, nonretryable status and corrective action; a deduplicated durable alert goes TO manager.
+- Suppress repeated deterministic settlement failures locally, including retries that merely regenerate a result ID. Duplicate native attempts abort and park instead of looping through stop hooks or cue wakeups. Polling continues; corrected requests and authoritative claim-state recovery remain possible. Historical receipt replay cannot release another claim's guard, while genuine result-ID collisions can be corrected.
+
+### Verification
+
+- 308 tests, 1525 assertions, TypeScript checking, six driver tests and eight installed-OMP guard checks passed. Regression tests reproduce the mistyped-ID retry, result replay after a new claim, ownership/generation/reconciliation failures, duplicate native abort, continued polling and corrected recovery.
+
 ## [7.0.6] - 2026-10-15
 
 ### Fixed
