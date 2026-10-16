@@ -47,6 +47,8 @@ type Poll = Readonly<{ toolBlockReason: string | null; projection: string; pendi
 type SupervisionFailure = Readonly<{ component: "herdr" | "observation" | "queue"; employeeId: string | null; error: string }>;
 type CoordinatorHealth = Readonly<{
   status: "starting" | "running" | "degraded";
+  readyForAdmission: boolean;
+  manager: Readonly<{ connected: boolean; lastPoll: number | null }>;
   supervision: Readonly<{ lastStartedAt: number | null; lastCompletedAt: number | null; lastSuccessAt: number | null; errors: readonly SupervisionFailure[] }>;
 }>;
 export type Coordinator = Readonly<{
@@ -121,6 +123,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const session = connections.get(connection);
     if (!session || session.epoch !== store.ownerEpoch) throw new StoreAuthorityError("Employee connection is not admitted in this coordinator epoch");
     const current = employee(session.employeeId);
+    if (current.employment !== "hired") throw new StoreAuthorityError("Employee is retired; its native root must stop and cannot resume technical work");
     const bound = runtime(current.id);
     if (bound.state !== "ready" || bound.generation !== session.generation || current.generation !== session.generation || current.nativeHandle === null)
       throw new StoreFenceError("Employee connection generation is stale or not ready");
@@ -214,6 +217,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const observations = await herdr.observe();
     const root = observations.find((o) => o.paneId === config.managerPaneId && o.nativeSession === config.managerFile);
     if (!root) throw new StoreAuthorityError("Manager pane does not report the actual native manager transcript");
+    store.compactRuntimeObservations();
     const currentManager = prepare("manager", config.managerCredential);
     if (currentManager.state === "prepared") store.updateRuntime({ ...currentManager, paneId: root.paneId, tabId: root.tabId, terminalId: root.terminalId, nativeSession: root.nativeSession, state: "starting" });
     const paProfile = loadProfile({ skillsRoot: config.skillsRoot, role: "pa", employeeId: "pending", generation: 1 });
@@ -532,7 +536,13 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   }
   return {
     start, admit, poll, launchFailure,
-    health: () => ({ status: !store.runtimeBindings().some((r) => r.employeeId === "manager" && r.paneId !== null && r.nativeSession !== null) ? "starting" : supervision.errors.length > 0 || now() - (supervision.lastCompletedAt ?? openedAt) > policy.connectionDeadlineMs ? "degraded" : "running", supervision }),
+    health: () => {
+      const manager = store.employeeRuntime("manager", employee("manager").generation);
+      const initialized = manager?.paneId !== null && manager?.nativeSession !== null && manager !== null;
+      const readyForAdmission = initialized && supervision.errors.length === 0 && now() - (supervision.lastCompletedAt ?? openedAt) <= policy.connectionDeadlineMs;
+      const connected = manager !== null && manager.lastPoll > 0 && now() - manager.lastPoll <= policy.connectionDeadlineMs;
+      return { status: !initialized ? "starting" : !readyForAdmission || (manager !== null && manager.lastPoll > 0 && !connected) ? "degraded" : "running", readyForAdmission, manager: { connected, lastPoll: manager?.lastPoll ?? null }, supervision };
+    },
     command(connection, command) {
       const kind = commandSchema.parse(command).kind;
       if (["claim", "begin_turn", "end_turn", "staff", "settle", "send", "item", "capture", "input", "image", "receive"].includes(kind)) return execute(connection, command);

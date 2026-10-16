@@ -224,7 +224,9 @@ test("health reports stale supervision even when the native manager still exists
   f.advance(2500);
   expect(f.coordinator.health().status).toBe("degraded");
   await f.coordinator.tick();
-  expect(f.coordinator.health()).toMatchObject({ status: "running", supervision: { lastCompletedAt: 2500 } });
+  expect(f.coordinator.health()).toMatchObject({ status: "degraded", readyForAdmission: true, manager: { connected: false }, supervision: { lastCompletedAt: 2500 } });
+  await f.coordinator.poll((await f.ready()).manager);
+  expect(f.coordinator.health()).toMatchObject({ status: "running", manager: { connected: true } });
 });
 
 test("unclassified human input receives its own stale alert despite other manager activity", async () => {

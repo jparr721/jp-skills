@@ -55,6 +55,8 @@ async function health(socketPath: string): Promise<void> {
       if (!response.ok) {
         const blocked = z.object({ error: z.string() }).safeParse(JSON.parse(body));
         if (blocked.success) throw new RuntimeStartupError(`Coordinator startup blocked: ${blocked.data.error}`);
+        const readiness = z.object({ status: z.literal("degraded"), readyForAdmission: z.literal(true) }).safeParse(JSON.parse(body));
+        if (response.status === 503 && readiness.success) return;
         throw new RuntimeLaunchError(`Coordinator health HTTP ${response.status}: ${body}`);
       }
       z.object({ status: z.literal("running") }).parse(JSON.parse(body));

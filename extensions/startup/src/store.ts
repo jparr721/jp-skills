@@ -774,6 +774,21 @@ export function openStore(args: {
     throw error;
   }
 
+  function compactObservations(pending: readonly Message[]): Readonly<{ acknowledged: number }> {
+    const latest = new Set<string>();
+    let acknowledged: number = 0;
+    for (const message of pending) {
+      const payload = z.object({ employeeId: idSchema, generation: timeSchema, sequence: timeSchema }).safeParse(message.payload);
+      if (!payload.success) continue;
+      const key = encode([message.correlation, payload.data.employeeId, payload.data.generation]);
+      if (!latest.has(key)) { latest.add(key); continue; }
+      put("message", message.id, { ...message, status: "acknowledged" });
+      put("observationCompaction", message.id, { reason: "Superseded pending lifecycle observation; latest observation retained", acknowledgedAt: now() });
+      acknowledged += 1;
+    }
+    return { acknowledged };
+  }
+
   return {
     ownerEpoch: epoch,
     getEmployee: employee,
@@ -2599,8 +2614,10 @@ export function openStore(args: {
         const retired: readonly Employee[] = ids.map((id): Employee => {
           const current = employee(id);
           if (
-            current.role !== "devops" ||
+            (current.role !== "devops" && !all("team", teamSchema).some((saved) => saved.state === "finished" && members(saved).includes(id) && saved.generations[id] === current.generation)) ||
+            current.role === "manager" || current.role === "pa" ||
             current.assignment !== null ||
+            all("runtimeBinding", runtimeBindingSchema).some((runtime) => runtime.employeeId === id && runtime.generation === current.generation && runtime.turnActive) ||
             all("claim", claimSchema).some(
               (claim): boolean =>
                 claim.employeeId === id && claim.status !== "settled",
@@ -2625,7 +2642,7 @@ export function openStore(args: {
             )
           )
             throw new StoreConflictError(
-              `DevOps employee ${id} is busy or has unresolved mail, duties, claims or grants`,
+              `Employee ${id} must be idle, detached from a finished crew (or DevOps), and free of unresolved mail, duties, claims and grants; manager and PA cannot retire`,
             );
           return { ...current, employment: "retired" };
         });
@@ -2749,7 +2766,7 @@ export function openStore(args: {
           throw new StoreConflictError("Lifecycle sequence conflicts with its saved state");
         const observedAt = timeSchema.parse(input.observedAt);
         if (observedAt < runtime.lastSeen) throw new StoreFenceError("Observation time regressed");
-        if (runtime.stateSequence !== sequence && input.state !== "working") {
+        if (runtime.stateSequence !== sequence && input.state !== "working" && runtime.observedState !== input.state && !seenCompletion) {
           const id = `runtime-${runtime.launchId}-${sequence}-${input.state}`;
           const prior = read("message", id, messageSchema);
           if (prior !== null) {
@@ -2761,8 +2778,15 @@ export function openStore(args: {
             recipient: "manager", kind: "alert", correlation: runtime.launchId,
             payload: { kind: "runtime-observation", employeeId: runtime.employeeId, generation: runtime.generation, state: input.state, observedAt, previousSequence: runtime.stateSequence, sequence },
           }, null);
+          compactObservations(selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.recipient')='manager' AND json_extract(payload,'$.status')='pending' AND json_extract(payload,'$.correlation')=? AND json_extract(payload,'$.payload.kind')='runtime-observation' ORDER BY json_extract(payload,'$.sequence') DESC", [runtime.launchId], messageSchema));
         }
         put("runtimeBinding", key, { ...runtime, stateSequence: sequence, observedState: input.state, lastSeen: observedAt });
+      });
+    },
+    compactRuntimeObservations(): Readonly<{ acknowledged: number }> {
+      return tx(() => {
+        const pending = selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.recipient')='manager' AND json_extract(payload,'$.status')='pending' AND json_extract(payload,'$.payload.kind')='runtime-observation' ORDER BY json_extract(payload,'$.sequence') DESC", [], messageSchema);
+        return compactObservations(pending);
       });
     },
     runtimeAlert(input: Readonly<{ id: string; correlation: string; payload: Json }>): Message {

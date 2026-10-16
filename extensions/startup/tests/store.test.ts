@@ -410,6 +410,29 @@ test("settlement is atomic and idempotent; questions acknowledge mail but retain
   f.store.close();
 });
 
+test("finished crew staff can retire with history preserved while active crews and supervisors remain protected", (): void => {
+  const f = fixture();
+  const t = active(f, "retire-finished", []);
+  const ids = [t.architectBinding.employeeId, t.qaBinding.employeeId, t.devBinding.employeeId];
+  expect(() => f.store.retireEmployees({ manager: f.store.managerBinding, employeeIds: ids, evidence: "idle panes" })).toThrow();
+  f.store.captureIntake({ architect: t.architectBinding, capture: { captureId: "retire-capture", eventId: "retire-finished", rows: [], receipt: "All intake dispositioned" } });
+  for (const binding of [t.architectBinding, t.qaBinding, t.devBinding]) {
+    const claimed = f.store.claimNext({ employee: binding });
+    if (!claimed) throw new Error("Missing assignment");
+    f.store.settleClaim({ employee: binding, claimId: claimed.claim.id, result: completed(`complete-${binding.employeeId}`) });
+  }
+  f.store.finishTeam({ manager: f.store.managerBinding, teamId: t.team.id, evidence: "Canonical work and mail complete" });
+  const before = f.store.snapshot();
+  expect(f.store.retireEmployees({ manager: f.store.managerBinding, employeeIds: ids, evidence: "Finished crew cleanup" }).map((e) => e.employment)).toEqual(["retired", "retired", "retired"]);
+  const after = f.store.snapshot();
+  expect(after.claims).toEqual(before.claims);
+  expect(after.results).toEqual(before.results);
+  expect(after.messages).toEqual(before.messages);
+  expect(after.teams).toEqual(before.teams);
+  expect(() => f.store.retireEmployees({ manager: f.store.managerBinding, employeeIds: ["manager"], evidence: "cleanup" })).toThrow();
+  f.store.close();
+});
+
 test("uncertain mutations require explicit reconciliation and never requeue automatically", (): void => {
   const f = fixture();
   const id = first(hire(f, "devops", "hire", 1));

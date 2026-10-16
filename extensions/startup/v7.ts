@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
@@ -10,7 +10,7 @@ import { encode } from "./src/contracts";
 import { attach, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment } from "./src/employee-entry";
 import type { NativeContext } from "./src/omp-adapter";
 import { loadProfile, verifyProfile } from "./src/profiles";
-import { launchRuntimeHost, type RuntimeHostConfig } from "./src/v7-launch";
+import { launchRuntimeHost, readPrivateJson, runtimeHostConfigSchema, type RuntimeHostConfig } from "./src/v7-launch";
 
 export { installLaunchedEmployee } from "./src/employee-entry";
 type EntryConfig = Readonly<{
@@ -36,6 +36,8 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   let attempted: boolean = false;
   let failure: string | null = null;
   let failureTurnPending: boolean = false;
+  let retryTimer: ReturnType<typeof setInterval> | null = null;
+  let stopped: boolean = false;
   let commandReceipt: Readonly<{ args: string; inputId: string; work: boolean }> | null = null;
   host.on("tool_call", (_event, ctx) => {
     if (!attempted || ctx.agent.kind !== "main") return;
@@ -62,13 +64,20 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       failureTurnPending = false;
       return;
     }
-    const executionLimit: number = next.executionLimit ?? (z.number().int().positive().safe().parse(input.nativeLimit(ctx)) + 2);
+    const savedPath: string = join(next.home, "startup", next.name, "runtime-config.json");
+    const saved: RuntimeHostConfig | null = existsSync(savedPath) ? runtimeHostConfigSchema.parse(readPrivateJson(savedPath)) : null;
+    if (saved !== null && (saved.name !== next.name || saved.home !== next.home || saved.stateDirectory !== join(next.home, "startup", next.name) ||
+      saved.boundRoot !== next.boundRoot || saved.skillsRoot !== next.skillsRoot || saved.managerSession !== ctx.sessionManager.getSessionId() ||
+      realpathSync(saved.managerFile) !== realpathSync(nativeFile) || saved.managerPaneId !== location.paneId || saved.profile !== location.profile ||
+      saved.workspaceId !== location.workspaceId || saved.herdrSession !== location.session))
+      throw new StartupBootError("Resume requires the saved manager transcript, Herdr pane, profile and Startup root. Reopen that manager session; do not create another crew or replace its state.");
+    const executionLimit: number = saved?.policy.executionLimit ?? next.executionLimit ?? (z.number().int().positive().safe().parse(input.nativeLimit(ctx)) + 2);
     if (executionLimit < 3) throw new StartupBootError("Startup V7 requires at least three root slots for manager, PA and employee work");
     const profile = loadProfile({ skillsRoot: next.skillsRoot, role: "manager", employeeId: "manager", generation: 1 });
     verifyProfile(profile);
-    writeBootGuidance(next);
+    if (saved === null) writeBootGuidance(next);
     const stateDirectory: string = join(next.home, "startup", next.name);
-    const config: RuntimeHostConfig = await input.launch({
+    const config: RuntimeHostConfig = await input.launch(saved ?? {
       name: next.name, stateDirectory, boundRoot: next.boundRoot, skillsRoot: next.skillsRoot,
       socketPath: join(stateDirectory, "runtime.sock"), profile: location.profile,
       managerSession: ctx.sessionManager.getSessionId(), managerFile: nativeFile, managerPaneId: location.paneId,
@@ -77,23 +86,52 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       herdrBinary: input.environment.HERDR_BIN_PATH ?? "herdr", herdrIntegration: integrationPath(input.environment), ownerGeneration: 1,
     });
     runtimeConfig = config;
-    admitted = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, skillsRoot: next.skillsRoot }, input.environment);
+    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, skillsRoot: next.skillsRoot }, input.environment);
+    if (stopped) { connected.close(); return; }
+    admitted = connected;
     selection = next;
     failure = null;
+    failureTurnPending = false;
+    if (saved !== null) host.sendMessage({ customType: "startup-manager-reconnected", content: `Startup ${next.name} manager reconnected in its saved pane; polling resumed. Existing crews, PA, claims and history are preserved. Reconcile interrupted claims before advancing work.`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
   }
   async function boot(ctx: NativeContext, command: BootCommand | null): Promise<void> {
     attempted = true;
     if (initializing !== null) await initializing;
     const operation: Promise<void> = initialize(ctx, command);
     initializing = operation;
-    try { await operation; }
+    try {
+      await operation;
+      if (retryTimer !== null) { ctx.clearTimer(retryTimer); retryTimer = null; }
+    }
     finally { if (initializing === operation) initializing = null; }
   }
-  function report(error: unknown): void {
-    failure = error instanceof Error ? error.message : String(error);
+  function report(error: unknown, ctx: NativeContext): void {
+    const reason: string = error instanceof Error ? error.message : String(error);
+    if (failure !== reason) host.sendMessage({ customType: "startup-boot-error", content: `Startup V7 boot blocked: ${reason}. Admission retries in 5 seconds; /startup-retry retries in this pane.`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+    failure = reason;
     failureTurnPending = true;
-    host.sendMessage({ customType: "startup-boot-error", content: `Startup V7 boot blocked: ${failure}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+    if (!stopped && retryTimer === null) retryTimer = ctx.setInterval(() => { void retry(ctx); }, 5000);
   }
+  async function retry(ctx: NativeContext): Promise<void> {
+    if (stopped || initializing !== null || ctx.agent.kind !== "main") return;
+    try { await boot(ctx, null); }
+    catch (error: unknown) { report(error, ctx); ctx.abort?.(); }
+  }
+  host.on("session_start", async (_event, ctx) => {
+    if (ctx.agent.kind !== "main" || stopped) return;
+    try {
+      const next = bootSelection({ cwd: ctx.cwd, home: input.home, skillsRoot: input.skillsRoot, command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
+      if (next === null || !existsSync(join(next.home, "startup", next.name, "runtime-config.json"))) return;
+      await retry(ctx);
+    } catch (error: unknown) { attempted = true; report(error, ctx); ctx.abort?.(); }
+  });
+  host.on("session_shutdown", (_event, ctx) => {
+    if (ctx.agent.kind !== "main") return;
+    stopped = true;
+    if (retryTimer !== null) { ctx.clearTimer(retryTimer); retryTimer = null; }
+    admitted?.close();
+  });
+  host.registerCommand("startup-retry", { description: "Reconnect the saved Startup manager in its existing pane.", handler: async (_args, ctx) => { await retry(ctx); } });
   host.on("input", async (event, ctx) => {
     if (ctx.agent.kind !== "main") return;
     const parsed = inputSchema.parse(event);
@@ -110,7 +148,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
         await admitted.client.request({ kind: "route", inputId, disposition: command.work === null ? "control" : "work", reason: command.work === null ? "Native Startup control command" : "Explicit native Startup work command", amendItemIds: [] });
         commandReceipt = { args, inputId, work: command.work !== null };
       } else if (admitted !== null && sameRoot(admitted, ctx)) await receive(admitted, event);
-    } catch (error: unknown) { report(error); ctx.abort?.(); return { handled: true }; }
+    } catch (error: unknown) { report(error, ctx); ctx.abort?.(); return { handled: true }; }
     return;
   });
   host.registerCommand("startup", {
@@ -126,7 +164,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
           host.sendMessage({ customType: "startup-work", content: `Saved Startup work event ${commandReceipt?.inputId}. Delegate a complete architect-led crew through startup_delegate.`, display: true }, { triggerTurn: true, deliverAs: "nextTurn" });
         else host.sendMessage({ customType: "startup-status", content: encode(await admitted.client.request({ kind: "staff" })), display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
         commandReceipt = null;
-      } catch (error: unknown) { report(error); ctx.abort?.(); }
+      } catch (error: unknown) { report(error, ctx); ctx.abort?.(); }
     },
   });
   host.on("session_stop", (_event, ctx) => {

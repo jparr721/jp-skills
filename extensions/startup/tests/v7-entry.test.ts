@@ -1,5 +1,5 @@
 import { afterEach, expect, test, mock } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync, statSync, chmodSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync, statSync, chmodSync, realpathSync } from "node:fs";
 import { tmpdir, hostname } from "node:os";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
@@ -121,6 +121,85 @@ test("manager extension loads before native action methods become available", ()
     launch: async (config) => ({ ...config, socketPath: f.socketPath }),
   })).not.toThrow();
   expect(f.commands.has("startup")).toBe(true);
+});
+
+test("ordinary manager resume automatically reconnects the exact saved root without changing launch identity", async () => {
+  const f = fixture();
+  const { config: initial } = runtimeFixture(f);
+  const config = { ...initial, socketPath: f.socketPath, boundRoot: realpathSync(f.cwd), skillsRoot: realpathSync(f.skillsRoot) };
+  mkdirSync(config.stateDirectory, { recursive: true });
+  writeFileSync(join(config.stateDirectory, "binding.json"), JSON.stringify({ name: "alpha", bound_root: f.cwd }));
+  mkdirSync(join(f.cwd, ".startup"));
+  writeFileSync(join(f.cwd, ".startup", "config.md"), "Startup alpha");
+  const path = join(config.stateDirectory, "runtime-config.json");
+  writeFileSync(path, JSON.stringify(config), { mode: 0o600 });
+  const original = readFileSync(path, "utf8");
+  const launched: RuntimeHostConfig[] = [];
+  installStartupV7(f.host, { home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => { throw new Error("Resume must reuse saved capacity"); }, environment: f.environment, launch: async (saved) => { launched.push(saved); return saved; } });
+  await f.emit("session_start", {}, f.ctx);
+  expect(launched).toEqual([config]);
+  expect(f.admissions).toHaveLength(1);
+  expect(f.admissions[0]).toMatchObject({ credential: config.managerCredential, nativeSession: f.file });
+  expect(readFileSync(path, "utf8")).toBe(original);
+  expect(f.messages.join("\n")).toContain("reconnected");
+  await f.emit("session_start", {}, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+  const staff = f.tools.get("startup_staff");
+  if (!staff) throw new Error("Missing staff tool");
+  await expect(staff.execute("staff", {}, undefined, undefined, f.ctx)).resolves.toBeDefined();
+});
+
+test("manager resume refuses a foreign root, pane or profile before using saved credentials", async () => {
+  for (const mismatch of ["session", "pane", "profile"]) {
+    const f = fixture();
+    const { config: initial } = runtimeFixture(f);
+    const config = { ...initial, socketPath: f.socketPath, boundRoot: realpathSync(f.cwd), skillsRoot: realpathSync(f.skillsRoot), ...(mismatch === "session" ? { managerSession: "another-root" } : {}), ...(mismatch === "pane" ? { managerPaneId: "other-pane" } : {}), ...(mismatch === "profile" ? { profile: "other-profile" } : {}) };
+    mkdirSync(config.stateDirectory, { recursive: true });
+    writeFileSync(join(config.stateDirectory, "binding.json"), JSON.stringify({ name: "alpha", bound_root: f.cwd }));
+    mkdirSync(join(f.cwd, ".startup"));
+    writeFileSync(join(f.cwd, ".startup", "config.md"), "Startup alpha");
+    writeFileSync(join(config.stateDirectory, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+    let launched = false;
+    installStartupV7(f.host, { home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (saved) => { launched = true; return saved; } });
+    await expect(f.emit("session_start", {}, f.ctx)).resolves.toBeUndefined();
+    expect(launched).toBe(false);
+    expect(f.admissions).toHaveLength(0);
+    expect(f.messages.join("\n")).toContain("saved manager");
+    expect(f.messages.join("\n")).not.toContain(config.managerCredential);
+    expect(await f.emit("tool_call", { toolName: "bash" }, f.ctx)).toMatchObject({ block: true });
+  }
+});
+
+test("manager resume retries a failed initial poll in the same root and stops its admission timer after recovery", async () => {
+  const f = fixture();
+  const { config: initial } = runtimeFixture(f);
+  const config = { ...initial, socketPath: f.socketPath, boundRoot: realpathSync(f.cwd), skillsRoot: realpathSync(f.skillsRoot) };
+  mkdirSync(config.stateDirectory, { recursive: true });
+  writeFileSync(join(config.stateDirectory, "binding.json"), JSON.stringify({ name: "alpha", bound_root: f.cwd }));
+  mkdirSync(join(f.cwd, ".startup"));
+  writeFileSync(join(f.cwd, ".startup", "config.md"), "Startup alpha");
+  writeFileSync(join(config.stateDirectory, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  const callbacks: (() => void)[] = [];
+  const ctx: NativeContext = { ...f.ctx, setInterval(callback, ms) { if (ms === 5000) callbacks.push(callback); return f.ctx.setInterval(callback, ms); } };
+  f.setAvailable(false);
+  installStartupV7(f.host, { home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (saved) => saved });
+  await f.emit("session_start", {}, ctx);
+  expect(f.messages.join("\n")).toContain("retries in 5 seconds");
+  expect(await f.emit("tool_call", { toolName: "bash" }, ctx)).toMatchObject({ block: true });
+  expect(callbacks).toHaveLength(1);
+  f.setAvailable(true);
+  callbacks[0]?.();
+  const deadline = Date.now() + 1000;
+  while (!f.messages.some((message) => message.includes("manager reconnected"))) {
+    if (Date.now() > deadline) throw new Error("Manager admission retry did not recover");
+    await Bun.sleep(5);
+  }
+  expect(f.admissions).toHaveLength(2);
+  expect(f.admissions[0]).toEqual(f.admissions[1]);
+  await f.emit("session_shutdown", {}, ctx);
+  callbacks[0]?.();
+  await Bun.sleep(5);
+  expect(f.admissions).toHaveLength(2);
 });
 
 test("launched root verifies source and transcript before admission, exposes dedicated tools and preserves interactive input", async () => {

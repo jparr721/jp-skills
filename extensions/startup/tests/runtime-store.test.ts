@@ -41,17 +41,50 @@ test("launch reservations are durable, replay-safe and reject another credential
   expect(reopened.runtimeBindings()).toEqual([f.launch]);
 });
 
-test("observed idle and done become durable manager messages without settling work", () => {
+test("observed idle and done share one completion episode without settling work", () => {
   const { store, launch } = fixture();
   store.prepareRuntime(launch);
   store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "idle", sequence: 1, observedAt: 110 });
   store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "idle", sequence: 1, observedAt: 111 });
   store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "done", sequence: 2, observedAt: 112 });
-  expect(store.snapshot().messages.map((m) => [m.recipient, m.kind])).toEqual([["manager", "alert"], ["manager", "alert"]]);
+  expect(store.snapshot().messages.map((m) => [m.recipient, m.kind])).toEqual([["manager", "alert"]]);
   expect(store.snapshot().results).toHaveLength(0);
   expect(store.runtimeBindings()[0]?.lastProgress).toBe(100);
   expect(store.runtimeBindings()[0]?.lastSeen).toBe(112);
   expect(() => store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "wrong", state: "done", sequence: 3, observedAt: 113 })).toThrow();
+});
+
+test("increasing Herdr sequences cannot flood an unchanged completion episode", () => {
+  const { store, launch } = fixture();
+  store.prepareRuntime(launch);
+  for (let sequence = 1; sequence <= 100; sequence += 1) {
+    store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: sequence % 2 === 0 ? "idle" : "done", sequence, observedAt: 110 + sequence });
+  }
+  expect(store.snapshot().messages).toHaveLength(1);
+  store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "working", sequence: 101, observedAt: 211 });
+  store.observeRuntime({ employeeId: "manager", generation: 1, nativeSession: "manager-session", state: "done", sequence: 102, observedAt: 212 });
+  expect(store.snapshot().messages).toHaveLength(2);
+  expect(store.snapshot().messages.filter((message) => message.status === "pending")).toHaveLength(1);
+  expect(store.runtimeBindings()[0]).toMatchObject({ lastSeen: 212, stateSequence: 102, lastProgress: 100 });
+});
+
+test("legacy observation compaction preserves claimed mail, task reports, latest observations and audit", () => {
+  const { store, launch } = fixture();
+  store.prepareRuntime(launch);
+  store.bindEmployee({ manager: store.managerBinding, binding: { ...store.managerBinding, assignment: null, source: launch.source } });
+  for (let sequence = 1; sequence <= 4; sequence += 1) {
+    store.runtimeAlert({ id: `legacy-${sequence}`, correlation: launch.launchId, payload: { kind: "runtime-observation", employeeId: "manager", generation: 1, state: "done", sequence } });
+  }
+  const claimed = store.claimNext({ employee: store.managerBinding });
+  expect(claimed?.message.id).toBe("legacy-1");
+  store.runtimeAlert({ id: "task-report", correlation: "work", payload: { kind: "stale-item", itemId: "important" } });
+  const result = store.compactRuntimeObservations();
+  expect(result).toEqual({ acknowledged: 2 });
+  const snapshot = store.snapshot();
+  expect(snapshot.messages.map((m) => [m.id, m.status])).toEqual([["legacy-1", "claimed"], ["legacy-2", "acknowledged"], ["legacy-3", "acknowledged"], ["legacy-4", "pending"], ["task-report", "pending"]]);
+  expect(snapshot.claims).toHaveLength(1);
+  expect(snapshot.results).toHaveLength(0);
+  expect(store.compactRuntimeObservations()).toEqual({ acknowledged: 0 });
 });
 
 test("runtime alerts deduplicate durably and stale session observations cannot overwrite newer states", () => {
