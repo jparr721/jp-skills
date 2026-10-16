@@ -2,6 +2,21 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.6] - 2026-10-15
+
+### Fixed
+
+- Poll only an employee's pending messages, unresolved claims and reconciliation grants through SQLite expression indexes. Select its runtime directly; manager/PA polling and supervision no longer parse completed global history. Existing records and audit history remain intact; indexes are built on upgrade.
+- Root capacity admission/release bypass semantic history comparison. A release retry storm after reconnection can no longer monopolize the coordinator with full-history encoding.
+- Connection errors identify the Unix socket, endpoint, underlying error/cause codes, elapsed time and deadline, with credential redaction and structured logs. Changing elapsed time does not create duplicate outage notices.
+- Emit one visible recovery notice after authenticated polling resumes. Wake an idle root with outstanding work so a recovered connection does not leave its claim parked; clean idle recovery stays quiet.
+- Native guard proof now joins its fixture helper before closing the bridge, preventing an asynchronous completion from racing test teardown.
+
+### Verification
+
+- 290 tests, 1455 assertions, TypeScript checking, six driver tests and eight installed-OMP guard checks passed.
+- Aspen sustained load passed for ten minutes: 11,984 health requests, all HTTP 200, p99 117.6ms, maximum 953.41ms, average coordinator CPU 23.95% and ten additional settled PA checks. Native transport recovery produced one detailed error and one restoration notice with unchanged panes, transcripts and process identities. Evidence is recorded in the Startup V7 acceptance report. Crew processes, identities, transcripts, launch files and queue contents are preserved during the coordinator update; interrupted claims remain available for explicit reconciliation.
+
 ## [7.0.5] - 2026-10-15
 
 ### Fixed
