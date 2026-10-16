@@ -2,6 +2,19 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.15] - 2026-10-16
+
+### Fixed
+
+- Item execution delivers the current assignment directive and owning architect destination alongside the original intake snapshot. Authorized implementation rework is no longer lost behind an earlier review-only procedure.
+- Dev item settlement atomically saves a linked result report to its architect, including completed, question and uncertain outcomes. Identical settlement replay reuses the report.
+- Completed dev assignments retain an indexed, own-item review continuation with the exact result ID and current revision. Explicit blocks clear it; QA, architecture and landing gates remain explicit.
+
+### Verification
+
+- Regressions reproduce dropped string/object directives, missing result handoffs and lost review continuation before the fixes. 333 tests, 1686 assertions, TypeScript checking and twelve installed-OMP offline guard checks pass.
+- Coordinator/store update requires a coordinator restart. Preserve identities/history and reconcile interrupted claims explicitly; no claim or uncertain operation is replayed automatically.
+
 ## [7.0.14] - 2026-10-16
 
 ### Fixed
