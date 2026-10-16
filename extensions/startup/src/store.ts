@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -26,6 +26,18 @@ import {
   encode,
   grantSchema,
   hireSchema,
+  HOST_LINK_CAP,
+  HOST_PAGE_MAX,
+  HOST_PREVIEW_CHARS,
+  hostAdmitReceiptSchema,
+  hostAdmitRequestSchema,
+  hostCancelReceiptSchema,
+  hostCancelRequestSchema,
+  hostClaimSlotSchema,
+  hostImageSchema,
+  hostQueuePageSchema,
+  hostModeSchema,
+  hostReceiptSchema,
   idSchema,
   intakeSchema,
   jsonSchema,
@@ -54,6 +66,10 @@ import {
   type Employee,
   type Grant,
   type Hire,
+  type HostAdmitRequest,
+  type HostCancelRequest,
+  type HostReceipt,
+  type HostStatusQuery,
   type Intake,
   type Json,
   type Message,
@@ -113,15 +129,37 @@ const teamRequirementSchema = z
     developers: z.number().int().positive().safe(),
   })
   .readonly();
-const receivedInputSchema = z
-  .strictObject({
-    id: idSchema,
-    receivedAt: timeSchema,
-    source: z.enum(["interactive", "rpc"]),
-    raw: z.strictObject({ text: z.string(), images: z.array(jsonSchema) }),
-    disposition: inputDispositionSchema.nullable(),
-  })
-  .readonly();
+const nativeReceivedInputSchema = z.strictObject({
+  kind: z.literal("native"),
+  id: idSchema,
+  receivedAt: timeSchema,
+  source: z.enum(["interactive", "rpc"]),
+  raw: z.strictObject({ text: z.string(), images: z.array(jsonSchema) }),
+  disposition: inputDispositionSchema.nullable(),
+}).readonly();
+const hostReceivedInputSchema = z.strictObject({
+  kind: z.literal("host"),
+  id: idSchema,
+  receivedAt: timeSchema,
+  source: z.literal("host"),
+  origin: z.string().min(1).max(512),
+  mode: hostModeSchema,
+  raw: z.strictObject({ text: z.string(), images: z.array(hostImageSchema) }),
+  disposition: inputDispositionSchema.nullable(),
+  hold: z.strictObject({ kind: z.literal("cancelled"), intentId: idSchema, at: timeSchema }).nullable(),
+}).readonly();
+const receivedInputSchema = z.preprocess((value: unknown): unknown => {
+  if (value === null || typeof value !== "object" || Array.isArray(value) || Object.hasOwn(value, "kind")) return value;
+  return { ...value, kind: "native" };
+}, z.discriminatedUnion("kind", [nativeReceivedInputSchema, hostReceivedInputSchema]));
+const hostHoldSchema = z.strictObject({ targetId: idSchema, intentId: idSchema, at: timeSchema }).readonly();
+const hostCancelFinalizeSchema = z.strictObject({
+  itemId: idSchema,
+  eventId: idSchema,
+  teamId: idSchema,
+  revision: timeSchema,
+}).readonly();
+const openInputSql = "json_extract(payload,'$.disposition') IS NULL AND NOT EXISTS (SELECT 1 FROM records AS host_hold WHERE host_hold.kind='hostHold' AND host_hold.id=records.id)";
 export type ReceivedInput = z.infer<typeof receivedInputSchema>;
 const resultRecordSchema = z
   .strictObject({
@@ -145,6 +183,7 @@ const writeIntentSchema = z
     state: z.enum(["pending", "complete"]),
     capture: captureRecordSchema.nullable(),
     item: itemTransitionSchema.optional(),
+    hostCancel: hostCancelFinalizeSchema.optional(),
   })
   .readonly();
 const occurrenceSchema = z
@@ -599,6 +638,10 @@ export function openStore(args: {
       );
     });
   }
+  function assertHostOpen(id: string): void {
+    if (read("hostHold", id, hostHoldSchema) !== null)
+      throw new StoreConflictError(`Host cancelled ${id} before it became item work`);
+  }
   function assertReplay(saved: unknown, input: unknown, id: string): void {
     if (!sameDocument(saved, input))
       throw new StoreConflictError(
@@ -802,6 +845,17 @@ export function openStore(args: {
       saveCue(draft.sender, draft.cue, draft.teamId);
     put("itemTransition", receipt.request.requestId, receipt);
   }
+  function finalizeHostCancel(cancel: z.infer<typeof hostCancelFinalizeSchema>): void {
+    const saved = hostCancelFinalizeSchema.parse(cancel);
+    const ownership = read("queueOwner", saved.itemId, queueOwnerSchema);
+    if (ownership === null || ownership.eventId !== saved.eventId) throw new StoreRecoveryError("Cancelled item lost its queue owner");
+    if (ownership.revision > saved.revision) throw new StoreFenceError("Cancelled item revision advanced past the host receipt");
+    put("queueOwner", saved.itemId, { id: saved.itemId, eventId: saved.eventId, revision: saved.revision });
+    observeItemProgress({ itemId: saved.itemId, revision: saved.revision, status: "CANCELLED", observedAt: now() });
+    const current = team(saved.teamId);
+    if (!current.items.some((item) => item.id === saved.itemId)) throw new StoreRecoveryError("Cancelled item is not on its team");
+    put("team", current.id, { ...current, items: current.items.map((item) => item.id === saved.itemId ? { id: item.id, revision: saved.revision } : item) });
+  }
   function applyIntent(id: string): void {
     tx((): void => {
       const intent = read("intent", id, writeIntentSchema);
@@ -833,6 +887,7 @@ export function openStore(args: {
         );
       if (intent.capture !== null) finalizeCapture(intent.capture);
       if (intent.item !== undefined) finalizeItem(intent.item);
+      if (intent.hostCancel !== undefined) finalizeHostCancel(intent.hostCancel);
       if (intent.file === "resources.json")
         put(
           "resources",
@@ -883,6 +938,274 @@ export function openStore(args: {
     return { acknowledged };
   }
 
+  function countRecords(sql: string): number {
+    return z.strictObject({ n: z.number().int().nonnegative() }).parse(db.query(sql).get()).n;
+  }
+  function latestRuntime(employeeId: string, generation: number): RuntimeBinding | null {
+    return selected("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.generation')>=? ORDER BY json_extract(payload,'$.generation') DESC LIMIT 1", [employeeId, generation], runtimeBindingSchema)[0] ?? null;
+  }
+  function pageRows<T extends { readonly id: string }>(rows: readonly T[], cursor: string | undefined, limit: number): { total: number; nextCursor: string | null; rows: T[] } {
+    const found = cursor === undefined ? -1 : rows.findIndex((row) => row.id === cursor);
+    if (cursor !== undefined && found < 0) throw new StoreAuthorityError(`Unknown status cursor ${cursor}`);
+    const start = cursor === undefined ? 0 : found + 1;
+    const slice = rows.slice(start, start + limit);
+    const following = rows[start + limit];
+    return { total: rows.length, nextCursor: following === undefined ? null : following.id, rows: [...slice] };
+  }
+  function stringList(value: unknown): readonly string[] {
+    const parsed = z.array(z.string()).safeParse(value);
+    return parsed.success ? parsed.data : [];
+  }
+  function dutyFacts(): { count: number; unreadable: boolean } {
+    const rows = z.array(z.strictObject({ payload: z.string() })).parse(db.query("SELECT payload FROM records WHERE kind='duty'").all());
+    let count = 0;
+    let unreadable = false;
+    for (const row of rows) {
+      try {
+        if (dutySchema.safeParse(JSON.parse(row.payload)).success) count += 1;
+        else unreadable = true;
+      } catch { unreadable = true; }
+    }
+    return { count, unreadable };
+  }
+  function pendingQueueIntents(): readonly { id: string }[] {
+    return z.array(z.strictObject({ id: z.string(), payload: z.string() })).parse(db.query("SELECT id,payload FROM records WHERE kind='intent' ORDER BY rowid").all()).flatMap((record) => {
+      let value: unknown;
+      try { value = JSON.parse(record.payload); } catch { return []; }
+      const intent = writeIntentSchema.safeParse(value);
+      return intent.success && intent.data.state === "pending" && intent.data.file === "queue.json" ? [{ id: record.id }] : [];
+    });
+  }
+  function readHostQueue(): { kind: "readable"; rows: readonly z.infer<typeof rowSchema>[] } | { kind: "ambiguous" } | { kind: "invalid"; message: string } {
+    const before = readFile("queue.json");
+    if (before === null) return { kind: "readable", rows: [] };
+    let document: unknown;
+    try { document = JSON.parse(before); }
+    catch (error: unknown) { return { kind: "invalid", message: (error instanceof Error ? error.message : "invalid queue json").slice(0, HOST_PREVIEW_CHARS) }; }
+    const parsed = jsonSchema.safeParse(document);
+    if (!parsed.success) return { kind: "invalid", message: parsed.error.message.slice(0, HOST_PREVIEW_CHARS) };
+    if (Array.isArray(parsed.data)) {
+      const rows = z.array(rowSchema).safeParse(parsed.data);
+      return rows.success ? { kind: "readable", rows: rows.data } : { kind: "invalid", message: rows.error.message.slice(0, HOST_PREVIEW_CHARS) };
+    }
+    const container = z.record(z.string(), jsonSchema).safeParse(parsed.data);
+    if (!container.success) return { kind: "invalid", message: "queue must be an array or object" };
+    if (Object.hasOwn(container.data, "items") && Object.hasOwn(container.data, "rows")) return { kind: "ambiguous" };
+    const key = Object.hasOwn(container.data, "rows") ? "rows" : "items";
+    const rows = z.array(rowSchema).safeParse(container.data[key]);
+    return rows.success ? { kind: "readable", rows: rows.data } : { kind: "invalid", message: rows.error.message.slice(0, HOST_PREVIEW_CHARS) };
+  }
+  function projectRuntime(employeeId: string, runtime: RuntimeBinding | null) {
+    if (runtime === null) return null;
+    return { employeeId, generation: runtime.generation, launchId: runtime.launchId, state: runtime.state, observedState: runtime.observedState, nativeSession: runtime.nativeSession, paneId: runtime.paneId, lastPoll: runtime.lastPoll };
+  }
+  function observeHost(input: { readonly observedAt: number; readonly query: HostStatusQuery }) {
+    const observedAt = timeSchema.parse(input.observedAt);
+    const query = input.query;
+    return db.transaction(() => {
+      const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+      const storeRevision = countRecords("SELECT COALESCE(MAX(sequence),0) AS n FROM audit");
+      const duties = dutyFacts();
+      const pending = pendingQueueIntents();
+      const queueFile = readHostQueue();
+      const employees = all("employee", employeeSchema);
+      const manager = employees.find((entry) => entry.id === "manager") ?? null;
+      if (manager === null) throw new StoreRecoveryError("Manager employee is missing");
+      const managerRuntime = latestRuntime("manager", manager.generation);
+      const pas = employees.filter((entry) => entry.role === "pa" && entry.employment === "hired");
+      const pa = pas.length === 1 ? pas[0] ?? null : null;
+      const paHireRecord = pa === null ? null : all("hire", hireRecordSchema).find((hire) => hire.ids.includes(pa.id)) ?? null;
+      const claims = countRecords("SELECT COUNT(*) AS n FROM records WHERE kind='claim' AND json_extract(payload,'$.status')='reconciliation'");
+      const grants = countRecords("SELECT COUNT(*) AS n FROM records WHERE kind='grant' AND json_extract(payload,'$.state')='reconciliation'");
+      const assignments = countRecords("SELECT COUNT(*) AS n FROM records WHERE kind='assignment' AND json_extract(payload,'$.state')='reconciliation'");
+      const progress = new Map(all("itemProgress", itemProgressSchema).map((entry) => [entry.itemId, entry]));
+      const owners = new Map(all("queueOwner", queueOwnerSchema).map((entry) => [entry.id, entry]));
+      const executions = new Map(all("itemExecution", itemExecutionSchema).map((entry) => [entry.itemId, entry]));
+      const captures = all("capture", captureRecordSchema);
+      const transitions = all("itemTransition", itemTransitionSchema);
+      const receipts = all("hostReceipt", hostReceiptSchema);
+      let queue: z.infer<typeof hostQueuePageSchema>;
+      let oldestProgressAt: number | null = null;
+      if (pending.length > 0) {
+        if (query.queueCursor !== undefined) throw new StoreAuthorityError("Queue is not pageable while an intent is pending");
+        queue = { kind: "intent-pending", total: pending.length, intentIds: pending.slice(0, HOST_PAGE_MAX).map((entry) => entry.id) };
+      } else if (queueFile.kind !== "readable") {
+        if (query.queueCursor !== undefined) throw new StoreAuthorityError("Queue is not pageable");
+        queue = queueFile.kind === "ambiguous" ? { kind: "ambiguous" } : { kind: "invalid", message: queueFile.message };
+      } else {
+        const projected = queueFile.rows.map((row) => {
+          const request = typeof row.request === "string" ? row.request : "";
+          const execution = executions.get(row.id) ?? null;
+          const changedAt = progress.get(row.id)?.changedAt ?? null;
+          const status = typeof row.status === "string" ? row.status : "invalid";
+          const watched = !terminalItemStatuses.includes(status) && status !== "BLOCKED" && status !== "NEEDS_DECISION";
+          if (watched && changedAt !== null && (oldestProgressAt === null || changedAt < oldestProgressAt)) oldestProgressAt = changedAt;
+          return {
+            id: row.id,
+            status,
+            revision: owners.get(row.id)?.revision ?? null,
+            requestPreview: request.slice(0, HOST_PREVIEW_CHARS),
+            requestTruncated: request.length > HOST_PREVIEW_CHARS,
+            progressChangedAt: changedAt,
+            captureIds: captures.filter((capture) => capture.items.some((item) => item.id === row.id)).map((capture) => capture.request.captureId).slice(0, HOST_LINK_CAP),
+            transitionIds: transitions.filter((transition) => transition.request.itemId === row.id).map((transition) => transition.request.requestId).slice(0, HOST_LINK_CAP),
+            hostReceiptIds: receipts.flatMap((receipt) => receipt.kind === "cancel" && receipt.target.kind === "item" && receipt.target.itemId === row.id ? [receipt.id] : []).slice(0, HOST_LINK_CAP),
+            execution: execution === null ? null : { employeeId: execution.employeeId, generation: execution.generation, messageId: execution.messageId, qaMessageId: execution.qaMessageId, qaGeneration: execution.qaGeneration },
+          };
+        });
+        queue = { kind: "readable", ...pageRows(projected, query.queueCursor, query.limit) };
+      }
+      const teams = all("team", teamSchema).slice().sort((left, right) => left.id.localeCompare(right.id));
+      const staff = employees.slice().sort((left, right) => left.id.localeCompare(right.id)).map((entry) => {
+        const runtime = latestRuntime(entry.id, entry.employment === "retired" ? 0 : entry.generation);
+        const lifecycle = entry.employment === "retired" ? "retired" : runtime?.state === "abandoned" ? "abandoned" : runtime?.state === "uncertain" ? "uncertain" : entry.error !== null ? "failed" : runtime === null ? "unprepared" : runtime.state;
+        return { id: entry.id, role: entry.role, generation: entry.generation, employment: entry.employment, lifecycle, assignment: entry.assignment, nativeHandle: entry.nativeHandle, nativeSession: runtime?.nativeSession ?? null, runtimeState: runtime?.state ?? null, observedState: runtime?.observedState ?? null, sourceRevision: entry.source?.roleRevision ?? null };
+      });
+      const openInputs = selected(`SELECT payload FROM records AS records WHERE kind='receivedInput' AND ${openInputSql} ORDER BY rowid`, [], receivedInputSchema);
+      let oldestUnclassifiedAt: number | null = null;
+      const pendingInputs = openInputs.slice().sort((left, right) => left.receivedAt - right.receivedAt || left.id.localeCompare(right.id)).map((entry) => {
+        if (oldestUnclassifiedAt === null || entry.receivedAt < oldestUnclassifiedAt) oldestUnclassifiedAt = entry.receivedAt;
+        return { id: entry.id, receivedAt: entry.receivedAt, source: entry.source, mode: entry.kind === "host" ? entry.mode : null, origin: entry.kind === "host" ? entry.origin : null, textPreview: entry.raw.text.slice(0, HOST_PREVIEW_CHARS), textLength: entry.raw.text.length, attachmentCount: entry.raw.images.length };
+      });
+      const teamRows = teams.map((entry) => ({
+        id: entry.id,
+        eventId: entry.eventId,
+        state: entry.state,
+        members: [entry.architect, entry.qa, ...entry.devs].map((id) => {
+          const member = employees.find((candidate) => candidate.id === id);
+          const generation = member?.generation ?? entry.generations[id];
+          if (member === undefined || generation === undefined) throw new StoreRecoveryError(`Team ${entry.id} lost member ${id}`);
+          return { id, role: member.role, generation };
+        }),
+        items: entry.items.slice(0, query.limit),
+        itemsTruncated: entry.items.length > query.limit,
+      }));
+      return {
+        binding: { name: scope.name, boundRoot: scope.boundRoot, home: scope.home, host: scope.host },
+        storeRevision, ownerEpoch: epoch, leaseExpires: lease.expires, observedAt, duties,
+        pendingIntentCount: pending.length,
+        queue,
+        reconciliation: { claims, grants, assignments },
+        manager: { error: manager.error, generation: manager.generation, sourceRevision: manager.source?.roleRevision ?? null, runtime: projectRuntime("manager", managerRuntime) },
+        paCount: pas.length,
+        pa: pa === null ? null : { id: pa.id, generation: pa.generation, sourceRevision: pa.source?.roleRevision ?? null, runtime: projectRuntime(pa.id, latestRuntime(pa.id, pa.generation)) },
+        paHire: paHireRecord === null ? null : { requestId: paHireRecord.request.requestId, employeeIds: paHireRecord.ids },
+        teams: pageRows(teamRows, query.teamCursor, query.limit),
+        staff: pageRows(staff, query.staffCursor, query.limit),
+        pendingInputs: pageRows(pendingInputs, query.inputCursor, query.limit),
+        watched: { oldestProgressAt, oldestUnclassifiedAt },
+      };
+    }).deferred();
+  }
+  function hostAdmit(request: HostAdmitRequest): HostReceipt {
+    const parsed = hostAdmitRequestSchema.parse(request);
+    return tx((): HostReceipt => {
+      const duties = dutyFacts();
+      if (duties.count > 0 || duties.unreadable) throw new StoreAuthorityError("Configured duties are unsupported; host intake was not recorded");
+      const digest = createHash("sha256").update(encode({ images: parsed.images, mode: parsed.mode, origin: parsed.origin, requestId: parsed.requestId, text: parsed.text })).digest("hex");
+      const id = `admit:${parsed.requestId}`;
+      const existing = read("hostReceipt", id, hostReceiptSchema);
+      if (existing !== null) {
+        if (existing.kind !== "admit" || existing.digest !== digest) throw new StoreConflictError(`Host request ${parsed.requestId} conflicts with its saved payload`);
+        return existing;
+      }
+      if (read("receivedInput", parsed.requestId, receivedInputSchema) !== null) throw new StoreConflictError(`Host request ${parsed.requestId} conflicts with an existing input`);
+      const receivedAt = now();
+      const stored = hostReceivedInputSchema.parse({ kind: "host", id: parsed.requestId, receivedAt, source: "host", origin: parsed.origin, mode: parsed.mode, raw: { text: parsed.text, images: [...parsed.images] }, disposition: null, hold: null });
+      put("receivedInput", stored.id, stored);
+      const receipt = hostAdmitReceiptSchema.parse({ kind: "admit", id, requestId: parsed.requestId, inputId: parsed.requestId, mode: parsed.mode, origin: parsed.origin, receivedAt, digest, textPreview: parsed.text.slice(0, HOST_PREVIEW_CHARS), textLength: parsed.text.length, attachmentCount: parsed.images.length });
+      put("hostReceipt", id, receipt);
+      return receipt;
+    });
+  }
+  function claimSlots(execution: ItemExecution, current: Team, intentId: string, itemId: string): readonly z.infer<typeof hostClaimSlotSchema>[] {
+    const targets: { role: "execution" | "qa"; employeeId: string; generation: number; messageId: string }[] = [
+      { role: "execution", employeeId: execution.employeeId, generation: execution.generation, messageId: execution.messageId },
+    ];
+    if (execution.qaMessageId !== null && execution.qaGeneration !== null) targets.push({ role: "qa", employeeId: current.qa, generation: execution.qaGeneration, messageId: execution.qaMessageId });
+    return targets.map((target) => {
+      const worker = read("employee", target.employeeId, employeeSchema);
+      if (worker === null) throw new StoreRecoveryError(`Cancelled worker ${target.employeeId} is missing`);
+      if (worker.role === "manager" || worker.id === "manager") throw new StoreAuthorityError("Host cancel cannot settle or stop the shared manager root");
+      const claims = all("claim", claimSchema).filter((claim) => claim.messageId === target.messageId);
+      if (claims.some((claim) => claim.employeeId !== target.employeeId || claim.generation !== target.generation)) throw new StoreConflictError(`Message ${target.messageId} has a claim outside the cancelled generation`);
+      const exact = claims.filter((claim) => claim.employeeId === target.employeeId && claim.generation === target.generation);
+      if (exact.length > 1) throw new StoreConflictError(`Message ${target.messageId} has ambiguous claims for one generation`);
+      const message = read("message", target.messageId, messageSchema);
+      if (message === null) throw new StoreRecoveryError(`Cancelled execution lost message ${target.messageId}`);
+      const claim = exact[0] ?? null;
+      if (claim !== null && claim.status !== "settled") {
+        const resultId = `host-cancel-${intentId}-${claim.id}`;
+        const existing = read("result", resultId, resultRecordSchema);
+        if (existing !== null && existing.claimId !== claim.id) throw new StoreConflictError(`Cancel result ${resultId} belongs to another claim`);
+        if (existing === null) put("result", resultId, { claimId: claim.id, result: { id: resultId, kind: "completed", output: { hostCancel: intentId, itemId }, checkpoint: null, outgoing: [] }, messages: [] });
+        put("claim", claim.id, { ...claim, status: "settled" });
+      }
+      if (message.status !== "acknowledged") put("message", message.id, { ...message, status: "acknowledged" });
+      const assignment = read("assignment", message.id, assignmentSchema);
+      if (assignment !== null && assignment.state !== "complete") put("assignment", assignment.id, { ...assignment, state: "complete" });
+      return { ...target, outcome: claim === null ? "withdrawn-before-claim" : claim.status === "settled" ? "already-settled" : "settled" };
+    });
+  }
+  function hostCancel(request: HostCancelRequest): HostReceipt {
+    const parsed = hostCancelRequestSchema.parse(request);
+    const digest = createHash("sha256").update(encode({ intentId: parsed.intentId, requestOrItemId: parsed.requestOrItemId })).digest("hex");
+    const receiptId = `cancel:${parsed.intentId}`;
+    const written = tx((): { receipt: HostReceipt; apply: string | null } => {
+      const existing = read("hostReceipt", receiptId, hostReceiptSchema);
+      if (existing !== null) {
+        if (existing.kind !== "cancel" || existing.digest !== digest) throw new StoreConflictError(`Host cancel ${parsed.intentId} conflicts with its saved payload`);
+        const intent = read("intent", `host-cancel/${parsed.intentId}`, writeIntentSchema);
+        return { receipt: existing, apply: intent?.state === "pending" ? `host-cancel/${parsed.intentId}` : null };
+      }
+      if (pendingQueueIntents().length > 0) throw new StoreConflictError("A queue intent is pending; host cancel will not replay it");
+      const queue = readHostQueue();
+      if (queue.kind !== "readable") throw new StoreConflictError("Queue is not readable; host cancel was not recorded");
+      const byId = queue.rows.filter((row) => row.id === parsed.requestOrItemId);
+      if (byId.length > 1) throw new StoreConflictError(`Queue row ${parsed.requestOrItemId} is duplicated`);
+      const referenced = queue.rows.filter((row) => [...stringList(row.intake_refs), ...stringList(row.startup_state_refs)].includes(parsed.requestOrItemId));
+      const row = byId[0] ?? (referenced.length === 1 ? referenced[0] : undefined);
+      if (byId.length === 0 && referenced.length > 1) throw new StoreConflictError(`Host id ${parsed.requestOrItemId} matches more than one queue row; cancel the item id`);
+      if (row === undefined) {
+        const received = read("receivedInput", parsed.requestOrItemId, receivedInputSchema);
+        if (received === null) throw new StoreAuthorityError(`Host cancel target ${parsed.requestOrItemId} is not a request or queue item`);
+        if (read("hostHold", received.id, hostHoldSchema) !== null) throw new StoreConflictError(`Host request ${received.id} is already cancelled`);
+        const intake = read("intake", received.id, intakeRecordSchema);
+        const createdAt = now();
+        put("hostHold", received.id, { targetId: received.id, intentId: parsed.intentId, at: createdAt });
+        if (received.kind === "host") put("receivedInput", received.id, { ...received, hold: { kind: "cancelled", intentId: parsed.intentId, at: createdAt } });
+        const receipt = hostCancelReceiptSchema.parse({ kind: "cancel", id: receiptId, intentId: parsed.intentId, requestOrItemId: parsed.requestOrItemId, digest, createdAt, target: { kind: "request", inputId: received.id, delegated: intake?.teamId !== null && intake?.teamId !== undefined } });
+        put("hostReceipt", receiptId, receipt);
+        return { receipt, apply: null };
+      }
+      const status = typeof row.status === "string" ? row.status : "";
+      if (terminalItemStatuses.includes(status)) throw new StoreConflictError(`Item ${row.id} is already terminal`);
+      const ownership = read("queueOwner", row.id, queueOwnerSchema);
+      const event = ownership === null ? null : read("intake", ownership.eventId, intakeRecordSchema);
+      if (ownership === null || event?.teamId === null || event?.teamId === undefined) throw new StoreConflictError(`Item ${row.id} has no owning team`);
+      const current = team(event.teamId);
+      const execution = read("itemExecution", row.id, itemExecutionSchema);
+      const slots = execution === null ? [] : claimSlots(execution, current, parsed.intentId, row.id);
+      const revision = ownership.revision + 1;
+      const nextRow = rowSchema.parse({ ...row, status: "CANCELLED", startup_state_refs: [...stringList(row.startup_state_refs), parsed.intentId] });
+      const document = canonicalQueue();
+      const after = queueText(document, document.rows.map((entry) => entry.id === row.id ? nextRow : entry));
+      const intentKey = `host-cancel/${parsed.intentId}`;
+      put("intent", intentKey, { file: "queue.json", before: document.before, after, state: "pending", capture: null, hostCancel: { itemId: row.id, eventId: ownership.eventId, teamId: current.id, revision } });
+      const createdAt = now();
+      const receipt = hostCancelReceiptSchema.parse({ kind: "cancel", id: receiptId, intentId: parsed.intentId, requestOrItemId: parsed.requestOrItemId, digest, createdAt, target: { kind: "item", itemId: row.id, revision, status: "CANCELLED", slots } });
+      put("hostReceipt", receiptId, receipt);
+      if (parsed.requestOrItemId !== row.id && read("receivedInput", parsed.requestOrItemId, receivedInputSchema) !== null && read("hostHold", parsed.requestOrItemId, hostHoldSchema) === null) {
+        put("hostHold", parsed.requestOrItemId, { targetId: parsed.requestOrItemId, intentId: parsed.intentId, at: createdAt });
+        const linked = read("receivedInput", parsed.requestOrItemId, receivedInputSchema);
+        if (linked?.kind === "host") put("receivedInput", linked.id, { ...linked, hold: { kind: "cancelled", intentId: parsed.intentId, at: createdAt } });
+      }
+      return { receipt, apply: intentKey };
+    });
+    if (written.apply !== null) applyIntent(written.apply);
+    return hostReceiptSchema.parse(read("hostReceipt", receiptId, hostReceiptSchema) ?? written.receipt);
+  }
+
   return {
     ownerEpoch: epoch,
     getEmployee: employee,
@@ -898,7 +1221,7 @@ export function openStore(args: {
     },
     managerPendingWork(): Readonly<{ unclassifiedInput: boolean; undelegatedIntake: boolean }> {
       return {
-        unclassifiedInput: db.query("SELECT 1 FROM records WHERE kind='receivedInput' AND json_extract(payload,'$.disposition') IS NULL LIMIT 1").get() !== null,
+        unclassifiedInput: db.query(`SELECT 1 FROM records WHERE kind='receivedInput' AND ${openInputSql} LIMIT 1`).get() !== null,
         undelegatedIntake: db.query("SELECT 1 FROM records WHERE kind='intake' AND json_extract(payload,'$.teamId') IS NULL LIMIT 1").get() !== null,
       };
     },
@@ -908,7 +1231,7 @@ export function openStore(args: {
         teams: all("team", teamSchema),
         messages: selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.status') IN ('pending','claimed') ORDER BY rowid", [], messageSchema),
         claims: selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.status') IN ('active','reconciliation') ORDER BY rowid", [], claimSchema),
-        inputs: selected("SELECT payload FROM records WHERE kind='receivedInput' AND json_extract(payload,'$.disposition') IS NULL ORDER BY rowid", [], receivedInputSchema),
+        inputs: selected(`SELECT payload FROM records WHERE kind='receivedInput' AND ${openInputSql} ORDER BY rowid`, [], receivedInputSchema),
         queueRevisions: all("queueOwner", queueOwnerSchema),
         itemExecutions: all("itemExecution", itemExecutionSchema),
       };
@@ -1273,10 +1596,16 @@ export function openStore(args: {
           });
       });
     },
-    receiveInput(input: ReceivedInput): ReceivedInput {
+    receiveInput(input: {
+      readonly id: string;
+      readonly receivedAt: number;
+      readonly source: "interactive" | "rpc";
+      readonly raw: { readonly text: string; readonly images: readonly Json[] };
+      readonly disposition: null;
+    }): ReceivedInput {
       return tx((): ReceivedInput => {
         const received: ReceivedInput = receivedInputSchema.parse(input);
-        if (received.disposition !== null)
+        if (received.kind !== "native" || received.disposition !== null)
           throw new StoreAuthorityError(
             "Native ingress must begin unclassified",
           );
@@ -1320,6 +1649,7 @@ export function openStore(args: {
           assertReplay(received.disposition, disposition, id);
           return received;
         }
+        assertHostOpen(id);
         if (disposition.kind === "work") {
           const event: Intake = intakeSchema.parse({
             eventId: id,
@@ -1345,7 +1675,10 @@ export function openStore(args: {
         const previous = read("intake", event.eventId, intakeRecordSchema);
         if (previous !== null)
           assertReplay(previous.request, event, event.eventId);
-        else put("intake", event.eventId, { request: event, teamId: null });
+        else {
+          assertHostOpen(event.eventId);
+          put("intake", event.eventId, { request: event, teamId: null });
+        }
         return event;
       });
     },
@@ -1366,7 +1699,10 @@ export function openStore(args: {
           teamRequirementSchema,
         );
         if (previous !== null) assertReplay(previous, request, request.eventId);
-        else put("teamRequirement", request.eventId, request);
+        else {
+          assertHostOpen(request.eventId);
+          put("teamRequirement", request.eventId, request);
+        }
       });
     },
     reserveTeam(input: {
@@ -1394,6 +1730,7 @@ export function openStore(args: {
             );
           return team(event.teamId);
         }
+        assertHostOpen(request.eventId);
         const ids: readonly string[] = [
           request.architect,
           request.qa,
@@ -2939,6 +3276,13 @@ export function openStore(args: {
           }),
         )
         .deferred();
+    },
+    observeHost,
+    hostAdmit,
+    hostCancel,
+    readHostReceipt(id: string): HostReceipt | null {
+      const parsed = idSchema.parse(id);
+      return db.transaction((): HostReceipt | null => read("hostReceipt", parsed, hostReceiptSchema)).deferred();
     },
     close(): void {
       if (closed) return;

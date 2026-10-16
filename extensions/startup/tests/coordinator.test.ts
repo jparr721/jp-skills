@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { Database } from "bun:sqlite";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
@@ -7,7 +8,7 @@ import { openStore, type StartupStore } from "../src/store";
 import { openCoordinator, serveCoordinator, type Coordinator } from "../src/coordinator";
 import type { HerdrObservation, HerdrRuntime } from "../src/herdr-runtime";
 import { connectEmployee } from "../src/employee-client";
-import { sourceSchema } from "../src/contracts";
+import { hostReceiptSchema, hostStatusSchema, sourceSchema } from "../src/contracts";
 
 const roots: string[] = [];
 const stores: StartupStore[] = [];
@@ -711,7 +712,6 @@ test("new ready work releases a no-claim retry latch without releasing an active
   } finally { client.close(); }
 });
 
-
 test("a completed item dev receives its exact pending review continuation until review or explicit block", async () => {
   const f = fixture(8);
   const { manager } = await f.ready();
@@ -853,4 +853,138 @@ test("manager Herdr presence loss stays actionable until observation recovers", 
   f.advance(1400);
   await f.coordinator.tick();
   expect((await f.coordinator.poll(manager)).pendingMessageIds.some((id) => id.startsWith("manager-offline-"))).toBe(false);
+});
+
+function storeProof(path: string): { revision: number; expires: number; inputs: readonly { id: string; payload: string }[] } {
+  const db = new Database(path, { readonly: true });
+  try {
+    const revision = z.object({ n: z.number() }).parse(db.query("SELECT COALESCE(MAX(sequence), 0) AS n FROM audit").get());
+    const lease = z.object({ expires: z.number() }).parse(db.query("SELECT expires FROM lease WHERE singleton = 1").get());
+    const inputs = z.array(z.object({ id: z.string(), payload: z.string() })).parse(db.query("SELECT id, payload FROM records WHERE kind = 'receivedInput' ORDER BY id").all());
+    return { revision: revision.n, expires: lease.expires, inputs };
+  } finally { db.close(); }
+}
+
+test("host status is read-only and distinguishes startup states", async () => {
+  const f = fixture(8);
+  servers.push(serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }));
+  expect(statSync(f.config.socketPath).mode & 0o777).toBe(0o600);
+  const database = join(f.config.stateDirectory, "staff.sqlite");
+  const missing = hostStatusSchema.parse(await (await fetch("http://localhost/status", { unix: f.config.socketPath })).json());
+  expect(missing.state).toBe("missing");
+  expect(missing.binding).toEqual({ name: "test", boundRoot: f.config.boundRoot, home: resolve(f.config.stateDirectory, "../.."), host: "host" });
+  expect(missing.reasons).toContain("manager-runtime-absent");
+  const { manager, pa, paConnection } = await f.ready();
+  await f.coordinator.command(manager, { kind: "receive", id: "native-history", source: "interactive", raw: { text: "keep this", images: [] } });
+  const before = storeProof(database);
+  const live = hostStatusSchema.parse(await (await fetch("http://localhost/status", { unix: f.config.socketPath })).json());
+  expect(live.state).toBe("live");
+  expect(live.storeRevision).toBe(before.revision);
+  expect(live.setup.phase).toBe("ready");
+  expect(live.setup.receipts.map((receipt) => receipt.kind)).toEqual(["scope", "manager-runtime", "pa-hire", "pa-runtime", "source-load", "source-load"]);
+  expect(live.pendingInputs.rows).toEqual([expect.objectContaining({ id: "native-history", source: "interactive", mode: null })]);
+  expect(live.staff.rows.find((row) => row.id === "manager")).toMatchObject({ role: "manager", lifecycle: "ready", nativeSession: f.config.managerFile });
+  expect(live.staff.rows.find((row) => row.id === pa)?.lifecycle).toBe("ready");
+  expect(JSON.stringify(live)).not.toContain("credentialDigest");
+  expect(storeProof(database)).toEqual(before);
+  f.advance(2100);
+  const offline = hostStatusSchema.parse(f.coordinator.hostStatus({}));
+  expect(offline.state).toBe("offline");
+  expect(offline.reasons).toContain("manager-poll");
+  await f.coordinator.poll(manager);
+  await f.coordinator.poll(paConnection);
+  await f.coordinator.tick();
+  const paClaim = await f.coordinator.command(paConnection, { kind: "claim" });
+  if (paClaim !== null) await f.coordinator.command(paConnection, { kind: "settle", result: { id: "pa-fresh", kind: "completed", output: "checked", checkpoint: null, outgoing: [{ id: "pa-fresh-report", recipient: "manager", kind: "report", correlation: "manager-supervision", payload: { ok: true } }] } });
+  f.advance(4000);
+  await f.coordinator.poll(manager);
+  await f.coordinator.poll(paConnection);
+  const stale = hostStatusSchema.parse(f.coordinator.hostStatus({}));
+  expect(stale.state).toBe("stale");
+  expect(stale.reasons).toContain("supervision-freshness");
+  f.store.recordBindingFailure({ manager: f.store.managerBinding, employeeId: "manager", error: "native binding lost" });
+  expect(hostStatusSchema.parse(f.coordinator.hostStatus({})).state).toBe("recovery-required");
+});
+
+test("host status reports configured duties as unsupported", () => {
+  const f = fixture(8);
+  f.store.setDuty({ manager: f.store.managerBinding, duty: { id: "legacy-duty", employeeId: "manager", assignment: null, target: null, probe: null, acceptance: null, repairAuthority: null, cadenceMs: null, nextDue: null } });
+  const status = hostStatusSchema.parse(f.coordinator.hostStatus({}));
+  expect(status.state).toBe("unsupported");
+  expect(status.reasons).toContain("duties");
+  expect(status.duties.count).toBe(1);
+});
+
+test("host admit retries are idempotent and a changed payload is refused", async () => {
+  const f = fixture(8);
+  servers.push(serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }));
+  const body = { requestId: "ronin-1", mode: "startup", origin: "ronin", text: "ship the queue", images: [{ type: "image", data: "abcd", mimeType: "image/png" }] };
+  const first = hostReceiptSchema.parse(await (await fetch("http://localhost/host/admit", { unix: f.config.socketPath, method: "POST", body: JSON.stringify(body) })).json());
+  const second = hostReceiptSchema.parse(await (await fetch("http://localhost/host/admit", { unix: f.config.socketPath, method: "POST", body: JSON.stringify(body) })).json());
+  expect(second).toEqual(first);
+  expect(first).toMatchObject({ kind: "admit", requestId: "ronin-1", mode: "startup", origin: "ronin", inputId: "ronin-1" });
+  const changed = await fetch("http://localhost/host/admit", { unix: f.config.socketPath, method: "POST", body: JSON.stringify({ ...body, mode: "general" }) });
+  expect(changed.status).toBe(409);
+  const stored = f.store.snapshot().inputs.find((input) => input.id === "ronin-1");
+  expect(stored).toMatchObject({ kind: "host", mode: "startup", origin: "ronin", source: "host", disposition: null });
+  expect(f.store.snapshot().intakes).toHaveLength(0);
+  const status = hostStatusSchema.parse(f.coordinator.hostStatus({ limit: 1 }));
+  expect(status.pendingInputs).toMatchObject({ total: 1, rows: [{ id: "ronin-1", mode: "startup", origin: "ronin" }] });
+  const again = await fetch("http://localhost/host/admit", { unix: f.config.socketPath, method: "POST", body: JSON.stringify({ ...body, text: "different" }) });
+  expect(again.status).toBe(409);
+  expect(f.store.snapshot().inputs).toHaveLength(1);
+  const lookup = hostReceiptSchema.parse(await (await fetch(`http://localhost/host/receipt/${encodeURIComponent(first.id)}`, { unix: f.config.socketPath })).json());
+  expect(lookup).toEqual(first);
+  expect((await fetch("http://localhost/host/receipt/missing", { unix: f.config.socketPath })).status).toBe(403);
+});
+
+test("host cancel withdraws one request and settles only that item's worker generation", async () => {
+  const f = fixture(8);
+  servers.push(serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }));
+  const { manager } = await f.ready();
+  const managerRuntime = f.store.employeeRuntime("manager", 1);
+  if (!managerRuntime) throw new Error("manager runtime missing");
+  const admitted = hostReceiptSchema.parse(await f.coordinator.hostAdmit({ requestId: "early", mode: "startup_outcome", origin: "ronin", text: "outcome", images: [] }));
+  if (admitted.kind !== "admit") throw new Error("expected admit receipt");
+  const cancelled = hostReceiptSchema.parse(await f.coordinator.hostCancel({ requestOrItemId: "early", intentId: "cancel-early" }));
+  if (cancelled.kind !== "cancel") throw new Error("expected cancel receipt");
+  expect(cancelled.target).toMatchObject({ kind: "request", inputId: "early", delegated: false });
+  expect(hostReceiptSchema.parse(await f.coordinator.hostCancel({ requestOrItemId: "early", intentId: "cancel-early" }))).toEqual(cancelled);
+  await expect(f.coordinator.hostCancel({ requestOrItemId: "early", intentId: "cancel-other" })).rejects.toThrow("already cancelled");
+  await expect(f.coordinator.command(manager, { kind: "route", inputId: "early", disposition: "work", reason: "too late", amendItemIds: [] })).rejects.toThrow("cancelled");
+  expect(hostReceiptSchema.parse(await (await fetch(`http://localhost/host/receipt/${encodeURIComponent(cancelled.id)}`, { unix: f.config.socketPath })).json())).toEqual(cancelled);
+  const team = await f.delegate(manager, "event");
+  const architect = await f.admit(team.architect);
+  await f.admit(team.qa);
+  const dev = await f.admit(team.devs[0]!);
+  const devReady = z.object({ claim: z.object({ id: z.string() }) }).parse(await f.coordinator.command(dev, { kind: "claim" }));
+  await f.coordinator.command(dev, { kind: "settle", claimId: devReady.claim.id, result: { id: "dev-ready", kind: "completed", output: "ready", checkpoint: null, outgoing: [] } });
+  await f.coordinator.command(architect, { kind: "capture", capture: { captureId: "capture", eventId: "event", rows: [{ id: "ITEM-1", expectedRevision: null, fields: { status: "QUEUED", request: "fix the host gate", acceptance: "works", blocked_on: null } }], receipt: "captured" } });
+  const devId = team.devs[0];
+  if (devId === undefined) throw new Error("missing dev");
+  await f.coordinator.command(architect, { kind: "item", request: { action: "assign", requestId: "assign-1", itemId: "ITEM-1", expectedRevision: 1, employeeId: devId, evidence: { go: true } } });
+  const execution = f.store.snapshot().itemExecutions.find((entry) => entry.itemId === "ITEM-1");
+  if (!execution) throw new Error("missing execution");
+  const claimed = z.object({ claim: z.object({ id: z.string(), generation: z.number() }) }).parse(await f.coordinator.command(dev, { kind: "claim" }));
+  const foreign = new Database(join(f.config.stateDirectory, "staff.sqlite"));
+  foreign.query("INSERT INTO records(kind, id, payload) VALUES('claim', 'foreign-claim', ?)").run(JSON.stringify({ id: "foreign-claim", employeeId: team.devs[0], messageId: execution.messageId, ownerEpoch: f.store.ownerEpoch, generation: execution.generation + 1, status: "active" }));
+  foreign.close();
+  await expect(f.coordinator.hostCancel({ requestOrItemId: "ITEM-1", intentId: "cancel-item" })).rejects.toThrow("outside the cancelled generation");
+  expect(f.store.queueItems().find((row) => row.id === "ITEM-1")?.status).toBe("EXECUTING");
+  expect(f.store.snapshot().claims.find((claim) => claim.id === claimed.claim.id)?.status).toBe("active");
+  const removed = new Database(join(f.config.stateDirectory, "staff.sqlite"));
+  removed.query("DELETE FROM records WHERE kind='claim' AND id='foreign-claim'").run();
+  removed.close();
+  const itemReceipt = hostReceiptSchema.parse(await f.coordinator.hostCancel({ requestOrItemId: "ITEM-1", intentId: "cancel-item" }));
+  if (itemReceipt.kind !== "cancel") throw new Error("expected cancel receipt");
+  expect(itemReceipt.target).toMatchObject({ kind: "item", itemId: "ITEM-1", status: "CANCELLED", slots: [{ role: "execution", employeeId: devId, generation: execution.generation, messageId: execution.messageId, outcome: "settled" }] });
+  expect(JSON.stringify(itemReceipt)).not.toContain(`"employeeId":"manager"`);
+  expect(f.store.snapshot().claims.find((claim) => claim.id === claimed.claim.id)?.status).toBe("settled");
+  expect(f.store.queueItems().find((row) => row.id === "ITEM-1")?.status).toBe("CANCELLED");
+  const pictured = hostStatusSchema.parse(f.coordinator.hostStatus({}));
+  expect(pictured.queue.kind === "readable" ? pictured.queue.rows.find((row) => row.id === "ITEM-1") : null).toMatchObject({ captureIds: ["capture"], hostReceiptIds: [itemReceipt.id], status: "CANCELLED" });
+  expect(f.store.getEmployee("manager").employment).toBe("hired");
+  expect(f.store.employeeRuntime("manager", 1)).toMatchObject({ launchId: managerRuntime.launchId, state: "ready" });
+  expect(hostReceiptSchema.parse(await f.coordinator.hostCancel({ requestOrItemId: "ITEM-1", intentId: "cancel-item" }))).toEqual(itemReceipt);
+  expect(admitted.mode).toBe("startup_outcome");
 });

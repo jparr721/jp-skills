@@ -108,4 +108,5 @@ export const terminalItemStatuses: readonly string[] = [
   "DONE",
   "COMPLETED",
   "REJECTED",
+  "CANCELLED",
 ];

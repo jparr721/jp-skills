@@ -2,7 +2,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, sourceSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, ClaimSettlementError, type Binding, type Employee, type Json, type Source } from "./contracts";
+import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, sourceSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, ClaimSettlementError, type Binding, type Employee, type HostReceipt, type HostStatus, type Json, type Source } from "./contracts";
+import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
 import { itemActionSchema, terminalItemStatuses } from "./items";
 import { loadProfile, profileText, verifyProfile, type Profile } from "./profiles";
@@ -59,6 +60,10 @@ export type Coordinator = Readonly<{
   command: (connection: string, command: Json) => Promise<Json>;
   poll: (connection: string) => Promise<Poll>;
   tick: () => Promise<void>;
+  hostStatus: (query: unknown) => HostStatus;
+  hostAdmit: (request: unknown) => Promise<HostReceipt>;
+  hostCancel: (request: unknown) => Promise<HostReceipt>;
+  hostReceipt: (id: string) => HostReceipt;
 }>;
 class AdmissionPendingError extends Error {}
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
@@ -537,6 +542,12 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const completedAt = now();
     supervision = { ...supervision, lastCompletedAt: completedAt, lastSuccessAt: errors.length === 0 ? completedAt : supervision.lastSuccessAt, errors };
   }
+  const host = openHostSurface({
+    store, now,
+    deadlines: { connectionDeadlineMs: policy.connectionDeadlineMs, progressDeadlineMs: policy.progressDeadlineMs },
+    readPa: () => paState(),
+    readSupervision: () => supervision,
+  });
   return {
     start, admit, poll, launchFailure,
     health: () => {
@@ -559,6 +570,18 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       void operation.then(() => { ticking = null; }, () => { ticking = null; });
       return operation;
     },
+    hostStatus(query: unknown): HostStatus { return host.status(query); },
+    hostAdmit(request: unknown): Promise<HostReceipt> {
+      const operation = serial.then(() => host.admit(request));
+      serial = operation.then(() => undefined, () => undefined);
+      return operation;
+    },
+    hostCancel(request: unknown): Promise<HostReceipt> {
+      const operation = serial.then(() => host.cancel(request));
+      serial = operation.then(() => undefined, () => undefined);
+      return operation;
+    },
+    hostReceipt(id: string): HostReceipt { return host.receipt(id); },
   };
 }
 
@@ -568,6 +591,28 @@ export function serveCoordinator(input: Readonly<{ coordinator: Coordinator; soc
     const path = new URL(request.url).pathname;
     try {
       if (request.method === "GET" && path === "/health") { const health = input.coordinator.health(); return Response.json(health, { status: health.status === "running" ? 200 : 503 }); }
+      if (request.method === "GET" && path === "/status") {
+        const url = new URL(request.url);
+        const readParam = (name: string): string | undefined => {
+          const value = url.searchParams.get(name);
+          return value === null || value.length === 0 ? undefined : value;
+        };
+        const limit = readParam("limit");
+        return Response.json(input.coordinator.hostStatus({
+          ...(limit === undefined ? {} : { limit: Number(limit) }),
+          ...(readParam("queueCursor") === undefined ? {} : { queueCursor: readParam("queueCursor") }),
+          ...(readParam("staffCursor") === undefined ? {} : { staffCursor: readParam("staffCursor") }),
+          ...(readParam("teamCursor") === undefined ? {} : { teamCursor: readParam("teamCursor") }),
+          ...(readParam("inputCursor") === undefined ? {} : { inputCursor: readParam("inputCursor") }),
+        }));
+      }
+      if (request.method === "POST" && path === "/host/admit") return Response.json(await input.coordinator.hostAdmit(await request.json()));
+      if (request.method === "POST" && path === "/host/cancel") return Response.json(await input.coordinator.hostCancel(await request.json()));
+      if (request.method === "GET" && path.startsWith("/host/receipt/")) {
+        const raw = path.slice("/host/receipt/".length);
+        if (raw.length === 0 || raw.includes("/")) return Response.json({ error: "unknown_endpoint" }, { status: 404 });
+        return Response.json(input.coordinator.hostReceipt(decodeURIComponent(raw)));
+      }
       if (request.method === "POST" && path === "/admit") return Response.json(await input.coordinator.admit(admissionSchema.parse(await request.json())));
       if (request.method === "POST" && path === "/launch-failure") {
         input.coordinator.launchFailure(launchFailureSchema.parse(await request.json()));

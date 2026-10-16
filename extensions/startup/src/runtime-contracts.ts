@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { bindingSchema, idSchema, jsonSchema, sourceSchema, timeSchema } from "./contracts";
+import { bindingSchema, idSchema, jsonSchema, observedRuntimeSchema, runtimeStateSchema, sourceSchema, timeSchema } from "./contracts";
 
 export const runtimeBindingSchema = z.strictObject({
   employeeId: idSchema,
@@ -11,14 +11,14 @@ export const runtimeBindingSchema = z.strictObject({
   terminalId: idSchema.nullable(),
   tabId: idSchema.nullable(),
   nativeSession: idSchema.nullable(),
-  state: z.enum(["prepared", "starting", "ready", "uncertain", "abandoned"]),
+  state: runtimeStateSchema,
   error: z.string().nullable(),
   lastSeen: timeSchema,
   lastPoll: timeSchema,
   lastProgress: timeSchema,
   turnActive: z.boolean(),
   stateSequence: timeSchema.nullable(),
-  observedState: z.enum(["working", "idle", "done", "blocked", "unknown", "offline"]).nullable(),
+  observedState: observedRuntimeSchema.nullable(),
 }).readonly();
 export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 

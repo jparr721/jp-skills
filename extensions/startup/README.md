@@ -125,6 +125,31 @@ State is under `<home>/startup/NAME/`: `binding.json`, `staff.sqlite`, canonical
 - Native restore must retain the named profile, explicit Herdr integration, generated bootstrap, bound cwd and original native root transcript. Preservation of those flags by Herdr/native restore remains unproven. Bare `omp --resume` is not acceptance evidence for employee admission.
 - Live two-crew creation, direct pane input routing, real deadline fault detection, PA recovery and explicit same-transcript resumes passed on 2026-10-15. See [live evidence](../../docs/startup-v7/live-acceptance.json). Automatic Herdr restore, OS restart and V6 migration remain unverified/unsupported boundaries.
 
+## Host integration
+
+Ronin, or any other local host, observes and drives a Startup through the coordinator's existing Unix socket. The socket is created mode `0600`. That file mode is the only authentication. There is no bearer token and no second credential. These routes are not employee commands: `POST /admit` remains native employee admission, and `GET /health` remains the launcher probe (`running` is HTTP 200, otherwise HTTP 503).
+
+`GET /status` is strictly read-only. It does not record input, route, claim, renew the owner lease, replay queue intents, start recovery, or dispatch work. The body is HTTP 200 for every state. `storeRevision` is the current audit sequence. `observedAt` and `freshness` use the coordinator clock and the saved supervision deadlines. `setup` is derived from the saved scope, manager runtime, PA hire, PA runtime, and source-load receipts. Queue rows include their capture, transition, and host-receipt ids. Staff rows include employee id, role, generation, lifecycle, native root handle, and native session. Credential digests are omitted. Pending input is unclassified input that has not been withdrawn.
+
+`state` is the first matching condition. `reasons` lists every match, in that same order.
+
+| State | When |
+| --- | --- |
+| `unsupported` | A duty row exists or cannot be read. V6 duties are not migrated. |
+| `recovery-required` | A queue intent is pending, the queue file is ambiguous or invalid, the manager binding failed, a manager runtime is uncertain or abandoned, or a claim, grant, or assignment is in reconciliation. |
+| `missing` | The manager has no runtime yet. |
+| `offline` | The manager runtime is not ready, its poll is stale, Herdr observed it offline, PA supervision is blocked, or the latest supervision pass recorded an error. |
+| `stale` | The owner lease has lapsed, supervision last completed past the connection deadline, a watched item's recorded progress is past the progress deadline, or unclassified input is past that deadline. |
+| `live` | None of the above. |
+
+The response is capped. `limit` defaults to 32 and cannot exceed 64. `queueCursor`, `teamCursor`, `staffCursor`, and `inputCursor` are ids from the previous page. An unknown cursor is HTTP 403.
+
+`POST /host/admit` accepts `{requestId, mode, origin, text, images}`. `mode` is `general`, `startup`, or `startup_outcome` and is stored on that input. Admit does not route, hire, delegate, launch, or dispatch; later activation has to read the saved mode. The same `requestId` and the same payload return the original receipt, including the original `receivedAt`. The same id with a different payload is HTTP 409. The receipt id is `admit:<requestId>`.
+
+`POST /host/cancel` accepts `{requestOrItemId, intentId}`. It cancels one request before a queue row exists, or one queue row after it exists. A request cancel withdraws that input and leaves an already delegated crew running. An item cancel journals `CANCELLED` through the existing queue intent and settles only that item's saved execution generation and, when present, its QA generation. A claim for the same message in any other generation is refused before the cancel is written. The manager root is never settled, retired, or stopped. The same intent and target return the original receipt. A different pair under the same `intentId` is HTTP 409. The receipt id is `cancel:<intentId>`.
+
+`GET /host/receipt/<id>` reads one of those receipts. An unknown id is HTTP 403. Receipt lookup does not apply intents or renew the lease.
+
 ## Verification and evidence
 
 ```sh
