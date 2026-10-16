@@ -1,0 +1,1589 @@
+{
+  "release": "7.0.18",
+  "fixCommit": "2808ab4",
+  "releaseCommit": "e0ee067",
+  "orderingFix": {
+    "release": "7.0.17",
+    "commit": "72fee81"
+  },
+  "initialFix": {
+    "release": "7.0.16",
+    "commit": "86a25cb"
+  },
+  "regression": {
+    "beforeFix": [
+      "technical proof behind 200 lifecycle messages",
+      "admin-only mail wakes manager",
+      "legacy wake ignores deferred delivery",
+      "fresh polls hide missing Herdr presence",
+      "live16: direct-pane notices still precede new technical gates; failing regression added before17",
+      "live17: projection omitted an explicit next-claim receipt; failed regression added before18"
+    ],
+    "afterFix": {
+      "tests": 346,
+      "assertions": 1967,
+      "typecheck": "pass",
+      "offlineNativeChecks": {
+        "compiled_omp_identified": true,
+        "all_native_stages_complete": true,
+        "canonical_role_loop_in_actual_root_provider": true,
+        "actual_native_helper_startup_tool_denied": true,
+        "begin_turn_denial_blocks_native_write_and_bash": true,
+        "failed_connection_blocks_native_write_and_bash": true,
+        "denied_synthetic_context_blocks_provider": true,
+        "negative_control_detects_missing_tool_guard": true,
+        "cache_system_prompt_is_stable": true,
+        "cache_conversation_prefix_is_preserved": true,
+        "cache_live_state_is_trailing_user_data": true,
+        "provider_error_parks_100_inbox_changes_and_queued_retry": true
+      }
+    }
+  },
+  "deployment": {
+    "at": 1792178635177,
+    "installedVersion": "7.0.16",
+    "coordinatorPid": 2602970,
+    "epoch": 11,
+    "roots": 59,
+    "freshPolls5s": 59,
+    "preserved": {
+      "employee": {
+        "originalCount": 68,
+        "allIdsRetained": true
+      },
+      "team": {
+        "originalCount": 20,
+        "allIdsRetained": true
+      },
+      "claim": {
+        "originalCount": 2157,
+        "allIdsRetained": true
+      },
+      "message": {
+        "originalCount": 17284,
+        "allIdsRetained": true,
+        "allOriginalPayloadsRetained": true
+      },
+      "result": {
+        "originalCount": 2122,
+        "allIdsRetained": true,
+        "allOriginalValuesUnchanged": true
+      },
+      "runtimeIdentity": true,
+      "teamIdentity": true
+    },
+    "reconciliationClaims": [
+      {
+        "employeeId": "f605931a-8e28-420b-a26f-808143d398e8",
+        "generation": 1,
+        "id": "9d4bda34-3334-4574-ac6f-d47db9d8a360",
+        "messageId": "item-qaassign-pr4564-recovery-v3-f605931a-8e28-420b-a26f-808143d398e8",
+        "ownerEpoch": 9,
+        "status": "reconciliation"
+      }
+    ],
+    "sourceHashes": {
+      "extensions/startup/src/store.ts": "07762d1c07fdc39a005c3f5281f8be429257853f304358cdf899ba6bda025318",
+      "extensions/startup/src/coordinator.ts": "d6c96ef561f89c529b613b87ee7927ea2a962e3249dcc26d2fb867382f0e4561"
+    },
+    "backup": "/home/jsp/.config/jp-skills/startup/sythelabs/backups/upgrade-7.0.16-20261016T192214Z"
+  },
+  "before": {
+    "incident": "manager-pr4537-proof-fifo-starvation-r28",
+    "canonicalGateFifoPosition": 362,
+    "technicalProgressWasBlockedDespite59FreshPolls": true
+  },
+  "live": {
+    "from": 1792178614460,
+    "to": 1792181016905,
+    "minutes": 40.04075,
+    "healthStatus": 200,
+    "freshAuthenticatedPolls": 59,
+    "supervisorPollAgesMs": {
+      "manager": 141,
+      "pa": 959
+    },
+    "nativeUsage": {
+      "requests": 257,
+      "input": 2494276,
+      "output": 147540,
+      "cacheRead": 114266631,
+      "totalTokens": 116908447,
+      "recordedCost": 0.5074688620000001,
+      "cacheReuse": 0.9786377473069818,
+      "recordedCostPerMinute": 0.01267381010595456
+    },
+    "paChecks": 38,
+    "eachPaCheckHasExactlyOneReportToManager": true,
+    "newProviderPauses": 0,
+    "nativeToolErrors": [
+      {
+        "role": "pa",
+        "pane": "w2:pC",
+        "errors": [
+          {
+            "tool": "write",
+            "category": "settlement-fence",
+            "text": "Startup POST /command HTTP 409: {\"error\":\"ClaimSettlementError\",\"message\":\"result_replay_conflict: This result ID already names a different claim or payload. Reuse the exact original result to recover its receipt, or use a unique result ID for genuinely new work. Do not retry changed content under the same ID.; employee=ae4db612-cd83-46a2-8357-0147e3225d28; generation=1; claim=f5f7c075-2cd6-4ece-a4cf-ad158012013b\",\"recovery\":{\"code\":\"result_replay_conflict\",\"retryable\":false,\"action\":\"This result ID already names a different claim or payload. Reuse the exact original result to recover its receipt, or use a unique result ID for genuinely new work. Do not retry changed content under the same ID.\",\"employeeId\":\"ae4db612-cd83-46a2-8357-0147e3225d28\",\"generation\":1,\"claimId\":\"f5f7c075-2cd6-4ece"
+          },
+          {
+            "tool": "write",
+            "category": "other",
+            "text": "Startup POST /command failed: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch(); socket=/home/jsp/.config/jp-skills/startup/sythelabs/runtime.sock; code=ECONNRESET; causeCode=unknown; elapsedMs=254; timeoutMs=10000"
+          }
+        ]
+      },
+      {
+        "role": "qa",
+        "pane": "w2:p19",
+        "errors": [
+          {
+            "tool": "write",
+            "category": "command-rejected",
+            "text": "Startup POST /command HTTP 403: {\"error\":\"StoreAuthorityError\",\"message\":\"Only the manager may perform this operation\"}; retryable=false; action=Inspect current claim and command arguments, settle or reconcile existing work, or correct the request. Do not repeat unchanged arguments."
+          }
+        ]
+      },
+      {
+        "role": "architect",
+        "pane": "w2:p10",
+        "errors": [
+          {
+            "tool": "write",
+            "category": "command-rejected",
+            "text": "Startup POST /command HTTP 403: {\"error\":\"StoreAuthorityError\",\"message\":\"Explicit resume requires blocked or decision state\"}; retryable=false; action=Inspect current claim and command arguments, settle or reconcile existing work, or correct the request. Do not repeat unchanged arguments."
+          }
+        ]
+      }
+    ],
+    "managerReceipts": [
+      {
+        "claimId": "c67d9cfe-bff5-4bdf-a31e-4314fd579bae",
+        "status": "settled",
+        "messageId": "pane-input-17a72ff5-07eb-436a-951e-3fa09e822e03",
+        "messageSequence": 16826,
+        "kind": "alert",
+        "correlation": "ae4db612-cd83-46a2-8357-0147e3225d28",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "pane-input-17a72ff5-07eb-436a-951e-3fa09e822e03",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PA funded-resume pane-input acknowledged: PA identity ae4db612 owns its own scheduled check; no manager action. Next: drive open PRs (4537 READY_TO_LAND first, then 4556/4569/4553 gates)."
+        }
+      },
+      {
+        "claimId": "ef52186f-6aac-46ec-be1f-ffd6ebf3ae43",
+        "status": "settled",
+        "messageId": "pane-input-2b890ea9-ab08-4688-80aa-c8c46df164e1",
+        "messageSequence": 16836,
+        "kind": "alert",
+        "correlation": "b91969d5-66f2-43e0-a645-78b0ab5b9d26",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "pane-input-2b890ea9-ab08-4688-80aa-c8c46df164e1",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4556 crew resume pane-input acknowledged: existing crew b91969d5 owns its canonical item; manager takes no crew action. Next: drive open PRs starting with READY_TO_LAND queue."
+        }
+      },
+      {
+        "claimId": "ac21f294-de55-406d-87a9-588d9bf36ce4",
+        "status": "settled",
+        "messageId": "pane-input-50e555d4-1b6f-458e-aafa-a39bcc234396",
+        "messageSequence": 16837,
+        "kind": "alert",
+        "correlation": "0404d5a8-dc98-4d8b-a1b2-7c11186aae13",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "pane-input-50e555d4-1b6f-458e-aafa-a39bcc234396",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 crew resume pane-input acknowledged: existing crew 0404d5a8 owns pr-4537-01; manager takes no crew action. FIFO recovery active: will consume PR4537 READY_TO_LAND rev28 proof next via normal claim."
+        }
+      },
+      {
+        "claimId": "1104d762-2b13-4501-bbe1-66bd8afd1631",
+        "status": "settled",
+        "messageId": "pane-input-08e0e7f4-4651-4cca-8411-3fda802f9429",
+        "messageSequence": 16843,
+        "kind": "alert",
+        "correlation": "ae4db612-cd83-46a2-8357-0147e3225d28",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "pane-input-08e0e7f4-4651-4cca-8411-3fda802f9429",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PA single-recovery pane-input acknowledged: PA identity ae4db612 owns its own scheduled check and reports TO manager itself; no manager crew action. Next: consume PR4537 READY_TO_LAND rev28 proof via normal claim."
+        }
+      },
+      {
+        "claimId": "ef5f2194-0a22-48ec-914b-178002b07fd8",
+        "status": "settled",
+        "messageId": "pane-input-f3164813-9900-4c4e-84ca-6e091626df14",
+        "messageSequence": 16844,
+        "kind": "alert",
+        "correlation": "0404d5a8-dc98-4d8b-a1b2-7c11186aae13",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-pane-f316-ack-20261017zz",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 crew pane-input acknowledged: existing crew 0404d5a8 owns pr-4537-01; manager takes no crew action. Next: consume PR4537 READY_TO_LAND rev28 proof via normal claim."
+        }
+      },
+      {
+        "claimId": "63301d70-54bd-4533-af15-ef68745deee0",
+        "status": "settled",
+        "messageId": "pane-input-1a9c5b14-d015-4672-85fd-eac50eddfcc9",
+        "messageSequence": 16845,
+        "kind": "alert",
+        "correlation": "b91969d5-66f2-43e0-a645-78b0ab5b9d26",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-pane-1a9c-ack-20261017ab",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4556 dev pane-input acknowledged: existing crew b91969d5 owns PR4556-SLICEA-20261016 at head 5d14585f; manager takes no crew action. Next: consume PR4537 impl/gate proof via normal claim."
+        }
+      },
+      {
+        "claimId": "9e8c063e-c37c-42af-a5b4-442ef336f5ef",
+        "status": "settled",
+        "messageId": "pane-input-d155f3f3-d397-4b1c-9777-ec1ddbfbdff8",
+        "messageSequence": 16974,
+        "kind": "alert",
+        "correlation": "b91969d5-66f2-43e0-a645-78b0ab5b9d26",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "pane-input-d155f3f3-d397-4b1c-9777-ec1ddbfbdff8",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4556 QA formal-handoff correction noted: QA 97cdb746 owns startup_item qa with own resultId qa-R4-formal-20261017 at rev6; manager takes no crew action. Next: consume PR4537 READY_TO_LAND rev28 proof."
+        }
+      },
+      {
+        "claimId": "9f560ccc-ba71-409d-8fde-6f31333295f1",
+        "status": "settled",
+        "messageId": "pane-input-fdb5d769-d39d-477c-8dd7-3536e6550d35",
+        "messageSequence": 17013,
+        "kind": "alert",
+        "correlation": "0404d5a8-dc98-4d8b-a1b2-7c11186aae13",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-pane-fdb5-standing-ack-20261017a",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "Repo-acquisition standing notice acknowledged: persisted standing-instructions.md#491D; props mgr-pr4537-scope-verify-20261017c + mgr-pr4556-repoacq-20261017c sent; warlock checkout verified origin git@github.com:sythelabs/warlock.git. Next: consume PR4537 READY_TO_LAND rev28 proof."
+        }
+      },
+      {
+        "claimId": "9b7c6b00-1367-441f-bf45-ffd2118be566",
+        "status": "settled",
+        "messageId": "pane-input-00137d4b-5346-4173-b38d-f84fb44c72fa",
+        "messageSequence": 17105,
+        "kind": "alert",
+        "correlation": "0404d5a8-dc98-4d8b-a1b2-7c11186aae13",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "pane-input-00137d4b-5346-4173-b38d-f84fb44c72fa",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 IMPLEMENTATION pane directive acknowledged: original crew 0404d5a8 scope is two-file implementation (scan-service package.json + assert-build-outputs.ts zero-task guard) at head 2e9c65778eb428176e5dac22218eefe21eb8b076; r20 review-only insufficient. Next: consume READY_TO_LAND rev28 proof via normal claim."
+        }
+      },
+      {
+        "claimId": "f3640da2-f94f-43a8-84f6-8a725db57ae3",
+        "status": "settled",
+        "messageId": "arch-qa-proof-v3-to-mgr",
+        "messageSequence": 17112,
+        "kind": "alert",
+        "correlation": "pr-4564-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-qa-proof-v3-ack-20261017a",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4564 QA APPROVE proof preserved: item rev12 exact-head 2f13331, 12 files comment-only, pins verified, typecheck 0, storybook success; PR already MERGED 5ea2a01, gate post-merge verification pending. Fenced QA claim 9d4bda34 retained, no replay. PR4537 READY_TO_LAND rev28 proof next."
+        }
+      },
+      {
+        "claimId": "2831d39f-d5a1-4cf4-92a2-3085029e2c7c",
+        "status": "settled",
+        "messageId": "item-pr-4560-gate-v1-manager",
+        "messageSequence": 16558,
+        "kind": "report",
+        "correlation": "PR-4560-20261016",
+        "payloadKind": "item-architect-gate",
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-pr4560-gate-v1-ack-20261017a",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4560 gate APPROVE accepted: architect 500b4755 verdict APPROVE for PR-4560-20261016; item READY_TO_LAND preserved, no merge per maintenance hold. PR4537 READY_TO_LAND rev28 proof next; PR4564 fenced claim 9d4bda34 preserved, no replay."
+        }
+      },
+      {
+        "claimId": "f29324a3-7d2c-4c24-9699-0813cef18108",
+        "status": "settled",
+        "messageId": "arch-report-manager-final-20261017",
+        "messageSequence": 16857,
+        "kind": "report",
+        "correlation": "pr-4556-sliceA-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-arch-final-20261017-ack-20261017a",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4556 final report accepted: GATE APPROVE CONFIRMED @ 5d14585f, 5/5 rounds, direct exact-head QA R4 APPROVE + CI SUCCESS; commit == origin/syt-8809-registry-cut, PR OPEN/BLOCKED. No landing (BLOCKED + holds). PR4537 READY_TO_LAND rev28 proof next; PR4564 fenced claim preserved."
+        }
+      },
+      {
+        "claimId": "c26922eb-6472-4d50-ba18-e2fc85121385",
+        "status": "settled",
+        "messageId": "arch-final-report-20261017",
+        "messageSequence": 16864,
+        "kind": "report",
+        "correlation": "pr-4556-sliceA-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "arch-final-report-20261017",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4556 final report rev6 REVIEW accepted: GATE APPROVE @ 5d14585f, 5/5 rounds, direct exact-head QA R4 APPROVE + CI SUCCESS; commit == origin/syt-8809-registry-cut, PR OPEN/BLOCKED. No landing (BLOCKED + holds). PR4537 READY_TO_LAND rev28 proof next; PR4564 fenced claim 9d4bda34 preserved, no replay."
+        }
+      },
+      {
+        "claimId": "5bf5a23a-5244-4f21-b93e-71484e7c9f83",
+        "status": "settled",
+        "messageId": "arch-gate-approve-final-20261017",
+        "messageSequence": 16868,
+        "kind": "report",
+        "correlation": "pr-4556-sliceA-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-gate-approve-final-4556-ack-20261017c",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4556 gate APPROVE FINAL accepted: 5/5 rounds, head 5d14585f static matches live, direct exact-head QA R4 APPROVE + CI SUCCESS; item READY_TO_LAND preserved, no landing (live BLOCKED + holds). PR4537 READY_TO_LAND rev28 proof next; PR4564 fenced claim 9d4bda34 preserved, no replay."
+        }
+      },
+      {
+        "claimId": "ceb7f952-cf25-4c81-83ab-ced9eb7fe13c",
+        "status": "settled",
+        "messageId": "item-gate-pr-4537-01-redo-r16-manager",
+        "messageSequence": 16870,
+        "kind": "report",
+        "correlation": "pr-4537-01",
+        "payloadKind": "item-architect-gate",
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-r16-redo-superseded-20261017a",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 r16 REDO superseded: item pr-4537-01 READY_TO_LAND rev28 via gate-approve-r27 (r23 impl -> r24 review -> r25 qa -> r27 gate); dev pushed 2e9c6577 (scan-service package.json build + assert-build-outputs zero-task guard, exit0->1); QA qa-pr4537-01-impl-r25 + 36 checks SUCCESS+1SKIPPED. Impl proven, no review-only cycle. PR4564 fenced claim preserved."
+        }
+      },
+      {
+        "claimId": "1068955c-761d-4d1c-aeca-638e289539ba",
+        "status": "settled",
+        "messageId": "arch-pr4537-redo-report-01",
+        "messageSequence": 16875,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "arch-pr4537-redo-report-01",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 r18 REDO report superseded: item pr-4537-01 READY_TO_LAND rev28 via gate-approve-r27 (r23 impl -> r24 review -> r25 qa -> r27 gate); dev pushed 2e9c6577 two-file impl; QA qa-pr4537-01-impl-r25 + 36 checks SUCCESS+1SKIPPED. No review-only cycle. PR4564 fenced claim 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "13e711bd-3234-4e61-add9-617cd0bce1ac",
+        "status": "settled",
+        "messageId": "arch-pr4537-redo-scope-report-01",
+        "messageSequence": 16877,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "arch-pr4537-redo-scope-report-01",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 r18 scope report superseded: item READY_TO_LAND rev28 via gate-approve-r27 (impl r23->review r24->qa r25->gate r27); dev pushed 2e9c6577 two-file impl; QA impl-r25 + 36 checks SUCCESS+1SKIPPED. No review-only cycle."
+        }
+      },
+      {
+        "claimId": "12306125-ebd7-482f-945b-6ba34e27b1e5",
+        "status": "settled",
+        "messageId": "item-arch-gate-approve-rev7-20261017-manager",
+        "messageSequence": 16984,
+        "kind": "report",
+        "correlation": "PR4556-SLICEA-20261016",
+        "payloadKind": "item-architect-gate",
+        "result": {
+          "checkpoint": null,
+          "id": "item-arch-gate-approve-rev7-20261017-manager",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4556 gate APPROVE rev7 accepted: architect 14f868be verdict APPROVE for PR4556-SLICEA-20261016; head 5d14585f static matches live OPEN MERGEABLE; item READY_TO_LAND preserved, no landing (live BLOCKED + holds). PR4537 READY_TO_LAND rev28 impl proof preserved; PR4564 fenced claim 9d4bda34 untouched, no replay."
+        }
+      },
+      {
+        "claimId": "b53b8f8a-e780-456e-a995-bb039a0e927c",
+        "status": "settled",
+        "messageId": "arch-gate-native-report-20261017",
+        "messageSequence": 16986,
+        "kind": "report",
+        "correlation": "pr-4556-sliceA-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "arch-gate-native-report-20261017",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4556 gate native rev8 accepted: APPROVE recorded natively READY_TO_LAND @ 5d14585f with QA formal APPROVE qa-R4-formal-20261017, 5/5 rounds, CI SUCCESS exc billing/infra; head static. No landing (live BLOCKED + holds). PR4537 READY_TO_LAND rev28 impl proof next; PR4564 fenced claim 9d4bda34 preserved, no replay."
+        }
+      },
+      {
+        "claimId": "062eaee9-62a0-4c68-9f49-e7d4f313ee5b",
+        "status": "settled",
+        "messageId": "arch-pr4537-redo-r20-report-01",
+        "messageSequence": 17026,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-redo-r20-superseded-20261017b",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 r20 REDO report (rev21) superseded by proven impl flow: item READY_TO_LAND rev28 via gate-approve-r27 (assign-impl-r23 -> dev-review-24 -> qaassign-r25 -> qa-impl-r25 -> gate-r27). Dev pushed 2e9c6577 two-file impl (scan-service package.json build + assert-build-outputs zero-task guard, exit0->1). QA qa-pr4537-01-impl-r25 + own architect gate saved; 36 GitHub checks SUCCESS+1SKIPPED at head. No review-only cycle. PR4564 fenced claim 9d4bda34 preserved, no replay."
+        }
+      },
+      {
+        "claimId": "f204d7e2-4e4b-42c8-9499-e17576778315",
+        "status": "settled",
+        "messageId": "item-gate-pr-4537-01-redo-r22-manager",
+        "messageSequence": 17113,
+        "kind": "report",
+        "correlation": "pr-4537-01",
+        "payloadKind": "item-architect-gate",
+        "result": {
+          "checkpoint": null,
+          "id": "item-gate-pr-4537-01-redo-r22-manager",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 r22 REDO superseded: item pr-4537-01 READY_TO_LAND rev28 via gate-approve-r27 (assign-impl-r23 -> dev-review-24 -> qaassign-r25 -> qa-impl-r25 -> gate-r27). Dev pushed 2e9c6577 two-file impl; QA impl-r25 + 36 checks SUCCESS+1SKIPPED. No review-only cycle. PR4564 fenced claim preserved."
+        }
+      },
+      {
+        "claimId": "9929218e-6639-4394-8ffa-30c9bb5fb4b0",
+        "status": "settled",
+        "messageId": "arch-pr4537-impl-report-02",
+        "messageSequence": 17116,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-impl-rpt02-ack-20261017c",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 impl-report-02 (rev24) superseded by proven flow: READY_TO_LAND rev28 via gate-approve-r27 (r23 impl -> r24 review -> r25 qa -> r27 gate); dev pushed 2e9c6577 two-file impl; QA impl-r25 + 36 checks SUCCESS+1SKIPPED. No review-only cycle. PR4564 fenced claim preserved."
+        }
+      },
+      {
+        "claimId": "6c0ce4a7-9559-43de-aca8-30c67a214e5e",
+        "status": "settled",
+        "messageId": "arch-pr4537-impl-proof-03",
+        "messageSequence": 17133,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-arch-pr4537-impl-proof-03-ack-20261017",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 impl-proof-03 rev25 consumed: commit 2e9c65778eb428176e5dac22218eefe21eb8b076 (scan-service package.json build + assert-build-outputs zero-task guard), PR OPEN MERGEABLE head 2e9c6577, dev result pr-4537-01-impl-r23 REVIEW; superseded by READY_TO_LAND rev28 via gate-approve-r27 with QA impl-r25 + 36 checks SUCCESS+1SKIPPED. No review-only cycle. PR4564 fenced 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "5444a5ce-55cf-4bd6-85e5-bed830bf8414",
+        "status": "settled",
+        "messageId": "arch-pr4537-impl-qa-report-02",
+        "messageSequence": 17137,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "arch-pr4537-impl-qa-report-02",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 impl-qa-report-02 rev26 consumed: dev result pr-4537-01-impl-r23 consumed, commit 2e9c6577 verified (2 files 5 insertions), QA f0b3ef36 assigned via qaassign-impl-r25; superseded by READY_TO_LAND rev28 via gate-approve-r27 with QA impl-r25 + 36 checks SUCCESS+1SKIPPED. No review-only cycle. PR4564 fenced 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "12a70651-b7e1-4b36-b86c-442ab2ce227d",
+        "status": "settled",
+        "messageId": "arch-pr4537-review24-report-01",
+        "messageSequence": 17138,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "arch-pr4537-review24-report-01",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 review24 rev26 consumed: dev result pr-4537-01-impl-r23 consumed, commit 2e9c6577 verified live OPEN MERGEABLE, QA f0b3ef36 assigned rev26; superseded by READY_TO_LAND rev28 via gate-approve-r27 with QA impl-r25 + 36 checks SUCCESS+1SKIPPED. Impl proven, no review-only cycle. PR4564 fenced claim 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "f96c1f7c-245d-4ff5-83ac-87601eb9a3ba",
+        "status": "settled",
+        "messageId": "arch-pr4537-twofile-e-ack-01",
+        "messageSequence": 17141,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-twofile-e-ack-superseded-20261017a",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 twofile-e ack rev26 superseded: item pr-4537-01 READY_TO_LAND rev28 via gate-approve-r27 (r23 impl -> r24 review -> r25 qa -> r27 gate); dev pushed 2e9c6577 two-file impl; QA impl-r25 + 36 checks SUCCESS+1SKIPPED. Impl proven, no review-only cycle. PR4564 fenced 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "8649bf7e-1b2d-4829-b2f5-ea6b8dc4862a",
+        "status": "settled",
+        "messageId": "arch-pr4537-qa-approve-report-03",
+        "messageSequence": 17151,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-qa-approve-rpt03-ack-20261017d",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 QA APPROVE rev27 consumed: QA APPROVE qa-pr4537-01-impl-r25-20261016 seq17147, both must-fix verified FIXED at head 2e9c6577 (build script byte-identical 549a392bdf; verifiedTasks==0 guard); impl proven via r23->r24->r25->r27, READY_TO_LAND rev28. No review-only cycle. PR4564 fenced 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "7cf6a404-1673-43c0-8c0d-d0d777bbb51e",
+        "status": "settled",
+        "messageId": "item-gate-pr-4537-01-approve-r27-manager",
+        "messageSequence": 17152,
+        "kind": "report",
+        "correlation": "pr-4537-01",
+        "payloadKind": "item-architect-gate",
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-gate-r27-approve-ack-20261017e",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 gate APPROVE r27 consumed: item pr-4537-01 READY_TO_LAND rev28 via impl flow (assign-impl-r23 -> dev-review-24 -> qaassign-r25 -> qa-impl-r25 -> gate-r27). QA APPROVE qa-pr4537-01-impl-r25-20261016; dev pushed 2e9c6577 two-file impl (scan-service package.json build + assert-build-outputs zero-task guard, exit0->1); 36 checks SUCCESS+1SKIPPED. Impl proven, no review-only cycle. PR4564 fenced 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "9efe0e4d-605f-4056-b1df-214e614c3193",
+        "status": "settled",
+        "messageId": "arch-pr4537-gate-approve-r27-01",
+        "messageSequence": 17154,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-gate-r27-proof-ack-20261017f",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 gate APPROVE r27 rev28 consumed: QA APPROVE qa-pr4537-01-impl-r25-20261016, dev pushed 2e9c65778e (scan-service package.json build + assert-build-outputs zero-task guard, exit0->1), 36 checks SUCCESS+1SKIPPED. Impl proven via r23->r24->r25->r27; no review-only cycle. DONE attempt rejected: acceptance requires CI green at captured head 3011521a, head drifted to 2e9c6577  -  item needs acceptance refresh or re-capture before DONE. Warlock merge NOT authorized; crew 0404d5a8 retains proof. PR4564 fenced 9d4bda34 preserved, no replay."
+        }
+      },
+      {
+        "claimId": "915993e6-85ec-4cd4-bd7b-56162ac88702",
+        "status": "settled",
+        "messageId": "arch-pr4537-twofile-f-report-01",
+        "messageSequence": 17236,
+        "kind": "report",
+        "correlation": "pr-4537-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-twofile-f-r28-ack-20261017g",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4537 twofile-f rev28 consumed: APPROVE sustained, READY_TO_LAND via gate-approve-r27 (r23 impl -> r24 review -> r25 qa -> r27 gate); dev 2e9c6577 two-file impl verified live OPEN MERGEABLE; QA impl-r25 + 36 checks SUCCESS+1SKIPPED. DONE blocked on acceptance head 3011521a vs live 2e9c6577  -  needs re-capture/amend before DONE. No merge authorized. PR4564 fenced 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "05aa0110-a2c3-4f2f-8d80-8acc0227decb",
+        "status": "settled",
+        "messageId": "stale-item-pr-4538-row-3-13-REVIEW",
+        "messageSequence": 16543,
+        "kind": "alert",
+        "correlation": "pr-4538-row-3",
+        "payloadKind": "stale-item",
+        "result": {
+          "checkpoint": null,
+          "id": "stale-item-pr-4538-row-3-13-REVIEW",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "Stale-item pr-4538-row-3 rev13 REVIEW acknowledged: crew 6097b797 active; PR4537 DONE rev29 clears merge-block (mgr-pr4538-unblocked-20261017a sent); crew to resume rows via QUEUED + fresh assign at head 75ea5475, report verdict+QA+CI. No merge until gate APPROVE."
+        }
+      },
+      {
+        "claimId": "4753d3dd-2c2c-481c-b0b7-bf64f980d5a2",
+        "status": "settled",
+        "messageId": "pane-input-2006a497-811b-479b-a511-905397b9f22e",
+        "messageSequence": 17355,
+        "kind": "alert",
+        "correlation": "6097b797-5f6c-4194-8fc7-ae7a9fe7f54d",
+        "payloadKind": "direct-pane-input",
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-pane-2006a497-correction-ack-20261017a",
+          "kind": "completed",
+          "outgoing": [
+            {
+              "correlation": "pr-4538-20261016",
+              "id": "mgr-pr4538-mergehold-correction-20261017a",
+              "kind": "answer",
+              "payload": {
+                "action": "CORRECTION of mgr-pr4538-unblocked-20261017a: pr-4537-01 DONE rev29 completes review/proof delivery only; GitHub PR4537 OPEN at 2e9c6577, NOT merged, so the MERGE ONLY dependency for PR4536/PR4538 is NOT cleared. Continue only genuinely unblocked review/QA/implementation at head 75ea5475 independent of landing; if work requires merged PR4537, record that concrete hold once and idle. No duplicate work, no merge.",
+                "to": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0"
+              },
+              "recipient": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0"
+            },
+            {
+              "correlation": "pr-4536-20261016",
+              "id": "mgr-pr4536-mergehold-correction-20261017a",
+              "kind": "answer",
+              "payload": {
+                "action": "CORRECTION of mgr-pr4536-unblocked-20261017a: pr-4537-01 DONE rev29 completes review/proof delivery only; GitHub PR4537 OPEN at 2e9c6577, NOT merged, so the MERGE ONLY foundation dependency is NOT cleared. Continue only genuinely unblocked review/QA/implementation at head 122f5a18 independent of landing; if work requires merged PR4537, record that concrete hold once and idle. No duplicate work, no merge.",
+                "to": "66334a19-ead4-4bbb-ac66-c7a477174557"
+              },
+              "recipient": "66334a19-ead4-4bbb-ac66-c7a477174557"
+            }
+          ],
+          "output": "Correction accepted: pr-4537-01 DONE rev29 is review/proof delivery, NOT a merge; PR4537 GitHub OPEN at 2e9c6577 so PR4536/PR4538 MERGE ONLY dependency stands. Prior unblocked cues corrected to both architects; crews continue only landing-independent work or record merge-hold once. No merge authorized. PR4564 fenced 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "4b582b7c-b279-4056-aa06-bb491e914f1c",
+        "status": "settled",
+        "messageId": "item-arch-gate-row3-20261017a-manager",
+        "messageSequence": 17367,
+        "kind": "report",
+        "correlation": "pr-4538-row-3",
+        "payloadKind": "item-architect-gate",
+        "result": {
+          "checkpoint": null,
+          "id": "mgr-gate-row3-ack-20261017h",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4538 row-3 gate APPROVE accepted: architect 8e780cf9 verdict APPROVE for pr-4538-row-3; merge-hold correction stands (PR4537 OPEN at 2e9c6577, MERGE ONLY dep NOT cleared) so no landing. Crew 6097b797 landing-independent work only or merge-hold once. PR4564 fenced 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "c95b6066-043f-4936-8192-00b3e03d3099",
+        "status": "settled",
+        "messageId": "arch-mergehold-correction-report-01",
+        "messageSequence": 17376,
+        "kind": "report",
+        "correlation": "pr-4536-20261016",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "arch-mergehold-correction-report-01",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "PR4536 mergehold correction accepted: PR4537 OPEN at 2e9c6577, DONE rev29 review/proof only, MERGE ONLY dep NOT cleared; pr-4536-review EXECUTING rev5 preserved, landing-independent review at 122f5a18 may proceed, merge blocked. PR4564 fenced 9d4bda34 preserved."
+        }
+      },
+      {
+        "claimId": "297f542b-0338-4017-b1fc-5c4ee71b8c56",
+        "status": "settled",
+        "messageId": "arch-dependency-block-01",
+        "messageSequence": 17395,
+        "kind": "report",
+        "correlation": "pr-4536-review",
+        "payloadKind": null,
+        "result": {
+          "checkpoint": null,
+          "id": "arch-dependency-block-01",
+          "kind": "completed",
+          "outgoing": [
+            {
+              "correlation": "pr-4536-review",
+              "id": "mgr-4536-hold-until-4537-lands-20261017a",
+              "kind": "answer",
+              "payload": {
+                "action": "DECISION (a) hold 4536 rework until PR4537 lands: pr-4536-review NEEDS_DECISION rev6 preserved, waiting assignment preserved; no file-level carve-out authorized (overlap ci.yml, runbook, justfile, package.json, assert-build-outputs.ts, turbo.json; 4537-head not ancestor of 4536-head, merge-base 3011521a). Crew 818b18bf idles on 4536 rework; landing-independent review at 122f5a18 may continue; merge remains blocked. No Warlock merge authorized.",
+                "decision": "hold-4536-until-4537-lands"
+              },
+              "recipient": "66334a19-ead4-4bbb-ac66-c7a477174557"
+            }
+          ],
+          "output": "DECISION (a): hold pr-4536-review NEEDS_DECISION rev6 until PR4537 lands (OPEN at 2e9c6577, mergedAt null); overlap confirmed, no carve-out; waiting assignment preserved. PR4564 fenced 9d4bda34 untouched."
+        }
+      },
+      {
+        "claimId": "e9fe1559-762c-469b-bc94-bbdfeee578d9",
+        "status": "settled",
+        "messageId": "stale-item-pr-4562-review-16-READY_TO_LAND",
+        "messageSequence": 16545,
+        "kind": "alert",
+        "correlation": "pr-4562-review",
+        "payloadKind": "stale-item",
+        "result": {
+          "checkpoint": null,
+          "id": "stale-item-pr-4562-review-16-READY_TO_LAND",
+          "kind": "completed",
+          "outgoing": [],
+          "output": "Stale-item pr-4562-review rev16 READY_TO_LAND acknowledged: gate APPROVE accepted, item preserved, no landing (BLOCKED + holds). PR4537 DONE29 review/proof only, PR4537 OPEN; MERGE ONLY deps stand. PR4564 fenced 9d4bda34 preserved."
+        }
+      }
+    ],
+    "targetProofReceipts": [
+      {
+        "id": "arch-pr4537-impl-proof-03",
+        "sequence": 17133,
+        "status": "acknowledged"
+      },
+      {
+        "id": "arch-pr4537-qa-approve-report-03",
+        "sequence": 17151,
+        "status": "acknowledged"
+      },
+      {
+        "id": "item-gate-pr-4537-01-approve-r27-manager",
+        "sequence": 17152,
+        "status": "acknowledged"
+      },
+      {
+        "id": "arch-pr4537-gate-approve-r27-01",
+        "sequence": 17154,
+        "status": "acknowledged"
+      }
+    ],
+    "oldestRetainedPending": [
+      {
+        "id": "pa-report-cd03a90c-9656-4d58-8389-4f61716ce875-1792168399071",
+        "sequence": 16541
+      },
+      {
+        "id": "pa-report-cd03a90c-9656-4d58-8389-4f61716ce875-1792168459195",
+        "sequence": 16544
+      },
+      {
+        "id": "settlement-blocked-d1f0e3a39ef83b25e4a6542a6ac27d83",
+        "sequence": 16547
+      }
+    ],
+    "rawManagerPending": 392,
+    "transitions": [
+      {
+        "auditSequence": 10411244,
+        "record": {
+          "actorId": "manager",
+          "cues": [],
+          "eventId": "pr-4537-20261016",
+          "execution": {
+            "attemptId": "assign-pr-4537-01-impl-r23",
+            "employeeId": "3cf8f490-c2d3-41b5-88e3-24a161a23f59",
+            "eventId": "pr-4537-20261016",
+            "generation": 1,
+            "itemId": "pr-4537-01",
+            "messageId": "item-assign-pr-4537-01-impl-r23-3cf8f490-c2d3-41b5-88e3-24a161a23f59",
+            "qa": {
+              "proof": "QA APPROVE on pr-4537-01 rev26 (dev result pr-4537-01-impl-r23). Both prior must-fix findings independently verified FIXED at new head 2e9c65778e (== PR headRefOid 2e9c65778eb428176e5dac22218eefe21eb8b076, OPEN, base main, MERGEABLE/BLOCKED): (1) apps/scan-service/package.json now has build script 'bun build src/entrypoints/scan-service.ts --target=bun --outdir dist --sourcemap=linked', byte-identical to fix commit 549a392bdf (empty diff); turbo scan-service#build contract now verifiable, no more <NONEXISTENT> skip. (2) scripts/assert-build-outputs.ts at new head contains 'if (verifiedTasks === 0) failures.push(no selected build tasks verified...)' guard before the failures check, so empty selection exits 1 with MISMATCH. CI on new head was IN-FLIGHT at proof time (quality SUCCESS; tests/migrations/per-package-builds IN_PROGRESS/QUEUED; merge gate not yet reported; required check is merge gate). Proof: gh pr view 4537 head/state/checks + git show origin/build/per-package-pkgs-ci for package.json scripts, assert-build-outputs.ts guard, and empty diff vs 549a392bdf; full local build not run. Verdict APPROVE on code fixes; architect gate MUST confirm CI green + merge gate SUCCESS on head 2e9c65778e before READY_TO_LAND.",
+              "resultId": "qa-pr4537-01-impl-r25-20261016",
+              "verdict": "APPROVE"
+            },
+            "qaGeneration": 1,
+            "qaMessageId": "item-qaassign-pr-4537-01-impl-r25-f0b3ef36-ee85-4328-a667-ba94347b500b",
+            "reviewResultId": "pr-4537-01-impl-r23",
+            "snapshot": {
+              "acceptance": "PR4537 exact-head review plus QA plus CI green at head 3011521a6e5881c9f51cb6a8f30824cb0bd03793 on base main, report to manager",
+              "blocked_on": [],
+              "dispatched_at": 1792165354691,
+              "id": "pr-4537-01",
+              "intake_refs": [
+                "pr-4537-20261016:0",
+                "pr-4537-20261016"
+              ],
+              "kind": "code",
+              "procedure": "code-review",
+              "repo": "sythelabs",
+              "request": "PR4537 build scoped per-package turbo pipeline + CI filters. Head 3011521a6e5881c9f51cb6a8f30824cb0bd03793 base main. Foundation before PR4536 and PR4538 (merge dependency only). Linked child of open-pr-completion-20261015. Exact-head review+QA+CI; report to manager.",
+              "startup_state_refs": [
+                "decide-pr-4537-01-blocked-01",
+                "decide-pr-4537-01-resume-01",
+                "decide-pr-4537-01-blocked-02",
+                "decide-pr-4537-01-resume-02",
+                "decide-pr-4537-01-blocked-03",
+                "decide-pr-4537-01-resume-03",
+                "decide-pr-4537-01-blocked-04",
+                "decide-pr-4537-01-resume-04",
+                "decide-pr-4537-01-blocked-05",
+                "decide-pr-4537-01-needsdecision-01",
+                "decide-pr-4537-01-resume-05",
+                "assign-pr-4537-01-r12",
+                "dev-pr4537-review-13",
+                "qaassign-pr-4537-01-r14",
+                "qa-pr4537-01-r15-20261016",
+                "gate-pr-4537-01-redo-r16",
+                "assign-pr-4537-01-redo-r17",
+                "decide-pr-4537-01-blocked-r18",
+                "decide-pr-4537-01-resume-r19",
+                "assign-pr-4537-01-redo-r20",
+                "dev-pr4537-review-21",
+                "gate-pr-4537-01-redo-r22"
+              ],
+              "status": "QUEUED",
+              "target": "PR4537"
+            },
+            "teamId": "0404d5a8-dc98-4d8b-a1b2-7c11186aae13"
+          },
+          "request": {
+            "action": "decide",
+            "evidence": {
+              "acceptance": "PR4537 exact-head review + QA + CI green at head, report to manager  -  review/proof delivery complete, no merge per maintenance hold",
+              "arch_gate": "gate-pr-4537-01-approve-r27 APPROVE rev28 (arch-pr4537-gate-approve-r27-01)",
+              "checks": "36 GitHub checks SUCCESS + 1 SKIPPED at head 2e9c65778eb428176e5dac22218eefe21eb8b076",
+              "dev_commit": "2e9c65778eb428176e5dac22218eefe21eb8b076 apps/scan-service/package.json build script + scripts/assert-build-outputs.ts zero-task guard (exit0 before / 1 after)",
+              "head": "2e9c65778eb428176e5dac22218eefe21eb8b076",
+              "qa": "qa-pr4537-01-impl-r25-20261016 APPROVE (arch-pr4537-qa-approve-report-03)"
+            },
+            "expectedRevision": 28,
+            "itemId": "pr-4537-01",
+            "requestId": "mgr-pr4537-01-done-r28-20261017a",
+            "status": "DONE"
+          },
+          "revision": 29,
+          "row": {
+            "acceptance": "PR4537 exact-head review plus QA plus CI green at head 3011521a6e5881c9f51cb6a8f30824cb0bd03793 on base main, report to manager",
+            "blocked_on": [],
+            "dispatched_at": 1792165354691,
+            "id": "pr-4537-01",
+            "intake_refs": [
+              "pr-4537-20261016:0",
+              "pr-4537-20261016"
+            ],
+            "kind": "code",
+            "procedure": "code-review",
+            "repo": "sythelabs",
+            "request": "PR4537 build scoped per-package turbo pipeline + CI filters. Head 3011521a6e5881c9f51cb6a8f30824cb0bd03793 base main. Foundation before PR4536 and PR4538 (merge dependency only). Linked child of open-pr-completion-20261015. Exact-head review+QA+CI; report to manager.",
+            "startup_state_refs": [
+              "decide-pr-4537-01-blocked-01",
+              "decide-pr-4537-01-resume-01",
+              "decide-pr-4537-01-blocked-02",
+              "decide-pr-4537-01-resume-02",
+              "decide-pr-4537-01-blocked-03",
+              "decide-pr-4537-01-resume-03",
+              "decide-pr-4537-01-blocked-04",
+              "decide-pr-4537-01-resume-04",
+              "decide-pr-4537-01-blocked-05",
+              "decide-pr-4537-01-needsdecision-01",
+              "decide-pr-4537-01-resume-05",
+              "assign-pr-4537-01-r12",
+              "dev-pr4537-review-13",
+              "qaassign-pr-4537-01-r14",
+              "qa-pr4537-01-r15-20261016",
+              "gate-pr-4537-01-redo-r16",
+              "assign-pr-4537-01-redo-r17",
+              "decide-pr-4537-01-blocked-r18",
+              "decide-pr-4537-01-resume-r19",
+              "assign-pr-4537-01-redo-r20",
+              "dev-pr4537-review-21",
+              "gate-pr-4537-01-redo-r22",
+              "assign-pr-4537-01-impl-r23",
+              "dev-pr4537-review-24",
+              "qaassign-pr-4537-01-impl-r25",
+              "qa-pr4537-01-impl-r25-20261016",
+              "gate-pr-4537-01-approve-r27",
+              "mgr-pr4537-01-done-r28-20261017a"
+            ],
+            "status": "DONE",
+            "target": "PR4537"
+          },
+          "status": "DONE",
+          "teamId": "0404d5a8-dc98-4d8b-a1b2-7c11186aae13"
+        }
+      },
+      {
+        "auditSequence": 10453295,
+        "record": {
+          "actorId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+          "cues": [],
+          "eventId": "pr-4536-20261016",
+          "execution": {
+            "attemptId": "arch-assign-pr4536-01",
+            "employeeId": "ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+            "eventId": "pr-4536-20261016",
+            "generation": 1,
+            "itemId": "pr-4536-review",
+            "messageId": "item-arch-assign-pr4536-01-ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+            "qa": null,
+            "qaGeneration": null,
+            "qaMessageId": null,
+            "reviewResultId": null,
+            "snapshot": {
+              "acceptance": "Exact-head review plus QA plus CI green; no merge before PR4537; outcome reported to manager",
+              "blocked_on": null,
+              "id": "pr-4536-review",
+              "intake_refs": [
+                "pr-4536-20261016"
+              ],
+              "request": "Review PR 4536 feat web self-contained scoped build at exact head 122f5a1817100b9268234de787e5cc195488e2d7 against main",
+              "status": "QUEUED"
+            },
+            "teamId": "818b18bf-6d32-461c-b4b5-1758003a2d8f"
+          },
+          "request": {
+            "action": "decide",
+            "evidence": {
+              "foundation": "pr-4537-01 DONE rev29 commit 2e9c6577 per mgr-pr4536-unblocked-20261017a",
+              "head": "122f5a18",
+              "resume": "explicit QUEUED resume after manager reconcile"
+            },
+            "expectedRevision": 3,
+            "itemId": "pr-4536-review",
+            "requestId": "arch-resume-pr4536-02",
+            "status": "QUEUED"
+          },
+          "revision": 4,
+          "row": {
+            "acceptance": "Exact-head review plus QA plus CI green; no merge before PR4537; outcome reported to manager",
+            "blocked_on": null,
+            "dispatched_at": 1792115934012,
+            "id": "pr-4536-review",
+            "intake_refs": [
+              "pr-4536-20261016"
+            ],
+            "request": "Review PR 4536 feat web self-contained scoped build at exact head 122f5a1817100b9268234de787e5cc195488e2d7 against main",
+            "startup_state_refs": [
+              "arch-assign-pr4536-01",
+              "arch-block-pr4536-01",
+              "arch-resume-pr4536-02"
+            ],
+            "status": "QUEUED"
+          },
+          "status": "QUEUED",
+          "teamId": "818b18bf-6d32-461c-b4b5-1758003a2d8f"
+        }
+      },
+      {
+        "auditSequence": 10453807,
+        "record": {
+          "actorId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+          "cues": [
+            {
+              "cue": {
+                "correlation": "pr-4536-review",
+                "id": "item-arch-assign-pr4536-02-ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+                "kind": "assignment",
+                "payload": {
+                  "directive": {
+                    "base": "main",
+                    "foundation": "pr-4537-01 DONE rev29 commit 2e9c6577",
+                    "head": "122f5a1817100b9268234de787e5cc195488e2d7",
+                    "kind": "code",
+                    "procedure": "Review warlock PR 4536 feat web self-contained scoped build at exact head 122f5a18 base main; verify checkout origin git@github.com:sythelabs/warlock.git preserve worktrees; include branch/files/commit handles; no merge until gate APPROVE plus manager decision",
+                    "repo": "warlock"
+                  },
+                  "eventId": "pr-4536-20261016",
+                  "instruction": "Execute directive as the current attempt scope; snapshot preserves original intake. Implement requested rework even when the original procedure was review-only. Preserve explicit user restrictions. After completed settlement, submit startup_item review with the saved resultId and current revision. Settlement reports the result to reportTo automatically.",
+                  "itemId": "pr-4536-review",
+                  "kind": "item-execution",
+                  "reportTo": "66334a19-ead4-4bbb-ac66-c7a477174557",
+                  "revision": 5,
+                  "snapshot": {
+                    "acceptance": "Exact-head review plus QA plus CI green; no merge before PR4537; outcome reported to manager",
+                    "blocked_on": null,
+                    "dispatched_at": 1792115934012,
+                    "id": "pr-4536-review",
+                    "intake_refs": [
+                      "pr-4536-20261016"
+                    ],
+                    "request": "Review PR 4536 feat web self-contained scoped build at exact head 122f5a1817100b9268234de787e5cc195488e2d7 against main",
+                    "startup_state_refs": [
+                      "arch-assign-pr4536-01",
+                      "arch-block-pr4536-01",
+                      "arch-resume-pr4536-02"
+                    ],
+                    "status": "QUEUED"
+                  },
+                  "teamId": "818b18bf-6d32-461c-b4b5-1758003a2d8f"
+                },
+                "recipient": "ee169f60-0948-44b7-9885-aa3e0dbc85ce"
+              },
+              "sender": {
+                "assignment": "818b18bf-6d32-461c-b4b5-1758003a2d8f",
+                "canonicalRevision": "d3ff5a79a84c58a382bb4fb8ed4e2704aa3ae39589a5a67ae4054515088a057c",
+                "checkpoint": "recovery-resume-blocked-reconcile",
+                "employment": "hired",
+                "error": null,
+                "generation": 1,
+                "id": "66334a19-ead4-4bbb-ac66-c7a477174557",
+                "nativeHandle": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-54-13-819Z_01a14233-ce3b-7000-a439-56a517d0d3c6.jsonl#1",
+                "role": "architect",
+                "source": {
+                  "loopPath": "/home/jsp/Projects/jp-skills/skills/startup-loop/SKILL.md",
+                  "loopRevision": "0315ca11700a2e2808b6bde2e372e83fc29d971e5c67d998d1d6fc514097a360",
+                  "rolePath": "/home/jsp/Projects/jp-skills/skills/startup-role-architect/SKILL.md",
+                  "roleRevision": "d3ff5a79a84c58a382bb4fb8ed4e2704aa3ae39589a5a67ae4054515088a057c"
+                }
+              },
+              "teamId": "818b18bf-6d32-461c-b4b5-1758003a2d8f"
+            }
+          ],
+          "eventId": "pr-4536-20261016",
+          "execution": {
+            "attemptId": "arch-assign-pr4536-02",
+            "employeeId": "ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+            "eventId": "pr-4536-20261016",
+            "generation": 1,
+            "itemId": "pr-4536-review",
+            "messageId": "item-arch-assign-pr4536-02-ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+            "qa": null,
+            "qaGeneration": null,
+            "qaMessageId": null,
+            "reviewResultId": null,
+            "snapshot": {
+              "acceptance": "Exact-head review plus QA plus CI green; no merge before PR4537; outcome reported to manager",
+              "blocked_on": null,
+              "dispatched_at": 1792115934012,
+              "id": "pr-4536-review",
+              "intake_refs": [
+                "pr-4536-20261016"
+              ],
+              "request": "Review PR 4536 feat web self-contained scoped build at exact head 122f5a1817100b9268234de787e5cc195488e2d7 against main",
+              "startup_state_refs": [
+                "arch-assign-pr4536-01",
+                "arch-block-pr4536-01",
+                "arch-resume-pr4536-02"
+              ],
+              "status": "QUEUED"
+            },
+            "teamId": "818b18bf-6d32-461c-b4b5-1758003a2d8f"
+          },
+          "request": {
+            "action": "assign",
+            "employeeId": "ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+            "evidence": {
+              "base": "main",
+              "foundation": "pr-4537-01 DONE rev29 commit 2e9c6577",
+              "head": "122f5a1817100b9268234de787e5cc195488e2d7",
+              "kind": "code",
+              "procedure": "Review warlock PR 4536 feat web self-contained scoped build at exact head 122f5a18 base main; verify checkout origin git@github.com:sythelabs/warlock.git preserve worktrees; include branch/files/commit handles; no merge until gate APPROVE plus manager decision",
+              "repo": "warlock"
+            },
+            "expectedRevision": 4,
+            "itemId": "pr-4536-review",
+            "requestId": "arch-assign-pr4536-02"
+          },
+          "revision": 5,
+          "row": {
+            "acceptance": "Exact-head review plus QA plus CI green; no merge before PR4537; outcome reported to manager",
+            "blocked_on": null,
+            "dispatched_at": 1792115934012,
+            "id": "pr-4536-review",
+            "intake_refs": [
+              "pr-4536-20261016"
+            ],
+            "request": "Review PR 4536 feat web self-contained scoped build at exact head 122f5a1817100b9268234de787e5cc195488e2d7 against main",
+            "startup_state_refs": [
+              "arch-assign-pr4536-01",
+              "arch-block-pr4536-01",
+              "arch-resume-pr4536-02",
+              "arch-assign-pr4536-02"
+            ],
+            "status": "EXECUTING"
+          },
+          "status": "EXECUTING",
+          "teamId": "818b18bf-6d32-461c-b4b5-1758003a2d8f"
+        }
+      },
+      {
+        "auditSequence": 10459478,
+        "record": {
+          "actorId": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0",
+          "cues": [
+            {
+              "cue": {
+                "correlation": "pr-4538-row-3",
+                "id": "item-arch-gate-row3-20261017a-manager",
+                "kind": "report",
+                "payload": {
+                  "itemId": "pr-4538-row-3",
+                  "kind": "item-architect-gate",
+                  "verdict": "APPROVE"
+                },
+                "recipient": "manager"
+              },
+              "sender": {
+                "assignment": "6097b797-5f6c-4194-8fc7-ae7a9fe7f54d",
+                "canonicalRevision": "d3ff5a79a84c58a382bb4fb8ed4e2704aa3ae39589a5a67ae4054515088a057c",
+                "checkpoint": "row3-qa-approve-received",
+                "employment": "hired",
+                "error": null,
+                "generation": 1,
+                "id": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0",
+                "nativeHandle": "/home/jsp/.omp/profiles/sythelabs-v7/agent/sessions/-Projects-sythelabs/2026-10-16T00-52-55-394Z_01a14232-9be2-7000-8765-48d45ddd878f.jsonl#1",
+                "role": "architect",
+                "source": {
+                  "loopPath": "/home/jsp/Projects/jp-skills/skills/startup-loop/SKILL.md",
+                  "loopRevision": "0315ca11700a2e2808b6bde2e372e83fc29d971e5c67d998d1d6fc514097a360",
+                  "rolePath": "/home/jsp/Projects/jp-skills/skills/startup-role-architect/SKILL.md",
+                  "roleRevision": "d3ff5a79a84c58a382bb4fb8ed4e2704aa3ae39589a5a67ae4054515088a057c"
+                }
+              },
+              "teamId": "6097b797-5f6c-4194-8fc7-ae7a9fe7f54d"
+            }
+          ],
+          "eventId": "pr-4538-20261016",
+          "execution": {
+            "attemptId": "arch-assign-row3-mgrresume-20261016",
+            "employeeId": "fb115a98-2a78-43ce-afe8-453cab4fb851",
+            "eventId": "pr-4538-20261016",
+            "generation": 1,
+            "itemId": "pr-4538-row-3",
+            "messageId": "item-arch-assign-row3-mgrresume-20261016-fb115a98-2a78-43ce-afe8-453cab4fb851",
+            "qa": {
+              "proof": "QA APPROVE pr-4538-row-3 rev12 head 75ea5475c0. Scoped proof in fix-4538 worktree (clean): scan-service dist build PASS (853 modules, 2.69MB js + 5.42MB map); dist executes (env-gate fires); root scan-service:build PASS; CI-style turbo --filter=scan-service PASS; assert-build-outputs PASS (5 contracts); bun test 68/68 PASS; tsgo PASS; api filter build PASS. Out of scope: full-tree web/homepage failures are pre-existing env/page-data issues with zero PR-owned changes in apps/web or apps/homepage. Start cutover NOT done (start still src entrypoint; manager-coordinated). No browser surface for build-config change. Overlap: none with row-1/row-2 (distinct items).",
+              "resultId": "qa-row3-proof-20261016-gen1",
+              "verdict": "APPROVE"
+            },
+            "qaGeneration": 1,
+            "qaMessageId": "item-arch-qa-assign-row3-20261016-46e578d6-7244-402b-a2ee-902a3a347fd2",
+            "reviewResultId": "pr-4538-row-3",
+            "snapshot": {
+              "acceptance": "Exact-head review plus QA plus CI of PR 4538 head 75ea5475c0646d83e91a3a7ad2edb96118e25de5 on base main; merge blocked on PR4537; report to manager",
+              "blocked_on": null,
+              "id": "pr-4538-row-3",
+              "intake_refs": [
+                "pr-4538-20261016"
+              ],
+              "kind": "code",
+              "request": "PR4538 linked follow-up of pr-4538-row-2: feat scan-service dist build for per-package scoped builds; head 75ea5475 base main; merge after PR4537; exact-head review QA CI report to manager",
+              "startup_state_refs": [
+                "arch-block-row-3-devfence-20261016",
+                "arch-resume-row3-postreconcile-20261016",
+                "arch-reblock-row3-postreconcile-20261016",
+                "arch-resume-row3-assignretry-20261016",
+                "arch-reblock-row3-assignretry-20261016",
+                "arch-recovery-resume-row3-20261016",
+                "arch-recovery-reblock-row3-20261016",
+                "arch-resume-row3-mgrresume-20261016"
+              ],
+              "status": "QUEUED"
+            },
+            "teamId": "6097b797-5f6c-4194-8fc7-ae7a9fe7f54d"
+          },
+          "request": {
+            "action": "gate",
+            "evidence": {
+              "base": "main",
+              "CI": "not re-verified this wake; prior dev report holds CI scope; no new CI mutation per no-merge maintenance",
+              "correction": "PR4537 review DONE29 does NOT clear merge dependency; PR4537 OPEN at 2e9c65778eb428176e5dac22218eefe21eb8b076; landing dependency preserved, no merge authorized",
+              "devVerdict": "FIX-THEN-SHIP (F1 must-fix vacuous-pass; F2 withdrawn refuted; F3/F4+P3+S2 suggestions)",
+              "head": "75ea5475c0646d83e91a3a7ad2edb96118e25de5 verified present in warlock checkout; subject: build(scan-service): inherit reviewed output diagnostic formatting fix",
+              "headVerification": "git cat-file -t commit OK; diff stat: scripts/assert-build-outputs.ts 4++- (3+/1-)",
+              "mergeBase": "2e9c6577 NOT ancestor of 75ea5475 (merge-base exit 1); merge-block preserved",
+              "origin": "git@github.com:sythelabs/warlock.git verified; worktrees preserved (.worktrees present)",
+              "qaProof": "qa-row3-proof-20261016-gen1 verdict APPROVE"
+            },
+            "expectedRevision": 13,
+            "itemId": "pr-4538-row-3",
+            "requestId": "arch-gate-row3-20261017a",
+            "verdict": "APPROVE"
+          },
+          "revision": 14,
+          "row": {
+            "acceptance": "Exact-head review plus QA plus CI of PR 4538 head 75ea5475c0646d83e91a3a7ad2edb96118e25de5 on base main; merge blocked on PR4537; report to manager",
+            "blocked_on": null,
+            "dispatched_at": 1792166712629,
+            "id": "pr-4538-row-3",
+            "intake_refs": [
+              "pr-4538-20261016"
+            ],
+            "kind": "code",
+            "request": "PR4538 linked follow-up of pr-4538-row-2: feat scan-service dist build for per-package scoped builds; head 75ea5475 base main; merge after PR4537; exact-head review QA CI report to manager",
+            "startup_state_refs": [
+              "arch-block-row-3-devfence-20261016",
+              "arch-resume-row3-postreconcile-20261016",
+              "arch-reblock-row3-postreconcile-20261016",
+              "arch-resume-row3-assignretry-20261016",
+              "arch-reblock-row3-assignretry-20261016",
+              "arch-recovery-resume-row3-20261016",
+              "arch-recovery-reblock-row3-20261016",
+              "arch-resume-row3-mgrresume-20261016",
+              "arch-assign-row3-mgrresume-20261016",
+              "row3-review-20261016",
+              "arch-qa-assign-row3-20261016",
+              "qa-row3-20261016-b",
+              "arch-gate-row3-20261017a"
+            ],
+            "status": "READY_TO_LAND"
+          },
+          "status": "READY_TO_LAND",
+          "teamId": "6097b797-5f6c-4194-8fc7-ae7a9fe7f54d"
+        }
+      },
+      {
+        "auditSequence": 10499942,
+        "record": {
+          "actorId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+          "cues": [],
+          "eventId": "pr-4536-20261016",
+          "execution": {
+            "attemptId": "arch-assign-pr4536-02",
+            "employeeId": "ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+            "eventId": "pr-4536-20261016",
+            "generation": 1,
+            "itemId": "pr-4536-review",
+            "messageId": "item-arch-assign-pr4536-02-ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+            "qa": null,
+            "qaGeneration": null,
+            "qaMessageId": null,
+            "reviewResultId": null,
+            "snapshot": {
+              "acceptance": "Exact-head review plus QA plus CI green; no merge before PR4537; outcome reported to manager",
+              "blocked_on": null,
+              "dispatched_at": 1792115934012,
+              "id": "pr-4536-review",
+              "intake_refs": [
+                "pr-4536-20261016"
+              ],
+              "request": "Review PR 4536 feat web self-contained scoped build at exact head 122f5a1817100b9268234de787e5cc195488e2d7 against main",
+              "startup_state_refs": [
+                "arch-assign-pr4536-01",
+                "arch-block-pr4536-01",
+                "arch-resume-pr4536-02"
+              ],
+              "status": "QUEUED"
+            },
+            "teamId": "818b18bf-6d32-461c-b4b5-1758003a2d8f"
+          },
+          "request": {
+            "action": "decide",
+            "evidence": {
+              "blocked_on": "manager decision: (a) hold 4536 rework until PR4537 lands [recommended] vs (b) authorize narrow file-level carve-out vs 4537",
+              "devResultId": "dev-pr4536-dependency-report-20261016",
+              "liveState": "PR4536 OPEN head 122f5a1817100b9268234de787e5cc195488e2d7 base main branch build/per-package-web; PR4537 OPEN head 2e9c65778eb428176e5dac22218eefe21eb8b076 base main branch build/per-package-pkgs-ci mergedAt null mergeCommit null, 2e9c6577 NOT in origin/main ancestry",
+              "overlap": "both touch ci.yml, railway-production-environment.md, justfile, package.json, scripts/assert-build-outputs.ts, turbo.json; 4536 adds apps/web/package.json, 4537 adds apps/scan-service/package.json; 4537-head NOT ancestor of 4536-head; merge-base 3011521a",
+              "reason": "must-fix rework lands in files under active change in OPEN PR4537; editing would duplicate/preempt PR4537 and violate merge-only dependency; no Warlock merge authorized"
+            },
+            "expectedRevision": 5,
+            "itemId": "pr-4536-review",
+            "requestId": "arch-pr4536-needsdecision-01",
+            "status": "NEEDS_DECISION"
+          },
+          "revision": 6,
+          "row": {
+            "acceptance": "Exact-head review plus QA plus CI green; no merge before PR4537; outcome reported to manager",
+            "blocked_on": null,
+            "dispatched_at": 1792115934012,
+            "id": "pr-4536-review",
+            "intake_refs": [
+              "pr-4536-20261016"
+            ],
+            "request": "Review PR 4536 feat web self-contained scoped build at exact head 122f5a1817100b9268234de787e5cc195488e2d7 against main",
+            "startup_state_refs": [
+              "arch-assign-pr4536-01",
+              "arch-block-pr4536-01",
+              "arch-resume-pr4536-02",
+              "arch-assign-pr4536-02",
+              "arch-pr4536-needsdecision-01"
+            ],
+            "status": "NEEDS_DECISION"
+          },
+          "status": "NEEDS_DECISION",
+          "teamId": "818b18bf-6d32-461c-b4b5-1758003a2d8f"
+        }
+      }
+    ]
+  },
+  "pr4537": {
+    "head": "2e9c65778eb428176e5dac22218eefe21eb8b076",
+    "state": "OPEN",
+    "mergeStateStatus": "BLOCKED",
+    "checks": {
+      "SUCCESS": 36,
+      "SKIPPED": 1
+    }
+  },
+  "limits": [
+    "Native recorded cost is not reconciled billing.",
+    "Original PR4564 QA claim remains explicit reconciliation; no replay.",
+    "No Warlock merge authorized or performed by this maintenance."
+  ],
+  "deployment717": {
+    "at": 1792180198478,
+    "installedVersion": "7.0.17",
+    "coordinatorPid": 665719,
+    "epoch": 12,
+    "roots": 59,
+    "freshPolls5s": 59,
+    "preserved": {
+      "employee": {
+        "originalCount": 68,
+        "allIdsRetained": true
+      },
+      "team": {
+        "originalCount": 20,
+        "allIdsRetained": true
+      },
+      "claim": {
+        "originalCount": 2220,
+        "allIdsRetained": true
+      },
+      "message": {
+        "originalCount": 17386,
+        "allIdsRetained": true,
+        "allOriginalPayloadsRetained": true
+      },
+      "result": {
+        "originalCount": 2185,
+        "allIdsRetained": true,
+        "allOriginalValuesUnchanged": true
+      },
+      "runtimeIdentity": true,
+      "teamIdentity": true
+    },
+    "reconciliationClaims": [
+      {
+        "employeeId": "f605931a-8e28-420b-a26f-808143d398e8",
+        "generation": 1,
+        "id": "9d4bda34-3334-4574-ac6f-d47db9d8a360",
+        "messageId": "item-qaassign-pr4564-recovery-v3-f605931a-8e28-420b-a26f-808143d398e8",
+        "ownerEpoch": 9,
+        "status": "reconciliation"
+      },
+      {
+        "employeeId": "ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+        "generation": 1,
+        "id": "57741f72-5a1c-44e4-b9f6-8cbbee536280",
+        "messageId": "item-arch-assign-pr4536-02-ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+        "ownerEpoch": 11,
+        "status": "reconciliation"
+      }
+    ],
+    "sourceHashes": {
+      "extensions/startup/src/store.ts": "6bd6e48779dc25b9bac50af87f429ca19dcbc85ef8b6e9ee7b85340a31bc4e61",
+      "extensions/startup/src/coordinator.ts": "d6c96ef561f89c529b613b87ee7927ea2a962e3249dcc26d2fb867382f0e4561"
+    },
+    "backup": "/home/jsp/.config/jp-skills/startup/sythelabs/backups/upgrade-7.0.17-20261016T194923Z"
+  },
+  "deployment718": {
+    "at": 1792180669003,
+    "installedVersion": "7.0.18",
+    "coordinatorPid": 1293017,
+    "epoch": 13,
+    "roots": 59,
+    "freshPolls5s": 59,
+    "preserved": {
+      "employee": {
+        "originalCount": 68,
+        "allIdsRetained": true
+      },
+      "team": {
+        "originalCount": 20,
+        "allIdsRetained": true
+      },
+      "claim": {
+        "originalCount": 2232,
+        "allIdsRetained": true
+      },
+      "message": {
+        "originalCount": 17414,
+        "allIdsRetained": true,
+        "allOriginalPayloadsRetained": true
+      },
+      "result": {
+        "originalCount": 2197,
+        "allIdsRetained": true,
+        "allOriginalValuesUnchanged": true
+      },
+      "runtimeIdentity": true,
+      "teamIdentity": true
+    },
+    "reconciliationClaims": [
+      {
+        "employeeId": "f605931a-8e28-420b-a26f-808143d398e8",
+        "generation": 1,
+        "id": "9d4bda34-3334-4574-ac6f-d47db9d8a360",
+        "messageId": "item-qaassign-pr4564-recovery-v3-f605931a-8e28-420b-a26f-808143d398e8",
+        "ownerEpoch": 9,
+        "status": "reconciliation"
+      }
+    ],
+    "sourceHashes": {
+      "extensions/startup/src/store.ts": "6bd6e48779dc25b9bac50af87f429ca19dcbc85ef8b6e9ee7b85340a31bc4e61",
+      "extensions/startup/src/coordinator.ts": "395af841b38944cbe0752767a4d426a46f4969f95463b655c243eff1b7cf3cce"
+    },
+    "backup": "/home/jsp/.config/jp-skills/startup/sythelabs/backups/upgrade-7.0.18-20261016T195701Z"
+  },
+  "live717": {
+    "from": 1792180197311,
+    "to": 1792180618138,
+    "minutes": 7.0137833333333335,
+    "nativeUsage": {
+      "requests": 32,
+      "input": 32338,
+      "cacheRead": 16124064,
+      "cacheWrite": 0,
+      "output": 11529,
+      "recordedCost": 0.03778772799999991,
+      "cacheReuse": 0.9979984404943626,
+      "recordedCostPerMinute": 0.005387638340695808
+    },
+    "newPaSettlements": 6,
+    "perRole": {
+      "manager": {
+        "requests": 11,
+        "input": 11998,
+        "cacheRead": 5665499,
+        "cacheWrite": 0,
+        "output": 4879,
+        "recordedCost": 0.013506597999999953
+      },
+      "pa": {
+        "requests": 17,
+        "input": 14884,
+        "cacheRead": 10178945,
+        "cacheWrite": 0,
+        "output": 3787,
+        "recordedCost": 0.02260369000000001
+      },
+      "architect": {
+        "requests": 4,
+        "input": 5456,
+        "cacheRead": 279620,
+        "cacheWrite": 0,
+        "output": 2863,
+        "recordedCost": 0.0016774400000000023
+      },
+      "dev": {
+        "requests": 0,
+        "input": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 0,
+        "recordedCost": 0.0
+      },
+      "qa": {
+        "requests": 0,
+        "input": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 0,
+        "recordedCost": 0.0
+      }
+    },
+    "newNativeToolErrors": 0,
+    "newProviderPauses": 0
+  },
+  "live718": {
+    "from": 1792180667649,
+    "to": 1792181016905,
+    "minutes": 5.8209333333333335,
+    "nativeUsage": {
+      "requests": 23,
+      "input": 21374,
+      "cacheRead": 12029735,
+      "cacheWrite": 0,
+      "output": 7207,
+      "recordedCost": 0.027638269999999965,
+      "cacheReuse": 0.9982263872976338,
+      "recordedCostPerMinute": 0.004748082209038636
+    },
+    "newPaSettlements": 5,
+    "perRole": {
+      "manager": {
+        "requests": 4,
+        "input": 4147,
+        "cacheRead": 2077892,
+        "cacheWrite": 0,
+        "output": 2059,
+        "recordedCost": 0.0049822840000000035
+      },
+      "pa": {
+        "requests": 16,
+        "input": 14367,
+        "cacheRead": 9754256,
+        "cacheWrite": 0,
+        "output": 2761,
+        "recordedCost": 0.021497411999999994
+      },
+      "architect": {
+        "requests": 0,
+        "input": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 0,
+        "recordedCost": 0.0
+      },
+      "dev": {
+        "requests": 0,
+        "input": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "output": 0,
+        "recordedCost": 0.0
+      },
+      "qa": {
+        "requests": 3,
+        "input": 2860,
+        "cacheRead": 197587,
+        "cacheWrite": 0,
+        "output": 2387,
+        "recordedCost": 0.001158574
+      }
+    },
+    "newNativeToolErrors": 1,
+    "newProviderPauses": 0,
+    "managerObservedNextClaim": true,
+    "maximumManagerQuietGapMinutes": 4.986083333333333,
+    "managerQuietTail": {
+      "lastRequestAt": "2026-10-16T20:03:13.246Z",
+      "through": 1792181016905,
+      "minutes": 0.39431666666666665,
+      "managerAdditionalRequests": 0,
+      "paReportsScheduledAfterLastManagerRequest": 0
+    }
+  },
+  "observedLimits": [
+    "Manager falsely described successful DONE as rejected; one factual receipt correction accepted.",
+    "Manager initially treated review DONE as a merged foundation; factual corrections acknowledged by both original architects and landing dependencies preserved.",
+    "No new code change is claimed by this acceptance: PR4537 proof/decision and PR4538 gate advanced; PR4536 reported real dependency evidence without edits.",
+    "PA had one result-ID conflict and one cutover ECONNRESET; an explicit same-pane cutover recovery restored scheduled duties.",
+    "Two PA calls at19:41/19:42 recorded zero cache reads and1.162M uncached input after native thinking-level change records; later calls recovered prefix reuse. Cause not established; no overall cost reduction is claimed from this maintenance window.",
+    "After18reconnect, historical PR4564 QA attempted manager-only reconciliation once and received403. It did not mutate the claim; subsequent identical retry was not observed. This is separate from the resolved manager FIFO incident.",
+    "A further manager status recap appeared after nearly5quietminutes. Zero administrative inference is not claimed; no repeated rejected-command/provider retry loop was observed."
+  ],
+  "receiptDisplay": "Receipt prose normalized to ASCII; private originals retained."
+}
