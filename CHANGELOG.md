@@ -2,6 +2,17 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.17] - 2026-10-16
+
+### Fixed
+
+- Direct employee-pane input observations remain manager oversight mail after crew technical reports. They no longer preempt new proof/gate results or restore an administrative head-of-line bottleneck. Current failures and crew questions retain first priority; all notice IDs, payloads and stable order are preserved.
+
+### Verification
+
+- Live7.0.16 acceptance exposed a fresh gate behind retained pane notices. The regression fails before the fix and verifies projection, claim ordering and retained notice delivery afterward. 345 tests,1963assertions and TypeScript checking pass. Native client code is unchanged.
+- Coordinator restart required; preserve crews/native roots/history and drain live claims before cutover. No automatic replay or bulk acknowledgement.
+
 ## [7.0.16] - 2026-10-16
 
 ### Fixed
