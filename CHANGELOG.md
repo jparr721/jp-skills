@@ -2,6 +2,17 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.14] - 2026-10-16
+
+### Fixed
+
+- Context-only OMP continuations consume their queued wake, allowing later PA duties and new crew messages to wake the same resident employee. Wake admission remains coalesced while context is refreshed.
+- Unchanged inbox suppression and provider-error pauses remain enforced; no coordinator/store or protocol change.
+
+### Verification
+
+- Regression fails on the second scheduled duty before the fix and passes across five context-only duties afterward. 327 tests, 1663 assertions and TypeScript checking pass; twelve installed-OMP offline guard checks pass.
+
 ## [7.0.13] - 2026-10-16
 
 ### Fixed
