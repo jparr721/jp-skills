@@ -1,0 +1,1332 @@
+{
+  "status": "PASS",
+  "startup": "V7RecoveryProof",
+  "testedRelease": "7.0.2",
+  "implementationCommit": "550ac949dd38f0f603da8d614255a946d614f62d",
+  "host": "local macOS",
+  "timezone": "America/Denver",
+  "herdrSession": "startup-v7-live-20261015",
+  "fault": {
+    "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+    "launchId": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+    "manifestPath": "/tmp/sv7-recovery-20261015/home/startup/V7RecoveryProof/launches/70f83d13-598b-4589-85fc-2a552bb5a11c.json",
+    "injectedAt": 1792111143560,
+    "fault": "canonical-source-hash-mismatch",
+    "restoredAt": 1792111258455,
+    "recoveryObservedAt": 1792111258900
+  },
+  "recoveryMs": 445,
+  "checks": {
+    "session_vars_unset_in_all_three_actual_native_roots": true,
+    "real_herdr_manager_and_pa_admitted": true,
+    "forced_boot_failure_contained": true,
+    "launch_command_reports_failure": true,
+    "durable_manager_alert_acknowledged": true,
+    "automatic_recovery_after_manifest_restore": true,
+    "same_pane_terminal_native_transcript": true,
+    "same_employee_launch_generation": true,
+    "same_worker_pid": true,
+    "pa_identity_and_fresh_polls_throughout": true,
+    "pa_reports_during_fault_and_after_recovery": true,
+    "no_pa_offline_or_overdue_alert": true,
+    "eleven_owned_native_roots_and_two_coordinators_stopped": true,
+    "herdr_agent_registry_empty_after_owned_tabs_closed": true,
+    "owned_herdr_server_stopped": true,
+    "coordinator_sockets_removed": true
+  },
+  "paReportCounts": {
+    "fault-observed": 1,
+    "fault-pa-active": 2,
+    "recovered": 3,
+    "before-shutdown": 4
+  },
+  "sourceHashes": {
+    "extensions/startup/v7.ts": "5cdb36c547347ed69a0413320bff6cf0399c05a56332f51ec1b773c161adcb40",
+    "extensions/startup/src/employee-entry.ts": "205dcff28d84cc1d30a94ec2fee481dcde92cdfccf3cd71c7efc5c92be0291d6",
+    "extensions/startup/src/employee-client.ts": "13b4b0a4935b972d05d0239fd8bf11ff0e4343b32a2dd1a1b1fbe6a4de65cbcb",
+    "extensions/startup/src/herdr-runtime.ts": "a8000d5037f1e1172865a3987ddbbd305a0171869683c6ce8fc2de25c5c10d22",
+    "extensions/startup/src/coordinator.ts": "81da04e0b9613dcfb0dfa9107cb6319fe5a6f53b0698048b032b1ba970662efb"
+  },
+  "snapshots": [
+    {
+      "observedAt": 1792111118014,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "manager",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111117663,
+            "lastProgress": 1792111116587,
+            "lastSeen": 1792111105652,
+            "launchId": "cb16fbb9-e193-4141-8854-27ac7d074937",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl",
+            "observedState": null,
+            "paneId": "w1:pD",
+            "state": "ready",
+            "stateSequence": null,
+            "tabId": "w1:t9",
+            "terminalId": "term_65dea5f453e29d",
+            "turnActive": true
+          }
+        },
+        {
+          "id": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "role": "pa",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111117252,
+            "lastProgress": 1792111105538,
+            "lastSeen": 1792111117633,
+            "launchId": "497ec861-d423-4e43-a9aa-19dd1e40e5f9",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl",
+            "observedState": "working",
+            "paneId": "w1:pE",
+            "state": "ready",
+            "stateSequence": 1365,
+            "tabId": "w1:tA",
+            "terminalId": "term_65dea61d85bb8e",
+            "turnActive": true
+          }
+        }
+      ],
+      "environment": [
+        {
+          "pid": 56393,
+          "observedAt": 1792111105727,
+          "paneId": "w1:pE",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 56293,
+          "observedAt": 1792111087755,
+          "paneId": "w1:pD",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7",
+          "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+        }
+      ],
+      "herdrAgents": [
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+          },
+          "agent_status": "working",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "v7-recovery-manager",
+          "pane_id": "w1:pD",
+          "revision": 107,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1364,
+          "tab_id": "w1:t9",
+          "terminal_id": "term_65dea5f453e29d",
+          "terminal_title": "\u03c0 \u283c repo",
+          "terminal_title_stripped": "\u03c0 \u283c repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl"
+          },
+          "agent_status": "working",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-497ec861d4234e43a9aa19dd1e40",
+          "pane_id": "w1:pE",
+          "revision": 99,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1365,
+          "tab_id": "w1:tA",
+          "terminal_id": "term_65dea61d85bb8e",
+          "terminal_title": "\u03c0 \u2826 repo",
+          "terminal_title_stripped": "\u03c0 \u2826 repo",
+          "workspace_id": "w1"
+        }
+      ],
+      "bootAlerts": [],
+      "paReports": []
+    },
+    {
+      "observedAt": 1792111142953,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "manager",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111142685,
+            "lastProgress": 1792111135965,
+            "lastSeen": 1792111105652,
+            "launchId": "cb16fbb9-e193-4141-8854-27ac7d074937",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl",
+            "observedState": null,
+            "paneId": "w1:pD",
+            "state": "ready",
+            "stateSequence": null,
+            "tabId": "w1:t9",
+            "terminalId": "term_65dea5f453e29d",
+            "turnActive": true
+          }
+        },
+        {
+          "id": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "role": "pa",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111142265,
+            "lastProgress": 1792111125820,
+            "lastSeen": 1792111142644,
+            "launchId": "497ec861-d423-4e43-a9aa-19dd1e40e5f9",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl",
+            "observedState": "working",
+            "paneId": "w1:pE",
+            "state": "ready",
+            "stateSequence": 1365,
+            "tabId": "w1:tA",
+            "terminalId": "term_65dea61d85bb8e",
+            "turnActive": true
+          }
+        },
+        {
+          "id": "b814756e-4b18-4002-aebf-91a05db82066",
+          "role": "devops",
+          "generation": 0,
+          "sourceBound": false,
+          "runtime": {
+            "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 0,
+            "lastProgress": 1792111135964,
+            "lastSeen": 1792111135964,
+            "launchId": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+            "nativeSession": null,
+            "observedState": null,
+            "paneId": null,
+            "state": "prepared",
+            "stateSequence": null,
+            "tabId": null,
+            "terminalId": null,
+            "turnActive": false
+          }
+        }
+      ],
+      "environment": [
+        {
+          "pid": 56393,
+          "observedAt": 1792111105727,
+          "paneId": "w1:pE",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 56293,
+          "observedAt": 1792111087755,
+          "paneId": "w1:pD",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7",
+          "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+        }
+      ],
+      "herdrAgents": [
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+          },
+          "agent_status": "working",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "v7-recovery-manager",
+          "pane_id": "w1:pD",
+          "revision": 415,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1364,
+          "tab_id": "w1:t9",
+          "terminal_id": "term_65dea5f453e29d",
+          "terminal_title": "\u03c0 \u2839 repo",
+          "terminal_title_stripped": "\u03c0 \u2839 repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl"
+          },
+          "agent_status": "working",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-497ec861d4234e43a9aa19dd1e40",
+          "pane_id": "w1:pE",
+          "revision": 408,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1365,
+          "tab_id": "w1:tA",
+          "terminal_id": "term_65dea61d85bb8e",
+          "terminal_title": "\u03c0 \u2834 repo",
+          "terminal_title_stripped": "\u03c0 \u2834 repo",
+          "workspace_id": "w1"
+        }
+      ],
+      "bootAlerts": [],
+      "paReports": []
+    },
+    {
+      "observedAt": 1792111159112,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "manager",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111158694,
+            "lastProgress": 1792111157476,
+            "lastSeen": 1792111105652,
+            "launchId": "cb16fbb9-e193-4141-8854-27ac7d074937",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl",
+            "observedState": null,
+            "paneId": "w1:pD",
+            "state": "ready",
+            "stateSequence": null,
+            "tabId": "w1:t9",
+            "terminalId": "term_65dea5f453e29d",
+            "turnActive": true
+          }
+        },
+        {
+          "id": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "role": "pa",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111158269,
+            "lastProgress": 1792111157217,
+            "lastSeen": 1792111158658,
+            "launchId": "497ec861-d423-4e43-a9aa-19dd1e40e5f9",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl",
+            "observedState": "working",
+            "paneId": "w1:pE",
+            "state": "ready",
+            "stateSequence": 1365,
+            "tabId": "w1:tA",
+            "terminalId": "term_65dea61d85bb8e",
+            "turnActive": true
+          }
+        },
+        {
+          "id": "b814756e-4b18-4002-aebf-91a05db82066",
+          "role": "devops",
+          "generation": 0,
+          "sourceBound": false,
+          "runtime": {
+            "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+            "error": "Canonical source hashes differ from the launch manifest",
+            "generation": 1,
+            "lastPoll": 0,
+            "lastProgress": 1792111135964,
+            "lastSeen": 1792111143515,
+            "launchId": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+            "nativeSession": null,
+            "observedState": null,
+            "paneId": "w1:pF",
+            "state": "uncertain",
+            "stateSequence": null,
+            "tabId": "w1:tB",
+            "terminalId": null,
+            "turnActive": false
+          }
+        }
+      ],
+      "environment": [
+        {
+          "pid": 56393,
+          "observedAt": 1792111105727,
+          "paneId": "w1:pE",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 57653,
+          "observedAt": 1792111143701,
+          "paneId": "w1:pF",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 56293,
+          "observedAt": 1792111087755,
+          "paneId": "w1:pD",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7",
+          "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+        }
+      ],
+      "herdrAgents": [
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+          },
+          "agent_status": "working",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "v7-recovery-manager",
+          "pane_id": "w1:pD",
+          "revision": 616,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1364,
+          "tab_id": "w1:t9",
+          "terminal_id": "term_65dea5f453e29d",
+          "terminal_title": "\u03c0 \u2838 repo",
+          "terminal_title_stripped": "\u03c0 \u2838 repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl"
+          },
+          "agent_status": "working",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-497ec861d4234e43a9aa19dd1e40",
+          "pane_id": "w1:pE",
+          "revision": 609,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1365,
+          "tab_id": "w1:tA",
+          "terminal_id": "term_65dea61d85bb8e",
+          "terminal_title": "\u03c0 \u2826 repo",
+          "terminal_title_stripped": "\u03c0 \u2826 repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-39-03-705Z_01a14225-eb19-757b-b245-3a66d35f393b.jsonl"
+          },
+          "agent_status": "idle",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-70f83d13598b458985fc2a552bb5",
+          "pane_id": "w1:pF",
+          "revision": 2,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1366,
+          "tab_id": "w1:tB",
+          "terminal_id": "term_65dea641bd636f",
+          "terminal_title": "\u03c0 > repo",
+          "terminal_title_stripped": "\u03c0 > repo",
+          "workspace_id": "w1"
+        }
+      ],
+      "bootAlerts": [
+        {
+          "correlation": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+          "id": "boot-failed-70f83d13-598b-4589-85fc-2a552bb5a11c-a8ec33e3a6f5",
+          "kind": "alert",
+          "payload": {
+            "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+            "error": "Canonical source hashes differ from the launch manifest",
+            "kind": "boot-failed",
+            "paneId": "w1:pF"
+          },
+          "recipient": "manager",
+          "sender": "manager",
+          "sequence": 3,
+          "status": "pending",
+          "teamId": null
+        }
+      ],
+      "paReports": [
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111109618",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:38 UTC (scheduledAt 1792111109618): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 1 awaiting manager disposition/delegation. Unclassified inputs: 0. Unresolved claims: 0. Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced. Stale progress/idle claims/missed deadlines: none evidenced. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 5,
+          "status": "pending",
+          "teamId": null
+        }
+      ]
+    },
+    {
+      "observedAt": 1792111183421,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "manager",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111182700,
+            "lastProgress": 1792111180553,
+            "lastSeen": 1792111105652,
+            "launchId": "cb16fbb9-e193-4141-8854-27ac7d074937",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl",
+            "observedState": null,
+            "paneId": "w1:pD",
+            "state": "ready",
+            "stateSequence": null,
+            "tabId": "w1:t9",
+            "terminalId": "term_65dea5f453e29d",
+            "turnActive": true
+          }
+        },
+        {
+          "id": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "role": "pa",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111183271,
+            "lastProgress": 1792111178425,
+            "lastSeen": 1792111182681,
+            "launchId": "497ec861-d423-4e43-a9aa-19dd1e40e5f9",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl",
+            "observedState": "done",
+            "paneId": "w1:pE",
+            "state": "ready",
+            "stateSequence": 1369,
+            "tabId": "w1:tA",
+            "terminalId": "term_65dea61d85bb8e",
+            "turnActive": false
+          }
+        },
+        {
+          "id": "b814756e-4b18-4002-aebf-91a05db82066",
+          "role": "devops",
+          "generation": 0,
+          "sourceBound": false,
+          "runtime": {
+            "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+            "error": "Canonical source hashes differ from the launch manifest",
+            "generation": 1,
+            "lastPoll": 0,
+            "lastProgress": 1792111135964,
+            "lastSeen": 1792111143515,
+            "launchId": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+            "nativeSession": null,
+            "observedState": null,
+            "paneId": "w1:pF",
+            "state": "uncertain",
+            "stateSequence": null,
+            "tabId": "w1:tB",
+            "terminalId": null,
+            "turnActive": false
+          }
+        }
+      ],
+      "environment": [
+        {
+          "pid": 56393,
+          "observedAt": 1792111105727,
+          "paneId": "w1:pE",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 57653,
+          "observedAt": 1792111143701,
+          "paneId": "w1:pF",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 56293,
+          "observedAt": 1792111087755,
+          "paneId": "w1:pD",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7",
+          "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+        }
+      ],
+      "herdrAgents": [
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+          },
+          "agent_status": "working",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "v7-recovery-manager",
+          "pane_id": "w1:pD",
+          "revision": 917,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1364,
+          "tab_id": "w1:t9",
+          "terminal_id": "term_65dea5f453e29d",
+          "terminal_title": "\u03c0 \u283c repo",
+          "terminal_title_stripped": "\u03c0 \u283c repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl"
+          },
+          "agent_status": "done",
+          "completion_seq": 1369,
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-497ec861d4234e43a9aa19dd1e40",
+          "pane_id": "w1:pE",
+          "revision": 871,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1369,
+          "tab_id": "w1:tA",
+          "terminal_id": "term_65dea61d85bb8e",
+          "terminal_title": "\u03c0 > repo",
+          "terminal_title_stripped": "\u03c0 > repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-39-03-705Z_01a14225-eb19-757b-b245-3a66d35f393b.jsonl"
+          },
+          "agent_status": "idle",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-70f83d13598b458985fc2a552bb5",
+          "pane_id": "w1:pF",
+          "revision": 2,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1366,
+          "tab_id": "w1:tB",
+          "terminal_id": "term_65dea641bd636f",
+          "terminal_title": "\u03c0 > repo",
+          "terminal_title_stripped": "\u03c0 > repo",
+          "workspace_id": "w1"
+        }
+      ],
+      "bootAlerts": [
+        {
+          "correlation": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+          "id": "boot-failed-70f83d13-598b-4589-85fc-2a552bb5a11c-a8ec33e3a6f5",
+          "kind": "alert",
+          "payload": {
+            "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+            "error": "Canonical source hashes differ from the launch manifest",
+            "kind": "boot-failed",
+            "paneId": "w1:pF"
+          },
+          "recipient": "manager",
+          "sender": "manager",
+          "sequence": 3,
+          "status": "acknowledged",
+          "teamId": null
+        }
+      ],
+      "paReports": [
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111109618",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:38 UTC (scheduledAt 1792111109618): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 1 awaiting manager disposition/delegation. Unclassified inputs: 0. Unresolved claims: 0. Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced. Stale progress/idle claims/missed deadlines: none evidenced. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 5,
+          "status": "claimed",
+          "teamId": null
+        },
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111169678",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:39 UTC (scheduledAt 1792111169678): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 3 awaiting manager disposition/delegation. Unclassified inputs: 0. Unresolved claims: 1 (per scoped cue payload; identity not supplied to PA). Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced in scoped data. Stale progress/idle claims/missed deadlines: no evidence beyond the 1 unresolved claim flagged above; no timestamps supplied. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in, unresolved-claim identity) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 9,
+          "status": "pending",
+          "teamId": null
+        }
+      ]
+    },
+    {
+      "observedAt": 1792111258927,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "manager",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111258707,
+            "lastProgress": 1792111243419,
+            "lastSeen": 1792111105652,
+            "launchId": "cb16fbb9-e193-4141-8854-27ac7d074937",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl",
+            "observedState": null,
+            "paneId": "w1:pD",
+            "state": "ready",
+            "stateSequence": null,
+            "tabId": "w1:t9",
+            "terminalId": "term_65dea5f453e29d",
+            "turnActive": false
+          }
+        },
+        {
+          "id": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "role": "pa",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111258297,
+            "lastProgress": 1792111236621,
+            "lastSeen": 1792111258744,
+            "launchId": "497ec861-d423-4e43-a9aa-19dd1e40e5f9",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl",
+            "observedState": "done",
+            "paneId": "w1:pE",
+            "state": "ready",
+            "stateSequence": 1379,
+            "tabId": "w1:tA",
+            "terminalId": "term_65dea61d85bb8e",
+            "turnActive": false
+          }
+        },
+        {
+          "id": "b814756e-4b18-4002-aebf-91a05db82066",
+          "role": "devops",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111258865,
+            "lastProgress": 1792111135964,
+            "lastSeen": 1792111258864,
+            "launchId": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-39-03-705Z_01a14225-eb19-757b-b245-3a66d35f393b.jsonl",
+            "observedState": null,
+            "paneId": "w1:pF",
+            "state": "ready",
+            "stateSequence": null,
+            "tabId": "w1:tB",
+            "terminalId": "term_65dea641bd636f",
+            "turnActive": false
+          }
+        }
+      ],
+      "environment": [
+        {
+          "pid": 56393,
+          "observedAt": 1792111105727,
+          "paneId": "w1:pE",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 57653,
+          "observedAt": 1792111143701,
+          "paneId": "w1:pF",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 56293,
+          "observedAt": 1792111087755,
+          "paneId": "w1:pD",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7",
+          "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+        }
+      ],
+      "herdrAgents": [
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+          },
+          "agent_status": "done",
+          "completion_seq": 1380,
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "v7-recovery-manager",
+          "pane_id": "w1:pD",
+          "revision": 1542,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1380,
+          "tab_id": "w1:t9",
+          "terminal_id": "term_65dea5f453e29d",
+          "terminal_title": "\u03c0 > repo",
+          "terminal_title_stripped": "\u03c0 > repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl"
+          },
+          "agent_status": "done",
+          "completion_seq": 1379,
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-497ec861d4234e43a9aa19dd1e40",
+          "pane_id": "w1:pE",
+          "revision": 978,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1379,
+          "tab_id": "w1:tA",
+          "terminal_id": "term_65dea61d85bb8e",
+          "terminal_title": "\u03c0 > repo",
+          "terminal_title_stripped": "\u03c0 > repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-39-03-705Z_01a14225-eb19-757b-b245-3a66d35f393b.jsonl"
+          },
+          "agent_status": "idle",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-70f83d13598b458985fc2a552bb5",
+          "pane_id": "w1:pF",
+          "revision": 2,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1366,
+          "tab_id": "w1:tB",
+          "terminal_id": "term_65dea641bd636f",
+          "terminal_title": "\u03c0 > repo",
+          "terminal_title_stripped": "\u03c0 > repo",
+          "workspace_id": "w1"
+        }
+      ],
+      "bootAlerts": [
+        {
+          "correlation": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+          "id": "boot-failed-70f83d13-598b-4589-85fc-2a552bb5a11c-a8ec33e3a6f5",
+          "kind": "alert",
+          "payload": {
+            "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+            "error": "Canonical source hashes differ from the launch manifest",
+            "kind": "boot-failed",
+            "paneId": "w1:pF"
+          },
+          "recipient": "manager",
+          "sender": "manager",
+          "sequence": 3,
+          "status": "acknowledged",
+          "teamId": null
+        }
+      ],
+      "paReports": [
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111109618",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:38 UTC (scheduledAt 1792111109618): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 1 awaiting manager disposition/delegation. Unclassified inputs: 0. Unresolved claims: 0. Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced. Stale progress/idle claims/missed deadlines: none evidenced. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 5,
+          "status": "acknowledged",
+          "teamId": null
+        },
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111169678",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:39 UTC (scheduledAt 1792111169678): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 3 awaiting manager disposition/delegation. Unclassified inputs: 0. Unresolved claims: 1 (per scoped cue payload; identity not supplied to PA). Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced in scoped data. Stale progress/idle claims/missed deadlines: no evidence beyond the 1 unresolved claim flagged above; no timestamps supplied. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in, unresolved-claim identity) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 9,
+          "status": "acknowledged",
+          "teamId": null
+        },
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111229719",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:40 UTC (scheduledAt 1792111229719): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 0. Unclassified inputs: 0. Unresolved claims: 0. Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced. Stale progress/idle claims/missed deadlines: none evidenced. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 12,
+          "status": "acknowledged",
+          "teamId": null
+        }
+      ]
+    },
+    {
+      "observedAt": 1792111319595,
+      "employees": [
+        {
+          "id": "manager",
+          "role": "manager",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "manager",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111318722,
+            "lastProgress": 1792111304947,
+            "lastSeen": 1792111105652,
+            "launchId": "cb16fbb9-e193-4141-8854-27ac7d074937",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl",
+            "observedState": null,
+            "paneId": "w1:pD",
+            "state": "ready",
+            "stateSequence": null,
+            "tabId": "w1:t9",
+            "terminalId": "term_65dea5f453e29d",
+            "turnActive": false
+          }
+        },
+        {
+          "id": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "role": "pa",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111319303,
+            "lastProgress": 1792111297528,
+            "lastSeen": 1792111318799,
+            "launchId": "497ec861-d423-4e43-a9aa-19dd1e40e5f9",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl",
+            "observedState": "done",
+            "paneId": "w1:pE",
+            "state": "ready",
+            "stateSequence": 1386,
+            "tabId": "w1:tA",
+            "terminalId": "term_65dea61d85bb8e",
+            "turnActive": false
+          }
+        },
+        {
+          "id": "b814756e-4b18-4002-aebf-91a05db82066",
+          "role": "devops",
+          "generation": 1,
+          "sourceBound": true,
+          "runtime": {
+            "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+            "error": null,
+            "generation": 1,
+            "lastPoll": 1792111318905,
+            "lastProgress": 1792111135964,
+            "lastSeen": 1792111318800,
+            "launchId": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+            "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-39-03-705Z_01a14225-eb19-757b-b245-3a66d35f393b.jsonl",
+            "observedState": "idle",
+            "paneId": "w1:pF",
+            "state": "ready",
+            "stateSequence": 1366,
+            "tabId": "w1:tB",
+            "terminalId": "term_65dea641bd636f",
+            "turnActive": false
+          }
+        }
+      ],
+      "environment": [
+        {
+          "pid": 56393,
+          "observedAt": 1792111105727,
+          "paneId": "w1:pE",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 57653,
+          "observedAt": 1792111143701,
+          "paneId": "w1:pF",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7"
+        },
+        {
+          "pid": 56293,
+          "observedAt": 1792111087755,
+          "paneId": "w1:pD",
+          "sessionUnset": true,
+          "startupSessionUnset": true,
+          "profile": "startup-v7",
+          "nativeSession": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+        }
+      ],
+      "herdrAgents": [
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-07-606Z_01a14225-0ff6-7117-bff0-0d8fbc338226.jsonl"
+          },
+          "agent_status": "done",
+          "completion_seq": 1387,
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "v7-recovery-manager",
+          "pane_id": "w1:pD",
+          "revision": 1819,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1387,
+          "tab_id": "w1:t9",
+          "terminal_id": "term_65dea5f453e29d",
+          "terminal_title": "\u03c0 > repo",
+          "terminal_title_stripped": "\u03c0 > repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-38-25-731Z_01a14225-56c3-71bd-b40c-e301d7e543cc.jsonl"
+          },
+          "agent_status": "done",
+          "completion_seq": 1386,
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-497ec861d4234e43a9aa19dd1e40",
+          "pane_id": "w1:pE",
+          "revision": 1116,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1386,
+          "tab_id": "w1:tA",
+          "terminal_id": "term_65dea61d85bb8e",
+          "terminal_title": "\u03c0 > repo",
+          "terminal_title_stripped": "\u03c0 > repo",
+          "workspace_id": "w1"
+        },
+        {
+          "agent": "omp",
+          "agent_session": {
+            "agent": "omp",
+            "kind": "path",
+            "source": "herdr:omp",
+            "value": "/Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/--private-tmp-sv7-recovery-20261015-repo--/2026-10-16T00-39-03-705Z_01a14225-eb19-757b-b245-3a66d35f393b.jsonl"
+          },
+          "agent_status": "idle",
+          "cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "focused": false,
+          "foreground_cwd": "/private/tmp/sv7-recovery-20261015/repo",
+          "interactive_ready": true,
+          "name": "s-70f83d13598b458985fc2a552bb5",
+          "pane_id": "w1:pF",
+          "revision": 2,
+          "screen_detection_skipped": true,
+          "state_change_seq": 1366,
+          "tab_id": "w1:tB",
+          "terminal_id": "term_65dea641bd636f",
+          "terminal_title": "\u03c0 > repo",
+          "terminal_title_stripped": "\u03c0 > repo",
+          "workspace_id": "w1"
+        }
+      ],
+      "bootAlerts": [
+        {
+          "correlation": "70f83d13-598b-4589-85fc-2a552bb5a11c",
+          "id": "boot-failed-70f83d13-598b-4589-85fc-2a552bb5a11c-a8ec33e3a6f5",
+          "kind": "alert",
+          "payload": {
+            "employeeId": "b814756e-4b18-4002-aebf-91a05db82066",
+            "error": "Canonical source hashes differ from the launch manifest",
+            "kind": "boot-failed",
+            "paneId": "w1:pF"
+          },
+          "recipient": "manager",
+          "sender": "manager",
+          "sequence": 3,
+          "status": "acknowledged",
+          "teamId": null
+        }
+      ],
+      "paReports": [
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111109618",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:38 UTC (scheduledAt 1792111109618): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 1 awaiting manager disposition/delegation. Unclassified inputs: 0. Unresolved claims: 0. Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced. Stale progress/idle claims/missed deadlines: none evidenced. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 5,
+          "status": "acknowledged",
+          "teamId": null
+        },
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111169678",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:39 UTC (scheduledAt 1792111169678): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 3 awaiting manager disposition/delegation. Unclassified inputs: 0. Unresolved claims: 1 (per scoped cue payload; identity not supplied to PA). Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced in scoped data. Stale progress/idle claims/missed deadlines: no evidence beyond the 1 unresolved claim flagged above; no timestamps supplied. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in, unresolved-claim identity) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 9,
+          "status": "acknowledged",
+          "teamId": null
+        },
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111229719",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:40 UTC (scheduledAt 1792111229719): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 0. Unclassified inputs: 0. Unresolved claims: 0. Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced. Stale progress/idle claims/missed deadlines: none evidenced. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 12,
+          "status": "acknowledged",
+          "teamId": null
+        },
+        {
+          "correlation": "manager-supervision",
+          "id": "pa-report-497ec861-1792111289771",
+          "kind": "report",
+          "payload": {
+            "text": "PA reminder 2026-10-16 ~00:41 UTC (scheduledAt 1792111289771): manager online. Team: none projected (STARTUP_TEAM null). Crews: none. Pending messages: 0. Unclassified inputs: 0. Unresolved claims: 0. Next check-in: not supplied by coordinator. Open user priorities / sprint-to-boundary count: not supplied. Capacity/resource/dependency blockers: none evidenced. Stale progress/idle claims/missed deadlines: none evidenced. Missing scoped summary data (checkpoint null, team null, priorities, sprint count, next check-in) requested from manager. No fabrication; remaining resident and idle until next cue."
+          },
+          "recipient": "manager",
+          "sender": "49cf977b-ba69-41d1-ab61-773a23fd2c56",
+          "sequence": 16,
+          "status": "acknowledged",
+          "teamId": null
+        }
+      ]
+    }
+  ],
+  "shutdown": {
+    "startedAt": 1792111349402,
+    "processes": [
+      {
+        "pid": 56293,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /tmp/sv7-recovery-20261015/proof-entry.ts --extension /Users/jarredparr/Projects/jp-skills/extensions/startup/v7.ts --cwd /tmp/sv7-recovery-20261015/repo",
+        "kind": "omp"
+      },
+      {
+        "pid": 56393,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /tmp/sv7-recovery-20261015/home/startup/V7RecoveryProof/launches/497ec861-d423-4e43-a9aa-19dd1e40e5f9.ts --cwd /private/tmp/sv7-recovery-20261015/repo",
+        "kind": "omp"
+      },
+      {
+        "pid": 57653,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /tmp/sv7-recovery-20261015/home/startup/V7RecoveryProof/launches/70f83d13-598b-4589-85fc-2a552bb5a11c.ts --cwd /private/tmp/sv7-recovery-20261015/repo",
+        "kind": "omp"
+      },
+      {
+        "pid": 1912,
+        "command": "omp --profile startup-v7 --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --cwd /Users/jarredparr/Projects/startup-v7-live --resume /Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-17-985Z_01a14075-1781-737e-9986-447198e70ff3.jsonl",
+        "kind": "omp"
+      },
+      {
+        "pid": 70199,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /Users/jarredparr/.config/jp-skills/startup/V7Live/launches/36efce21-81f9-4696-8de0-fd63c0331035.ts --cwd /Users/jarredparr/Projects/startup-v7-live --resume /Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-46-47-449Z_01a14075-8a99-775a-9efa-f9cab777639f.jsonl",
+        "kind": "omp"
+      },
+      {
+        "pid": 70269,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /Users/jarredparr/.config/jp-skills/startup/V7Live/launches/729ba6e3-bc59-42fe-ba3b-e93a5bb81a7e.ts --cwd /Users/jarredparr/Projects/startup-v7-live --resume /Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-43-025Z_01a1407a-f791-7607-bb68-47d4b1a6c6c8.jsonl",
+        "kind": "omp"
+      },
+      {
+        "pid": 69271,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /Users/jarredparr/.config/jp-skills/startup/V7Live/launches/00d6a9aa-e883-4eb0-9933-aeeb8e0054b3.ts --cwd /Users/jarredparr/Projects/startup-v7-live --resume /Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-46-102Z_01a1407b-0396-72fb-b09e-3c6a61c01666.jsonl",
+        "kind": "omp"
+      },
+      {
+        "pid": 69405,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /Users/jarredparr/.config/jp-skills/startup/V7Live/launches/b3baf1ba-786b-4c41-9379-dc3102f2a26f.ts --cwd /Users/jarredparr/Projects/startup-v7-live --resume /Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-52-49-237Z_01a1407b-0fd5-72ad-8a41-0f6da1b62b67.jsonl",
+        "kind": "omp"
+      },
+      {
+        "pid": 69211,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /Users/jarredparr/.config/jp-skills/startup/V7Live/launches/8873268c-5a92-43da-bf25-a5ef467c5d74.ts --cwd /Users/jarredparr/Projects/startup-v7-live --resume /Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-19-274Z_01a1407b-852a-7599-816d-45f976cf99e2.jsonl",
+        "kind": "omp"
+      },
+      {
+        "pid": 69333,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /Users/jarredparr/.config/jp-skills/startup/V7Live/launches/bef89549-5a3a-45f5-8b76-84269e88bb5c.ts --cwd /Users/jarredparr/Projects/startup-v7-live --resume /Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-22-271Z_01a1407b-90df-735c-b12b-54a682385977.jsonl",
+        "kind": "omp"
+      },
+      {
+        "pid": 69503,
+        "command": "omp --profile startup-v7 --no-extensions --extension /Users/jarredparr/.omp/agent/extensions/herdr-omp-agent-state.ts --extension /Users/jarredparr/.config/jp-skills/startup/V7Live/launches/bc9ec91f-4ba1-45d8-844f-9b2c4853fcd8.ts --cwd /Users/jarredparr/Projects/startup-v7-live --resume /Users/jarredparr/.omp/profiles/startup-v7/agent/sessions/-Projects-startup-v7-live/2026-10-15T16-53-25-314Z_01a1407b-9cc2-73cd-aa97-615b1b1a6e16.jsonl",
+        "kind": "omp"
+      },
+      {
+        "pid": 56383,
+        "command": "/Users/jarredparr/.bun/bin/bun /Users/jarredparr/Projects/jp-skills/extensions/startup/runtime-host.ts /tmp/sv7-recovery-20261015/home/startup/V7RecoveryProof/runtime-config.json",
+        "kind": "coordinator"
+      },
+      {
+        "pid": 74293,
+        "command": "/Users/jarredparr/.bun/bin/bun /Users/jarredparr/Projects/jp-skills/extensions/startup/runtime-host.ts /Users/jarredparr/.config/jp-skills/startup/V7Live/runtime-config.json",
+        "kind": "coordinator"
+      }
+    ],
+    "finishedAt": 1792111349755,
+    "survivingPids": [],
+    "evidenceViewerStopped": true,
+    "controllerStopped": true
+  },
+  "herdrAfterShutdown": {
+    "observedAt": 1792111385954,
+    "status": {
+      "status": "not_running",
+      "running": false,
+      "version": null,
+      "protocol": null,
+      "capabilities": null,
+      "compatible": null,
+      "endpoint_compatible": null,
+      "socket": "/Users/jarredparr/.config/herdr/sessions/startup-v7-live-20261015/herdr.sock",
+      "session": "startup-v7-live-20261015",
+      "restart_needed": false,
+      "server_binary_stale": false
+    },
+    "exitCode": 0
+  },
+  "limits": [
+    "This is a bounded local macOS test, not remote Linux verification or an indefinite liveness guarantee.",
+    "A test-only Herdr CLI wrapper unset both session variables before native employee boot and changed only a private worker manifest source hash; canonical sources and production code were untouched.",
+    "An operator restored the original manifest bytes; the existing process recovered through its automatic admission timer without a manual retry, relaunch or replacement.",
+    "Native terminal UI capture was unavailable. Screenshots show a labeled read-only browser viewer of actual Herdr terminal text, process snapshots and SQLite records.",
+    "Startup state and native transcripts are retained; processes and the owned Herdr server were stopped."
+  ]
+}
