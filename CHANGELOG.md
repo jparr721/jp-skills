@@ -2,6 +2,20 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.16] - 2026-10-16
+
+### Fixed
+
+- Manager claims, projections and native wakes share one actionable delivery order. Current failures/questions and crew technical reports bypass stale administrative mail; other employees retain FIFO ordering.
+- Routine PA reports and lifecycle observations remain durable TO manager, with latest PA summary/deferred count projected, without forcing manager inference or historical acknowledgement loops.
+- Presence, item, input and settlement alerts are deferred only when current state proves recovery or supersession. Fresh control polling cannot hide missing Herdr presence; unknown alerts remain actionable.
+- Claim selection reads only its own pending inbox and unresolved claims. All deferred IDs, payloads, pending records and existing claims are retained.
+
+### Verification
+
+- Regressions reproduce technical-report starvation, admin-only wakes, legacy continuation loops and mistaken presence recovery. 344 tests, 1959 assertions, TypeScript checking and twelve installed-OMP offline guard checks pass. 120 routine PA reports retain history with zero manager inference eligibility.
+- Coordinator restart required; preserve native identities/history and explicitly reconcile interrupted claims. No automatic replay or bulk acknowledgement.
+
 ## [7.0.15] - 2026-10-16
 
 ### Fixed
