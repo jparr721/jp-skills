@@ -2,6 +2,16 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.18] - 2026-10-16
+
+### Fixed
+
+- Native inbox projection names the exact next prioritized message and `startup_claim {}` command. Opaque ID lists no longer leave the manager to infer whether older administration must be traversed. The selection receipt clears while a claim is outstanding; no copied message ID argument is required.
+
+### Verification
+
+- Regression fails before the receipt exists and verifies that the next actual claim matches its projected message. 346tests/1967assertions and TypeScript checking pass. Native client code is unchanged; the coordinator requires restart with state preserved.
+
 ## [7.0.17] - 2026-10-16
 
 ### Fixed
