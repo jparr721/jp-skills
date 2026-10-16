@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -203,6 +203,49 @@ test("command errors include endpoint status and body without retrying or exposi
   expect(fixture.requests.filter((entry) => entry.path === "/command")).toHaveLength(1);
 });
 
+test("repeated rejected claim commands are suppressed until canonical claim state changes", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  fixture.setPoll({ projection: "STARTUP_CLAIMS=active-claim", pendingMessageIds: [], toolBlockReason: null, waitReason: null });
+  await client.poll();
+  fixture.commandError(new Response("Employee already has an unresolved claim", { status: 409 }));
+  await expect(client.request({ kind: "claim" })).rejects.toThrow("unresolved claim");
+  await expect(client.request({ kind: "claim" })).rejects.toThrow("duplicate command suppressed");
+  expect(fixture.requests.filter((request) => request.path === "/command")).toHaveLength(1);
+  expect(client.settlementBlock()).not.toBeNull();
+  await client.poll();
+  await expect(client.request({ kind: "claim" })).rejects.toThrow("duplicate command suppressed");
+  expect(fixture.requests.filter((request) => request.path === "/command")).toHaveLength(1);
+  fixture.setPoll({ projection: "STARTUP_CLAIMS=reconciled-claim", pendingMessageIds: [], toolBlockReason: null, waitReason: null });
+  await client.poll();
+  fixture.commandError(Response.json({ claim: null }));
+  expect(await client.request({ kind: "claim" })).toEqual({ claim: null });
+});
+
+test("command suppression accepts corrected requests and never caches service failures or capacity denial", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  for (const status of [400, 403, 409]) {
+    fixture.commandError(new Response("Correct the request", { status }));
+    const command: Json = { kind: "item", request: { expectedRevision: status } };
+    await expect(client.request(command)).rejects.toThrow("retryable=false");
+    const count = fixture.requests.length;
+    await expect(client.request(command)).rejects.toThrow("suppressed");
+    expect(fixture.requests).toHaveLength(count);
+    fixture.commandError(Response.json({ accepted: true }));
+    await client.request({ kind: "item", request: { expectedRevision: status + 1 } });
+    expect(client.settlementBlock()).toBeNull();
+  }
+  for (const command of [{ kind: "begin_turn" }, { kind: "end_turn" }, { kind: "claim" }]) {
+    fixture.commandError(new Response("Service unavailable", { status: 503 }));
+    const count = fixture.requests.length;
+    await expect(client.request(command)).rejects.toThrow("503");
+    fixture.commandError(new Response("Service unavailable", { status: 503 }));
+    await expect(client.request(command)).rejects.toThrow("503");
+    expect(fixture.requests).toHaveLength(count + 2);
+  }
+});
+
 test("invalid admission receipt and malformed poll response fail at the boundary", async () => {
   const fixture = serverFixture();
   fixture.admitError(Response.json({ connection: "" }));
@@ -242,12 +285,99 @@ test("a thousand durable messages produce one native wake and wait behind an alr
   expect(native.messages).toHaveLength(1);
   expect(native.messages[0]?.content).toContain("1000");
   native.setRunState(false, true);
+  await native.emit("before_agent_start", { systemPrompt: [] }, native.ctx);
   fixture.setPoll({ projection: "canonical", pendingMessageIds: [...pending, "later-cue"], toolBlockReason: null, waitReason: "Drain inbox" });
   await bridge.poll();
   expect(native.messages).toHaveLength(1);
   native.setRunState(true, false);
   await bridge.poll();
   expect(native.messages).toHaveLength(2);
+});
+
+test("unchanged durable work does not buy another model turn just because time passed", async () => {
+  const clock = spyOn(Date, "now").mockReturnValue(100000);
+  cleanup.push(() => clock.mockRestore());
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  native.setRunState(true, false);
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  native.setRunState(false, false);
+  await native.emit("before_agent_start", { systemPrompt: [] }, native.ctx);
+  await native.emit("agent_end", { willContinue: false }, native.ctx);
+  native.setRunState(true, false);
+  for (let minute = 1; minute <= 60; minute += 1) {
+    clock.mockReturnValue(100000 + minute * 60000);
+    await bridge.poll();
+  }
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(1);
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: ["own-cue-1", "new-assignment"], toolBlockReason: null, waitReason: "Drain inbox" });
+  await bridge.poll();
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(2);
+});
+
+test("new inbox messages coalesce behind one scheduled native wake", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  native.setRunState(true, true);
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: ["own-cue-1", "new-cue"], toolBlockReason: null, waitReason: "Drain inbox" });
+  await bridge.poll();
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(1);
+});
+
+test("provider failure parks inference while polling continues, until explicit root input", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  native.setRunState(true, false);
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await native.emit("message_end", { message: { role: "assistant", stopReason: "error", errorStatus: 403, errorMessage: "Weekly budget exhausted" } }, native.ctx);
+  await native.emit("message_end", { message: { role: "assistant", stopReason: "error", errorStatus: 403 } }, native.ctx);
+  for (let i = 0; i < 50; i += 1) {
+    fixture.setPoll({ projection: "canonical", pendingMessageIds: [`cue-${i}`], toolBlockReason: null, waitReason: "Drain inbox" });
+    await bridge.poll();
+  }
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(0);
+  expect(native.messages.filter((message) => message.content.includes("inference paused"))).toHaveLength(1);
+  expect(await native.emit("session_stop", {}, native.ctx)).toBeUndefined();
+  const admissionCount = fixture.requests.filter((request) => z.object({ kind: z.literal("begin_turn") }).safeParse(request.body).success).length;
+  await native.emit("context", { messages: [] }, native.ctx);
+  expect(fixture.requests.filter((request) => z.object({ kind: z.literal("begin_turn") }).safeParse(request.body).success)).toHaveLength(admissionCount);
+  await native.emit("input", { source: "extension", text: "synthetic reminder" }, native.ctx);
+  await bridge.poll();
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(0);
+  await native.emit("input", { source: "interactive", text: "Provider fixed, resume" }, native.ctx);
+  await native.emit("before_agent_start", { systemPrompt: [] }, native.ctx);
+  await native.emit("context", { messages: [] }, native.ctx);
+  expect(fixture.requests.filter((request) => z.object({ kind: z.literal("begin_turn") }).safeParse(request.body).success).length).toBeGreaterThan(admissionCount);
+});
+
+test("restored provider failure stays parked across reattachment and connection recovery", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  native.setRunState(true, false);
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000, lastAssistant: { role: "assistant", stopReason: "error" } });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  fixture.pollError(new Response("offline", { status: 503 }));
+  await expect(bridge.poll()).rejects.toThrow("503");
+  fixture.pollError(Response.json({ projection: "canonical", pendingMessageIds: ["new-duty"], toolBlockReason: null, waitReason: "Drain inbox" }));
+  await bridge.poll();
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(0);
+  await native.emit("input", { source: "rpc", text: "Provider repaired" }, { ...native.ctx, agent: { id: "helper", kind: "task" } });
+  await bridge.poll();
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(0);
+  await native.emit("input", { source: "rpc", text: "Provider repaired" }, native.ctx);
+  await bridge.poll();
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(1);
 });
 
 test("bridge injects canonical projection only into the bound root and deduplicates own inbox wakes", async () => {

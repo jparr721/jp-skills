@@ -149,6 +149,22 @@ test("ordinary manager resume automatically reconnects the exact saved root with
   await expect(staff.execute("staff", {}, undefined, undefined, f.ctx)).resolves.toBeDefined();
 });
 
+test("employee reattachment restores a provider pause even after a gated turn was aborted", async () => {
+  const f = fixture();
+  f.useEnvironment();
+  writeFileSync(f.file, readFileSync(f.file, "utf8") + [
+    { type: "message", message: { role: "assistant", stopReason: "error", errorMessage: "Weekly budget exhausted" } },
+    { type: "message", message: { role: "assistant", stopReason: "aborted" } },
+  ].map((row) => JSON.stringify(row)).join("\n") + "\n");
+  installLaunchedEmployee(f.host, f.manifest("dev"));
+  await f.emit("session_start", {}, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+  expect(f.messages.join("\n")).toContain("inference paused");
+  await f.emit("context", { messages: [] }, f.ctx);
+  expect(f.getAborts()).toBeGreaterThan(0);
+  expect(f.requests.filter((request) => z.object({ kind: z.literal("begin_turn") }).safeParse(request).success)).toHaveLength(0);
+});
+
 test("manager resume refuses a foreign root, pane or profile before using saved credentials", async () => {
   for (const mismatch of ["session", "pane", "profile"]) {
     const f = fixture();
@@ -683,5 +699,19 @@ test("duplicate native settlement errors abort once without another command and 
   expect(f.requests.filter((r) => z.object({ kind: z.literal("settle") }).safeParse(r).success)).toHaveLength(1);
   expect(f.getAborts()).toBe(3);
   expect(f.messages.filter((m) => m.includes("suppressed locally"))).toHaveLength(1);
+  expect(await f.emit("session_stop", {}, f.ctx)).toBeUndefined();
+});
+
+test("duplicate rejected native claims abort the turn and stop automatic continuations", async () => {
+  const f = fixture(); f.useEnvironment();
+  installLaunchedEmployee(f.host, f.manifest("dev"));
+  await f.emit("session_start", {}, f.ctx);
+  f.setCommandResponse(Response.json({ error: "StoreConflictError", message: "Employee already has an unresolved claim" }, { status: 409 }));
+  const claim = f.tools.get("startup_claim");
+  if (!claim) throw new Error("Missing claim tool");
+  await expect(claim.execute("first", {}, undefined, undefined, f.ctx)).rejects.toThrow("retryable=false");
+  await expect(claim.execute("repeat", {}, undefined, undefined, f.ctx)).rejects.toThrow("duplicate command suppressed");
+  expect(f.requests.filter((request) => z.object({ kind: z.literal("claim") }).safeParse(request).success)).toHaveLength(1);
+  expect(f.getAborts()).toBe(1);
   expect(await f.emit("session_stop", {}, f.ctx)).toBeUndefined();
 });

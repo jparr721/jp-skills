@@ -6,7 +6,7 @@ import type { HostAPI } from "../index";
 import { ompProfileSchema } from "../install";
 import { StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, roleSchema, sourceSchema, type Json } from "./contracts";
-import { connectEmployee, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
+import { connectEmployee, EmployeeCommandError, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
 import { itemActionSchema } from "./items";
 import { herdrContext } from "./herdr-runtime";
 import type { NativeContext, NativeResult } from "./omp-adapter";
@@ -22,7 +22,7 @@ export type LaunchManifest = z.infer<typeof manifestSchema>;
 export type Environment = Readonly<Record<string, string | undefined>>;
 export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext; close: () => void }>;
 export const inputSchema = z.object({ text: z.string(), source: z.enum(["interactive", "rpc", "extension"]), images: z.array(jsonSchema).optional() });
-export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<string> {
+export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<Readonly<{ file: string; lastAssistant: unknown }>> {
   if (typeof ctx.abort !== "function") throw new StartupBootError("Startup V7 requires the actual native abort capability before admission");
   const ref = host.pi.AgentRegistry.global().get(ctx.agent.id);
   if (ctx.agent.kind !== "main" || ref?.kind !== "main" || ref.parentId !== undefined ||
@@ -40,7 +40,12 @@ export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<str
   if (header.id !== ctx.sessionManager.getSessionId()) throw new StartupBootError("Native transcript session does not match the actual root");
   if (header.parentSession !== undefined && header.parentSession !== null)
     throw new StartupBootError("A parented native transcript cannot become a Startup employee root");
-  return file;
+  const assistant = z.object({ message: z.object({ role: z.literal("assistant"), stopReason: z.string().optional() }).passthrough() });
+  const lastAssistant = records.findLast((row) => {
+    const parsed = assistant.safeParse(row);
+    return parsed.success && parsed.data.message.stopReason !== "aborted";
+  });
+  return { file, lastAssistant: lastAssistant === undefined ? undefined : assistant.parse(lastAssistant).message };
 }
 export async function paneEnvironment(environment: Environment): Promise<Readonly<{ paneId: string; workspaceId: string; session: string; profile: string }>> {
   const session = environment.STARTUP_HERDR_SESSION?.trim() || environment.HERDR_SESSION?.trim() || null;
@@ -68,12 +73,13 @@ export function sameRoot(admission: Admission, ctx: NativeContext): boolean {
 }
 export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment): Promise<Admission> {
   const profile: Profile = verifyManifest(manifest);
-  const nativeSession: string = await nativeRoot(host, ctx);
+  const root = await nativeRoot(host, ctx);
+  const nativeSession: string = root.file;
   const actualProfile = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim();
   if (actualProfile && actualProfile !== manifest.profile) throw new StartupBootError("Actual named OMP profile differs from the launch manifest");
   const paneId: string = environment.HERDR_PANE_ID?.trim() || (await paneEnvironment(environment)).paneId;
   const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId });
-  const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000, instructions: profileText(profile) });
+  const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000, instructions: profileText(profile), lastAssistant: root.lastAssistant });
   try { await bridge.poll(); }
   catch (error: unknown) { bridge.close(); throw error; }
   return { client, context: ctx, close: bridge.close };
@@ -91,6 +97,17 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
   const json: Field = { native: b.unknown(), schema: jsonSchema };
   const count: Field = { native: b.number(), schema: z.number().int().positive().safe() };
   const strings: Field = { native: b.array(b.string()), schema: z.array(idSchema) };
+  async function execute(current: Admission, ctx: NativeContext, command: Json): Promise<NativeResult> {
+    const stopped: boolean = current.client.settlementBlock() !== null;
+    try { return nativeResult(await current.client.request(command)); }
+    catch (error: unknown) {
+      if ((error instanceof EmployeeSettlementError || error instanceof EmployeeCommandError) && error.repeated) {
+        ctx.abort?.();
+        if (!stopped) host.sendMessage({ customType: error instanceof EmployeeSettlementError ? "startup-settlement-blocked" : "startup-command-blocked", content: error.message, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+      }
+      throw error;
+    }
+  }
   function register(name: string, fields: Readonly<Record<string, Field>>, command: (params: Readonly<Record<string, Json>>) => Json): void {
     const shape = Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.schema]));
     const schema = z.strictObject(shape);
@@ -100,15 +117,7 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
       execute: async (_id, params, _signal, _update, ctx) => {
         const current: Admission | null = admission();
         if (current === null || !sameRoot(current, ctx)) throw new StartupBootError("Startup tool requires the admitted native root session");
-        const stopped: boolean = current.client.settlementBlock() !== null;
-        try { return nativeResult(await current.client.request(command(schema.parse(params)))); }
-        catch (error: unknown) {
-          if (error instanceof EmployeeSettlementError && error.repeated) {
-            ctx.abort?.();
-            if (!stopped) host.sendMessage({ customType: "startup-settlement-blocked", content: error.message, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
-          }
-          throw error;
-        }
+        return execute(current, ctx, command(schema.parse(params)));
       },
     });
   }
@@ -131,7 +140,7 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
     execute: async (_id, params, _signal, _update, ctx) => {
       const current = admission();
       if (current === null || !sameRoot(current, ctx)) throw new StartupBootError("Startup item requires the admitted native root session");
-      return nativeResult(await current.client.request({ kind: "item", request: itemActionSchema.parse(params) }));
+      return execute(current, ctx, { kind: "item", request: itemActionSchema.parse(params) });
     },
   });
   register("startup_capture", { captureId: text, eventId: text, rows: { native: b.array(b.unknown()), schema: captureSchema.unwrap().shape.rows }, receipt: json }, (params) => ({ kind: "capture", capture: captureSchema.parse(params) }));

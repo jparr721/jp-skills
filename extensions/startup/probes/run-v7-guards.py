@@ -97,7 +97,7 @@ def main() -> int:
                 "stages": [], "checks": {}}
     args.evidence.parent.mkdir(parents=True, exist_ok=True)
     args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")
-    for stage in ["admitted", "denied", "disconnected", "synthetic-denied", "negative", "cache"]:
+    for stage in ["admitted", "denied", "disconnected", "synthetic-denied", "negative", "cache", "cost"]:
         result = run_stage(omp, repo, workspace, stage, negative / source.name if stage == "negative" else source)
         evidence["stages"].append(result)
         args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")
@@ -116,7 +116,8 @@ def main() -> int:
               "negative_control_detects_missing_tool_guard": stages["negative"]["writeExists"] and stages["negative"]["bashExists"],
               "cache_system_prompt_is_stable": len(cache_prompts) == 2 and cache_prompts[0]["systemPrompt"] == cache_prompts[1]["systemPrompt"] and "STARTUP_CHECKPOINT" not in str(cache_prompts[0]["systemPrompt"]),
               "cache_conversation_prefix_is_preserved": len(cache_prompts) == 2 and cache_prompts[0]["messages"][:-1] == cache_prompts[1]["messages"][:len(cache_prompts[0]["messages"]) - 1],
-              "cache_live_state_is_trailing_user_data": len(cache_prompts) == 2 and all(prompt["messages"][-1]["role"] == "user" and f"STARTUP_CHECKPOINT={index}" in str(prompt["messages"][-1]["content"]) for index, prompt in enumerate(cache_prompts))}
+              "cache_live_state_is_trailing_user_data": len(cache_prompts) == 2 and all(prompt["messages"][-1]["role"] == "user" and f"STARTUP_CHECKPOINT={index}" in str(prompt["messages"][-1]["content"]) for index, prompt in enumerate(cache_prompts)),
+              "provider_error_parks_100_inbox_changes_and_queued_retry": stages["cost"]["actualProviderRequests"] == 1 and any(event["kind"] == "cost_settled" and event["providerCount"] == 1 and event["pollsAfterFailure"] == 100 for event in stages["cost"]["events"])}
     evidence["checks"] = checks
     evidence["status"] = "PASS" if all(checks.values()) else "FAIL"
     args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")

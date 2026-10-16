@@ -75,6 +75,15 @@ export class EmployeeSettlementError extends EmployeeClientError {
     this.repeated = repeated;
   }
 }
+export class EmployeeCommandError extends EmployeeClientError {
+  readonly repeated: boolean;
+  readonly kind: string;
+  constructor(message: string, kind: string, repeated: boolean) {
+    super(`${message}; retryable=false; action=Inspect current claim and command arguments, settle or reconcile existing work, or correct the request. Do not repeat unchanged arguments.${repeated ? " duplicate command suppressed locally; native turn will park" : ""}`);
+    this.kind = kind;
+    this.repeated = repeated;
+  }
+}
 
 export async function reportLaunchFailure(input: Readonly<{ socketPath: string; credential: string; error: string }>): Promise<void> {
   const redact = (value: string): string => value.replaceAll(input.credential, "[redacted]");
@@ -102,7 +111,9 @@ export async function connectEmployee(input: Readonly<{
   let closed: boolean = false;
   let claimState: string | null = null;
   let settlementBlocked: EmployeeSettlementError | null = null;
+  let commandBlocked: EmployeeCommandError | null = null;
   const rejectedSettlements = new Map<string, EmployeeSettlementError>();
+  const rejectedCommands = new Map<string, EmployeeCommandError>();
   const shutdown: AbortController = new AbortController();
   function redact(value: string): string {
     let safe: string = value.replaceAll(admitted.credential, "[redacted]");
@@ -165,6 +176,8 @@ export async function connectEmployee(input: Readonly<{
     if (!parsedConnection.success)
     throw new EmployeeClientError("Startup POST /admit HTTP 200 returned an invalid connection receipt");
     connection = parsedConnection.data.connection;
+    rejectedCommands.clear();
+    commandBlocked = null;
   }
   async function awaitAdmission(): Promise<void> {
     const deadline = Date.now() + 10000;
@@ -184,6 +197,12 @@ export async function connectEmployee(input: Readonly<{
       const settle = z.object({ kind: z.literal("settle"), result: z.record(z.string(), jsonSchema) }).passthrough().safeParse(command);
       const fingerprint: string | null = settle.success ? encode({ ...settle.data, result: { ...settle.data.result, id: null } }) : null;
       const exactFingerprint: string = encode(command);
+      const rejectedCommand = rejectedCommands.get(exactFingerprint);
+      if (rejectedCommand !== undefined) {
+        commandBlocked = rejectedCommand;
+        throw new EmployeeCommandError(rejectedCommand.message, rejectedCommand.kind, true);
+      }
+      const kind = z.object({ kind: z.string() }).safeParse(command);
       const rejected = rejectedSettlements.get(exactFingerprint) ?? (fingerprint === null ? undefined : rejectedSettlements.get(fingerprint));
       if (rejected !== undefined) {
         settlementBlocked = rejected;
@@ -191,6 +210,10 @@ export async function connectEmployee(input: Readonly<{
       }
       try {
         const receipt = await exchange("POST", "/command", command);
+        if (kind.success) {
+          for (const [key, rejected] of rejectedCommands) if (rejected.kind === kind.data.kind) rejectedCommands.delete(key);
+          if (commandBlocked?.kind === kind.data.kind) commandBlocked = null;
+        }
         const settled = settle.success ? z.object({ claimId: idSchema }).safeParse(receipt) : null;
         if (settled?.success) {
           for (const [key, failure] of rejectedSettlements) if (failure.recovery.claimId === settled.data.claimId) rejectedSettlements.delete(key);
@@ -198,6 +221,11 @@ export async function connectEmployee(input: Readonly<{
         }
         return receipt;
       } catch (error: unknown) {
+        if (fingerprint === null && kind.success && !["begin_turn", "end_turn"].includes(kind.data.kind) && error instanceof EmployeeHttpError && [400, 403, 409].includes(error.status)) {
+          const failure = new EmployeeCommandError(error.message, kind.data.kind, false);
+          rejectedCommands.set(exactFingerprint, failure);
+          throw failure;
+        }
         if (fingerprint === null || !(error instanceof EmployeeHttpError) || ![400, 409].includes(error.status)) throw error;
         const recovery: SettlementRecovery = error.recovery ?? { code: "request_invalid", retryable: false, action: "Inspect this command error and correct the settlement request or ask the manager to reconcile its saved claim. Do not repeat unchanged arguments.", employeeId: null, generation: null, claimId: null };
         const failure = new EmployeeSettlementError(error.message, recovery, false);
@@ -205,7 +233,7 @@ export async function connectEmployee(input: Readonly<{
         throw failure;
       }
     },
-    settlementBlock: () => settlementBlocked?.message ?? null,
+    settlementBlock: () => settlementBlocked?.message ?? commandBlocked?.message ?? null,
     async poll(): Promise<EmployeePoll> {
       let body: Json;
       try { body = await exchange("GET", "/poll", null); }
@@ -219,7 +247,7 @@ export async function connectEmployee(input: Readonly<{
       if (!parsed.success)
         throw new EmployeeClientError(`Startup GET /poll HTTP 200 returned an invalid employee projection: ${redact(parsed.error.message)}`);
       const nextClaimState: string | null = /^STARTUP_CLAIMS=(.+)$/m.exec(parsed.data.projection)?.[1] ?? null;
-      if (nextClaimState !== null && claimState !== null && nextClaimState !== claimState) { rejectedSettlements.clear(); settlementBlocked = null; }
+      if (nextClaimState !== null && claimState !== null && nextClaimState !== claimState) { rejectedSettlements.clear(); settlementBlocked = null; rejectedCommands.clear(); commandBlocked = null; }
       claimState = nextClaimState;
       return parsed.data;
     },
@@ -235,6 +263,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   ctx: NativeContext;
   intervalMs: number;
   instructions: string;
+  lastAssistant?: unknown;
 }>): Readonly<{ poll: () => Promise<void>; close: () => void }> {
   z.number().int().positive().parse(input.intervalMs);
   if (input.ctx.agent.kind !== "main")
@@ -249,7 +278,9 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   const abortTurn: () => void = abort;
   const rootId: string = input.ctx.agent.id;
   const rootSession: string = input.ctx.sessionManager.getSessionId();
-  const notified: Map<string, number> = new Map();
+  const notified: Set<string> = new Set();
+  let wakeQueued: boolean = false;
+  let inferencePaused: boolean = false;
   let current: EmployeePoll | null = null;
   let failure: string | null = null;
   let failureStartedAt: number | null = null;
@@ -264,6 +295,13 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     return ctx.agent.kind === "main" && ctx.agent.id === rootId &&
       ctx.sessionManager.getSessionId() === rootSession;
   }
+  function observeAssistant(message: unknown): void {
+    const parsed = z.object({ role: z.literal("assistant"), stopReason: z.literal("error") }).safeParse(message);
+    if (!parsed.success || inferencePaused) return;
+    inferencePaused = true;
+    host.sendMessage({ customType: "startup-inference-paused", content: "Startup inference paused after a provider error. Authenticated polling remains active; inbox, claims and crew state are retained. Inspect the native provider error, correct its cause, then submit interactive/RPC input in this pane to resume. Automatic cues and stop continuations cannot retry it.", display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+  }
+  observeAssistant(input.lastAssistant);
   async function refresh(): Promise<void> {
     try {
       const next: EmployeePoll = await input.client.poll();
@@ -273,25 +311,24 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
       current = next;
       if (failure !== null) {
         const outageMs: number = Date.now() - (failureStartedAt ?? Date.now());
-        const resumeWork: boolean = input.client.settlementBlock() === null && next.waitReason !== null && nativeIdle() && !nativePending();
+        const resumeWork: boolean = !inferencePaused && !wakeQueued && input.client.settlementBlock() === null && next.waitReason !== null && nativeIdle() && !nativePending();
         host.sendMessage({ customType: "startup-connection-restored", content: `Startup coordinator connection restored; authenticated polling resumed. outageMs=${outageMs}`, display: true }, { triggerTurn: resumeWork, deliverAs: "nextTurn" });
+        if (resumeWork) wakeQueued = true;
         process.stderr.write(JSON.stringify({ level: "info", component: "startup-connection", state: "restored", outageMs, observedAt: Date.now() }) + "\n");
       }
       failure = null;
       failureStartedAt = null;
       failureIdentity = null;
       for (const id of notified.keys()) if (!next.pendingMessageIds.includes(id)) notified.delete(id);
-      const due = input.client.settlementBlock() === null ? next.pendingMessageIds.filter((id) => {
-        const notifiedAt = notified.get(id);
-        return notifiedAt === undefined || Date.now() - notifiedAt >= 30000;
-      }) : [];
-      if (due.length > 0 && nativeIdle()) {
+      const due: boolean = next.pendingMessageIds.some((id) => !notified.has(id));
+      if (due && !inferencePaused && !wakeQueued && input.client.settlementBlock() === null && nativeIdle()) {
         host.sendMessage({
           customType: "startup-cue",
           content: `Startup inbox has ${next.pendingMessageIds.length} durable message(s). Claim your own inbox and follow the canonical loop.`,
           display: false,
         }, { triggerTurn: true, deliverAs: "nextTurn" });
-        for (const id of due) notified.set(id, Date.now());
+        wakeQueued = true;
+        for (const id of next.pendingMessageIds) notified.add(id);
       }
     } catch (error: unknown) {
       if (closed) return;
@@ -336,6 +373,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     input.client.close();
   }
   async function admitTurn(): Promise<void> {
+    if (inferencePaused) { abortTurn(); return; }
     try { await poll(); await input.client.request({ kind: "begin_turn" }); turnHeld = true; turnBlocked = null; }
     catch (error: unknown) {
       turnBlocked = error instanceof Error ? error.message : String(error);
@@ -350,7 +388,8 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   host.on("before_agent_start", async (event, ctx) => {
     if (closed || !isRoot(ctx)) return;
     const parsed = beforeStartSchema.parse(event);
-    await admitTurn();
+    wakeQueued = true;
+    try { await admitTurn(); } finally { wakeQueued = false; }
     return { systemPrompt: [...parsed.systemPrompt, input.instructions] };
   });
   host.on("context", async (event, ctx) => {
@@ -368,6 +407,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     const employeeTool: boolean = isEmployeeTool(event);
     if (!isRoot(ctx))
       return employeeTool ? { block: true, reason: "Native helper has no Startup employee authority" } : undefined;
+    if (inferencePaused) return { block: true, reason: "Startup inference is paused after a provider error; explicit root input is required to resume" };
     if (turnBlocked !== null) return { block: true, reason: turnBlocked };
     if (failure !== null)
       return { block: true, reason: `Startup coordinator unavailable: ${failure}` };
@@ -378,6 +418,19 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     if (employeeTool && current === null)
       return { block: true, reason: "Startup employee projection is not admitted yet" };
     return;
+  });
+  host.on("message_end", (event, ctx) => {
+    if (closed || !isRoot(ctx)) return;
+    const parsed = z.object({ message: z.unknown() }).safeParse(event);
+    if (parsed.success) observeAssistant(parsed.data.message);
+  });
+  host.on("input", (event, ctx) => {
+    if (closed || !isRoot(ctx)) return;
+    const parsed = z.object({ source: z.enum(["interactive", "rpc"]) }).safeParse(event);
+    if (!parsed.success) return;
+    inferencePaused = false;
+    wakeQueued = false;
+    continuedReason = null;
   });
   host.on("agent_end", async (event, ctx) => {
     if (closed || !isRoot(ctx)) return;
@@ -393,6 +446,9 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   });
   host.on("session_stop", async (_event, ctx) => {
     if (closed || !isRoot(ctx)) return;
+    const stopped = z.object({ last_assistant_message: z.unknown() }).safeParse(_event);
+    if (stopped.success) observeAssistant(stopped.data.last_assistant_message);
+    if (inferencePaused) return;
     const failureReason = failure === null ? null : `Startup coordinator unavailable: ${failure}`;
     if (failureReason !== null) {
       if (continuedReason === failureReason) return;

@@ -36,7 +36,7 @@ export default function guardProbe(pi: ExtensionAPI): void {
     async poll(): Promise<EmployeePoll> {
       record({ kind: "client_poll" });
       if (stage === "disconnected") throw new Error("Fixture coordinator connection failed");
-      return { projection: stage === "cache" ? `${projection}\nSTARTUP_CHECKPOINT=${stateVersion}` : projection, pendingMessageIds: [], toolBlockReason: null, waitReason: null };
+      return { projection: stage === "cache" ? `${projection}\nSTARTUP_CHECKPOINT=${stateVersion}` : projection, pendingMessageIds: stage === "cost" && providerCount > 0 ? [`cost-cue-${stateVersion}`] : [], toolBlockReason: null, waitReason: stage === "cost" ? "Drain inbox" : null };
     },
     settlementBlock: () => null,
     close(): void { record({ kind: "client_close" }); },
@@ -83,7 +83,8 @@ export default function guardProbe(pi: ExtensionAPI): void {
         } };
       }
       const message: AssistantMessage = { role: "assistant", api: model.api, provider: model.provider, model: model.id,
-        content: call ? [call] : [{ type: "text", text: "Guard fixture settled" }], stopReason: call ? "toolUse" : "stop", timestamp: Date.now(),
+        content: call ? [call] : [{ type: "text", text: "Guard fixture settled" }], stopReason: stage === "cost" ? "error" : call ? "toolUse" : "stop", timestamp: Date.now(),
+        ...(stage === "cost" ? { errorMessage: "Offline fixture: weekly budget exhausted", errorStatus: 403 } : {}),
         usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2,
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
       const stream = createAssistantMessageEventStream();
@@ -92,7 +93,8 @@ export default function guardProbe(pi: ExtensionAPI): void {
         stream.push({ type: "toolcall_start", contentIndex: 0, partial: message });
         stream.push({ type: "toolcall_end", contentIndex: 0, toolCall: call, partial: message });
       }
-      stream.push({ type: "done", reason: call ? "toolUse" : "stop", message });
+      if (stage === "cost") stream.push({ type: "error", reason: "error", error: message });
+      else stream.push({ type: "done", reason: call ? "toolUse" : "stop", message });
       stream.end();
       return stream;
     },
@@ -121,6 +123,11 @@ export default function guardProbe(pi: ExtensionAPI): void {
             if (Date.now() >= deadline) throw new Error("Native helper failed to settle");
             await new Promise<void>(resolve => { ctx.setTimeout(resolve, 20); });
           }
+        } else if (stage === "cost") {
+          for (let i = 0; i < 100; i += 1) { stateVersion += 1; await bridge.poll(); }
+          try { await root.session.prompt("Offline synthetic queued retry must not reach provider."); }
+          catch (error: unknown) { record({ kind: "paused_prompt", error: error instanceof Error ? error.message : String(error) }); }
+          record({ kind: "cost_settled", providerCount, pollsAfterFailure: 100 });
         } else if (stage !== "cache") {
           for (const operation of [
             { name: "write", args: { path: env("STARTUP_GUARD_WRITE"), content: "unauthorized fixture mutation" } },

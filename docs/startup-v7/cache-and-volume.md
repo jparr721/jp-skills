@@ -43,3 +43,15 @@ Release 7.0.12 was fully installed through Ansible, verifying all 145 skill link
 The preservation check confirms all 68 employee records, 20 crew records, 1,900 original claim IDs, 16,597 original message IDs/payloads and 1,864 original result values remain. Queue bytes and crew/runtime identities match the pre-upgrade snapshot. Both existing active claims remain recorded. No continuation prompt was issued by the refresh controller. Final health returned HTTP200, with 59/59 fresh authenticated polls; this is control-channel evidence, not a provider-cache or productivity claim.
 
 Machine-readable test/native/deployment evidence: [cache acceptance](cache-acceptance.json).
+
+## Cost control after 7.0.12
+
+Version 7.0.13 removes the bridge's 30-second re-notification timer for unchanged durable messages. A pending message gets one aggregate wake; newly arriving messages coalesce behind an already scheduled wake. New messages remain eligible after that turn starts. Polling continues independently of inference.
+
+A native provider error pauses automatic inference, including inbox cues, connection-restored wakes and stop-hook continuations. The pause is restored from the transcript on reattachment; an aborted gated turn does not erase the preceding provider failure. Correct the provider problem and submit interactive/RPC input in the same pane to resume. New machine-generated cues cannot clear the pause. Claims, receipts, crews and queue contents are retained.
+
+Repeated identical command rejections with HTTP400/403/409 are suppressed locally and abort the native turn. This includes the unresolved-claim loop seen in the token audit. Corrected command arguments may proceed; changed canonical claim state or a fresh authenticated connection invalidates the rejected-command cache. Capacity admission/release and transport/service failures are excluded from this cache. These controls supplement the existing settlement guard.
+
+The regression sent 61 wakes for one unchanged inbox over a simulated hour before the fix and one afterward. A real installed OMP with an offline provider made one simulated failing request, then made no additional provider calls across 100 new inbox states and a queued synthetic retry. This demonstrates request suppression, not a measured reduction in provider billing or a live cache-hit percentage. No paid inference, budget changes or credential changes were used for verification.
+
+Test and deployment evidence: [cost-control acceptance](cost-control-acceptance.json).

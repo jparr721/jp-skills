@@ -50,7 +50,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   });
   registerTools(host, () => failure === null ? admitted : null);
   async function initialize(ctx: NativeContext, command: BootCommand | null): Promise<void> {
-    const nativeFile: string = await nativeRoot(host, ctx);
+    const nativeFile: string = (await nativeRoot(host, ctx)).file;
     const location = await paneEnvironment(input.environment);
     const next: Selection | null = bootSelection({ cwd: ctx.cwd, home: input.home, skillsRoot: input.skillsRoot, command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
     if (next === null) return;

@@ -1,0 +1,47 @@
+{
+  "version": "7.0.13",
+  "status": "LOCAL_PASS",
+  "unit": {
+    "tests": 326,
+    "assertions": 1653,
+    "failures": 0,
+    "typecheck": "PASS",
+    "probeDriverTests": 6
+  },
+  "native": {
+    "version": "omp/18.11.1",
+    "executableSha256": "bdeb1626b99dc29d844146ea7940d367e61b1032b77e1c77880125f379ca2dda",
+    "checks": {
+      "compiled_omp_identified": true,
+      "all_native_stages_complete": true,
+      "canonical_role_loop_in_actual_root_provider": true,
+      "actual_native_helper_startup_tool_denied": true,
+      "begin_turn_denial_blocks_native_write_and_bash": true,
+      "failed_connection_blocks_native_write_and_bash": true,
+      "denied_synthetic_context_blocks_provider": true,
+      "negative_control_detects_missing_tool_guard": true,
+      "cache_system_prompt_is_stable": true,
+      "cache_conversation_prefix_is_preserved": true,
+      "cache_live_state_is_trailing_user_data": true,
+      "provider_error_parks_100_inbox_changes_and_queued_retry": true
+    },
+    "network": "none; deterministic in-process provider",
+    "normalProfileUsed": false,
+    "sourceHashes": {
+      "extensions/startup/src/employee-client.ts": "e2907a0dc621eebb2fdd62f5818b02383d04375c3f3edd87b9c3593c3fc6f550",
+      "extensions/startup/probes/run-v7-guards.py": "6744c8d1b21ab7f180fb2d1319c632ca37c5d2075cc170c033a0c669a30a46e2",
+      "extensions/startup/probes/native-v7-guards.ts": "5f2fa07e28299b3691f284c9d307ba992c801309049333e78f8c9ddc26eac420",
+      "skills/startup-role-dev/SKILL.md": "542e339fca6b221dfd81779f0daed5d4115f959880ee7613c00d671795f82337",
+      "skills/startup-loop/SKILL.md": "0315ca11700a2e2808b6bde2e372e83fc29d971e5c67d998d1d6fc514097a360"
+    }
+  },
+  "reproduction": {
+    "unchangedInboxHourWakesBefore": 61,
+    "unchangedInboxHourWakesAfter": 1,
+    "offlineProviderCallsBeforeFailure": 1,
+    "offlineProviderCallsAfterFailureAcross100InboxChangesAndQueuedRetry": 0
+  },
+  "billingSavingsMeasured": false,
+  "paidVerificationCalls": 0,
+  "deployment": null
+}
