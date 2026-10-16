@@ -1,0 +1,198 @@
+{
+  "release": "7.0.15",
+  "fixCommit": "14172e8",
+  "releaseCommit": "25dfff7",
+  "regression": {
+    "beforeFix": {
+      "droppedScopeAndMissingReportTestsFailed": 5,
+      "missingReviewContinuationTestsFailed": 1
+    },
+    "afterFix": {
+      "tests": 333,
+      "assertions": 1686,
+      "typecheck": "pass",
+      "offlineNativeChecks": {
+        "compiled_omp_identified": true,
+        "all_native_stages_complete": true,
+        "canonical_role_loop_in_actual_root_provider": true,
+        "actual_native_helper_startup_tool_denied": true,
+        "begin_turn_denial_blocks_native_write_and_bash": true,
+        "failed_connection_blocks_native_write_and_bash": true,
+        "denied_synthetic_context_blocks_provider": true,
+        "negative_control_detects_missing_tool_guard": true,
+        "cache_system_prompt_is_stable": true,
+        "cache_conversation_prefix_is_preserved": true,
+        "cache_live_state_is_trailing_user_data": true,
+        "provider_error_parks_100_inbox_changes_and_queued_retry": true
+      }
+    }
+  },
+  "deployment": {
+    "at": 1792175640919,
+    "installedVersion": "7.0.15",
+    "coordinatorPid": 2729361,
+    "epoch": 10,
+    "roots": 59,
+    "freshPolls5s": 59,
+    "preserved": {
+      "employee": {
+        "originalCount": 68,
+        "allIdsRetained": true
+      },
+      "team": {
+        "originalCount": 20,
+        "allIdsRetained": true
+      },
+      "claim": {
+        "originalCount": 2028,
+        "allIdsRetained": true
+      },
+      "message": {
+        "originalCount": 17097,
+        "allIdsRetained": true,
+        "allOriginalPayloadsRetained": true
+      },
+      "result": {
+        "originalCount": 1993,
+        "allIdsRetained": true,
+        "allOriginalValuesUnchanged": true
+      },
+      "runtimeIdentity": true,
+      "teamIdentity": true
+    },
+    "reconciliationClaims": [
+      {
+        "employeeId": "f605931a-8e28-420b-a26f-808143d398e8",
+        "generation": 1,
+        "id": "9d4bda34-3334-4574-ac6f-d47db9d8a360",
+        "messageId": "item-qaassign-pr4564-recovery-v3-f605931a-8e28-420b-a26f-808143d398e8",
+        "ownerEpoch": 9,
+        "status": "reconciliation"
+      }
+    ],
+    "sourceHashes": {
+      "extensions/startup/src/store.ts": "3767242b1f766046d83d5895cc1da8ebac98c5522449851ec1555161635d7c5c",
+      "extensions/startup/src/coordinator.ts": "20eca0c057d5bfc8b5ebcbccb8ecf93724000f2bf191a444e9c5adba63cd6def"
+    },
+    "backup": "/home/jsp/.config/jp-skills/startup/sythelabs/backups/upgrade-7.0.15-20261016T183217Z"
+  },
+  "currentObservation": {
+    "at": 1792175938438,
+    "healthStatus": 200,
+    "healthMs": 0.67,
+    "freshPolls": 59,
+    "nativeRoots": 59,
+    "supervisors": [
+      {
+        "role": "manager",
+        "pollAgeMs": 539
+      },
+      {
+        "role": "pa",
+        "pollAgeMs": 740
+      }
+    ]
+  },
+  "directive": {
+    "itemId": "pr-4537-01",
+    "revision": 24,
+    "requestId": "assign-pr-4537-01-impl-r23",
+    "directiveDeliveredVerbatim": true,
+    "reportTo": "c4463250-1731-4fc1-a54b-56804b4e36a3",
+    "originalProcedure": "code-review",
+    "directive": "procedure=pipeline implementation; repo=git@github.com:sythelabs/warlock.git; branch=build/per-package-pkgs-ci; files=apps/scan-service/package.json and scripts/assert-build-outputs.ts; request=IMPLEMENT both fixes. First prove empty selected build summary incorrectly exits 0, then add scan-service build script matching verified remedy 549a392bdf and require verifiedTasks>0 so empty selected summary exits nonzero. Keep changed scope to those files plus a focused regression only if necessary. Reuse existing checkout/worktree; preserve dirty work; do not reset/rebase unrelated changes. Acceptance=actual changed commit at PR4537 head, failing-before/passing-after regression, targeted build/output verification, exact changed-head independent review/QA, and proper startup_item review with saved completed resultId."
+  },
+  "implementation": {
+    "repository": "sythelabs/warlock",
+    "pr": 4537,
+    "branch": "build/per-package-pkgs-ci",
+    "beforeHead": "3011521a6e5881c9f51cb6a8f30824cb0bd03793",
+    "verifiedPushedHead": "2e9c65778eb428176e5dac22218eefe21eb8b076",
+    "changedFiles": [
+      "apps/scan-service/package.json",
+      "scripts/assert-build-outputs.ts"
+    ],
+    "diff": "diff --git a/apps/scan-service/package.json b/apps/scan-service/package.json\nindex a1a6e5cc8d..4e77e5316d 100644\n--- a/apps/scan-service/package.json\n+++ b/apps/scan-service/package.json\n@@ -7,6 +7,7 @@\n     \"dev\": \"bun --no-env-file --env-file=../../.env --env-file=.env src/entrypoints/scan-service.ts\",\n     \"nuclei:install\": \"bun run scripts/install-nuclei.ts\",\n     \"start\": \"bun src/entrypoints/scan-service.ts\",\n+    \"build\": \"bun build src/entrypoints/scan-service.ts --target=bun --outdir dist --sourcemap=linked\",\n     \"typecheck\": \"tsgo --noEmit\",\n     \"test\": \"bun test\"\n   },\ndiff --git a/scripts/assert-build-outputs.ts b/scripts/assert-build-outputs.ts\nindex e696456c41..f2dfd11432 100755\n--- a/scripts/assert-build-outputs.ts\n+++ b/scripts/assert-build-outputs.ts\n@@ -92,6 +92,10 @@ for (const [dir, contract] of Object.entries(CONTRACTS)) {\n   }\n }\n \n+if (verifiedTasks === 0) {\n+  failures.push(\"no selected build tasks verified; empty selection must not pass\");\n+}\n+\n if (failures.length > 0) {\n   for (const failure of failures) console.error(`MISMATCH: ${failure}`);\n   process.exit(1);\n",
+    "worktreeClean": true,
+    "nativeRegression": {
+      "input": "{\"tasks\":[]}",
+      "beforeExit": 0,
+      "afterExit": 1,
+      "afterDiagnostic": "MISMATCH: no selected build tasks verified; empty selection must not pass"
+    }
+  },
+  "handoff": {
+    "resultId": "pr-4537-01-impl-r23",
+    "agentOutgoingWasEmpty": true,
+    "automaticReport": {
+      "id": "item-result-item-assign-pr-4537-01-impl-r23-3cf8f490-c2d3-41b5-88e3-24a161a23f59",
+      "sequence": 17123,
+      "recipient": "c4463250-1731-4fc1-a54b-56804b4e36a3",
+      "status": "acknowledged"
+    },
+    "canonicalTransitions": [
+      {
+        "action": "gate",
+        "revision": 23,
+        "status": "QUEUED",
+        "auditSequence": 9955738
+      },
+      {
+        "action": "assign",
+        "revision": 24,
+        "status": "EXECUTING",
+        "auditSequence": 9956607
+      },
+      {
+        "action": "review",
+        "revision": 25,
+        "status": "REVIEW",
+        "auditSequence": 9965723
+      },
+      {
+        "action": "qa_assign",
+        "revision": 26,
+        "status": "REVIEW",
+        "auditSequence": 9979301
+      }
+    ],
+    "currentState": "REVIEW revision26, assigned to original independent QA"
+  },
+  "supervisionAndUsage": {
+    "minutes": 5.603683333333334,
+    "paSettledChecks": 5,
+    "oneManagerReportPerCheck": true,
+    "usage": {
+      "requests": 88,
+      "input": 1775549,
+      "output": 61829,
+      "cacheRead": 26206100,
+      "totalTokens": 28043478,
+      "recordedCost": 0.2423329
+    },
+    "cacheReadFraction": 0.9365459483820986,
+    "recordedCostPerMinute": 0.04324528806945432,
+    "providerErrors": 0,
+    "targetCrewToolErrors": {
+      "w2:p23": {},
+      "w2:p25": {}
+    },
+    "meaning": "Native root cost metadata, not independently reconciled billing; includes actual implementation and supervision."
+  },
+  "queryPlans": {
+    "execution": [
+      "SEARCH records USING INDEX records_item_execution_employee_generation (<expr>=? AND <expr>=?)"
+    ],
+    "claim": [
+      "SEARCH records USING INDEX records_claim_employee_status (<expr>=? AND <expr>=?)"
+    ],
+    "result": [
+      "SEARCH records USING INDEX records_result_claim (<expr>=?)"
+    ]
+  },
+  "limits": [
+    "Full scan-service build was not verified in the dependency-less dev worktree; independent QA and changed-head CI remain pending.",
+    "Historical PR4564 QA claim9d4bda34 is retained under explicit reconciliation after epoch9->10; its blocked attempts were not replayed or silently resolved.",
+    "No Warlock merge performed by this maintenance task."
+  ]
+}

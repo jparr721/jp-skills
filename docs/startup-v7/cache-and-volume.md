@@ -86,3 +86,18 @@ Real work advanced: PR4556 moved EXECUTING -> REVIEW -> QA APPROVE -> READY_TO_L
 Missing repositories are now explicit setup work in the intake [repository acquisition procedure](../../skills/startup-intake/references/queue-records.md#repository-acquisition). Crews resolve authoritative remotes, clone into their configured workspace, preserve existing checkouts and report actual access/identity blockers once. Missing package outputs first require manifest/setup inspection.
 
 Machine-readable evidence: [funded resume acceptance](funded-resume-acceptance.json).
+
+
+## PR4537 executable handoff recovery (7.0.15)
+
+The old assignment receipt retained its file-bounded implementation directive only in audit evidence. Its delivered cue kept the original review-only intake, and dev settlement with an empty outgoing list left the architect without a result report. Version7.0.15 delivers the current directive verbatim with the architect destination, atomically reports all dev item outcomes, and retains an indexed review continuation with the saved result ID/current revision. QA and landing remain explicit.
+
+The regression suite failed on both dropped string/object scopes, all three missing outcome reports and the absent continuation before the fixes. All333 tests/1686 assertions, TypeScript checking and12 installed-OMP offline guards pass. Live SQLite query plans use the own-execution, own-claim and result-claim indexes rather than loading global histories.
+
+Aspen received the full7.0.15 upgrade (145links and owned companion). Coordinator2729361/epoch10 replaced3847511/epoch9, preserving all59 native processes and their pane/transcript/generation/launch identities. The cutover snapshot retains68 employees,20crews,2028claims,17097original message payloads and1993immutable results. One historical PR4564 QA claim remains recorded under explicit reconciliation after the restart.
+
+The existing PR4537 crew received its two-file implementation directive verbatim at revision24. Its original dev proved empty-summary acceptance before editing (exit0), implemented the zero-task rejection (exit1 afterward), added the scan-service build script, and pushed commit2e9c65778eb428176e5dac22218eefe21eb8b076 to the original PR branch. Exactly two files changed, with five insertions; the worktree is clean. GitHub independently confirms the new PR head.
+
+Dev completed result `pr-4537-01-impl-r23` with `outgoing: []`. The store automatically saved report sequence17123 to the owning architect, who acknowledged it. The dev submitted review revision25; the architect assigned original independent QA at revision26. This proves code production and the architect handoff. The dependency-less dev worktree did not establish a full scan-service build, and independent QA/changed-head CI remain pending.
+
+Live preservation, exact directive/result receipts, diff, native before/after exit codes and PA/usage observations: [PR4537 handoff acceptance](pr4537-handoff-acceptance.json).
