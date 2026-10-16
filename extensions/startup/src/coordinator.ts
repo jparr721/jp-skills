@@ -42,11 +42,13 @@ const commandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("block"), key: idSchema, evidence: jsonSchema }),
 ]);
 const admissionSchema = z.strictObject({ credential: idSchema, nativeSession: idSchema, paneId: idSchema, source: sourceSchema });
+const launchFailureSchema = z.strictObject({ credential: idSchema, error: z.string().min(1).max(8192) });
 type Poll = Readonly<{ toolBlockReason: string | null; projection: string; pendingMessageIds: readonly string[]; waitReason: string | null }>;
 export type Coordinator = Readonly<{
   start: () => Promise<void>;
   health: () => Readonly<{ status: "starting" | "running" }>;
   admit: (input: Readonly<{ credential: string; nativeSession: string; paneId: string; source: Source }>) => Promise<{ connection: string }>;
+  launchFailure: (input: z.infer<typeof launchFailureSchema>) => void;
   command: (connection: string, command: Json) => Promise<Json>;
   poll: (connection: string) => Promise<Poll>;
   tick: () => Promise<void>;
@@ -170,6 +172,8 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const bootstrap = join(launchDirectory, `${current.launchId}.ts`);
     try {
       await herdr.launch({ paneId: location.paneId, name: `s-${current.launchId.replaceAll("-", "").slice(0, 28)}`, args: ["--profile", config.profile, "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot] });
+      const latest = runtime(id);
+      if (latest.state === "uncertain" && latest.error !== null) throw new StoreConflictError(`Startup employee boot failed: ${latest.error}`);
     } catch (error: unknown) {
       const latest = runtime(id);
       if (latest.state !== "ready") store.updateRuntime({ ...latest, state: "uncertain", error: error instanceof Error ? error.message : String(error) });
@@ -236,6 +240,18 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const connection = randomBytes(32).toString("hex");
     connections.set(connection, { employeeId: current.id, generation: saved.generation, epoch: store.ownerEpoch });
     return { connection };
+  }
+  function launchFailure(value: z.infer<typeof launchFailureSchema>): void {
+    const request = launchFailureSchema.parse(value);
+    const saved = store.runtimeBindings().findLast((r) => r.credentialDigest === digest(request.credential));
+    if (!saved) throw new StoreAuthorityError("Invalid launch failure credential");
+    if (saved.state === "abandoned" || runtime(saved.employeeId).launchId !== saved.launchId)
+      throw new StoreFenceError("Launch failure belongs to an abandoned or superseded generation");
+    const error = request.error.replaceAll(request.credential, "[redacted]");
+    if (saved.state !== "ready") store.updateRuntime({ ...saved, state: "uncertain", error });
+    const id = `boot-failed-${saved.launchId}-${digest(error).slice(0, 12)}`;
+    if (!store.snapshot().messages.some((message) => message.id === id))
+      store.runtimeAlert({ id, correlation: saved.launchId, payload: { kind: "boot-failed", employeeId: saved.employeeId, paneId: saved.paneId, error } });
   }
   function scopedInput(current: Employee, inputId: string): Json {
     const snapshot = store.snapshot();
@@ -478,7 +494,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     if (observationFailure !== null) throw observationFailure;
   }
   return {
-    start, admit, poll,
+    start, admit, poll, launchFailure,
     health: () => ({ status: store.runtimeBindings().some((r) => r.employeeId === "manager" && r.paneId !== null && r.nativeSession !== null) ? "running" : "starting" }),
     command(connection, command) {
       const kind = commandSchema.parse(command).kind;
@@ -503,6 +519,10 @@ export function serveCoordinator(input: Readonly<{ coordinator: Coordinator; soc
     try {
       if (request.method === "GET" && path === "/health") { const health = input.coordinator.health(); return Response.json(health, { status: health.status === "running" ? 200 : 503 }); }
       if (request.method === "POST" && path === "/admit") return Response.json(await input.coordinator.admit(admissionSchema.parse(await request.json())));
+      if (request.method === "POST" && path === "/launch-failure") {
+        input.coordinator.launchFailure(launchFailureSchema.parse(await request.json()));
+        return Response.json({ recorded: true });
+      }
       const authorization = request.headers.get("authorization");
       if (!authorization?.startsWith("Bearer ")) throw new StoreAuthorityError("Employee connection credential is required");
       const connection = authorization.slice(7);

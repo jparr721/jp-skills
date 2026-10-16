@@ -83,6 +83,44 @@ function fixture(executionLimit: number) {
   return { coordinator, store, config, observations, ready, admit, delegate, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
 }
 
+test("a failed unadmitted boot immediately persists a redacted manager alert and can later admit", async () => {
+  const f = fixture(8);
+  await f.coordinator.start();
+  const saved = f.store.runtimeBindings().find((r) => r.employeeId !== "manager");
+  if (!saved) throw new Error("Missing PA launch");
+  const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${saved.launchId}.json`), "utf8")));
+  const server = serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }); servers.push(server);
+  const report = (credential: string): Promise<Response> => fetch("http://localhost/launch-failure", { unix: f.config.socketPath, method: "POST", body: JSON.stringify({ credential, error: `Cannot resolve pane ${manifest.credential}` }) });
+  expect((await report("forged")).status).toBe(403);
+  expect((await report(manifest.credential)).status).toBe(200);
+  expect((await report(manifest.credential)).status).toBe(200);
+  expect(f.store.runtimeBindings().find((r) => r.launchId === saved.launchId)).toMatchObject({ state: "uncertain", error: "Cannot resolve pane [redacted]" });
+  const alerts = f.store.snapshot().messages.filter((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"boot-failed"'));
+  expect(alerts).toHaveLength(1);
+  expect(JSON.stringify(alerts)).not.toContain(manifest.credential);
+  await f.admit(saved.employeeId);
+  expect((await report(manifest.credential)).status).toBe(200);
+  expect(f.store.runtimeBindings().find((r) => r.launchId === saved.launchId)?.state).toBe("ready");
+});
+
+test("Herdr interactive readiness cannot hide a reported boot failure during launch", async () => {
+  const f = fixture(8);
+  const barrier = Promise.withResolvers<void>();
+  f.delayLaunch(barrier.promise);
+  const starting = f.coordinator.start();
+  try {
+    const deadline = Date.now() + 1000;
+    while (!f.store.runtimeBindings().some((r) => r.employeeId !== "manager" && r.paneId !== null) && Date.now() < deadline) await Bun.sleep(1);
+    const saved = f.store.runtimeBindings().find((r) => r.employeeId !== "manager");
+    if (!saved) throw new Error("Missing PA launch");
+    const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${saved.launchId}.json`), "utf8")));
+    f.coordinator.launchFailure({ credential: manifest.credential, error: "source unavailable" });
+    barrier.resolve();
+    await expect(starting).rejects.toThrow("Startup employee boot failed: source unavailable");
+    expect(f.store.runtimeBindings().find((r) => r.launchId === saved.launchId)?.state).toBe("uncertain");
+  } finally { barrier.resolve(); await starting.catch(() => undefined); }
+});
+
 test("lost Herdr supervision degrades fresh PA connections and persists a manager blocker", async () => {
   const f = fixture(8);
   const { manager, paConnection } = await f.ready();

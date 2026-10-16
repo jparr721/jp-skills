@@ -48,6 +48,20 @@ class EmployeeHttpError extends EmployeeClientError {
   constructor(status: number, message: string) { super(message); this.status = status; }
 }
 
+export async function reportLaunchFailure(input: Readonly<{ socketPath: string; credential: string; error: string }>): Promise<void> {
+  const redact = (value: string): string => value.replaceAll(input.credential, "[redacted]");
+  try {
+    const response = await fetch("http://localhost/launch-failure", {
+      unix: input.socketPath, method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: input.credential, error: redact(input.error).slice(0, 8192) }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new EmployeeClientError(`Startup POST /launch-failure HTTP ${response.status}: ${redact(await response.text())}`);
+  } catch (error: unknown) {
+    throw new EmployeeClientError(`Startup boot failure reporting failed: ${redact(error instanceof Error ? error.message : String(error))}`);
+  }
+}
+
 export async function connectEmployee(input: Readonly<{
   socketPath: string;
   credential: string;
@@ -239,13 +253,13 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     return current?.projection ?? "Startup employee is blocked until its canonical source and coordinator connection are admitted.";
   }
   host.on("before_agent_start", async (event, ctx) => {
-    if (!isRoot(ctx)) return;
+    if (closed || !isRoot(ctx)) return;
     const parsed = beforeStartSchema.parse(event);
     await admitTurn();
     return { systemPrompt: [...parsed.systemPrompt, projectedText()] };
   });
   host.on("context", async (event, ctx) => {
-    if (!isRoot(ctx)) return;
+    if (closed || !isRoot(ctx)) return;
     const parsed = contextSchema.parse(event);
     await admitTurn();
     return { messages: [
@@ -254,6 +268,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     ] };
   });
   host.on("tool_call", (event, ctx) => {
+    if (closed) return;
     const employeeTool: boolean = isEmployeeTool(event);
     if (!isRoot(ctx))
       return employeeTool ? { block: true, reason: "Native helper has no Startup employee authority" } : undefined;
@@ -267,7 +282,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     return;
   });
   host.on("agent_end", async (event, ctx) => {
-    if (!isRoot(ctx)) return;
+    if (closed || !isRoot(ctx)) return;
     const parsed = z.object({ willContinue: z.boolean().optional() }).passthrough().parse(event);
     if (parsed.willContinue !== true) {
       releasePending = true;
@@ -279,7 +294,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     }
   });
   host.on("session_stop", async (_event, ctx) => {
-    if (!isRoot(ctx)) return;
+    if (closed || !isRoot(ctx)) return;
     const failureReason = failure === null ? null : `Startup coordinator unavailable: ${failure}`;
     if (failureReason !== null) {
       if (continuedReason === failureReason) return;

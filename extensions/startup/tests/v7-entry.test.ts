@@ -142,6 +142,122 @@ test("launched root verifies source and transcript before admission, exposes ded
   expect(JSON.stringify(f.messages)).not.toContain("private-");
 });
 
+test("employee admission does not require unused session, workspace or profile environment variables", async () => {
+  const f = fixture();
+  for (const key of ["HERDR_SESSION", "STARTUP_HERDR_SESSION", "HERDR_WORKSPACE_ID", "OMP_PROFILE"]) f.environment[key] = undefined;
+  f.useEnvironment();
+  installLaunchedEmployee(f.host, f.manifest("dev"));
+  await f.emit("session_start", {}, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+  expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
+});
+
+test("employee boot errors are contained and retry admission on the next native session start", async () => {
+  const f = fixture(); f.useEnvironment();
+  const path = f.manifest("dev");
+  const source = join(f.skillsRoot, "skills/startup-role-dev/SKILL.md");
+  const original = readFileSync(source, "utf8");
+  writeFileSync(source, "changed source");
+  installLaunchedEmployee(f.host, path);
+  await expect(f.emit("session_start", {}, f.ctx)).resolves.toBeUndefined();
+  expect(f.messages.join("\n")).toContain("source");
+  expect(f.requests.at(-1)).toMatchObject({ credential: "private-credential", error: expect.stringContaining("source") });
+  expect(f.admissions).toHaveLength(0);
+  writeFileSync(source, original);
+  await f.emit("session_start", {}, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+  expect(await f.emit("tool_call", { toolName: "bash", input: {} }, f.ctx)).toBeUndefined();
+});
+
+test("automatic employee admission retry retires the failed bridge and stops retrying after recovery", async () => {
+  const f = fixture(); f.useEnvironment();
+  const scheduled: Readonly<{ callback: () => void; ms: number }>[] = [];
+  const context: NativeContext = { ...f.ctx, setInterval(callback, ms) { scheduled.push({ callback, ms }); return f.ctx.setInterval(callback, ms); } };
+  f.setAvailable(false);
+  installLaunchedEmployee(f.host, f.manifest("dev"));
+  await f.emit("session_start", {}, context);
+  expect(f.admissions).toHaveLength(1);
+  expect(f.messages.join("\n")).toContain("HTTP 503");
+  const retry = scheduled.find((timer) => timer.ms === 5000);
+  if (!retry) throw new Error("Missing automatic admission retry");
+  f.setAvailable(true);
+  retry.callback();
+  const command = f.commands.get("startup-retry");
+  if (!command) throw new Error("Missing admission retry command");
+  await command.handler("", context);
+  expect(f.admissions).toHaveLength(2);
+  expect(await f.emit("tool_call", { toolName: "bash", input: {} }, context)).toBeUndefined();
+  await f.emit("before_agent_start", { systemPrompt: [] }, context);
+  expect(f.requests.filter((request) => z.object({ kind: z.literal("begin_turn") }).safeParse(request).success)).toHaveLength(1);
+  retry.callback();
+  await command.handler("", context);
+  expect(f.admissions).toHaveLength(2);
+  await f.emit("session_shutdown", {}, context);
+  retry.callback();
+  await command.handler("", context);
+  expect(f.admissions).toHaveLength(2);
+});
+
+test("coordinator and failure-report outages remain visible and recoverable", async () => {
+  const f = fixture(); f.useEnvironment();
+  const path = f.manifest("dev");
+  const original = readFileSync(path, "utf8");
+  const manifest = z.record(z.string(), z.json()).parse(JSON.parse(original));
+  writeFileSync(path, JSON.stringify({ ...manifest, socketPath: join(f.root, "offline.sock") }));
+  installLaunchedEmployee(f.host, path);
+  await expect(f.emit("session_start", {}, f.ctx)).resolves.toBeUndefined();
+  expect(f.messages.join("\n")).toContain("boot failure reporting failed");
+  expect(f.messages.join("\n")).not.toContain("private-credential");
+  writeFileSync(path, original);
+  const retry = f.commands.get("startup-retry");
+  if (!retry) throw new Error("Missing retry command");
+  await retry.handler("", f.ctx);
+  expect(f.admissions).toHaveLength(1);
+});
+
+test("missing OMP profile means the native default profile for a manager", async () => {
+  const f = fixture();
+  f.environment.OMP_PROFILE = undefined;
+  const launched: RuntimeHostConfig[] = [];
+  installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; } });
+  await f.emit("input", { text: "/startup new defaults", source: "interactive", images: [] }, f.ctx);
+  expect(launched[0]?.profile).toBe("default");
+  expect(f.admissions).toHaveLength(1);
+});
+
+test.each([null, "fixture"])("manager resolves absent Herdr environment from the CLI in session %s", async (session: string | null) => {
+  const f = fixture();
+  const binary = join(f.root, "herdr");
+  writeFileSync(binary, `#!/usr/bin/env bun\nconst args = process.argv.slice(2);\nconsole.log(JSON.stringify(args.includes("status") ? { session: ${JSON.stringify(session)} } : { result: { type: "pane_current", pane: { pane_id: "w1:p1", workspace_id: "w1" } } }));\n`, { mode: 0o700 });
+  for (const key of ["HERDR_ENV", "HERDR_PANE_ID", "HERDR_WORKSPACE_ID", "HERDR_SESSION", "STARTUP_HERDR_SESSION"]) f.environment[key] = undefined;
+  f.environment.HERDR_BIN_PATH = binary;
+  const launched: RuntimeHostConfig[] = [];
+  installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; } });
+  await f.emit("input", { text: "/startup new recovered", source: "interactive", images: [] }, f.ctx);
+  expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
+  expect(launched[0]).toMatchObject({ managerPaneId: "w1:p1", workspaceId: "w1", herdrSession: session ?? "default" });
+  expect(f.admissions).toHaveLength(1);
+});
+
+test.each(["exit", "json", "shape"])("Herdr CLI %s failure is handled and a corrected boot can retry in the same pane", async (kind: string) => {
+  const f = fixture();
+  const binary = join(f.root, "herdr");
+  const failure = kind === "exit" ? 'console.error("socket unavailable"); process.exit(33);' : kind === "json" ? 'console.log("invalid-json");' : 'console.log("{}");';
+  writeFileSync(binary, `#!/usr/bin/env bun\n${failure}\n`, { mode: 0o700 });
+  f.environment.HERDR_SESSION = undefined;
+  f.environment.STARTUP_HERDR_SESSION = undefined;
+  f.environment.HERDR_BIN_PATH = binary;
+  installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+  const command = f.commands.get("startup");
+  if (!command) throw new Error("Missing Startup command");
+  await expect(command.handler("new corrected", f.ctx)).resolves.toBeUndefined();
+  expect(f.messages.join("\n")).toContain(kind === "exit" ? "command_failed" : "invalid_response");
+  expect(f.admissions).toHaveLength(0);
+  writeFileSync(binary, '#!/usr/bin/env bun\nconsole.log(JSON.stringify(process.argv.includes("status") ? { session: null } : { result: { type: "pane_current", pane: { pane_id: "w1:p1", workspace_id: "w1" } } }));\n');
+  await command.handler("new corrected", f.ctx);
+  expect(f.admissions).toHaveLength(1);
+});
+
 test("modified canonical source and parented transcript fail before any credential admission", async () => {
   for (const kind of ["source", "parent"]) {
     const f = fixture(); f.useEnvironment();
@@ -149,7 +265,8 @@ test("modified canonical source and parented transcript fail before any credenti
     if (kind === "source") writeFileSync(join(f.skillsRoot, "skills/startup-role-dev/SKILL.md"), "changed source");
     else writeFileSync(f.file, JSON.stringify({ type: "session", id: "native-root", parentSession: "/other-root.jsonl" }) + "\n");
     installLaunchedEmployee(f.host, manifest);
-    await expect(f.emit("session_start", {}, f.ctx)).rejects.toThrow(kind === "source" ? "source" : "parented");
+    await expect(f.emit("session_start", {}, f.ctx)).resolves.toBeUndefined();
+    expect(f.messages.join("\n")).toContain(kind === "source" ? "source" : "parented");
     expect(f.admissions).toHaveLength(0);
   }
 });
@@ -175,16 +292,15 @@ test("manager boot preserves native command work and binds independent runtime c
   expect(f.requests.filter((request) => z.object({ kind: z.literal("receive") }).safeParse(request).success)).toHaveLength(1);
 });
 
-test("outside Herdr, unnamed profiles and missing native abort cannot launch a coordinator", async () => {
-  for (const kind of ["outside", "profile", "abort"]) {
+test("invalid profiles and missing native abort are reported without launching a coordinator", async () => {
+  for (const kind of ["profile", "abort"]) {
     const f = fixture();
     let launched: boolean = false;
     const host: HostAPI = f.host;
     const { abort: _abort, ...withoutAbort } = f.ctx;
     const context: NativeContext = kind === "abort" ? withoutAbort : f.ctx;
     const environment = { ...f.environment };
-    if (kind === "outside") delete environment.HERDR_ENV;
-    if (kind === "profile") delete environment.OMP_PROFILE;
+    if (kind === "profile") environment.OMP_PROFILE = "invalid/profile";
     installStartupV7(host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment, launch: async (config) => { launched = true; return config; } });
     expect(await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, context)).toEqual({ handled: true });
     expect(launched).toBe(false);
@@ -341,13 +457,13 @@ test("partial PA launch failure preserves admission endpoint for later pane reco
 });
 
 
-test("swallowed native session-start failure still aborts and blocks native root tools", async () => {
+test("handled native session-start failure still aborts and blocks unadmitted root tools", async () => {
   const f = fixture(); f.useEnvironment();
   const manifest: string = f.manifest("dev");
   installLaunchedEmployee(f.host, manifest);
   expect(await f.emit("tool_call", { toolName: "bash", input: { command: "before admission" } }, f.ctx)).toMatchObject({ block: true });
   writeFileSync(join(f.skillsRoot, "skills/startup-role-dev/SKILL.md"), "modified source");
-  try { await f.emit("session_start", {}, f.ctx); } catch { /* Native ExtensionRunner reports and swallows hook errors. */ }
+  await expect(f.emit("session_start", {}, f.ctx)).resolves.toBeUndefined();
   expect(f.getAborts()).toBeGreaterThan(0);
   expect(f.messages.join("\n")).toContain("blocked");
   expect(f.admissions).toHaveLength(0);

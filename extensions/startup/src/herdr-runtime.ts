@@ -89,6 +89,26 @@ function environmentArgs(environment: LayoutEnvironment): readonly string[] {
 export async function runHerdrCommand(argv: readonly string[]): Promise<CommandResult> {
   return createHerdrCommandRunner({ timeoutMs: 35000 })(argv);
 }
+export async function herdrContext(input: Readonly<{ binary: string; session: string | null }>): Promise<Readonly<{ paneId: string; workspaceId: string; session: string }>> {
+  const prefix: readonly string[] = input.session === null ? [input.binary] : [input.binary, "--session", input.session];
+  async function read<T>(args: readonly string[], schema: z.ZodType<T>): Promise<T> {
+    const command: readonly string[] = [...prefix, ...args];
+    const result = await runHerdrCommand(command);
+    if (result.exitCode !== 0)
+      throw new HerdrRuntimeError({ code: "command_failed", command, ...result, detail: "Cannot resolve the current Herdr pane; check the inherited Herdr socket and pane context, then retry Startup" });
+    let value: unknown;
+    try { value = JSON.parse(result.stdout); }
+    catch (error: unknown) {
+      throw new HerdrRuntimeError({ code: "invalid_response", command, ...result, detail: error instanceof Error ? error.message : String(error) });
+    }
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) throw new HerdrRuntimeError({ code: "invalid_response", command, ...result, detail: parsed.error.message });
+    return parsed.data;
+  }
+  const pane = await read(["pane", "current", "--current"], z.object({ result: z.object({ type: z.literal("pane_current"), pane: z.object({ pane_id: textSchema, workspace_id: textSchema }) }) }));
+  const server = await read(["status", "server", "--json"], z.object({ session: targetSchema.nullable() }));
+  return { paneId: pane.result.pane.pane_id, workspaceId: pane.result.pane.workspace_id, session: server.session ?? "default" };
+}
 export function createHerdrCommandRunner(input: Readonly<{ timeoutMs: number }>): (argv: readonly string[]) => Promise<CommandResult> {
   const timeoutMs = z.number().int().positive().safe().parse(input.timeoutMs);
   return async (argv): Promise<CommandResult> => {

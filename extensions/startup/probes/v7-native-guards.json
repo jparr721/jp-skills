@@ -1,13 +1,13 @@
 {
   "status": "PASS",
-  "workspace": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n",
+  "workspace": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc",
   "executable": "/Users/jarredparr/.bun/bin/omp",
-  "executableSha256": "1d084cfbb9587fa1ff76fa77f06ee8680b6a70f92cd207f4a7942e2bd45ae665",
-  "installedVersion": "omp/18.8.9",
+  "executableSha256": "bdeb1626b99dc29d844146ea7940d367e61b1032b77e1c77880125f379ca2dda",
+  "installedVersion": "omp/18.11.1",
   "network": "none; deterministic in-process provider",
   "normalProfileUsed": false,
   "sourceHashes": {
-    "/Users/jarredparr/Projects/jp-skills/extensions/startup/src/employee-client.ts": "e6a2da4bc273518ecdc707901d5f2f1e1ab9b49e4e1257089b8f7c9b791f9a6e",
+    "/Users/jarredparr/Projects/jp-skills/extensions/startup/src/employee-client.ts": "13b4b0a4935b972d05d0239fd8bf11ff0e4343b32a2dd1a1b1fbe6a4de65cbcb",
     "/Users/jarredparr/Projects/jp-skills/extensions/startup/probes/run-v7-guards.py": "ff2c896be5937d7fb597cd96df962612e6e881a428392e91d4a06285971cb129",
     "/Users/jarredparr/Projects/jp-skills/extensions/startup/probes/native-v7-guards.ts": "2aa7bc7b41be294d26f0123ad76c4758981fe5a69090e83670983b8a7be3caab",
     "/Users/jarredparr/Projects/jp-skills/skills/startup-role-dev/SKILL.md": "542e339fca6b221dfd81779f0daed5d4115f959880ee7613c00d671795f82337",
@@ -16,7 +16,7 @@
   },
   "negativeControl": {
     "change": "Removed only employee bridge tool_call handler in owned temporary copy",
-    "sourceSha256": "49acb5656f1892684f2052d02af47b464ffb89270c1604861a7baed92897e9bd"
+    "sourceSha256": "73db4b5bbc72fda9be23e9a7d24be8af9d7d8fdb49ceeb7193650aa0fb67b7ce"
   },
   "stages": [
     {
@@ -27,9 +27,9 @@
         "rpc",
         "--no-ui",
         "--cwd",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/admitted/cwd",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/admitted/cwd",
         "--config",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/admitted/config.yml",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/admitted/config.yml",
         "--no-extensions",
         "--no-skills",
         "--no-rules",
@@ -57,15 +57,15 @@
       "events": [
         {
           "kind": "root",
-          "version": "18.8.9",
+          "version": "18.11.1",
           "actor": {
             "kind": "main",
             "id": "Main",
             "name": "main",
             "depth": 0
           },
-          "sessionId": "01a14209-392b-77c0-bc36-46fc61dfdd06",
-          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/admitted/agent-data/sessions/-tmp-startup-v7-native-guards-mz6snt8n-admitted-cwd/2026-10-16T00-07-43-147Z_01a14209-392b-77c0-bc36-46fc61dfdd06.jsonl",
+          "sessionId": "01a1421f-1b66-7255-a32e-44412e2b67b6",
+          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/admitted/agent-data/sessions/-tmp-startup-v7-native-guards-espn2_hc-admitted-cwd/2026-10-16T00-31-37-318Z_01a1421f-1b66-7255-a32e-44412e2b67b6.jsonl",
           "abortAvailable": true
         },
         {
@@ -117,7 +117,7 @@
           "content": [
             {
               "type": "text",
-              "text": "Spawned agent `guard-helper` (job `guard-helper`).\n\nResults auto-deliver; NEVER poll.\nCoordinate while peers run via `write agent://<id>` (or `agent://all` to broadcast).\n\n`read proc://` lists jobs/services; `read proc://<id>` inspects status/output without consuming delivery. `write proc://<id>/kill` cancels/stops; omit `content`.\n\nJob IDs are process-local; delivered results expire shortly (~30s), unconsumed results within ~5min. Agent output/transcripts remain readable at `agent://<id>` / `history://<id>`. `write agent://<id>` messages a live agent.\n\n`completed`: subagent yielded successfully; claimed artifacts unverified."
+              "text": "Spawned agent `guard-helper` (job `guard-helper`)."
             }
           ]
         },
@@ -154,7 +154,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "Spawned agent `guard-helper` (job `guard-helper`).\n\nResults auto-deliver; NEVER poll.\nCoordinate while peers run via `write agent://<id>` (or `agent://all` to broadcast).\n\n`read proc://` lists jobs/services; `read proc://<id>` inspects status/output without consuming delivery. `write proc://<id>/kill` cancels/stops; omit `content`.\n\nJob IDs are process-local; delivered results expire shortly (~30s), unconsumed results within ~5min. Agent output/transcripts remain readable at `agent://<id>` / `history://<id>`. `write agent://<id>` messages a live agent.\n\n`completed`: subagent yielded successfully; claimed artifacts unverified."
+                  "text": "Spawned agent `guard-helper` (job `guard-helper`)."
                 }
               ],
               "details": {
@@ -186,7 +186,7 @@
                 }
               },
               "isError": false,
-              "timestamp": 1792109263255,
+              "timestamp": 1792110697432,
               "attribution": "agent"
             }
           ]
@@ -207,8 +207,7 @@
           "loopComplete": false,
           "developerProjection": false,
           "tools": [
-            "startup_guard_probe",
-            "yield"
+            "startup_guard_probe"
           ],
           "projection": null,
           "priorToolResults": []
@@ -223,8 +222,7 @@
           "loopComplete": false,
           "developerProjection": false,
           "tools": [
-            "startup_guard_probe",
-            "yield"
+            "startup_guard_probe"
           ],
           "projection": null,
           "priorToolResults": [
@@ -240,26 +238,572 @@
               ],
               "details": {},
               "isError": true,
-              "timestamp": 1792109263289,
+              "timestamp": 1792110697495,
               "attribution": "agent"
             }
           ]
         },
         {
-          "kind": "tool_result",
-          "actor": {
-            "kind": "sub",
-            "id": "guard-helper",
-            "name": "v7-guard-helper",
-            "depth": 1,
-            "parentId": "Main"
-          },
-          "name": "yield",
-          "error": false,
-          "content": [
+          "kind": "provider",
+          "stage": "admitted",
+          "helper": true,
+          "providerCount": 3,
+          "rootProviderCount": 0,
+          "roleComplete": false,
+          "loopComplete": false,
+          "developerProjection": false,
+          "tools": [
+            "startup_guard_probe"
+          ],
+          "projection": null,
+          "priorToolResults": [
             {
-              "type": "text",
-              "text": "Result submitted."
+              "role": "toolResult",
+              "toolCallId": "sentinel-1",
+              "toolName": "startup_guard_probe",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Native helper has no Startup employee authority"
+                }
+              ],
+              "details": {},
+              "isError": true,
+              "timestamp": 1792110697495,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-2",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697496,
+              "attribution": "agent"
+            }
+          ]
+        },
+        {
+          "kind": "provider",
+          "stage": "admitted",
+          "helper": true,
+          "providerCount": 4,
+          "rootProviderCount": 0,
+          "roleComplete": false,
+          "loopComplete": false,
+          "developerProjection": false,
+          "tools": [
+            "startup_guard_probe"
+          ],
+          "projection": null,
+          "priorToolResults": [
+            {
+              "role": "toolResult",
+              "toolCallId": "sentinel-1",
+              "toolName": "startup_guard_probe",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Native helper has no Startup employee authority"
+                }
+              ],
+              "details": {},
+              "isError": true,
+              "timestamp": 1792110697495,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-2",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697496,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-3",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697498,
+              "attribution": "agent"
+            }
+          ]
+        },
+        {
+          "kind": "provider",
+          "stage": "admitted",
+          "helper": true,
+          "providerCount": 5,
+          "rootProviderCount": 0,
+          "roleComplete": false,
+          "loopComplete": false,
+          "developerProjection": false,
+          "tools": [
+            "startup_guard_probe"
+          ],
+          "projection": null,
+          "priorToolResults": [
+            {
+              "role": "toolResult",
+              "toolCallId": "sentinel-1",
+              "toolName": "startup_guard_probe",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Native helper has no Startup employee authority"
+                }
+              ],
+              "details": {},
+              "isError": true,
+              "timestamp": 1792110697495,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-2",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697496,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-3",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697498,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-4",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697499,
+              "attribution": "agent"
+            }
+          ]
+        },
+        {
+          "kind": "provider",
+          "stage": "admitted",
+          "helper": true,
+          "providerCount": 6,
+          "rootProviderCount": 0,
+          "roleComplete": false,
+          "loopComplete": false,
+          "developerProjection": false,
+          "tools": [
+            "startup_guard_probe"
+          ],
+          "projection": null,
+          "priorToolResults": [
+            {
+              "role": "toolResult",
+              "toolCallId": "sentinel-1",
+              "toolName": "startup_guard_probe",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Native helper has no Startup employee authority"
+                }
+              ],
+              "details": {},
+              "isError": true,
+              "timestamp": 1792110697495,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-2",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697496,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-3",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697498,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-4",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697499,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-5",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697500,
+              "attribution": "agent"
+            }
+          ]
+        },
+        {
+          "kind": "provider",
+          "stage": "admitted",
+          "helper": true,
+          "providerCount": 7,
+          "rootProviderCount": 0,
+          "roleComplete": false,
+          "loopComplete": false,
+          "developerProjection": false,
+          "tools": [
+            "startup_guard_probe"
+          ],
+          "projection": null,
+          "priorToolResults": [
+            {
+              "role": "toolResult",
+              "toolCallId": "sentinel-1",
+              "toolName": "startup_guard_probe",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Native helper has no Startup employee authority"
+                }
+              ],
+              "details": {},
+              "isError": true,
+              "timestamp": 1792110697495,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-2",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697496,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-3",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697498,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-4",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697499,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-5",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697500,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-6",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697500,
+              "attribution": "agent"
+            }
+          ]
+        },
+        {
+          "kind": "provider",
+          "stage": "admitted",
+          "helper": true,
+          "providerCount": 8,
+          "rootProviderCount": 0,
+          "roleComplete": false,
+          "loopComplete": false,
+          "developerProjection": false,
+          "tools": [
+            "startup_guard_probe"
+          ],
+          "projection": null,
+          "priorToolResults": [
+            {
+              "role": "toolResult",
+              "toolCallId": "sentinel-1",
+              "toolName": "startup_guard_probe",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Native helper has no Startup employee authority"
+                }
+              ],
+              "details": {},
+              "isError": true,
+              "timestamp": 1792110697495,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-2",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697496,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-3",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697498,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-4",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697499,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-5",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697500,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-6",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697500,
+              "attribution": "agent"
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "yield-7",
+              "toolName": "yield",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Tool yield not found"
+                }
+              ],
+              "details": {
+                "isError": true,
+                "error": "Tool yield not found"
+              },
+              "isError": true,
+              "timestamp": 1792110697501,
+              "attribution": "agent"
             }
           ]
         },
@@ -276,7 +820,7 @@
           "kind": "provider",
           "stage": "admitted",
           "helper": false,
-          "providerCount": 3,
+          "providerCount": 9,
           "rootProviderCount": 1,
           "roleComplete": true,
           "loopComplete": true,
@@ -296,7 +840,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "Spawned agent `guard-helper` (job `guard-helper`).\n\nResults auto-deliver; NEVER poll.\nCoordinate while peers run via `write agent://<id>` (or `agent://all` to broadcast).\n\n`read proc://` lists jobs/services; `read proc://<id>` inspects status/output without consuming delivery. `write proc://<id>/kill` cancels/stops; omit `content`.\n\nJob IDs are process-local; delivered results expire shortly (~30s), unconsumed results within ~5min. Agent output/transcripts remain readable at `agent://<id>` / `history://<id>`. `write agent://<id>` messages a live agent.\n\n`completed`: subagent yielded successfully; claimed artifacts unverified."
+                  "text": "Spawned agent `guard-helper` (job `guard-helper`)."
                 }
               ],
               "details": {
@@ -328,7 +872,7 @@
                 }
               },
               "isError": false,
-              "timestamp": 1792109263255,
+              "timestamp": 1792110697432,
               "attribution": "agent"
             }
           ]
@@ -354,7 +898,7 @@
             {
               "id": "guard-helper",
               "status": "idle",
-              "sessionId": "01a14209-399f-701d-93f0-014f252c79e9"
+              "sessionId": "01a1421f-1be0-736e-a976-e9fb9a6ebec6"
             }
           ]
         },
@@ -365,12 +909,12 @@
           "kind": "client_close"
         }
       ],
-      "actualProviderRequests": 5,
+      "actualProviderRequests": 11,
       "actualRootProviderRequests": 3,
       "writeExists": false,
       "bashExists": false,
-      "stdoutSha256": "9a50a83a559e48c997071bd0117721c214766afcdafd8da51dad838b1446a530",
-      "stdoutTail": "provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263257,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-4\"}\n{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_delta\",\"contentIndex\":0,\"delta\":\"Guard fixture settled\",\"partial\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263257,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}},\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263257,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-4\"}\n{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_end\",\"contentIndex\":0,\"content\":\"Guard fixture settled\",\"partial\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263257,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}},\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263257,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-4\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263257,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"completedAt\":1792109263257},\"messageId\":\"msg-4\"}\n{\"type\":\"turn_end\",\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263257,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"toolResults\":[]}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Run the isolated V7 guard fixture.\"}],\"attribution\":\"user\",\"timestamp\":1792109263220},{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"toolCall\",\"id\":\"native-helper\",\"name\":\"task\",\"arguments\":{\"context\":\"Isolated native helper guard check\",\"tasks\":[{\"name\":\"guard-helper\",\"agent\":\"v7-guard-helper\",\"task\":\"Call startup_guard_probe once, then yield.\",\"solutionSpace\":\"No employee authority.\"}]}}],\"stopReason\":\"toolUse\",\"timestamp\":1792109263249,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},{\"role\":\"toolResult\",\"toolCallId\":\"native-helper\",\"toolName\":\"task\",\"content\":[{\"type\":\"text\",\"text\":\"Spawned agent `guard-helper` (job `guard-helper`).\\n\\nResults auto-deliver; NEVER poll.\\nCoordinate while peers run via `write agent://<id>` (or `agent://all` to broadcast).\\n\\n`read proc://` lists jobs/services; `read proc://<id>` inspects status/output without consuming delivery. `write proc://<id>/kill` cancels/stops; omit `content`.\\n\\nJob IDs are process-local; delivered results expire shortly (~30s), unconsumed results within ~5min. Agent output/transcripts remain readable at `agent://<id>` / `history://<id>`. `write agent://<id>` messages a live agent.\\n\\n`completed`: subagent yielded successfully; claimed artifacts unverified.\"}],\"details\":{\"projectAgentsDir\":null,\"results\":[],\"totalDurationMs\":0,\"progress\":[{\"index\":0,\"id\":\"guard-helper\",\"agent\":\"v7-guard-helper\",\"agentSource\":\"project\",\"status\":\"pending\",\"task\":\"Complete assignment thoroughly:\\n\\nCall startup_guard_probe once, then yield.\",\"assignment\":\"Call startup_guard_probe once, then yield.\",\"recentTools\":[],\"recentOutput\":[],\"toolCount\":0,\"requests\":0,\"tokens\":0,\"cost\":0,\"durationMs\":0}],\"async\":{\"state\":\"running\",\"jobId\":\"guard-helper\",\"type\":\"task\"}},\"isError\":false,\"timestamp\":1792109263255},{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263257,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}],\"isTerminal\":false,\"yielded\":true,\"awaitingAsyncWork\":true}\n{\"type\":\"agent_start\"}\n{\"type\":\"turn_start\"}\n{\"type\":\"message_start\",\"message\":{\"role\":\"custom\",\"customType\":\"async-result\",\"content\":\"<system-notice>\\nBackground job guard-helper has completed. Resume your work using the result below.\\n<task-result id=\\\"guard-helper\\\" agent=\\\"v7-guard-helper\\\" status=\\\"completed\\\" duration=\\\"38ms\\\">\\n<meta lines=\\\"3\\\" size=\\\"22B\\\" />\\n<output>\\n{\\n  \\\"complete\\\": true\\n}\\n</output>\\n</task-result>\\n\\nguard-helper is now idle \u2014 message it via `write agent://guard-helper` to follow up; transcript at history://guard-helper\\n</system-notice>\",\"display\":true,\"attribution\":\"agent\",\"details\":{\"meta\":{\"source\":{\"type\":\"report\",\"value\":\"background job delivery\"}},\"jobs\":[{\"jobId\":\"guard-helper\",\"type\":\"task\",\"label\":\"guard-helper\",\"durationMs\":38}]},\"timestamp\":1792109263293},\"messageId\":\"msg-5\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"custom\",\"customType\":\"async-result\",\"content\":\"<system-notice>\\nBackground job guard-helper has completed. Resume your work using the result below.\\n<task-result id=\\\"guard-helper\\\" agent=\\\"v7-guard-helper\\\" status=\\\"completed\\\" duration=\\\"38ms\\\">\\n<meta lines=\\\"3\\\" size=\\\"22B\\\" />\\n<output>\\n{\\n  \\\"complete\\\": true\\n}\\n</output>\\n</task-result>\\n\\nguard-helper is now idle \u2014 message it via `write agent://guard-helper` to follow up; transcript at history://guard-helper\\n</system-notice>\",\"display\":true,\"attribution\":\"agent\",\"details\":{\"meta\":{\"source\":{\"type\":\"report\",\"value\":\"background job delivery\"}},\"jobs\":[{\"jobId\":\"guard-helper\",\"type\":\"task\",\"label\":\"guard-helper\",\"durationMs\":38}]},\"timestamp\":1792109263293},\"messageId\":\"msg-5\"}\n{\"type\":\"message_start\",\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-6\"}\n{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_start\",\"contentIndex\":0,\"partial\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}},\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-6\"}\n{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_delta\",\"contentIndex\":0,\"delta\":\"Guard fixture settled\",\"partial\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}},\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-6\"}\n{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_end\",\"contentIndex\":0,\"content\":\"Guard fixture settled\",\"partial\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}},\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-6\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"completedAt\":1792109263295},\"messageId\":\"msg-6\"}\n{\"type\":\"turn_end\",\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"toolResults\":[]}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"custom\",\"customType\":\"async-result\",\"content\":\"<system-notice>\\nBackground job guard-helper has completed. Resume your work using the result below.\\n<task-result id=\\\"guard-helper\\\" agent=\\\"v7-guard-helper\\\" status=\\\"completed\\\" duration=\\\"38ms\\\">\\n<meta lines=\\\"3\\\" size=\\\"22B\\\" />\\n<output>\\n{\\n  \\\"complete\\\": true\\n}\\n</output>\\n</task-result>\\n\\nguard-helper is now idle \u2014 message it via `write agent://guard-helper` to follow up; transcript at history://guard-helper\\n</system-notice>\",\"display\":true,\"attribution\":\"agent\",\"details\":{\"meta\":{\"source\":{\"type\":\"report\",\"value\":\"background job delivery\"}},\"jobs\":[{\"jobId\":\"guard-helper\",\"type\":\"task\",\"label\":\"guard-helper\",\"durationMs\":38}]},\"timestamp\":1792109263293},{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792109263295,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}],\"isTerminal\":true,\"yielded\":true}\n{\"type\":\"prompt_result\",\"id\":\"admitted\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":true}\n",
+      "stdoutSha256": "e31dc8af9e60a03091147ada91240ed6551f9c41f4414bb37c916dbebacbf814",
+      "stdoutTail": "d-helper...\"}],\"details\":{\"projectAgentsDir\":null,\"results\":[],\"totalDurationMs\":71,\"progress\":[{\"index\":0,\"id\":\"guard-helper\",\"agent\":\"v7-guard-helper\",\"agentSource\":\"project\",\"status\":\"running\",\"task\":\"Complete assignment thoroughly:\\n\\nCall startup_guard_probe once, then yield.\",\"assignment\":\"Call startup_guard_probe once, then yield.\",\"recentTools\":[{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697501},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697500},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697500},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697499},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697498}],\"recentOutput\":[],\"toolCount\":7,\"requests\":7,\"tokens\":14,\"cost\":0,\"durationMs\":0,\"resolvedModel\":\"startup-v7-guard/offline\",\"resolvedModelIdentity\":\"startup-v7-guard/offline\",\"contextTokens\":2,\"contextWindow\":262144}],\"async\":{\"state\":\"running\",\"jobId\":\"guard-helper\",\"type\":\"task\"}}}}\n{\"type\":\"tool_execution_update\",\"toolCallId\":\"native-helper\",\"toolName\":\"task\",\"args\":{\"context\":\"Isolated native helper guard check\",\"tasks\":[{\"name\":\"guard-helper\",\"agent\":\"v7-guard-helper\",\"task\":\"Call startup_guard_probe once, then yield.\",\"solutionSpace\":\"No employee authority.\"}]},\"partialResult\":{\"content\":[{\"type\":\"text\",\"text\":\"Running agent guard-helper...\"}],\"details\":{\"projectAgentsDir\":null,\"results\":[],\"totalDurationMs\":72,\"progress\":[{\"index\":0,\"id\":\"guard-helper\",\"agent\":\"v7-guard-helper\",\"agentSource\":\"project\",\"status\":\"running\",\"task\":\"Complete assignment thoroughly:\\n\\nCall startup_guard_probe once, then yield.\",\"assignment\":\"Call startup_guard_probe once, then yield.\",\"recentTools\":[{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697501},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697500},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697500},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697499},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697498}],\"recentOutput\":[],\"toolCount\":7,\"requests\":8,\"tokens\":14,\"cost\":0,\"durationMs\":0,\"resolvedModel\":\"startup-v7-guard/offline\",\"resolvedModelIdentity\":\"startup-v7-guard/offline\",\"contextTokens\":2,\"contextWindow\":262144}],\"async\":{\"state\":\"running\",\"jobId\":\"guard-helper\",\"type\":\"task\"}}}}\n{\"type\":\"tool_execution_update\",\"toolCallId\":\"native-helper\",\"toolName\":\"task\",\"args\":{\"context\":\"Isolated native helper guard check\",\"tasks\":[{\"name\":\"guard-helper\",\"agent\":\"v7-guard-helper\",\"task\":\"Call startup_guard_probe once, then yield.\",\"solutionSpace\":\"No employee authority.\"}]},\"partialResult\":{\"content\":[{\"type\":\"text\",\"text\":\"Running agent guard-helper...\"}],\"details\":{\"projectAgentsDir\":null,\"results\":[],\"totalDurationMs\":73,\"progress\":[{\"index\":0,\"id\":\"guard-helper\",\"agent\":\"v7-guard-helper\",\"agentSource\":\"project\",\"status\":\"running\",\"task\":\"Complete assignment thoroughly:\\n\\nCall startup_guard_probe once, then yield.\",\"assignment\":\"Call startup_guard_probe once, then yield.\",\"recentTools\":[{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697501},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697500},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697500},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697499},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697498}],\"recentOutput\":[],\"toolCount\":7,\"requests\":8,\"tokens\":14,\"cost\":0,\"durationMs\":0,\"resolvedModel\":\"startup-v7-guard/offline\",\"resolvedModelIdentity\":\"startup-v7-guard/offline\",\"contextTokens\":2,\"contextWindow\":262144}],\"async\":{\"state\":\"running\",\"jobId\":\"guard-helper\",\"type\":\"task\"}}}}\n{\"type\":\"tool_execution_update\",\"toolCallId\":\"native-helper\",\"toolName\":\"task\",\"args\":{\"context\":\"Isolated native helper guard check\",\"tasks\":[{\"name\":\"guard-helper\",\"agent\":\"v7-guard-helper\",\"task\":\"Call startup_guard_probe once, then yield.\",\"solutionSpace\":\"No employee authority.\"}]},\"partialResult\":{\"content\":[{\"type\":\"text\",\"text\":\"Background task guard-helper failed.\"}],\"details\":{\"projectAgentsDir\":null,\"results\":[],\"totalDurationMs\":73,\"progress\":[{\"index\":0,\"id\":\"guard-helper\",\"agent\":\"v7-guard-helper\",\"agentSource\":\"project\",\"status\":\"failed\",\"task\":\"Complete assignment thoroughly:\\n\\nCall startup_guard_probe once, then yield.\",\"assignment\":\"Call startup_guard_probe once, then yield.\",\"recentTools\":[{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697501},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697500},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697500},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697499},{\"tool\":\"yield\",\"args\":\"\",\"isError\":true,\"endMs\":1792110697498}],\"recentOutput\":[],\"toolCount\":7,\"requests\":8,\"tokens\":14,\"cost\":0,\"durationMs\":67,\"resolvedModel\":\"startup-v7-guard/offline\",\"resolvedModelIdentity\":\"startup-v7-guard/offline\",\"contextTokens\":2,\"contextWindow\":262144}],\"async\":{\"state\":\"failed\",\"jobId\":\"guard-helper\",\"type\":\"task\"}}}}\n{\"type\":\"agent_start\"}\n{\"type\":\"turn_start\"}\n{\"type\":\"message_start\",\"message\":{\"role\":\"custom\",\"customType\":\"async-result\",\"content\":\"<system-notice>\\nBackground job guard-helper has completed. Resume your work using the result below.\\n<task-result id=\\\"guard-helper\\\" agent=\\\"v7-guard-helper\\\" status=\\\"failed (exit 1)\\\" duration=\\\"72ms\\\">\\n\\n<output>\\nSubagent submitted invalid yield results 6 times; stopping to avoid an infinite submit loop. Last yield error: Tool yield not found\\n</output>\\n</task-result>\\n\\nguard-helper is now idle \u2014 message it via `write agent://guard-helper` to follow up; transcript at history://guard-helper\\n</system-notice>\",\"display\":true,\"attribution\":\"agent\",\"details\":{\"meta\":{\"source\":{\"type\":\"report\",\"value\":\"background job delivery\"}},\"jobs\":[{\"jobId\":\"guard-helper\",\"type\":\"task\",\"status\":\"failed\",\"agentId\":\"guard-helper\",\"label\":\"guard-helper\",\"durationMs\":73}]},\"timestamp\":1792110697506},\"messageId\":\"msg-5\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"custom\",\"customType\":\"async-result\",\"content\":\"<system-notice>\\nBackground job guard-helper has completed. Resume your work using the result below.\\n<task-result id=\\\"guard-helper\\\" agent=\\\"v7-guard-helper\\\" status=\\\"failed (exit 1)\\\" duration=\\\"72ms\\\">\\n\\n<output>\\nSubagent submitted invalid yield results 6 times; stopping to avoid an infinite submit loop. Last yield error: Tool yield not found\\n</output>\\n</task-result>\\n\\nguard-helper is now idle \u2014 message it via `write agent://guard-helper` to follow up; transcript at history://guard-helper\\n</system-notice>\",\"display\":true,\"attribution\":\"agent\",\"details\":{\"meta\":{\"source\":{\"type\":\"report\",\"value\":\"background job delivery\"}},\"jobs\":[{\"jobId\":\"guard-helper\",\"type\":\"task\",\"status\":\"failed\",\"agentId\":\"guard-helper\",\"label\":\"guard-helper\",\"durationMs\":73}]},\"timestamp\":1792110697506},\"messageId\":\"msg-5\"}\n{\"type\":\"message_start\",\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-6\"}\n{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_start\",\"contentIndex\":0,\"partial\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}},\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-6\"}\n{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_delta\",\"contentIndex\":0,\"delta\":\"Guard fixture settled\",\"partial\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}},\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-6\"}\n{\"type\":\"message_update\",\"assistantMessageEvent\":{\"type\":\"text_end\",\"contentIndex\":0,\"content\":\"Guard fixture settled\",\"partial\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}},\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"messageId\":\"msg-6\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"completedAt\":1792110697513},\"messageId\":\"msg-6\"}\n{\"type\":\"turn_end\",\"message\":{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}},\"toolResults\":[]}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"custom\",\"customType\":\"async-result\",\"content\":\"<system-notice>\\nBackground job guard-helper has completed. Resume your work using the result below.\\n<task-result id=\\\"guard-helper\\\" agent=\\\"v7-guard-helper\\\" status=\\\"failed (exit 1)\\\" duration=\\\"72ms\\\">\\n\\n<output>\\nSubagent submitted invalid yield results 6 times; stopping to avoid an infinite submit loop. Last yield error: Tool yield not found\\n</output>\\n</task-result>\\n\\nguard-helper is now idle \u2014 message it via `write agent://guard-helper` to follow up; transcript at history://guard-helper\\n</system-notice>\",\"display\":true,\"attribution\":\"agent\",\"details\":{\"meta\":{\"source\":{\"type\":\"report\",\"value\":\"background job delivery\"}},\"jobs\":[{\"jobId\":\"guard-helper\",\"type\":\"task\",\"status\":\"failed\",\"agentId\":\"guard-helper\",\"label\":\"guard-helper\",\"durationMs\":73}]},\"timestamp\":1792110697506},{\"role\":\"assistant\",\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"content\":[{\"type\":\"text\",\"text\":\"Guard fixture settled\"}],\"stopReason\":\"stop\",\"timestamp\":1792110697513,\"usage\":{\"input\":1,\"output\":1,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":2,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}}}],\"isTerminal\":true,\"yielded\":true}\n{\"type\":\"prompt_result\",\"id\":\"admitted\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":true}\n{\"type\":\"session_settled\"}\n",
       "stderr": ""
     },
     {
@@ -381,9 +925,9 @@
         "rpc",
         "--no-ui",
         "--cwd",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/denied/cwd",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/denied/cwd",
         "--config",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/denied/config.yml",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/denied/config.yml",
         "--no-extensions",
         "--no-skills",
         "--no-rules",
@@ -411,15 +955,15 @@
       "events": [
         {
           "kind": "root",
-          "version": "18.8.9",
+          "version": "18.11.1",
           "actor": {
             "kind": "main",
             "id": "Main",
             "name": "main",
             "depth": 0
           },
-          "sessionId": "01a14209-3b2f-742c-ae05-8aac4c6d04d5",
-          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/denied/agent-data/sessions/-tmp-startup-v7-native-guards-mz6snt8n-denied-cwd/2026-10-16T00-07-43-663Z_01a14209-3b2f-742c-ae05-8aac4c6d04d5.jsonl",
+          "sessionId": "01a1421f-1d89-71db-a4c7-200ac60d72f9",
+          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/denied/agent-data/sessions/-tmp-startup-v7-native-guards-espn2_hc-denied-cwd/2026-10-16T00-31-37-865Z_01a1421f-1d89-71db-a4c7-200ac60d72f9.jsonl",
           "abortAvailable": true
         },
         {
@@ -458,8 +1002,8 @@
       "actualRootProviderRequests": 0,
       "writeExists": false,
       "bashExists": false,
-      "stdoutSha256": "498c4a45deac7ebc96277661e9d87474c19304b1d34c8881d0f50d13f4db59b3",
-      "stdoutTail": "name\":\"xhigh\",\"description\":\"Extended reasoning (~32k tokens)\"},{\"name\":\"max\",\"description\":\"Maximum reasoning the model supports\"},{\"name\":\"auto\",\"description\":\"Auto-detect per prompt\"}],\"source\":\"builtin\"},{\"name\":\"advisor\",\"description\":\"Toggle advisor\",\"input\":{\"hint\":\"[on|off|status|dump [raw]|configure]\"},\"subcommands\":[{\"name\":\"on\",\"description\":\"Enable the advisor\"},{\"name\":\"off\",\"description\":\"Disable the advisor\"},{\"name\":\"status\",\"description\":\"Show advisor status\"},{\"name\":\"dump\",\"description\":\"Copy the advisor's transcript to clipboard\",\"usage\":\"[raw]\"},{\"name\":\"configure\",\"description\":\"Open the advisor configuration editor (TUI)\"}],\"source\":\"builtin\"},{\"name\":\"export\",\"description\":\"Export session to HTML file\",\"input\":{\"hint\":\"[--themes] [path]\"},\"source\":\"builtin\"},{\"name\":\"trace\",\"description\":\"Open this session's trace in the stats dashboard\",\"source\":\"builtin\"},{\"name\":\"dump\",\"description\":\"Return full transcript as plain text, with LLM request JSON path\",\"input\":{\"hint\":\"[all|anon]\"},\"subcommands\":[{\"name\":\"all\",\"description\":\"Write a zip with the main transcript, LLM request JSON, and one file per subagent\"},{\"name\":\"anon\",\"description\":\"Write a zip of anonymized session JSONL (contents redacted, metadata kept) plus subagents\"}],\"source\":\"builtin\"},{\"name\":\"share\",\"description\":\"Share session via an encrypted link (share server or secret gist)\",\"source\":\"builtin\"},{\"name\":\"browser\",\"description\":\"Toggle browser eval-prelude headless vs visible mode\",\"input\":{\"hint\":\"[headless|visible]\"},\"subcommands\":[{\"name\":\"headless\",\"description\":\"Switch to headless mode\"},{\"name\":\"visible\",\"description\":\"Switch to visible mode\"}],\"source\":\"builtin\"},{\"name\":\"todo\",\"description\":\"Manage todos\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"edit\",\"description\":\"Open todos in $EDITOR (Markdown round-trip)\"},{\"name\":\"copy\",\"description\":\"Copy todos as Markdown to clipboard\"},{\"name\":\"expand\",\"description\":\"Show every phase and task in the HUD\"},{\"name\":\"collapse\",\"description\":\"Restore the bounded HUD preview\"},{\"name\":\"export\",\"description\":\"Write todos as Markdown to a file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"import\",\"description\":\"Replace todos from a Markdown file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"append\",\"description\":\"Append a task; phase fuzzy-matched or auto-created\",\"usage\":\"[<phase>] <task...>\"},{\"name\":\"start\",\"description\":\"Mark task in_progress (fuzzy-matched)\",\"usage\":\"<task>\"},{\"name\":\"done\",\"description\":\"Mark task/phase/all completed (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"drop\",\"description\":\"Mark task/phase/all abandoned (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"rm\",\"description\":\"Remove task/phase/all (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"}],\"source\":\"builtin\"},{\"name\":\"session\",\"description\":\"Show or configure the current session\",\"input\":{\"hint\":\"[info|delete|pin [account]]\"},\"subcommands\":[{\"name\":\"info\",\"description\":\"Show session info and stats\"},{\"name\":\"delete\",\"description\":\"Delete current session and return to selector\"},{\"name\":\"pin\",\"description\":\"Pin the current provider to a stored OAuth account\",\"usage\":\"[account]\"}],\"source\":\"builtin\"},{\"name\":\"jobs\",\"description\":\"Show background jobs\",\"input\":{\"hint\":\"[full|kill <id>|kill all]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show full, untruncated command lines\"},{\"name\":\"kill\",\"description\":\"Cancel a running background job\",\"usage\":\"<id>|all\"}],\"source\":\"builtin\"},{\"name\":\"usage\",\"description\":\"Show token usage\",\"input\":{\"hint\":\"[show|reset [provider/credential-id|provider/active]]\"},\"subcommands\":[{\"name\":\"show\",\"description\":\"Show provider usage and limits\"},{\"name\":\"reset\",\"description\":\"Spend a saved provider rate-limit reset\",\"usage\":\"[provider/credential-id|provider/active]\"}],\"source\":\"builtin\"},{\"name\":\"stats\",\"description\":\"Launch the local stats dashboard\",\"input\":{\"hint\":\"[--port <port>] [--host <host>]\"},\"source\":\"builtin\"},{\"name\":\"changelog\",\"description\":\"Show changelog\",\"input\":{\"hint\":\"[full|last [N]]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show complete changelog\"},{\"name\":\"last\",\"description\":\"Show the last N releases (default 1)\",\"usage\":\"[N]\"}],\"source\":\"builtin\"},{\"name\":\"tools\",\"description\":\"Show available tools\",\"source\":\"builtin\"},{\"name\":\"context\",\"description\":\"Show context usage\",\"source\":\"builtin\"},{\"name\":\"mcp\",\"description\":\"Manage MCP servers\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a new MCP server\",\"usage\":\"<name> [--scope project|user] [--url <url>] [-- <command...>]\"},{\"name\":\"list\",\"description\":\"List all configured MCP servers\"},{\"name\":\"remove\",\"description\":\"Remove an MCP server\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"test\",\"description\":\"Test connection to a server\",\"usage\":\"<name>\"},{\"name\":\"reauth\",\"description\":\"Reauthorize OAuth for a server\",\"usage\":\"<name>\"},{\"name\":\"unauth\",\"description\":\"Remove OAuth auth from a server\",\"usage\":\"<name>\"},{\"name\":\"enable\",\"description\":\"Enable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"disable\",\"description\":\"Disable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"smithery-search\",\"description\":\"Search Smithery registry and deploy an MCP server\",\"usage\":\"<keyword> [--scope project|user] [--limit <1-100>] [--semantic]\"},{\"name\":\"smithery-login\",\"description\":\"Login to Smithery and cache API key\"},{\"name\":\"smithery-logout\",\"description\":\"Remove cached Smithery API key\"},{\"name\":\"reconnect\",\"description\":\"Reconnect to a specific MCP server\",\"usage\":\"<name>\"},{\"name\":\"reload\",\"description\":\"Force reload MCP runtime tools\"},{\"name\":\"resources\",\"description\":\"List available resources from connected servers\"},{\"name\":\"prompts\",\"description\":\"List available prompts from connected servers\"},{\"name\":\"notifications\",\"description\":\"Show notification capabilities and subscriptions\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"ssh\",\"description\":\"Manage SSH connections\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add an SSH host\",\"usage\":\"<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]\"},{\"name\":\"list\",\"description\":\"List all configured SSH hosts\"},{\"name\":\"remove\",\"description\":\"Remove an SSH host\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"fresh\",\"description\":\"Reset provider stream state without changing the local transcript\",\"source\":\"builtin\"},{\"name\":\"compact\",\"description\":\"Compact the conversation\",\"input\":{\"hint\":\"[soft|remote|snapcompact] [focus]\"},\"subcommands\":[{\"name\":\"soft\",\"description\":\"Summarize locally with the active model (skip server compaction)\",\"usage\":\"[focus]\"},{\"name\":\"remote\",\"description\":\"Summarize via OpenAI-compatible server compaction, then fall back to a local summary\",\"usage\":\"[focus]\"},{\"name\":\"snapcompact\",\"description\":\"Archive history onto dense bitmap images the model reads back (no LLM call)\"}],\"source\":\"builtin\"},{\"name\":\"shake\",\"description\":\"Shake heavy content out of the conversation context\",\"input\":{\"hint\":\"[elide|images|thinking]\"},\"subcommands\":[{\"name\":\"elide\",\"description\":\"Strip tool results + large blocks (default)\"},{\"name\":\"images\",\"description\":\"Strip image blocks\"},{\"name\":\"thinking\",\"description\":\"Drop all thinking blocks\"}],\"source\":\"builtin\"},{\"name\":\"handoff\",\"description\":\"Summarize the session into a handoff document and compact in place\",\"input\":{\"hint\":\"[focus instructions]\"},\"source\":\"builtin\"},{\"name\":\"pin\",\"description\":\"Pin or unpin a session at the top of the resume list\",\"input\":{\"hint\":\"[session id]\"},\"source\":\"builtin\"},{\"name\":\"retry\",\"description\":\"Retry the last failed agent turn\",\"source\":\"builtin\"},{\"name\":\"memory\",\"description\":\"Manage memory\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"view\",\"description\":\"Show current memory injection payload\"},{\"name\":\"stats\",\"description\":\"Show memory backend statistics\"},{\"name\":\"diagnose\",\"description\":\"Run memory backend diagnostics\"},{\"name\":\"queue\",\"description\":\"Show pending memory deltas awaiting consolidation\"},{\"name\":\"sync\",\"description\":\"Run memory consolidation now\"},{\"name\":\"clear\",\"description\":\"Clear persisted memory data and artifacts\"},{\"name\":\"reset\",\"description\":\"Alias for clear\"},{\"name\":\"enqueue\",\"description\":\"Enqueue memory consolidation maintenance\"},{\"name\":\"rebuild\",\"description\":\"Alias for enqueue\"},{\"name\":\"mm list\",\"description\":\"List mental models on the active bank\"},{\"name\":\"mm show\",\"description\":\"Show one mental model (id required)\"},{\"name\":\"mm refresh\",\"description\":\"Refresh auto-refresh models bank-wide, or one model by id\"},{\"name\":\"mm history\",\"description\":\"Diff the change history of a mental model\"},{\"name\":\"mm seed\",\"description\":\"Create any built-in mental models that are missing\"},{\"name\":\"mm delete\",\"description\":\"Delete a mental model from the bank (id required)\"},{\"name\":\"mm reload\",\"description\":\"Re-pull the cached <mental_models> block\"}],\"source\":\"builtin\"},{\"name\":\"rename\",\"description\":\"Rename the current session (omit title to generate)\",\"input\":{\"hint\":\"[title]\"},\"source\":\"builtin\"},{\"name\":\"move\",\"description\":\"Move the current session to a different directory\",\"input\":{\"hint\":\"[<path>]\"},\"source\":\"builtin\"},{\"name\":\"wt\",\"aliases\":[\"worktree\"],\"description\":\"Move this session into a new worktree, changes included\",\"input\":{\"hint\":\"[<branch>]\"},\"source\":\"builtin\"},{\"name\":\"add-dir\",\"description\":\"Add a workspace directory to this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"remove-dir\",\"description\":\"Remove a workspace directory from this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"dirs\",\"description\":\"List this session's workspace directories\",\"source\":\"builtin\"},{\"name\":\"marketplace\",\"description\":\"Manage plugins from marketplaces\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a marketplace source\",\"usage\":\"<source>\"},{\"name\":\"remove\",\"description\":\"Remove a marketplace source\",\"usage\":\"<name>\"},{\"name\":\"update\",\"description\":\"Update marketplace catalog(s)\",\"usage\":\"[name]\"},{\"name\":\"list\",\"description\":\"List configured marketplaces\"},{\"name\":\"discover\",\"description\":\"Browse available plugins\",\"usage\":\"[marketplace]\"},{\"name\":\"install\",\"description\":\"Install a plugin (interactive browser if no args)\",\"usage\":\"[--force] [name@marketplace]\"},{\"name\":\"uninstall\",\"description\":\"Uninstall a plugin (selector if no args)\",\"usage\":\"[name@marketplace]\"},{\"name\":\"installed\",\"description\":\"List installed marketplace plugins\"},{\"name\":\"upgrade\",\"description\":\"Upgrade outdated plugins\",\"usage\":\"[name@marketplace]\"},{\"name\":\"help\",\"description\":\"Show usage guide\"}],\"source\":\"builtin\"},{\"name\":\"plugins\",\"aliases\":[\"plugin\"],\"description\":\"Manage plugins\",\"input\":{\"hint\":\"[list|enable|disable]\"},\"subcommands\":[{\"name\":\"list\",\"description\":\"List all installed plugins (npm + marketplace)\"},{\"name\":\"enable\",\"description\":\"Enable a marketplace plugin\",\"usage\":\"<name@marketplace>\"},{\"name\":\"disable\",\"description\":\"Disable a marketplace plugin\",\"usage\":\"<name@marketplace>\"}],\"source\":\"builtin\"},{\"name\":\"reload-plugins\",\"description\":\"Reload all plugins\",\"source\":\"builtin\"},{\"name\":\"force\",\"aliases\":[\"force:\"],\"description\":\"Force next turn to use a specific tool\",\"input\":{\"hint\":\"<tool-name> [prompt]\"},\"source\":\"builtin\"},{\"name\":\"startup-v7-guards\",\"description\":\"Isolated compiled OMP V7 guard acceptance probe\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"autoresearch\",\"description\":\"Toggle builtin autoresearch mode, or pass off / clear, or a goal message.\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"init\",\"description\":\"Generate AGENTS.md for current codebase\",\"source\":\"file\"}]}\n{\"id\":\"denied\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}\n{\"type\":\"prompt_result\",\"id\":\"denied\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":false}\n",
+      "stdoutSha256": "7240584405806dcd8e2772ec928bb21d239eada9e714b3cc14f8a4b86eafaa3d",
+      "stdoutTail": "\"},{\"name\":\"xhigh\",\"description\":\"Extended reasoning (~32k tokens)\"},{\"name\":\"max\",\"description\":\"Maximum reasoning the model supports\"},{\"name\":\"auto\",\"description\":\"Auto-detect per prompt\"}],\"source\":\"builtin\"},{\"name\":\"advisor\",\"description\":\"Toggle advisor\",\"input\":{\"hint\":\"[on|off|status|dump [raw]|configure]\"},\"subcommands\":[{\"name\":\"on\",\"description\":\"Enable the advisor\"},{\"name\":\"off\",\"description\":\"Disable the advisor\"},{\"name\":\"status\",\"description\":\"Show advisor status\"},{\"name\":\"dump\",\"description\":\"Copy the advisor's transcript to clipboard\",\"usage\":\"[raw]\"},{\"name\":\"configure\",\"description\":\"Open the advisor configuration editor (TUI)\"}],\"source\":\"builtin\"},{\"name\":\"export\",\"description\":\"Export session to HTML file\",\"input\":{\"hint\":\"[--themes] [path]\"},\"source\":\"builtin\"},{\"name\":\"trace\",\"description\":\"Open this session's trace in the stats dashboard\",\"source\":\"builtin\"},{\"name\":\"dump\",\"description\":\"Return full transcript as plain text, with LLM request JSON path\",\"input\":{\"hint\":\"[all|anon]\"},\"subcommands\":[{\"name\":\"all\",\"description\":\"Write a zip with the main transcript, LLM request JSON, and one file per subagent\"},{\"name\":\"anon\",\"description\":\"Write a zip of anonymized session JSONL (contents redacted, metadata kept) plus subagents\"}],\"source\":\"builtin\"},{\"name\":\"share\",\"description\":\"Share session via an encrypted link (share server or secret gist)\",\"source\":\"builtin\"},{\"name\":\"browser\",\"description\":\"Toggle browser eval-prelude headless vs visible mode\",\"input\":{\"hint\":\"[headless|visible]\"},\"subcommands\":[{\"name\":\"headless\",\"description\":\"Switch to headless mode\"},{\"name\":\"visible\",\"description\":\"Switch to visible mode\"}],\"source\":\"builtin\"},{\"name\":\"todo\",\"description\":\"Manage todos\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"edit\",\"description\":\"Open todos in $EDITOR (Markdown round-trip)\"},{\"name\":\"copy\",\"description\":\"Copy todos as Markdown to clipboard\"},{\"name\":\"expand\",\"description\":\"Show every phase and task in the HUD\"},{\"name\":\"collapse\",\"description\":\"Restore the bounded HUD preview\"},{\"name\":\"export\",\"description\":\"Write todos as Markdown to a file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"import\",\"description\":\"Replace todos from a Markdown file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"append\",\"description\":\"Append a task; phase fuzzy-matched or auto-created\",\"usage\":\"[<phase>] <task...>\"},{\"name\":\"start\",\"description\":\"Mark task in_progress (fuzzy-matched)\",\"usage\":\"<task>\"},{\"name\":\"done\",\"description\":\"Mark task/phase/all completed (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"drop\",\"description\":\"Mark task/phase/all abandoned (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"rm\",\"description\":\"Remove task/phase/all (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"}],\"source\":\"builtin\"},{\"name\":\"session\",\"description\":\"Show or configure the current session\",\"input\":{\"hint\":\"[info|delete|pin [account]]\"},\"subcommands\":[{\"name\":\"info\",\"description\":\"Show session info and stats\"},{\"name\":\"delete\",\"description\":\"Delete current session and return to selector\"},{\"name\":\"pin\",\"description\":\"Pin a stored OAuth account to the current provider for this session\",\"usage\":\"[account]\"}],\"source\":\"builtin\"},{\"name\":\"jobs\",\"description\":\"Show background jobs\",\"input\":{\"hint\":\"[full|kill <id>|kill all]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show full, untruncated command lines\"},{\"name\":\"kill\",\"description\":\"Cancel a running background job\",\"usage\":\"<id>|all\"}],\"source\":\"builtin\"},{\"name\":\"usage\",\"description\":\"Show token usage\",\"input\":{\"hint\":\"[show|reset [provider/credential-id|provider/active]]\"},\"subcommands\":[{\"name\":\"show\",\"description\":\"Show provider usage and limits\"},{\"name\":\"reset\",\"description\":\"Spend a saved provider rate-limit reset\",\"usage\":\"[provider/credential-id|provider/active]\"}],\"source\":\"builtin\"},{\"name\":\"stats\",\"description\":\"Launch the local stats dashboard\",\"input\":{\"hint\":\"[--port <port>] [--host <host>]\"},\"source\":\"builtin\"},{\"name\":\"changelog\",\"description\":\"Show changelog\",\"input\":{\"hint\":\"[full|last [N]]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show complete changelog\"},{\"name\":\"last\",\"description\":\"Show the last N releases (default 1)\",\"usage\":\"[N]\"}],\"source\":\"builtin\"},{\"name\":\"tools\",\"description\":\"Show available tools\",\"source\":\"builtin\"},{\"name\":\"context\",\"description\":\"Show context usage\",\"source\":\"builtin\"},{\"name\":\"mcp\",\"description\":\"Manage MCP servers\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a new MCP server\",\"usage\":\"<name> [--scope project|user] [--url <url>] [-- <command...>]\"},{\"name\":\"list\",\"description\":\"List all configured MCP servers\"},{\"name\":\"remove\",\"description\":\"Remove an MCP server\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"test\",\"description\":\"Test connection to a server\",\"usage\":\"<name>\"},{\"name\":\"reauth\",\"description\":\"Reauthorize OAuth for a server\",\"usage\":\"<name>\"},{\"name\":\"unauth\",\"description\":\"Remove OAuth auth from a server\",\"usage\":\"<name>\"},{\"name\":\"enable\",\"description\":\"Enable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"disable\",\"description\":\"Disable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"smithery-search\",\"description\":\"Search Smithery registry and deploy an MCP server\",\"usage\":\"<keyword> [--scope project|user] [--limit <1-100>] [--semantic]\"},{\"name\":\"smithery-login\",\"description\":\"Login to Smithery and cache API key\"},{\"name\":\"smithery-logout\",\"description\":\"Remove cached Smithery API key\"},{\"name\":\"reconnect\",\"description\":\"Reconnect to a specific MCP server\",\"usage\":\"<name>\"},{\"name\":\"reload\",\"description\":\"Force reload MCP runtime tools\"},{\"name\":\"resources\",\"description\":\"List available resources from connected servers\"},{\"name\":\"prompts\",\"description\":\"List available prompts from connected servers\"},{\"name\":\"notifications\",\"description\":\"Show notification capabilities and subscriptions\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"ssh\",\"description\":\"Manage SSH connections\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add an SSH host\",\"usage\":\"<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]\"},{\"name\":\"list\",\"description\":\"List all configured SSH hosts\"},{\"name\":\"remove\",\"description\":\"Remove an SSH host\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"fresh\",\"description\":\"Reset provider stream state without changing the local transcript\",\"source\":\"builtin\"},{\"name\":\"compact\",\"description\":\"Compact the conversation\",\"input\":{\"hint\":\"[soft|remote|snapcompact] [focus]\"},\"subcommands\":[{\"name\":\"soft\",\"description\":\"Summarize locally with the active model (skip server compaction)\",\"usage\":\"[focus]\"},{\"name\":\"remote\",\"description\":\"Summarize via OpenAI-compatible server compaction, then fall back to a local summary\",\"usage\":\"[focus]\"},{\"name\":\"snapcompact\",\"description\":\"Archive history onto dense bitmap images the model reads back (no LLM call)\"}],\"source\":\"builtin\"},{\"name\":\"shake\",\"description\":\"Shake heavy content out of the conversation context\",\"input\":{\"hint\":\"[elide|images|thinking]\"},\"subcommands\":[{\"name\":\"elide\",\"description\":\"Strip tool results + large blocks (default)\"},{\"name\":\"images\",\"description\":\"Strip image blocks\"},{\"name\":\"thinking\",\"description\":\"Drop all thinking blocks\"}],\"source\":\"builtin\"},{\"name\":\"handoff\",\"description\":\"Summarize the session into a handoff document and compact in place\",\"input\":{\"hint\":\"[focus instructions]\"},\"source\":\"builtin\"},{\"name\":\"pin\",\"description\":\"Pin or unpin a session at the top of the resume list\",\"input\":{\"hint\":\"[session id]\"},\"source\":\"builtin\"},{\"name\":\"retry\",\"description\":\"Retry the last failed agent turn\",\"source\":\"builtin\"},{\"name\":\"memory\",\"description\":\"Manage memory\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"view\",\"description\":\"Show current memory injection payload\"},{\"name\":\"stats\",\"description\":\"Show memory backend statistics\"},{\"name\":\"diagnose\",\"description\":\"Run memory backend diagnostics\"},{\"name\":\"queue\",\"description\":\"Show pending memory deltas awaiting consolidation\"},{\"name\":\"sync\",\"description\":\"Run memory consolidation now\"},{\"name\":\"clear\",\"description\":\"Clear persisted memory data and artifacts\"},{\"name\":\"reset\",\"description\":\"Alias for clear\"},{\"name\":\"enqueue\",\"description\":\"Enqueue memory consolidation maintenance\"},{\"name\":\"rebuild\",\"description\":\"Alias for enqueue\"},{\"name\":\"mm list\",\"description\":\"List mental models on the active bank\"},{\"name\":\"mm show\",\"description\":\"Show one mental model (id required)\"},{\"name\":\"mm refresh\",\"description\":\"Refresh auto-refresh models bank-wide, or one model by id\"},{\"name\":\"mm history\",\"description\":\"Diff the change history of a mental model\"},{\"name\":\"mm seed\",\"description\":\"Create any built-in mental models that are missing\"},{\"name\":\"mm delete\",\"description\":\"Delete a mental model from the bank (id required)\"},{\"name\":\"mm reload\",\"description\":\"Re-pull the cached <mental_models> block\"}],\"source\":\"builtin\"},{\"name\":\"rename\",\"description\":\"Rename the current session (omit title to generate)\",\"input\":{\"hint\":\"[title]\"},\"source\":\"builtin\"},{\"name\":\"move\",\"description\":\"Move the current session to a different directory\",\"input\":{\"hint\":\"[<path>]\"},\"source\":\"builtin\"},{\"name\":\"wt\",\"aliases\":[\"worktree\"],\"description\":\"Move this session into a new worktree, changes included\",\"input\":{\"hint\":\"[<branch>]\"},\"source\":\"builtin\"},{\"name\":\"add-dir\",\"description\":\"Add a workspace directory to this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"remove-dir\",\"description\":\"Remove a workspace directory from this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"dirs\",\"description\":\"List this session's workspace directories\",\"source\":\"builtin\"},{\"name\":\"marketplace\",\"description\":\"Manage plugins from marketplaces\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a marketplace source\",\"usage\":\"<source>\"},{\"name\":\"remove\",\"description\":\"Remove a marketplace source\",\"usage\":\"<name>\"},{\"name\":\"update\",\"description\":\"Update marketplace catalog(s)\",\"usage\":\"[name]\"},{\"name\":\"list\",\"description\":\"List configured marketplaces\"},{\"name\":\"discover\",\"description\":\"Browse available plugins\",\"usage\":\"[marketplace]\"},{\"name\":\"install\",\"description\":\"Install a plugin (interactive browser if no args)\",\"usage\":\"[--force] [name@marketplace]\"},{\"name\":\"uninstall\",\"description\":\"Uninstall a plugin (selector if no args)\",\"usage\":\"[name@marketplace]\"},{\"name\":\"installed\",\"description\":\"List installed marketplace plugins\"},{\"name\":\"upgrade\",\"description\":\"Upgrade outdated plugins\",\"usage\":\"[name@marketplace]\"},{\"name\":\"help\",\"description\":\"Show usage guide\"}],\"source\":\"builtin\"},{\"name\":\"plugins\",\"aliases\":[\"plugin\"],\"description\":\"Manage plugins\",\"input\":{\"hint\":\"[list|enable|disable]\"},\"subcommands\":[{\"name\":\"list\",\"description\":\"List all installed plugins (npm + marketplace)\"},{\"name\":\"enable\",\"description\":\"Enable an installed plugin\",\"usage\":\"<plugin>\"},{\"name\":\"disable\",\"description\":\"Disable an installed plugin\",\"usage\":\"<plugin>\"}],\"source\":\"builtin\"},{\"name\":\"reload-plugins\",\"description\":\"Reload all plugins\",\"source\":\"builtin\"},{\"name\":\"force\",\"aliases\":[\"force:\"],\"description\":\"Force next turn to use a specific tool\",\"input\":{\"hint\":\"<tool-name> [prompt]\"},\"source\":\"builtin\"},{\"name\":\"startup-v7-guards\",\"description\":\"Isolated compiled OMP V7 guard acceptance probe\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"autoresearch\",\"description\":\"Toggle builtin autoresearch mode, or pass off / clear, or a goal message.\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"init\",\"description\":\"Generate AGENTS.md for current codebase\",\"source\":\"file\"}]}\n{\"id\":\"denied\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}\n{\"type\":\"prompt_result\",\"id\":\"denied\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":false}\n",
       "stderr": ""
     },
     {
@@ -470,9 +1014,9 @@
         "rpc",
         "--no-ui",
         "--cwd",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/disconnected/cwd",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/disconnected/cwd",
         "--config",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/disconnected/config.yml",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/disconnected/config.yml",
         "--no-extensions",
         "--no-skills",
         "--no-rules",
@@ -500,15 +1044,15 @@
       "events": [
         {
           "kind": "root",
-          "version": "18.8.9",
+          "version": "18.11.1",
           "actor": {
             "kind": "main",
             "id": "Main",
             "name": "main",
             "depth": 0
           },
-          "sessionId": "01a14209-3cef-7150-93dc-071721229ec4",
-          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/disconnected/agent-data/sessions/-tmp-startup-v7-native-guards-mz6snt8n-disconnected-cwd/2026-10-16T00-07-44-111Z_01a14209-3cef-7150-93dc-071721229ec4.jsonl",
+          "sessionId": "01a1421f-1f20-77ac-ad3c-69fce130d526",
+          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/disconnected/agent-data/sessions/-tmp-startup-v7-native-guards-espn2_hc-disconnected-cwd/2026-10-16T00-31-38-272Z_01a1421f-1f20-77ac-ad3c-69fce130d526.jsonl",
           "abortAvailable": true
         },
         {
@@ -541,8 +1085,8 @@
       "actualRootProviderRequests": 0,
       "writeExists": false,
       "bashExists": false,
-      "stdoutSha256": "adf9f0a2d8a52e26d11e616ebeaf84fc3101cb388aca3f8ddc368b6e221a8b43",
-      "stdoutTail": "\",\"description\":\"Extended reasoning (~32k tokens)\"},{\"name\":\"max\",\"description\":\"Maximum reasoning the model supports\"},{\"name\":\"auto\",\"description\":\"Auto-detect per prompt\"}],\"source\":\"builtin\"},{\"name\":\"advisor\",\"description\":\"Toggle advisor\",\"input\":{\"hint\":\"[on|off|status|dump [raw]|configure]\"},\"subcommands\":[{\"name\":\"on\",\"description\":\"Enable the advisor\"},{\"name\":\"off\",\"description\":\"Disable the advisor\"},{\"name\":\"status\",\"description\":\"Show advisor status\"},{\"name\":\"dump\",\"description\":\"Copy the advisor's transcript to clipboard\",\"usage\":\"[raw]\"},{\"name\":\"configure\",\"description\":\"Open the advisor configuration editor (TUI)\"}],\"source\":\"builtin\"},{\"name\":\"export\",\"description\":\"Export session to HTML file\",\"input\":{\"hint\":\"[--themes] [path]\"},\"source\":\"builtin\"},{\"name\":\"trace\",\"description\":\"Open this session's trace in the stats dashboard\",\"source\":\"builtin\"},{\"name\":\"dump\",\"description\":\"Return full transcript as plain text, with LLM request JSON path\",\"input\":{\"hint\":\"[all|anon]\"},\"subcommands\":[{\"name\":\"all\",\"description\":\"Write a zip with the main transcript, LLM request JSON, and one file per subagent\"},{\"name\":\"anon\",\"description\":\"Write a zip of anonymized session JSONL (contents redacted, metadata kept) plus subagents\"}],\"source\":\"builtin\"},{\"name\":\"share\",\"description\":\"Share session via an encrypted link (share server or secret gist)\",\"source\":\"builtin\"},{\"name\":\"browser\",\"description\":\"Toggle browser eval-prelude headless vs visible mode\",\"input\":{\"hint\":\"[headless|visible]\"},\"subcommands\":[{\"name\":\"headless\",\"description\":\"Switch to headless mode\"},{\"name\":\"visible\",\"description\":\"Switch to visible mode\"}],\"source\":\"builtin\"},{\"name\":\"todo\",\"description\":\"Manage todos\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"edit\",\"description\":\"Open todos in $EDITOR (Markdown round-trip)\"},{\"name\":\"copy\",\"description\":\"Copy todos as Markdown to clipboard\"},{\"name\":\"expand\",\"description\":\"Show every phase and task in the HUD\"},{\"name\":\"collapse\",\"description\":\"Restore the bounded HUD preview\"},{\"name\":\"export\",\"description\":\"Write todos as Markdown to a file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"import\",\"description\":\"Replace todos from a Markdown file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"append\",\"description\":\"Append a task; phase fuzzy-matched or auto-created\",\"usage\":\"[<phase>] <task...>\"},{\"name\":\"start\",\"description\":\"Mark task in_progress (fuzzy-matched)\",\"usage\":\"<task>\"},{\"name\":\"done\",\"description\":\"Mark task/phase/all completed (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"drop\",\"description\":\"Mark task/phase/all abandoned (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"rm\",\"description\":\"Remove task/phase/all (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"}],\"source\":\"builtin\"},{\"name\":\"session\",\"description\":\"Show or configure the current session\",\"input\":{\"hint\":\"[info|delete|pin [account]]\"},\"subcommands\":[{\"name\":\"info\",\"description\":\"Show session info and stats\"},{\"name\":\"delete\",\"description\":\"Delete current session and return to selector\"},{\"name\":\"pin\",\"description\":\"Pin the current provider to a stored OAuth account\",\"usage\":\"[account]\"}],\"source\":\"builtin\"},{\"name\":\"jobs\",\"description\":\"Show background jobs\",\"input\":{\"hint\":\"[full|kill <id>|kill all]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show full, untruncated command lines\"},{\"name\":\"kill\",\"description\":\"Cancel a running background job\",\"usage\":\"<id>|all\"}],\"source\":\"builtin\"},{\"name\":\"usage\",\"description\":\"Show token usage\",\"input\":{\"hint\":\"[show|reset [provider/credential-id|provider/active]]\"},\"subcommands\":[{\"name\":\"show\",\"description\":\"Show provider usage and limits\"},{\"name\":\"reset\",\"description\":\"Spend a saved provider rate-limit reset\",\"usage\":\"[provider/credential-id|provider/active]\"}],\"source\":\"builtin\"},{\"name\":\"stats\",\"description\":\"Launch the local stats dashboard\",\"input\":{\"hint\":\"[--port <port>] [--host <host>]\"},\"source\":\"builtin\"},{\"name\":\"changelog\",\"description\":\"Show changelog\",\"input\":{\"hint\":\"[full|last [N]]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show complete changelog\"},{\"name\":\"last\",\"description\":\"Show the last N releases (default 1)\",\"usage\":\"[N]\"}],\"source\":\"builtin\"},{\"name\":\"tools\",\"description\":\"Show available tools\",\"source\":\"builtin\"},{\"name\":\"context\",\"description\":\"Show context usage\",\"source\":\"builtin\"},{\"name\":\"mcp\",\"description\":\"Manage MCP servers\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a new MCP server\",\"usage\":\"<name> [--scope project|user] [--url <url>] [-- <command...>]\"},{\"name\":\"list\",\"description\":\"List all configured MCP servers\"},{\"name\":\"remove\",\"description\":\"Remove an MCP server\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"test\",\"description\":\"Test connection to a server\",\"usage\":\"<name>\"},{\"name\":\"reauth\",\"description\":\"Reauthorize OAuth for a server\",\"usage\":\"<name>\"},{\"name\":\"unauth\",\"description\":\"Remove OAuth auth from a server\",\"usage\":\"<name>\"},{\"name\":\"enable\",\"description\":\"Enable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"disable\",\"description\":\"Disable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"smithery-search\",\"description\":\"Search Smithery registry and deploy an MCP server\",\"usage\":\"<keyword> [--scope project|user] [--limit <1-100>] [--semantic]\"},{\"name\":\"smithery-login\",\"description\":\"Login to Smithery and cache API key\"},{\"name\":\"smithery-logout\",\"description\":\"Remove cached Smithery API key\"},{\"name\":\"reconnect\",\"description\":\"Reconnect to a specific MCP server\",\"usage\":\"<name>\"},{\"name\":\"reload\",\"description\":\"Force reload MCP runtime tools\"},{\"name\":\"resources\",\"description\":\"List available resources from connected servers\"},{\"name\":\"prompts\",\"description\":\"List available prompts from connected servers\"},{\"name\":\"notifications\",\"description\":\"Show notification capabilities and subscriptions\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"ssh\",\"description\":\"Manage SSH connections\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add an SSH host\",\"usage\":\"<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]\"},{\"name\":\"list\",\"description\":\"List all configured SSH hosts\"},{\"name\":\"remove\",\"description\":\"Remove an SSH host\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"fresh\",\"description\":\"Reset provider stream state without changing the local transcript\",\"source\":\"builtin\"},{\"name\":\"compact\",\"description\":\"Compact the conversation\",\"input\":{\"hint\":\"[soft|remote|snapcompact] [focus]\"},\"subcommands\":[{\"name\":\"soft\",\"description\":\"Summarize locally with the active model (skip server compaction)\",\"usage\":\"[focus]\"},{\"name\":\"remote\",\"description\":\"Summarize via OpenAI-compatible server compaction, then fall back to a local summary\",\"usage\":\"[focus]\"},{\"name\":\"snapcompact\",\"description\":\"Archive history onto dense bitmap images the model reads back (no LLM call)\"}],\"source\":\"builtin\"},{\"name\":\"shake\",\"description\":\"Shake heavy content out of the conversation context\",\"input\":{\"hint\":\"[elide|images|thinking]\"},\"subcommands\":[{\"name\":\"elide\",\"description\":\"Strip tool results + large blocks (default)\"},{\"name\":\"images\",\"description\":\"Strip image blocks\"},{\"name\":\"thinking\",\"description\":\"Drop all thinking blocks\"}],\"source\":\"builtin\"},{\"name\":\"handoff\",\"description\":\"Summarize the session into a handoff document and compact in place\",\"input\":{\"hint\":\"[focus instructions]\"},\"source\":\"builtin\"},{\"name\":\"pin\",\"description\":\"Pin or unpin a session at the top of the resume list\",\"input\":{\"hint\":\"[session id]\"},\"source\":\"builtin\"},{\"name\":\"retry\",\"description\":\"Retry the last failed agent turn\",\"source\":\"builtin\"},{\"name\":\"memory\",\"description\":\"Manage memory\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"view\",\"description\":\"Show current memory injection payload\"},{\"name\":\"stats\",\"description\":\"Show memory backend statistics\"},{\"name\":\"diagnose\",\"description\":\"Run memory backend diagnostics\"},{\"name\":\"queue\",\"description\":\"Show pending memory deltas awaiting consolidation\"},{\"name\":\"sync\",\"description\":\"Run memory consolidation now\"},{\"name\":\"clear\",\"description\":\"Clear persisted memory data and artifacts\"},{\"name\":\"reset\",\"description\":\"Alias for clear\"},{\"name\":\"enqueue\",\"description\":\"Enqueue memory consolidation maintenance\"},{\"name\":\"rebuild\",\"description\":\"Alias for enqueue\"},{\"name\":\"mm list\",\"description\":\"List mental models on the active bank\"},{\"name\":\"mm show\",\"description\":\"Show one mental model (id required)\"},{\"name\":\"mm refresh\",\"description\":\"Refresh auto-refresh models bank-wide, or one model by id\"},{\"name\":\"mm history\",\"description\":\"Diff the change history of a mental model\"},{\"name\":\"mm seed\",\"description\":\"Create any built-in mental models that are missing\"},{\"name\":\"mm delete\",\"description\":\"Delete a mental model from the bank (id required)\"},{\"name\":\"mm reload\",\"description\":\"Re-pull the cached <mental_models> block\"}],\"source\":\"builtin\"},{\"name\":\"rename\",\"description\":\"Rename the current session (omit title to generate)\",\"input\":{\"hint\":\"[title]\"},\"source\":\"builtin\"},{\"name\":\"move\",\"description\":\"Move the current session to a different directory\",\"input\":{\"hint\":\"[<path>]\"},\"source\":\"builtin\"},{\"name\":\"wt\",\"aliases\":[\"worktree\"],\"description\":\"Move this session into a new worktree, changes included\",\"input\":{\"hint\":\"[<branch>]\"},\"source\":\"builtin\"},{\"name\":\"add-dir\",\"description\":\"Add a workspace directory to this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"remove-dir\",\"description\":\"Remove a workspace directory from this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"dirs\",\"description\":\"List this session's workspace directories\",\"source\":\"builtin\"},{\"name\":\"marketplace\",\"description\":\"Manage plugins from marketplaces\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a marketplace source\",\"usage\":\"<source>\"},{\"name\":\"remove\",\"description\":\"Remove a marketplace source\",\"usage\":\"<name>\"},{\"name\":\"update\",\"description\":\"Update marketplace catalog(s)\",\"usage\":\"[name]\"},{\"name\":\"list\",\"description\":\"List configured marketplaces\"},{\"name\":\"discover\",\"description\":\"Browse available plugins\",\"usage\":\"[marketplace]\"},{\"name\":\"install\",\"description\":\"Install a plugin (interactive browser if no args)\",\"usage\":\"[--force] [name@marketplace]\"},{\"name\":\"uninstall\",\"description\":\"Uninstall a plugin (selector if no args)\",\"usage\":\"[name@marketplace]\"},{\"name\":\"installed\",\"description\":\"List installed marketplace plugins\"},{\"name\":\"upgrade\",\"description\":\"Upgrade outdated plugins\",\"usage\":\"[name@marketplace]\"},{\"name\":\"help\",\"description\":\"Show usage guide\"}],\"source\":\"builtin\"},{\"name\":\"plugins\",\"aliases\":[\"plugin\"],\"description\":\"Manage plugins\",\"input\":{\"hint\":\"[list|enable|disable]\"},\"subcommands\":[{\"name\":\"list\",\"description\":\"List all installed plugins (npm + marketplace)\"},{\"name\":\"enable\",\"description\":\"Enable a marketplace plugin\",\"usage\":\"<name@marketplace>\"},{\"name\":\"disable\",\"description\":\"Disable a marketplace plugin\",\"usage\":\"<name@marketplace>\"}],\"source\":\"builtin\"},{\"name\":\"reload-plugins\",\"description\":\"Reload all plugins\",\"source\":\"builtin\"},{\"name\":\"force\",\"aliases\":[\"force:\"],\"description\":\"Force next turn to use a specific tool\",\"input\":{\"hint\":\"<tool-name> [prompt]\"},\"source\":\"builtin\"},{\"name\":\"startup-v7-guards\",\"description\":\"Isolated compiled OMP V7 guard acceptance probe\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"autoresearch\",\"description\":\"Toggle builtin autoresearch mode, or pass off / clear, or a goal message.\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"init\",\"description\":\"Generate AGENTS.md for current codebase\",\"source\":\"file\"}]}\n{\"id\":\"disconnected\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}\n{\"type\":\"prompt_result\",\"id\":\"disconnected\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":false}\n",
+      "stdoutSha256": "36393c4e8e4e05d1288522543574629550452639229feca909e2aec7a078777c",
+      "stdoutTail": "xhigh\",\"description\":\"Extended reasoning (~32k tokens)\"},{\"name\":\"max\",\"description\":\"Maximum reasoning the model supports\"},{\"name\":\"auto\",\"description\":\"Auto-detect per prompt\"}],\"source\":\"builtin\"},{\"name\":\"advisor\",\"description\":\"Toggle advisor\",\"input\":{\"hint\":\"[on|off|status|dump [raw]|configure]\"},\"subcommands\":[{\"name\":\"on\",\"description\":\"Enable the advisor\"},{\"name\":\"off\",\"description\":\"Disable the advisor\"},{\"name\":\"status\",\"description\":\"Show advisor status\"},{\"name\":\"dump\",\"description\":\"Copy the advisor's transcript to clipboard\",\"usage\":\"[raw]\"},{\"name\":\"configure\",\"description\":\"Open the advisor configuration editor (TUI)\"}],\"source\":\"builtin\"},{\"name\":\"export\",\"description\":\"Export session to HTML file\",\"input\":{\"hint\":\"[--themes] [path]\"},\"source\":\"builtin\"},{\"name\":\"trace\",\"description\":\"Open this session's trace in the stats dashboard\",\"source\":\"builtin\"},{\"name\":\"dump\",\"description\":\"Return full transcript as plain text, with LLM request JSON path\",\"input\":{\"hint\":\"[all|anon]\"},\"subcommands\":[{\"name\":\"all\",\"description\":\"Write a zip with the main transcript, LLM request JSON, and one file per subagent\"},{\"name\":\"anon\",\"description\":\"Write a zip of anonymized session JSONL (contents redacted, metadata kept) plus subagents\"}],\"source\":\"builtin\"},{\"name\":\"share\",\"description\":\"Share session via an encrypted link (share server or secret gist)\",\"source\":\"builtin\"},{\"name\":\"browser\",\"description\":\"Toggle browser eval-prelude headless vs visible mode\",\"input\":{\"hint\":\"[headless|visible]\"},\"subcommands\":[{\"name\":\"headless\",\"description\":\"Switch to headless mode\"},{\"name\":\"visible\",\"description\":\"Switch to visible mode\"}],\"source\":\"builtin\"},{\"name\":\"todo\",\"description\":\"Manage todos\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"edit\",\"description\":\"Open todos in $EDITOR (Markdown round-trip)\"},{\"name\":\"copy\",\"description\":\"Copy todos as Markdown to clipboard\"},{\"name\":\"expand\",\"description\":\"Show every phase and task in the HUD\"},{\"name\":\"collapse\",\"description\":\"Restore the bounded HUD preview\"},{\"name\":\"export\",\"description\":\"Write todos as Markdown to a file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"import\",\"description\":\"Replace todos from a Markdown file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"append\",\"description\":\"Append a task; phase fuzzy-matched or auto-created\",\"usage\":\"[<phase>] <task...>\"},{\"name\":\"start\",\"description\":\"Mark task in_progress (fuzzy-matched)\",\"usage\":\"<task>\"},{\"name\":\"done\",\"description\":\"Mark task/phase/all completed (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"drop\",\"description\":\"Mark task/phase/all abandoned (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"rm\",\"description\":\"Remove task/phase/all (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"}],\"source\":\"builtin\"},{\"name\":\"session\",\"description\":\"Show or configure the current session\",\"input\":{\"hint\":\"[info|delete|pin [account]]\"},\"subcommands\":[{\"name\":\"info\",\"description\":\"Show session info and stats\"},{\"name\":\"delete\",\"description\":\"Delete current session and return to selector\"},{\"name\":\"pin\",\"description\":\"Pin a stored OAuth account to the current provider for this session\",\"usage\":\"[account]\"}],\"source\":\"builtin\"},{\"name\":\"jobs\",\"description\":\"Show background jobs\",\"input\":{\"hint\":\"[full|kill <id>|kill all]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show full, untruncated command lines\"},{\"name\":\"kill\",\"description\":\"Cancel a running background job\",\"usage\":\"<id>|all\"}],\"source\":\"builtin\"},{\"name\":\"usage\",\"description\":\"Show token usage\",\"input\":{\"hint\":\"[show|reset [provider/credential-id|provider/active]]\"},\"subcommands\":[{\"name\":\"show\",\"description\":\"Show provider usage and limits\"},{\"name\":\"reset\",\"description\":\"Spend a saved provider rate-limit reset\",\"usage\":\"[provider/credential-id|provider/active]\"}],\"source\":\"builtin\"},{\"name\":\"stats\",\"description\":\"Launch the local stats dashboard\",\"input\":{\"hint\":\"[--port <port>] [--host <host>]\"},\"source\":\"builtin\"},{\"name\":\"changelog\",\"description\":\"Show changelog\",\"input\":{\"hint\":\"[full|last [N]]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show complete changelog\"},{\"name\":\"last\",\"description\":\"Show the last N releases (default 1)\",\"usage\":\"[N]\"}],\"source\":\"builtin\"},{\"name\":\"tools\",\"description\":\"Show available tools\",\"source\":\"builtin\"},{\"name\":\"context\",\"description\":\"Show context usage\",\"source\":\"builtin\"},{\"name\":\"mcp\",\"description\":\"Manage MCP servers\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a new MCP server\",\"usage\":\"<name> [--scope project|user] [--url <url>] [-- <command...>]\"},{\"name\":\"list\",\"description\":\"List all configured MCP servers\"},{\"name\":\"remove\",\"description\":\"Remove an MCP server\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"test\",\"description\":\"Test connection to a server\",\"usage\":\"<name>\"},{\"name\":\"reauth\",\"description\":\"Reauthorize OAuth for a server\",\"usage\":\"<name>\"},{\"name\":\"unauth\",\"description\":\"Remove OAuth auth from a server\",\"usage\":\"<name>\"},{\"name\":\"enable\",\"description\":\"Enable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"disable\",\"description\":\"Disable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"smithery-search\",\"description\":\"Search Smithery registry and deploy an MCP server\",\"usage\":\"<keyword> [--scope project|user] [--limit <1-100>] [--semantic]\"},{\"name\":\"smithery-login\",\"description\":\"Login to Smithery and cache API key\"},{\"name\":\"smithery-logout\",\"description\":\"Remove cached Smithery API key\"},{\"name\":\"reconnect\",\"description\":\"Reconnect to a specific MCP server\",\"usage\":\"<name>\"},{\"name\":\"reload\",\"description\":\"Force reload MCP runtime tools\"},{\"name\":\"resources\",\"description\":\"List available resources from connected servers\"},{\"name\":\"prompts\",\"description\":\"List available prompts from connected servers\"},{\"name\":\"notifications\",\"description\":\"Show notification capabilities and subscriptions\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"ssh\",\"description\":\"Manage SSH connections\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add an SSH host\",\"usage\":\"<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]\"},{\"name\":\"list\",\"description\":\"List all configured SSH hosts\"},{\"name\":\"remove\",\"description\":\"Remove an SSH host\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"fresh\",\"description\":\"Reset provider stream state without changing the local transcript\",\"source\":\"builtin\"},{\"name\":\"compact\",\"description\":\"Compact the conversation\",\"input\":{\"hint\":\"[soft|remote|snapcompact] [focus]\"},\"subcommands\":[{\"name\":\"soft\",\"description\":\"Summarize locally with the active model (skip server compaction)\",\"usage\":\"[focus]\"},{\"name\":\"remote\",\"description\":\"Summarize via OpenAI-compatible server compaction, then fall back to a local summary\",\"usage\":\"[focus]\"},{\"name\":\"snapcompact\",\"description\":\"Archive history onto dense bitmap images the model reads back (no LLM call)\"}],\"source\":\"builtin\"},{\"name\":\"shake\",\"description\":\"Shake heavy content out of the conversation context\",\"input\":{\"hint\":\"[elide|images|thinking]\"},\"subcommands\":[{\"name\":\"elide\",\"description\":\"Strip tool results + large blocks (default)\"},{\"name\":\"images\",\"description\":\"Strip image blocks\"},{\"name\":\"thinking\",\"description\":\"Drop all thinking blocks\"}],\"source\":\"builtin\"},{\"name\":\"handoff\",\"description\":\"Summarize the session into a handoff document and compact in place\",\"input\":{\"hint\":\"[focus instructions]\"},\"source\":\"builtin\"},{\"name\":\"pin\",\"description\":\"Pin or unpin a session at the top of the resume list\",\"input\":{\"hint\":\"[session id]\"},\"source\":\"builtin\"},{\"name\":\"retry\",\"description\":\"Retry the last failed agent turn\",\"source\":\"builtin\"},{\"name\":\"memory\",\"description\":\"Manage memory\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"view\",\"description\":\"Show current memory injection payload\"},{\"name\":\"stats\",\"description\":\"Show memory backend statistics\"},{\"name\":\"diagnose\",\"description\":\"Run memory backend diagnostics\"},{\"name\":\"queue\",\"description\":\"Show pending memory deltas awaiting consolidation\"},{\"name\":\"sync\",\"description\":\"Run memory consolidation now\"},{\"name\":\"clear\",\"description\":\"Clear persisted memory data and artifacts\"},{\"name\":\"reset\",\"description\":\"Alias for clear\"},{\"name\":\"enqueue\",\"description\":\"Enqueue memory consolidation maintenance\"},{\"name\":\"rebuild\",\"description\":\"Alias for enqueue\"},{\"name\":\"mm list\",\"description\":\"List mental models on the active bank\"},{\"name\":\"mm show\",\"description\":\"Show one mental model (id required)\"},{\"name\":\"mm refresh\",\"description\":\"Refresh auto-refresh models bank-wide, or one model by id\"},{\"name\":\"mm history\",\"description\":\"Diff the change history of a mental model\"},{\"name\":\"mm seed\",\"description\":\"Create any built-in mental models that are missing\"},{\"name\":\"mm delete\",\"description\":\"Delete a mental model from the bank (id required)\"},{\"name\":\"mm reload\",\"description\":\"Re-pull the cached <mental_models> block\"}],\"source\":\"builtin\"},{\"name\":\"rename\",\"description\":\"Rename the current session (omit title to generate)\",\"input\":{\"hint\":\"[title]\"},\"source\":\"builtin\"},{\"name\":\"move\",\"description\":\"Move the current session to a different directory\",\"input\":{\"hint\":\"[<path>]\"},\"source\":\"builtin\"},{\"name\":\"wt\",\"aliases\":[\"worktree\"],\"description\":\"Move this session into a new worktree, changes included\",\"input\":{\"hint\":\"[<branch>]\"},\"source\":\"builtin\"},{\"name\":\"add-dir\",\"description\":\"Add a workspace directory to this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"remove-dir\",\"description\":\"Remove a workspace directory from this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"dirs\",\"description\":\"List this session's workspace directories\",\"source\":\"builtin\"},{\"name\":\"marketplace\",\"description\":\"Manage plugins from marketplaces\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a marketplace source\",\"usage\":\"<source>\"},{\"name\":\"remove\",\"description\":\"Remove a marketplace source\",\"usage\":\"<name>\"},{\"name\":\"update\",\"description\":\"Update marketplace catalog(s)\",\"usage\":\"[name]\"},{\"name\":\"list\",\"description\":\"List configured marketplaces\"},{\"name\":\"discover\",\"description\":\"Browse available plugins\",\"usage\":\"[marketplace]\"},{\"name\":\"install\",\"description\":\"Install a plugin (interactive browser if no args)\",\"usage\":\"[--force] [name@marketplace]\"},{\"name\":\"uninstall\",\"description\":\"Uninstall a plugin (selector if no args)\",\"usage\":\"[name@marketplace]\"},{\"name\":\"installed\",\"description\":\"List installed marketplace plugins\"},{\"name\":\"upgrade\",\"description\":\"Upgrade outdated plugins\",\"usage\":\"[name@marketplace]\"},{\"name\":\"help\",\"description\":\"Show usage guide\"}],\"source\":\"builtin\"},{\"name\":\"plugins\",\"aliases\":[\"plugin\"],\"description\":\"Manage plugins\",\"input\":{\"hint\":\"[list|enable|disable]\"},\"subcommands\":[{\"name\":\"list\",\"description\":\"List all installed plugins (npm + marketplace)\"},{\"name\":\"enable\",\"description\":\"Enable an installed plugin\",\"usage\":\"<plugin>\"},{\"name\":\"disable\",\"description\":\"Disable an installed plugin\",\"usage\":\"<plugin>\"}],\"source\":\"builtin\"},{\"name\":\"reload-plugins\",\"description\":\"Reload all plugins\",\"source\":\"builtin\"},{\"name\":\"force\",\"aliases\":[\"force:\"],\"description\":\"Force next turn to use a specific tool\",\"input\":{\"hint\":\"<tool-name> [prompt]\"},\"source\":\"builtin\"},{\"name\":\"startup-v7-guards\",\"description\":\"Isolated compiled OMP V7 guard acceptance probe\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"autoresearch\",\"description\":\"Toggle builtin autoresearch mode, or pass off / clear, or a goal message.\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"init\",\"description\":\"Generate AGENTS.md for current codebase\",\"source\":\"file\"}]}\n{\"id\":\"disconnected\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}\n{\"type\":\"prompt_result\",\"id\":\"disconnected\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":false}\n",
       "stderr": ""
     },
     {
@@ -553,9 +1097,9 @@
         "rpc",
         "--no-ui",
         "--cwd",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/synthetic-denied/cwd",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/synthetic-denied/cwd",
         "--config",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/synthetic-denied/config.yml",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/synthetic-denied/config.yml",
         "--no-extensions",
         "--no-skills",
         "--no-rules",
@@ -583,15 +1127,15 @@
       "events": [
         {
           "kind": "root",
-          "version": "18.8.9",
+          "version": "18.11.1",
           "actor": {
             "kind": "main",
             "id": "Main",
             "name": "main",
             "depth": 0
           },
-          "sessionId": "01a14209-3ea3-7115-bde5-006f8b745d44",
-          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/synthetic-denied/agent-data/sessions/-tmp-startup-v7-native-guards-mz6snt8n-synthetic-denied-cwd/2026-10-16T00-07-44-547Z_01a14209-3ea3-7115-bde5-006f8b745d44.jsonl",
+          "sessionId": "01a1421f-20bb-7168-a082-1922b8ec3a45",
+          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/synthetic-denied/agent-data/sessions/-tmp-startup-v7-native-guards-espn2_hc-synthetic-denied-cwd/2026-10-16T00-31-38-683Z_01a1421f-20bb-7168-a082-1922b8ec3a45.jsonl",
           "abortAvailable": true
         },
         {
@@ -645,8 +1189,8 @@
       "actualRootProviderRequests": 0,
       "writeExists": false,
       "bashExists": false,
-      "stdoutSha256": "664e2d5d9aa575feffddee475af105bfb69fd24fcf5bc01f20a0b51c9e287d9e",
-      "stdoutTail": "\",\"description\":\"Append a task; phase fuzzy-matched or auto-created\",\"usage\":\"[<phase>] <task...>\"},{\"name\":\"start\",\"description\":\"Mark task in_progress (fuzzy-matched)\",\"usage\":\"<task>\"},{\"name\":\"done\",\"description\":\"Mark task/phase/all completed (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"drop\",\"description\":\"Mark task/phase/all abandoned (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"rm\",\"description\":\"Remove task/phase/all (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"}],\"source\":\"builtin\"},{\"name\":\"session\",\"description\":\"Show or configure the current session\",\"input\":{\"hint\":\"[info|delete|pin [account]]\"},\"subcommands\":[{\"name\":\"info\",\"description\":\"Show session info and stats\"},{\"name\":\"delete\",\"description\":\"Delete current session and return to selector\"},{\"name\":\"pin\",\"description\":\"Pin the current provider to a stored OAuth account\",\"usage\":\"[account]\"}],\"source\":\"builtin\"},{\"name\":\"jobs\",\"description\":\"Show background jobs\",\"input\":{\"hint\":\"[full|kill <id>|kill all]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show full, untruncated command lines\"},{\"name\":\"kill\",\"description\":\"Cancel a running background job\",\"usage\":\"<id>|all\"}],\"source\":\"builtin\"},{\"name\":\"usage\",\"description\":\"Show token usage\",\"input\":{\"hint\":\"[show|reset [provider/credential-id|provider/active]]\"},\"subcommands\":[{\"name\":\"show\",\"description\":\"Show provider usage and limits\"},{\"name\":\"reset\",\"description\":\"Spend a saved provider rate-limit reset\",\"usage\":\"[provider/credential-id|provider/active]\"}],\"source\":\"builtin\"},{\"name\":\"stats\",\"description\":\"Launch the local stats dashboard\",\"input\":{\"hint\":\"[--port <port>] [--host <host>]\"},\"source\":\"builtin\"},{\"name\":\"changelog\",\"description\":\"Show changelog\",\"input\":{\"hint\":\"[full|last [N]]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show complete changelog\"},{\"name\":\"last\",\"description\":\"Show the last N releases (default 1)\",\"usage\":\"[N]\"}],\"source\":\"builtin\"},{\"name\":\"tools\",\"description\":\"Show available tools\",\"source\":\"builtin\"},{\"name\":\"context\",\"description\":\"Show context usage\",\"source\":\"builtin\"},{\"name\":\"mcp\",\"description\":\"Manage MCP servers\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a new MCP server\",\"usage\":\"<name> [--scope project|user] [--url <url>] [-- <command...>]\"},{\"name\":\"list\",\"description\":\"List all configured MCP servers\"},{\"name\":\"remove\",\"description\":\"Remove an MCP server\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"test\",\"description\":\"Test connection to a server\",\"usage\":\"<name>\"},{\"name\":\"reauth\",\"description\":\"Reauthorize OAuth for a server\",\"usage\":\"<name>\"},{\"name\":\"unauth\",\"description\":\"Remove OAuth auth from a server\",\"usage\":\"<name>\"},{\"name\":\"enable\",\"description\":\"Enable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"disable\",\"description\":\"Disable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"smithery-search\",\"description\":\"Search Smithery registry and deploy an MCP server\",\"usage\":\"<keyword> [--scope project|user] [--limit <1-100>] [--semantic]\"},{\"name\":\"smithery-login\",\"description\":\"Login to Smithery and cache API key\"},{\"name\":\"smithery-logout\",\"description\":\"Remove cached Smithery API key\"},{\"name\":\"reconnect\",\"description\":\"Reconnect to a specific MCP server\",\"usage\":\"<name>\"},{\"name\":\"reload\",\"description\":\"Force reload MCP runtime tools\"},{\"name\":\"resources\",\"description\":\"List available resources from connected servers\"},{\"name\":\"prompts\",\"description\":\"List available prompts from connected servers\"},{\"name\":\"notifications\",\"description\":\"Show notification capabilities and subscriptions\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"ssh\",\"description\":\"Manage SSH connections\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add an SSH host\",\"usage\":\"<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]\"},{\"name\":\"list\",\"description\":\"List all configured SSH hosts\"},{\"name\":\"remove\",\"description\":\"Remove an SSH host\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"fresh\",\"description\":\"Reset provider stream state without changing the local transcript\",\"source\":\"builtin\"},{\"name\":\"compact\",\"description\":\"Compact the conversation\",\"input\":{\"hint\":\"[soft|remote|snapcompact] [focus]\"},\"subcommands\":[{\"name\":\"soft\",\"description\":\"Summarize locally with the active model (skip server compaction)\",\"usage\":\"[focus]\"},{\"name\":\"remote\",\"description\":\"Summarize via OpenAI-compatible server compaction, then fall back to a local summary\",\"usage\":\"[focus]\"},{\"name\":\"snapcompact\",\"description\":\"Archive history onto dense bitmap images the model reads back (no LLM call)\"}],\"source\":\"builtin\"},{\"name\":\"shake\",\"description\":\"Shake heavy content out of the conversation context\",\"input\":{\"hint\":\"[elide|images|thinking]\"},\"subcommands\":[{\"name\":\"elide\",\"description\":\"Strip tool results + large blocks (default)\"},{\"name\":\"images\",\"description\":\"Strip image blocks\"},{\"name\":\"thinking\",\"description\":\"Drop all thinking blocks\"}],\"source\":\"builtin\"},{\"name\":\"handoff\",\"description\":\"Summarize the session into a handoff document and compact in place\",\"input\":{\"hint\":\"[focus instructions]\"},\"source\":\"builtin\"},{\"name\":\"pin\",\"description\":\"Pin or unpin a session at the top of the resume list\",\"input\":{\"hint\":\"[session id]\"},\"source\":\"builtin\"},{\"name\":\"retry\",\"description\":\"Retry the last failed agent turn\",\"source\":\"builtin\"},{\"name\":\"memory\",\"description\":\"Manage memory\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"view\",\"description\":\"Show current memory injection payload\"},{\"name\":\"stats\",\"description\":\"Show memory backend statistics\"},{\"name\":\"diagnose\",\"description\":\"Run memory backend diagnostics\"},{\"name\":\"queue\",\"description\":\"Show pending memory deltas awaiting consolidation\"},{\"name\":\"sync\",\"description\":\"Run memory consolidation now\"},{\"name\":\"clear\",\"description\":\"Clear persisted memory data and artifacts\"},{\"name\":\"reset\",\"description\":\"Alias for clear\"},{\"name\":\"enqueue\",\"description\":\"Enqueue memory consolidation maintenance\"},{\"name\":\"rebuild\",\"description\":\"Alias for enqueue\"},{\"name\":\"mm list\",\"description\":\"List mental models on the active bank\"},{\"name\":\"mm show\",\"description\":\"Show one mental model (id required)\"},{\"name\":\"mm refresh\",\"description\":\"Refresh auto-refresh models bank-wide, or one model by id\"},{\"name\":\"mm history\",\"description\":\"Diff the change history of a mental model\"},{\"name\":\"mm seed\",\"description\":\"Create any built-in mental models that are missing\"},{\"name\":\"mm delete\",\"description\":\"Delete a mental model from the bank (id required)\"},{\"name\":\"mm reload\",\"description\":\"Re-pull the cached <mental_models> block\"}],\"source\":\"builtin\"},{\"name\":\"rename\",\"description\":\"Rename the current session (omit title to generate)\",\"input\":{\"hint\":\"[title]\"},\"source\":\"builtin\"},{\"name\":\"move\",\"description\":\"Move the current session to a different directory\",\"input\":{\"hint\":\"[<path>]\"},\"source\":\"builtin\"},{\"name\":\"wt\",\"aliases\":[\"worktree\"],\"description\":\"Move this session into a new worktree, changes included\",\"input\":{\"hint\":\"[<branch>]\"},\"source\":\"builtin\"},{\"name\":\"add-dir\",\"description\":\"Add a workspace directory to this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"remove-dir\",\"description\":\"Remove a workspace directory from this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"dirs\",\"description\":\"List this session's workspace directories\",\"source\":\"builtin\"},{\"name\":\"marketplace\",\"description\":\"Manage plugins from marketplaces\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a marketplace source\",\"usage\":\"<source>\"},{\"name\":\"remove\",\"description\":\"Remove a marketplace source\",\"usage\":\"<name>\"},{\"name\":\"update\",\"description\":\"Update marketplace catalog(s)\",\"usage\":\"[name]\"},{\"name\":\"list\",\"description\":\"List configured marketplaces\"},{\"name\":\"discover\",\"description\":\"Browse available plugins\",\"usage\":\"[marketplace]\"},{\"name\":\"install\",\"description\":\"Install a plugin (interactive browser if no args)\",\"usage\":\"[--force] [name@marketplace]\"},{\"name\":\"uninstall\",\"description\":\"Uninstall a plugin (selector if no args)\",\"usage\":\"[name@marketplace]\"},{\"name\":\"installed\",\"description\":\"List installed marketplace plugins\"},{\"name\":\"upgrade\",\"description\":\"Upgrade outdated plugins\",\"usage\":\"[name@marketplace]\"},{\"name\":\"help\",\"description\":\"Show usage guide\"}],\"source\":\"builtin\"},{\"name\":\"plugins\",\"aliases\":[\"plugin\"],\"description\":\"Manage plugins\",\"input\":{\"hint\":\"[list|enable|disable]\"},\"subcommands\":[{\"name\":\"list\",\"description\":\"List all installed plugins (npm + marketplace)\"},{\"name\":\"enable\",\"description\":\"Enable a marketplace plugin\",\"usage\":\"<name@marketplace>\"},{\"name\":\"disable\",\"description\":\"Disable a marketplace plugin\",\"usage\":\"<name@marketplace>\"}],\"source\":\"builtin\"},{\"name\":\"reload-plugins\",\"description\":\"Reload all plugins\",\"source\":\"builtin\"},{\"name\":\"force\",\"aliases\":[\"force:\"],\"description\":\"Force next turn to use a specific tool\",\"input\":{\"hint\":\"<tool-name> [prompt]\"},\"source\":\"builtin\"},{\"name\":\"startup-v7-guards\",\"description\":\"Isolated compiled OMP V7 guard acceptance probe\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"autoresearch\",\"description\":\"Toggle builtin autoresearch mode, or pass off / clear, or a goal message.\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"init\",\"description\":\"Generate AGENTS.md for current codebase\",\"source\":\"file\"}]}\n{\"id\":\"synthetic-denied\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}\n{\"type\":\"agent_start\"}\n{\"type\":\"turn_start\"}\n{\"type\":\"message_start\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Run the isolated V7 guard fixture.\"}],\"attribution\":\"user\",\"timestamp\":1792109264612},\"messageId\":\"msg-1\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Run the isolated V7 guard fixture.\"}],\"attribution\":\"user\",\"timestamp\":1792109264612},\"messageId\":\"msg-1\"}\n{\"type\":\"message_start\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"usage\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":0,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"aborted\",\"errorMessage\":\"Interrupted by user\",\"timestamp\":1792109264639},\"messageId\":\"msg-2\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"usage\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":0,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"aborted\",\"errorMessage\":\"Interrupted by user\",\"timestamp\":1792109264639,\"errorId\":67112960,\"completedAt\":1792109264639},\"messageId\":\"msg-2\"}\n{\"type\":\"turn_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"usage\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":0,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"aborted\",\"errorMessage\":\"Interrupted by user\",\"timestamp\":1792109264639,\"errorId\":67112960,\"completedAt\":1792109264639},\"toolResults\":[]}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"usage\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":0,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"aborted\",\"errorMessage\":\"Interrupted by user\",\"timestamp\":1792109264639,\"errorId\":67112960,\"completedAt\":1792109264639}],\"isTerminal\":true,\"yielded\":true}\n{\"type\":\"prompt_result\",\"id\":\"synthetic-denied\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":false}\n",
+      "stdoutSha256": "1157a4648e834afeb01c63ce14070b010225dcf5ff802bab10b88b335cc37f79",
+      "stdoutTail": "ppend\",\"description\":\"Append a task; phase fuzzy-matched or auto-created\",\"usage\":\"[<phase>] <task...>\"},{\"name\":\"start\",\"description\":\"Mark task in_progress (fuzzy-matched)\",\"usage\":\"<task>\"},{\"name\":\"done\",\"description\":\"Mark task/phase/all completed (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"drop\",\"description\":\"Mark task/phase/all abandoned (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"rm\",\"description\":\"Remove task/phase/all (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"}],\"source\":\"builtin\"},{\"name\":\"session\",\"description\":\"Show or configure the current session\",\"input\":{\"hint\":\"[info|delete|pin [account]]\"},\"subcommands\":[{\"name\":\"info\",\"description\":\"Show session info and stats\"},{\"name\":\"delete\",\"description\":\"Delete current session and return to selector\"},{\"name\":\"pin\",\"description\":\"Pin a stored OAuth account to the current provider for this session\",\"usage\":\"[account]\"}],\"source\":\"builtin\"},{\"name\":\"jobs\",\"description\":\"Show background jobs\",\"input\":{\"hint\":\"[full|kill <id>|kill all]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show full, untruncated command lines\"},{\"name\":\"kill\",\"description\":\"Cancel a running background job\",\"usage\":\"<id>|all\"}],\"source\":\"builtin\"},{\"name\":\"usage\",\"description\":\"Show token usage\",\"input\":{\"hint\":\"[show|reset [provider/credential-id|provider/active]]\"},\"subcommands\":[{\"name\":\"show\",\"description\":\"Show provider usage and limits\"},{\"name\":\"reset\",\"description\":\"Spend a saved provider rate-limit reset\",\"usage\":\"[provider/credential-id|provider/active]\"}],\"source\":\"builtin\"},{\"name\":\"stats\",\"description\":\"Launch the local stats dashboard\",\"input\":{\"hint\":\"[--port <port>] [--host <host>]\"},\"source\":\"builtin\"},{\"name\":\"changelog\",\"description\":\"Show changelog\",\"input\":{\"hint\":\"[full|last [N]]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show complete changelog\"},{\"name\":\"last\",\"description\":\"Show the last N releases (default 1)\",\"usage\":\"[N]\"}],\"source\":\"builtin\"},{\"name\":\"tools\",\"description\":\"Show available tools\",\"source\":\"builtin\"},{\"name\":\"context\",\"description\":\"Show context usage\",\"source\":\"builtin\"},{\"name\":\"mcp\",\"description\":\"Manage MCP servers\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a new MCP server\",\"usage\":\"<name> [--scope project|user] [--url <url>] [-- <command...>]\"},{\"name\":\"list\",\"description\":\"List all configured MCP servers\"},{\"name\":\"remove\",\"description\":\"Remove an MCP server\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"test\",\"description\":\"Test connection to a server\",\"usage\":\"<name>\"},{\"name\":\"reauth\",\"description\":\"Reauthorize OAuth for a server\",\"usage\":\"<name>\"},{\"name\":\"unauth\",\"description\":\"Remove OAuth auth from a server\",\"usage\":\"<name>\"},{\"name\":\"enable\",\"description\":\"Enable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"disable\",\"description\":\"Disable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"smithery-search\",\"description\":\"Search Smithery registry and deploy an MCP server\",\"usage\":\"<keyword> [--scope project|user] [--limit <1-100>] [--semantic]\"},{\"name\":\"smithery-login\",\"description\":\"Login to Smithery and cache API key\"},{\"name\":\"smithery-logout\",\"description\":\"Remove cached Smithery API key\"},{\"name\":\"reconnect\",\"description\":\"Reconnect to a specific MCP server\",\"usage\":\"<name>\"},{\"name\":\"reload\",\"description\":\"Force reload MCP runtime tools\"},{\"name\":\"resources\",\"description\":\"List available resources from connected servers\"},{\"name\":\"prompts\",\"description\":\"List available prompts from connected servers\"},{\"name\":\"notifications\",\"description\":\"Show notification capabilities and subscriptions\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"ssh\",\"description\":\"Manage SSH connections\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add an SSH host\",\"usage\":\"<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]\"},{\"name\":\"list\",\"description\":\"List all configured SSH hosts\"},{\"name\":\"remove\",\"description\":\"Remove an SSH host\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"fresh\",\"description\":\"Reset provider stream state without changing the local transcript\",\"source\":\"builtin\"},{\"name\":\"compact\",\"description\":\"Compact the conversation\",\"input\":{\"hint\":\"[soft|remote|snapcompact] [focus]\"},\"subcommands\":[{\"name\":\"soft\",\"description\":\"Summarize locally with the active model (skip server compaction)\",\"usage\":\"[focus]\"},{\"name\":\"remote\",\"description\":\"Summarize via OpenAI-compatible server compaction, then fall back to a local summary\",\"usage\":\"[focus]\"},{\"name\":\"snapcompact\",\"description\":\"Archive history onto dense bitmap images the model reads back (no LLM call)\"}],\"source\":\"builtin\"},{\"name\":\"shake\",\"description\":\"Shake heavy content out of the conversation context\",\"input\":{\"hint\":\"[elide|images|thinking]\"},\"subcommands\":[{\"name\":\"elide\",\"description\":\"Strip tool results + large blocks (default)\"},{\"name\":\"images\",\"description\":\"Strip image blocks\"},{\"name\":\"thinking\",\"description\":\"Drop all thinking blocks\"}],\"source\":\"builtin\"},{\"name\":\"handoff\",\"description\":\"Summarize the session into a handoff document and compact in place\",\"input\":{\"hint\":\"[focus instructions]\"},\"source\":\"builtin\"},{\"name\":\"pin\",\"description\":\"Pin or unpin a session at the top of the resume list\",\"input\":{\"hint\":\"[session id]\"},\"source\":\"builtin\"},{\"name\":\"retry\",\"description\":\"Retry the last failed agent turn\",\"source\":\"builtin\"},{\"name\":\"memory\",\"description\":\"Manage memory\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"view\",\"description\":\"Show current memory injection payload\"},{\"name\":\"stats\",\"description\":\"Show memory backend statistics\"},{\"name\":\"diagnose\",\"description\":\"Run memory backend diagnostics\"},{\"name\":\"queue\",\"description\":\"Show pending memory deltas awaiting consolidation\"},{\"name\":\"sync\",\"description\":\"Run memory consolidation now\"},{\"name\":\"clear\",\"description\":\"Clear persisted memory data and artifacts\"},{\"name\":\"reset\",\"description\":\"Alias for clear\"},{\"name\":\"enqueue\",\"description\":\"Enqueue memory consolidation maintenance\"},{\"name\":\"rebuild\",\"description\":\"Alias for enqueue\"},{\"name\":\"mm list\",\"description\":\"List mental models on the active bank\"},{\"name\":\"mm show\",\"description\":\"Show one mental model (id required)\"},{\"name\":\"mm refresh\",\"description\":\"Refresh auto-refresh models bank-wide, or one model by id\"},{\"name\":\"mm history\",\"description\":\"Diff the change history of a mental model\"},{\"name\":\"mm seed\",\"description\":\"Create any built-in mental models that are missing\"},{\"name\":\"mm delete\",\"description\":\"Delete a mental model from the bank (id required)\"},{\"name\":\"mm reload\",\"description\":\"Re-pull the cached <mental_models> block\"}],\"source\":\"builtin\"},{\"name\":\"rename\",\"description\":\"Rename the current session (omit title to generate)\",\"input\":{\"hint\":\"[title]\"},\"source\":\"builtin\"},{\"name\":\"move\",\"description\":\"Move the current session to a different directory\",\"input\":{\"hint\":\"[<path>]\"},\"source\":\"builtin\"},{\"name\":\"wt\",\"aliases\":[\"worktree\"],\"description\":\"Move this session into a new worktree, changes included\",\"input\":{\"hint\":\"[<branch>]\"},\"source\":\"builtin\"},{\"name\":\"add-dir\",\"description\":\"Add a workspace directory to this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"remove-dir\",\"description\":\"Remove a workspace directory from this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"dirs\",\"description\":\"List this session's workspace directories\",\"source\":\"builtin\"},{\"name\":\"marketplace\",\"description\":\"Manage plugins from marketplaces\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a marketplace source\",\"usage\":\"<source>\"},{\"name\":\"remove\",\"description\":\"Remove a marketplace source\",\"usage\":\"<name>\"},{\"name\":\"update\",\"description\":\"Update marketplace catalog(s)\",\"usage\":\"[name]\"},{\"name\":\"list\",\"description\":\"List configured marketplaces\"},{\"name\":\"discover\",\"description\":\"Browse available plugins\",\"usage\":\"[marketplace]\"},{\"name\":\"install\",\"description\":\"Install a plugin (interactive browser if no args)\",\"usage\":\"[--force] [name@marketplace]\"},{\"name\":\"uninstall\",\"description\":\"Uninstall a plugin (selector if no args)\",\"usage\":\"[name@marketplace]\"},{\"name\":\"installed\",\"description\":\"List installed marketplace plugins\"},{\"name\":\"upgrade\",\"description\":\"Upgrade outdated plugins\",\"usage\":\"[name@marketplace]\"},{\"name\":\"help\",\"description\":\"Show usage guide\"}],\"source\":\"builtin\"},{\"name\":\"plugins\",\"aliases\":[\"plugin\"],\"description\":\"Manage plugins\",\"input\":{\"hint\":\"[list|enable|disable]\"},\"subcommands\":[{\"name\":\"list\",\"description\":\"List all installed plugins (npm + marketplace)\"},{\"name\":\"enable\",\"description\":\"Enable an installed plugin\",\"usage\":\"<plugin>\"},{\"name\":\"disable\",\"description\":\"Disable an installed plugin\",\"usage\":\"<plugin>\"}],\"source\":\"builtin\"},{\"name\":\"reload-plugins\",\"description\":\"Reload all plugins\",\"source\":\"builtin\"},{\"name\":\"force\",\"aliases\":[\"force:\"],\"description\":\"Force next turn to use a specific tool\",\"input\":{\"hint\":\"<tool-name> [prompt]\"},\"source\":\"builtin\"},{\"name\":\"startup-v7-guards\",\"description\":\"Isolated compiled OMP V7 guard acceptance probe\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"autoresearch\",\"description\":\"Toggle builtin autoresearch mode, or pass off / clear, or a goal message.\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"init\",\"description\":\"Generate AGENTS.md for current codebase\",\"source\":\"file\"}]}\n{\"id\":\"synthetic-denied\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}\n{\"type\":\"agent_start\"}\n{\"type\":\"turn_start\"}\n{\"type\":\"message_start\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Run the isolated V7 guard fixture.\"}],\"attribution\":\"user\",\"timestamp\":1792110698746},\"messageId\":\"msg-1\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Run the isolated V7 guard fixture.\"}],\"attribution\":\"user\",\"timestamp\":1792110698746},\"messageId\":\"msg-1\"}\n{\"type\":\"message_start\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"usage\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":0,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"aborted\",\"errorMessage\":\"Interrupted by user\",\"timestamp\":1792110698776},\"messageId\":\"msg-2\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"usage\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":0,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"aborted\",\"errorMessage\":\"Interrupted by user\",\"timestamp\":1792110698776,\"errorId\":67112960,\"completedAt\":1792110698776},\"messageId\":\"msg-2\"}\n{\"type\":\"turn_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"usage\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":0,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"aborted\",\"errorMessage\":\"Interrupted by user\",\"timestamp\":1792110698776,\"errorId\":67112960,\"completedAt\":1792110698776},\"toolResults\":[]}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"\"}],\"api\":\"startup-v7-guard-offline\",\"provider\":\"startup-v7-guard\",\"model\":\"offline\",\"usage\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"totalTokens\":0,\"cost\":{\"input\":0,\"output\":0,\"cacheRead\":0,\"cacheWrite\":0,\"total\":0}},\"stopReason\":\"aborted\",\"errorMessage\":\"Interrupted by user\",\"timestamp\":1792110698776,\"errorId\":67112960,\"completedAt\":1792110698776}],\"isTerminal\":true,\"yielded\":true}\n{\"type\":\"prompt_result\",\"id\":\"synthetic-denied\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":false}\n",
       "stderr": ""
     },
     {
@@ -657,9 +1201,9 @@
         "rpc",
         "--no-ui",
         "--cwd",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/negative/cwd",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/negative/cwd",
         "--config",
-        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/negative/config.yml",
+        "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/negative/config.yml",
         "--no-extensions",
         "--no-skills",
         "--no-rules",
@@ -687,15 +1231,15 @@
       "events": [
         {
           "kind": "root",
-          "version": "18.8.9",
+          "version": "18.11.1",
           "actor": {
             "kind": "main",
             "id": "Main",
             "name": "main",
             "depth": 0
           },
-          "sessionId": "01a14209-406b-7011-baa8-f23482cb6add",
-          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/negative/agent-data/sessions/-tmp-startup-v7-native-guards-mz6snt8n-negative-cwd/2026-10-16T00-07-45-003Z_01a14209-406b-7011-baa8-f23482cb6add.jsonl",
+          "sessionId": "01a1421f-2254-70b0-9ccd-ecd4e5c4ad44",
+          "sessionFile": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/negative/agent-data/sessions/-tmp-startup-v7-native-guards-espn2_hc-negative-cwd/2026-10-16T00-31-39-092Z_01a1421f-2254-70b0-9ccd-ecd4e5c4ad44.jsonl",
           "abortAvailable": true
         },
         {
@@ -741,7 +1285,7 @@
               }
             ],
             "details": {
-              "resolvedPath": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-mz6snt8n/negative/cwd/denied-write.txt"
+              "resolvedPath": "/var/folders/w5/gyzp1kcd0sj6j4g3mh4fyr4m0000gn/T/startup-v7-native-guards-espn2_hc/negative/cwd/denied-write.txt"
             }
           }
         },
@@ -758,7 +1302,7 @@
           "content": [
             {
               "type": "text",
-              "text": "(no output)\n\nWall time: 0.03 seconds"
+              "text": "(no output)"
             }
           ]
         },
@@ -769,12 +1313,13 @@
             "content": [
               {
                 "type": "text",
-                "text": "(no output)\n\nWall time: 0.03 seconds"
+                "text": "(no output)"
               }
             ],
             "details": {
+              "wallTimeNoticeEmitted": false,
               "timeoutSeconds": 300,
-              "wallTimeMs": 29.657375000000002
+              "wallTimeMs": 31.85420899999997
             }
           }
         },
@@ -789,8 +1334,8 @@
       "actualRootProviderRequests": 0,
       "writeExists": true,
       "bashExists": true,
-      "stdoutSha256": "6e723e6c97ccb1485e974970ecba95f9d3a0ba501be0f9fe9d0c2a0044f50079",
-      "stdoutTail": "\":\"xhigh\",\"description\":\"Extended reasoning (~32k tokens)\"},{\"name\":\"max\",\"description\":\"Maximum reasoning the model supports\"},{\"name\":\"auto\",\"description\":\"Auto-detect per prompt\"}],\"source\":\"builtin\"},{\"name\":\"advisor\",\"description\":\"Toggle advisor\",\"input\":{\"hint\":\"[on|off|status|dump [raw]|configure]\"},\"subcommands\":[{\"name\":\"on\",\"description\":\"Enable the advisor\"},{\"name\":\"off\",\"description\":\"Disable the advisor\"},{\"name\":\"status\",\"description\":\"Show advisor status\"},{\"name\":\"dump\",\"description\":\"Copy the advisor's transcript to clipboard\",\"usage\":\"[raw]\"},{\"name\":\"configure\",\"description\":\"Open the advisor configuration editor (TUI)\"}],\"source\":\"builtin\"},{\"name\":\"export\",\"description\":\"Export session to HTML file\",\"input\":{\"hint\":\"[--themes] [path]\"},\"source\":\"builtin\"},{\"name\":\"trace\",\"description\":\"Open this session's trace in the stats dashboard\",\"source\":\"builtin\"},{\"name\":\"dump\",\"description\":\"Return full transcript as plain text, with LLM request JSON path\",\"input\":{\"hint\":\"[all|anon]\"},\"subcommands\":[{\"name\":\"all\",\"description\":\"Write a zip with the main transcript, LLM request JSON, and one file per subagent\"},{\"name\":\"anon\",\"description\":\"Write a zip of anonymized session JSONL (contents redacted, metadata kept) plus subagents\"}],\"source\":\"builtin\"},{\"name\":\"share\",\"description\":\"Share session via an encrypted link (share server or secret gist)\",\"source\":\"builtin\"},{\"name\":\"browser\",\"description\":\"Toggle browser eval-prelude headless vs visible mode\",\"input\":{\"hint\":\"[headless|visible]\"},\"subcommands\":[{\"name\":\"headless\",\"description\":\"Switch to headless mode\"},{\"name\":\"visible\",\"description\":\"Switch to visible mode\"}],\"source\":\"builtin\"},{\"name\":\"todo\",\"description\":\"Manage todos\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"edit\",\"description\":\"Open todos in $EDITOR (Markdown round-trip)\"},{\"name\":\"copy\",\"description\":\"Copy todos as Markdown to clipboard\"},{\"name\":\"expand\",\"description\":\"Show every phase and task in the HUD\"},{\"name\":\"collapse\",\"description\":\"Restore the bounded HUD preview\"},{\"name\":\"export\",\"description\":\"Write todos as Markdown to a file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"import\",\"description\":\"Replace todos from a Markdown file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"append\",\"description\":\"Append a task; phase fuzzy-matched or auto-created\",\"usage\":\"[<phase>] <task...>\"},{\"name\":\"start\",\"description\":\"Mark task in_progress (fuzzy-matched)\",\"usage\":\"<task>\"},{\"name\":\"done\",\"description\":\"Mark task/phase/all completed (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"drop\",\"description\":\"Mark task/phase/all abandoned (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"rm\",\"description\":\"Remove task/phase/all (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"}],\"source\":\"builtin\"},{\"name\":\"session\",\"description\":\"Show or configure the current session\",\"input\":{\"hint\":\"[info|delete|pin [account]]\"},\"subcommands\":[{\"name\":\"info\",\"description\":\"Show session info and stats\"},{\"name\":\"delete\",\"description\":\"Delete current session and return to selector\"},{\"name\":\"pin\",\"description\":\"Pin the current provider to a stored OAuth account\",\"usage\":\"[account]\"}],\"source\":\"builtin\"},{\"name\":\"jobs\",\"description\":\"Show background jobs\",\"input\":{\"hint\":\"[full|kill <id>|kill all]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show full, untruncated command lines\"},{\"name\":\"kill\",\"description\":\"Cancel a running background job\",\"usage\":\"<id>|all\"}],\"source\":\"builtin\"},{\"name\":\"usage\",\"description\":\"Show token usage\",\"input\":{\"hint\":\"[show|reset [provider/credential-id|provider/active]]\"},\"subcommands\":[{\"name\":\"show\",\"description\":\"Show provider usage and limits\"},{\"name\":\"reset\",\"description\":\"Spend a saved provider rate-limit reset\",\"usage\":\"[provider/credential-id|provider/active]\"}],\"source\":\"builtin\"},{\"name\":\"stats\",\"description\":\"Launch the local stats dashboard\",\"input\":{\"hint\":\"[--port <port>] [--host <host>]\"},\"source\":\"builtin\"},{\"name\":\"changelog\",\"description\":\"Show changelog\",\"input\":{\"hint\":\"[full|last [N]]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show complete changelog\"},{\"name\":\"last\",\"description\":\"Show the last N releases (default 1)\",\"usage\":\"[N]\"}],\"source\":\"builtin\"},{\"name\":\"tools\",\"description\":\"Show available tools\",\"source\":\"builtin\"},{\"name\":\"context\",\"description\":\"Show context usage\",\"source\":\"builtin\"},{\"name\":\"mcp\",\"description\":\"Manage MCP servers\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a new MCP server\",\"usage\":\"<name> [--scope project|user] [--url <url>] [-- <command...>]\"},{\"name\":\"list\",\"description\":\"List all configured MCP servers\"},{\"name\":\"remove\",\"description\":\"Remove an MCP server\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"test\",\"description\":\"Test connection to a server\",\"usage\":\"<name>\"},{\"name\":\"reauth\",\"description\":\"Reauthorize OAuth for a server\",\"usage\":\"<name>\"},{\"name\":\"unauth\",\"description\":\"Remove OAuth auth from a server\",\"usage\":\"<name>\"},{\"name\":\"enable\",\"description\":\"Enable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"disable\",\"description\":\"Disable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"smithery-search\",\"description\":\"Search Smithery registry and deploy an MCP server\",\"usage\":\"<keyword> [--scope project|user] [--limit <1-100>] [--semantic]\"},{\"name\":\"smithery-login\",\"description\":\"Login to Smithery and cache API key\"},{\"name\":\"smithery-logout\",\"description\":\"Remove cached Smithery API key\"},{\"name\":\"reconnect\",\"description\":\"Reconnect to a specific MCP server\",\"usage\":\"<name>\"},{\"name\":\"reload\",\"description\":\"Force reload MCP runtime tools\"},{\"name\":\"resources\",\"description\":\"List available resources from connected servers\"},{\"name\":\"prompts\",\"description\":\"List available prompts from connected servers\"},{\"name\":\"notifications\",\"description\":\"Show notification capabilities and subscriptions\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"ssh\",\"description\":\"Manage SSH connections\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add an SSH host\",\"usage\":\"<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]\"},{\"name\":\"list\",\"description\":\"List all configured SSH hosts\"},{\"name\":\"remove\",\"description\":\"Remove an SSH host\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"fresh\",\"description\":\"Reset provider stream state without changing the local transcript\",\"source\":\"builtin\"},{\"name\":\"compact\",\"description\":\"Compact the conversation\",\"input\":{\"hint\":\"[soft|remote|snapcompact] [focus]\"},\"subcommands\":[{\"name\":\"soft\",\"description\":\"Summarize locally with the active model (skip server compaction)\",\"usage\":\"[focus]\"},{\"name\":\"remote\",\"description\":\"Summarize via OpenAI-compatible server compaction, then fall back to a local summary\",\"usage\":\"[focus]\"},{\"name\":\"snapcompact\",\"description\":\"Archive history onto dense bitmap images the model reads back (no LLM call)\"}],\"source\":\"builtin\"},{\"name\":\"shake\",\"description\":\"Shake heavy content out of the conversation context\",\"input\":{\"hint\":\"[elide|images|thinking]\"},\"subcommands\":[{\"name\":\"elide\",\"description\":\"Strip tool results + large blocks (default)\"},{\"name\":\"images\",\"description\":\"Strip image blocks\"},{\"name\":\"thinking\",\"description\":\"Drop all thinking blocks\"}],\"source\":\"builtin\"},{\"name\":\"handoff\",\"description\":\"Summarize the session into a handoff document and compact in place\",\"input\":{\"hint\":\"[focus instructions]\"},\"source\":\"builtin\"},{\"name\":\"pin\",\"description\":\"Pin or unpin a session at the top of the resume list\",\"input\":{\"hint\":\"[session id]\"},\"source\":\"builtin\"},{\"name\":\"retry\",\"description\":\"Retry the last failed agent turn\",\"source\":\"builtin\"},{\"name\":\"memory\",\"description\":\"Manage memory\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"view\",\"description\":\"Show current memory injection payload\"},{\"name\":\"stats\",\"description\":\"Show memory backend statistics\"},{\"name\":\"diagnose\",\"description\":\"Run memory backend diagnostics\"},{\"name\":\"queue\",\"description\":\"Show pending memory deltas awaiting consolidation\"},{\"name\":\"sync\",\"description\":\"Run memory consolidation now\"},{\"name\":\"clear\",\"description\":\"Clear persisted memory data and artifacts\"},{\"name\":\"reset\",\"description\":\"Alias for clear\"},{\"name\":\"enqueue\",\"description\":\"Enqueue memory consolidation maintenance\"},{\"name\":\"rebuild\",\"description\":\"Alias for enqueue\"},{\"name\":\"mm list\",\"description\":\"List mental models on the active bank\"},{\"name\":\"mm show\",\"description\":\"Show one mental model (id required)\"},{\"name\":\"mm refresh\",\"description\":\"Refresh auto-refresh models bank-wide, or one model by id\"},{\"name\":\"mm history\",\"description\":\"Diff the change history of a mental model\"},{\"name\":\"mm seed\",\"description\":\"Create any built-in mental models that are missing\"},{\"name\":\"mm delete\",\"description\":\"Delete a mental model from the bank (id required)\"},{\"name\":\"mm reload\",\"description\":\"Re-pull the cached <mental_models> block\"}],\"source\":\"builtin\"},{\"name\":\"rename\",\"description\":\"Rename the current session (omit title to generate)\",\"input\":{\"hint\":\"[title]\"},\"source\":\"builtin\"},{\"name\":\"move\",\"description\":\"Move the current session to a different directory\",\"input\":{\"hint\":\"[<path>]\"},\"source\":\"builtin\"},{\"name\":\"wt\",\"aliases\":[\"worktree\"],\"description\":\"Move this session into a new worktree, changes included\",\"input\":{\"hint\":\"[<branch>]\"},\"source\":\"builtin\"},{\"name\":\"add-dir\",\"description\":\"Add a workspace directory to this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"remove-dir\",\"description\":\"Remove a workspace directory from this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"dirs\",\"description\":\"List this session's workspace directories\",\"source\":\"builtin\"},{\"name\":\"marketplace\",\"description\":\"Manage plugins from marketplaces\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a marketplace source\",\"usage\":\"<source>\"},{\"name\":\"remove\",\"description\":\"Remove a marketplace source\",\"usage\":\"<name>\"},{\"name\":\"update\",\"description\":\"Update marketplace catalog(s)\",\"usage\":\"[name]\"},{\"name\":\"list\",\"description\":\"List configured marketplaces\"},{\"name\":\"discover\",\"description\":\"Browse available plugins\",\"usage\":\"[marketplace]\"},{\"name\":\"install\",\"description\":\"Install a plugin (interactive browser if no args)\",\"usage\":\"[--force] [name@marketplace]\"},{\"name\":\"uninstall\",\"description\":\"Uninstall a plugin (selector if no args)\",\"usage\":\"[name@marketplace]\"},{\"name\":\"installed\",\"description\":\"List installed marketplace plugins\"},{\"name\":\"upgrade\",\"description\":\"Upgrade outdated plugins\",\"usage\":\"[name@marketplace]\"},{\"name\":\"help\",\"description\":\"Show usage guide\"}],\"source\":\"builtin\"},{\"name\":\"plugins\",\"aliases\":[\"plugin\"],\"description\":\"Manage plugins\",\"input\":{\"hint\":\"[list|enable|disable]\"},\"subcommands\":[{\"name\":\"list\",\"description\":\"List all installed plugins (npm + marketplace)\"},{\"name\":\"enable\",\"description\":\"Enable a marketplace plugin\",\"usage\":\"<name@marketplace>\"},{\"name\":\"disable\",\"description\":\"Disable a marketplace plugin\",\"usage\":\"<name@marketplace>\"}],\"source\":\"builtin\"},{\"name\":\"reload-plugins\",\"description\":\"Reload all plugins\",\"source\":\"builtin\"},{\"name\":\"force\",\"aliases\":[\"force:\"],\"description\":\"Force next turn to use a specific tool\",\"input\":{\"hint\":\"<tool-name> [prompt]\"},\"source\":\"builtin\"},{\"name\":\"startup-v7-guards\",\"description\":\"Isolated compiled OMP V7 guard acceptance probe\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"autoresearch\",\"description\":\"Toggle builtin autoresearch mode, or pass off / clear, or a goal message.\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"init\",\"description\":\"Generate AGENTS.md for current codebase\",\"source\":\"file\"}]}\n{\"id\":\"negative\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}\n{\"type\":\"prompt_result\",\"id\":\"negative\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":false}\n",
+      "stdoutSha256": "5dc04d49fa023ab65a37c32f9bdd25eb2a6519adc5e2746d89484948d71a7a95",
+      "stdoutTail": "\"name\":\"xhigh\",\"description\":\"Extended reasoning (~32k tokens)\"},{\"name\":\"max\",\"description\":\"Maximum reasoning the model supports\"},{\"name\":\"auto\",\"description\":\"Auto-detect per prompt\"}],\"source\":\"builtin\"},{\"name\":\"advisor\",\"description\":\"Toggle advisor\",\"input\":{\"hint\":\"[on|off|status|dump [raw]|configure]\"},\"subcommands\":[{\"name\":\"on\",\"description\":\"Enable the advisor\"},{\"name\":\"off\",\"description\":\"Disable the advisor\"},{\"name\":\"status\",\"description\":\"Show advisor status\"},{\"name\":\"dump\",\"description\":\"Copy the advisor's transcript to clipboard\",\"usage\":\"[raw]\"},{\"name\":\"configure\",\"description\":\"Open the advisor configuration editor (TUI)\"}],\"source\":\"builtin\"},{\"name\":\"export\",\"description\":\"Export session to HTML file\",\"input\":{\"hint\":\"[--themes] [path]\"},\"source\":\"builtin\"},{\"name\":\"trace\",\"description\":\"Open this session's trace in the stats dashboard\",\"source\":\"builtin\"},{\"name\":\"dump\",\"description\":\"Return full transcript as plain text, with LLM request JSON path\",\"input\":{\"hint\":\"[all|anon]\"},\"subcommands\":[{\"name\":\"all\",\"description\":\"Write a zip with the main transcript, LLM request JSON, and one file per subagent\"},{\"name\":\"anon\",\"description\":\"Write a zip of anonymized session JSONL (contents redacted, metadata kept) plus subagents\"}],\"source\":\"builtin\"},{\"name\":\"share\",\"description\":\"Share session via an encrypted link (share server or secret gist)\",\"source\":\"builtin\"},{\"name\":\"browser\",\"description\":\"Toggle browser eval-prelude headless vs visible mode\",\"input\":{\"hint\":\"[headless|visible]\"},\"subcommands\":[{\"name\":\"headless\",\"description\":\"Switch to headless mode\"},{\"name\":\"visible\",\"description\":\"Switch to visible mode\"}],\"source\":\"builtin\"},{\"name\":\"todo\",\"description\":\"Manage todos\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"edit\",\"description\":\"Open todos in $EDITOR (Markdown round-trip)\"},{\"name\":\"copy\",\"description\":\"Copy todos as Markdown to clipboard\"},{\"name\":\"expand\",\"description\":\"Show every phase and task in the HUD\"},{\"name\":\"collapse\",\"description\":\"Restore the bounded HUD preview\"},{\"name\":\"export\",\"description\":\"Write todos as Markdown to a file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"import\",\"description\":\"Replace todos from a Markdown file (default: TODO.md)\",\"usage\":\"[<path>]\"},{\"name\":\"append\",\"description\":\"Append a task; phase fuzzy-matched or auto-created\",\"usage\":\"[<phase>] <task...>\"},{\"name\":\"start\",\"description\":\"Mark task in_progress (fuzzy-matched)\",\"usage\":\"<task>\"},{\"name\":\"done\",\"description\":\"Mark task/phase/all completed (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"drop\",\"description\":\"Mark task/phase/all abandoned (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"},{\"name\":\"rm\",\"description\":\"Remove task/phase/all (fuzzy-matched)\",\"usage\":\"[<task|phase>]\"}],\"source\":\"builtin\"},{\"name\":\"session\",\"description\":\"Show or configure the current session\",\"input\":{\"hint\":\"[info|delete|pin [account]]\"},\"subcommands\":[{\"name\":\"info\",\"description\":\"Show session info and stats\"},{\"name\":\"delete\",\"description\":\"Delete current session and return to selector\"},{\"name\":\"pin\",\"description\":\"Pin a stored OAuth account to the current provider for this session\",\"usage\":\"[account]\"}],\"source\":\"builtin\"},{\"name\":\"jobs\",\"description\":\"Show background jobs\",\"input\":{\"hint\":\"[full|kill <id>|kill all]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show full, untruncated command lines\"},{\"name\":\"kill\",\"description\":\"Cancel a running background job\",\"usage\":\"<id>|all\"}],\"source\":\"builtin\"},{\"name\":\"usage\",\"description\":\"Show token usage\",\"input\":{\"hint\":\"[show|reset [provider/credential-id|provider/active]]\"},\"subcommands\":[{\"name\":\"show\",\"description\":\"Show provider usage and limits\"},{\"name\":\"reset\",\"description\":\"Spend a saved provider rate-limit reset\",\"usage\":\"[provider/credential-id|provider/active]\"}],\"source\":\"builtin\"},{\"name\":\"stats\",\"description\":\"Launch the local stats dashboard\",\"input\":{\"hint\":\"[--port <port>] [--host <host>]\"},\"source\":\"builtin\"},{\"name\":\"changelog\",\"description\":\"Show changelog\",\"input\":{\"hint\":\"[full|last [N]]\"},\"subcommands\":[{\"name\":\"full\",\"description\":\"Show complete changelog\"},{\"name\":\"last\",\"description\":\"Show the last N releases (default 1)\",\"usage\":\"[N]\"}],\"source\":\"builtin\"},{\"name\":\"tools\",\"description\":\"Show available tools\",\"source\":\"builtin\"},{\"name\":\"context\",\"description\":\"Show context usage\",\"source\":\"builtin\"},{\"name\":\"mcp\",\"description\":\"Manage MCP servers\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a new MCP server\",\"usage\":\"<name> [--scope project|user] [--url <url>] [-- <command...>]\"},{\"name\":\"list\",\"description\":\"List all configured MCP servers\"},{\"name\":\"remove\",\"description\":\"Remove an MCP server\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"test\",\"description\":\"Test connection to a server\",\"usage\":\"<name>\"},{\"name\":\"reauth\",\"description\":\"Reauthorize OAuth for a server\",\"usage\":\"<name>\"},{\"name\":\"unauth\",\"description\":\"Remove OAuth auth from a server\",\"usage\":\"<name>\"},{\"name\":\"enable\",\"description\":\"Enable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"disable\",\"description\":\"Disable an MCP server\",\"usage\":\"<name>\"},{\"name\":\"smithery-search\",\"description\":\"Search Smithery registry and deploy an MCP server\",\"usage\":\"<keyword> [--scope project|user] [--limit <1-100>] [--semantic]\"},{\"name\":\"smithery-login\",\"description\":\"Login to Smithery and cache API key\"},{\"name\":\"smithery-logout\",\"description\":\"Remove cached Smithery API key\"},{\"name\":\"reconnect\",\"description\":\"Reconnect to a specific MCP server\",\"usage\":\"<name>\"},{\"name\":\"reload\",\"description\":\"Force reload MCP runtime tools\"},{\"name\":\"resources\",\"description\":\"List available resources from connected servers\"},{\"name\":\"prompts\",\"description\":\"List available prompts from connected servers\"},{\"name\":\"notifications\",\"description\":\"Show notification capabilities and subscriptions\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"ssh\",\"description\":\"Manage SSH connections\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add an SSH host\",\"usage\":\"<name> --host <host> [--user <user>] [--port <port>] [--key <keyPath>] [--scope project|user]\"},{\"name\":\"list\",\"description\":\"List all configured SSH hosts\"},{\"name\":\"remove\",\"description\":\"Remove an SSH host\",\"usage\":\"<name> [--scope project|user]\"},{\"name\":\"help\",\"description\":\"Show help message\"}],\"source\":\"builtin\"},{\"name\":\"fresh\",\"description\":\"Reset provider stream state without changing the local transcript\",\"source\":\"builtin\"},{\"name\":\"compact\",\"description\":\"Compact the conversation\",\"input\":{\"hint\":\"[soft|remote|snapcompact] [focus]\"},\"subcommands\":[{\"name\":\"soft\",\"description\":\"Summarize locally with the active model (skip server compaction)\",\"usage\":\"[focus]\"},{\"name\":\"remote\",\"description\":\"Summarize via OpenAI-compatible server compaction, then fall back to a local summary\",\"usage\":\"[focus]\"},{\"name\":\"snapcompact\",\"description\":\"Archive history onto dense bitmap images the model reads back (no LLM call)\"}],\"source\":\"builtin\"},{\"name\":\"shake\",\"description\":\"Shake heavy content out of the conversation context\",\"input\":{\"hint\":\"[elide|images|thinking]\"},\"subcommands\":[{\"name\":\"elide\",\"description\":\"Strip tool results + large blocks (default)\"},{\"name\":\"images\",\"description\":\"Strip image blocks\"},{\"name\":\"thinking\",\"description\":\"Drop all thinking blocks\"}],\"source\":\"builtin\"},{\"name\":\"handoff\",\"description\":\"Summarize the session into a handoff document and compact in place\",\"input\":{\"hint\":\"[focus instructions]\"},\"source\":\"builtin\"},{\"name\":\"pin\",\"description\":\"Pin or unpin a session at the top of the resume list\",\"input\":{\"hint\":\"[session id]\"},\"source\":\"builtin\"},{\"name\":\"retry\",\"description\":\"Retry the last failed agent turn\",\"source\":\"builtin\"},{\"name\":\"memory\",\"description\":\"Manage memory\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"view\",\"description\":\"Show current memory injection payload\"},{\"name\":\"stats\",\"description\":\"Show memory backend statistics\"},{\"name\":\"diagnose\",\"description\":\"Run memory backend diagnostics\"},{\"name\":\"queue\",\"description\":\"Show pending memory deltas awaiting consolidation\"},{\"name\":\"sync\",\"description\":\"Run memory consolidation now\"},{\"name\":\"clear\",\"description\":\"Clear persisted memory data and artifacts\"},{\"name\":\"reset\",\"description\":\"Alias for clear\"},{\"name\":\"enqueue\",\"description\":\"Enqueue memory consolidation maintenance\"},{\"name\":\"rebuild\",\"description\":\"Alias for enqueue\"},{\"name\":\"mm list\",\"description\":\"List mental models on the active bank\"},{\"name\":\"mm show\",\"description\":\"Show one mental model (id required)\"},{\"name\":\"mm refresh\",\"description\":\"Refresh auto-refresh models bank-wide, or one model by id\"},{\"name\":\"mm history\",\"description\":\"Diff the change history of a mental model\"},{\"name\":\"mm seed\",\"description\":\"Create any built-in mental models that are missing\"},{\"name\":\"mm delete\",\"description\":\"Delete a mental model from the bank (id required)\"},{\"name\":\"mm reload\",\"description\":\"Re-pull the cached <mental_models> block\"}],\"source\":\"builtin\"},{\"name\":\"rename\",\"description\":\"Rename the current session (omit title to generate)\",\"input\":{\"hint\":\"[title]\"},\"source\":\"builtin\"},{\"name\":\"move\",\"description\":\"Move the current session to a different directory\",\"input\":{\"hint\":\"[<path>]\"},\"source\":\"builtin\"},{\"name\":\"wt\",\"aliases\":[\"worktree\"],\"description\":\"Move this session into a new worktree, changes included\",\"input\":{\"hint\":\"[<branch>]\"},\"source\":\"builtin\"},{\"name\":\"add-dir\",\"description\":\"Add a workspace directory to this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"remove-dir\",\"description\":\"Remove a workspace directory from this session\",\"input\":{\"hint\":\"<path>\"},\"source\":\"builtin\"},{\"name\":\"dirs\",\"description\":\"List this session's workspace directories\",\"source\":\"builtin\"},{\"name\":\"marketplace\",\"description\":\"Manage plugins from marketplaces\",\"input\":{\"hint\":\"<subcommand>\"},\"subcommands\":[{\"name\":\"add\",\"description\":\"Add a marketplace source\",\"usage\":\"<source>\"},{\"name\":\"remove\",\"description\":\"Remove a marketplace source\",\"usage\":\"<name>\"},{\"name\":\"update\",\"description\":\"Update marketplace catalog(s)\",\"usage\":\"[name]\"},{\"name\":\"list\",\"description\":\"List configured marketplaces\"},{\"name\":\"discover\",\"description\":\"Browse available plugins\",\"usage\":\"[marketplace]\"},{\"name\":\"install\",\"description\":\"Install a plugin (interactive browser if no args)\",\"usage\":\"[--force] [name@marketplace]\"},{\"name\":\"uninstall\",\"description\":\"Uninstall a plugin (selector if no args)\",\"usage\":\"[name@marketplace]\"},{\"name\":\"installed\",\"description\":\"List installed marketplace plugins\"},{\"name\":\"upgrade\",\"description\":\"Upgrade outdated plugins\",\"usage\":\"[name@marketplace]\"},{\"name\":\"help\",\"description\":\"Show usage guide\"}],\"source\":\"builtin\"},{\"name\":\"plugins\",\"aliases\":[\"plugin\"],\"description\":\"Manage plugins\",\"input\":{\"hint\":\"[list|enable|disable]\"},\"subcommands\":[{\"name\":\"list\",\"description\":\"List all installed plugins (npm + marketplace)\"},{\"name\":\"enable\",\"description\":\"Enable an installed plugin\",\"usage\":\"<plugin>\"},{\"name\":\"disable\",\"description\":\"Disable an installed plugin\",\"usage\":\"<plugin>\"}],\"source\":\"builtin\"},{\"name\":\"reload-plugins\",\"description\":\"Reload all plugins\",\"source\":\"builtin\"},{\"name\":\"force\",\"aliases\":[\"force:\"],\"description\":\"Force next turn to use a specific tool\",\"input\":{\"hint\":\"<tool-name> [prompt]\"},\"source\":\"builtin\"},{\"name\":\"startup-v7-guards\",\"description\":\"Isolated compiled OMP V7 guard acceptance probe\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"autoresearch\",\"description\":\"Toggle builtin autoresearch mode, or pass off / clear, or a goal message.\",\"input\":{\"hint\":\"arguments\"},\"source\":\"extension\"},{\"name\":\"init\",\"description\":\"Generate AGENTS.md for current codebase\",\"source\":\"file\"}]}\n{\"id\":\"negative\",\"type\":\"response\",\"command\":\"prompt\",\"success\":true}\n{\"type\":\"prompt_result\",\"id\":\"negative\",\"agentInvoked\":false,\"status\":\"completed\",\"sessionSettled\":false}\n",
       "stderr": ""
     }
   ],

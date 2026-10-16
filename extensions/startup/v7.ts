@@ -49,7 +49,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   registerTools(host, () => failure === null ? admitted : null);
   async function initialize(ctx: NativeContext, command: BootCommand | null): Promise<void> {
     const nativeFile: string = await nativeRoot(host, ctx);
-    const location = paneEnvironment(input.environment);
+    const location = await paneEnvironment(input.environment);
     const next: Selection | null = bootSelection({ cwd: ctx.cwd, home: input.home, skillsRoot: input.skillsRoot, command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
     if (next === null) return;
     if (admitted !== null) {
@@ -126,7 +126,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
           host.sendMessage({ customType: "startup-work", content: `Saved Startup work event ${commandReceipt?.inputId}. Delegate a complete architect-led crew through startup_delegate.`, display: true }, { triggerTurn: true, deliverAs: "nextTurn" });
         else host.sendMessage({ customType: "startup-status", content: encode(await admitted.client.request({ kind: "staff" })), display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
         commandReceipt = null;
-      } catch (error: unknown) { report(error); ctx.abort?.(); throw error; }
+      } catch (error: unknown) { report(error); ctx.abort?.(); }
     },
   });
   host.on("session_stop", (_event, ctx) => {

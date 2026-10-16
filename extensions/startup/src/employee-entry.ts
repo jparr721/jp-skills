@@ -6,8 +6,9 @@ import type { HostAPI } from "../index";
 import { ompProfileSchema } from "../install";
 import { StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, roleSchema, sourceSchema, type Json } from "./contracts";
-import { connectEmployee, installEmployeeBridge, installEmployeeToolGuard, type EmployeeClient } from "./employee-client";
+import { connectEmployee, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
 import { itemActionSchema } from "./items";
+import { herdrContext } from "./herdr-runtime";
 import type { NativeContext, NativeResult } from "./omp-adapter";
 import { loadProfile, verifyProfile } from "./profiles";
 import { readPrivateJson } from "./v7-launch";
@@ -19,7 +20,7 @@ const manifestSchema = z.strictObject({
 });
 export type LaunchManifest = z.infer<typeof manifestSchema>;
 export type Environment = Readonly<Record<string, string | undefined>>;
-export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext }>;
+export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext; close: () => void }>;
 export const inputSchema = z.object({ text: z.string(), source: z.enum(["interactive", "rpc", "extension"]), images: z.array(jsonSchema).optional() });
 export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<string> {
   if (typeof ctx.abort !== "function") throw new StartupBootError("Startup V7 requires the actual native abort capability before admission");
@@ -41,13 +42,16 @@ export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<str
     throw new StartupBootError("A parented native transcript cannot become a Startup employee root");
   return file;
 }
-export function paneEnvironment(environment: Environment): Readonly<{ paneId: string; workspaceId: string; session: string; profile: string }> {
-  if (environment.HERDR_ENV !== "1") throw new StartupBootError("Startup requires an existing Herdr pane with HERDR_ENV=1");
+export async function paneEnvironment(environment: Environment): Promise<Readonly<{ paneId: string; workspaceId: string; session: string; profile: string }>> {
+  const session = environment.STARTUP_HERDR_SESSION?.trim() || environment.HERDR_SESSION?.trim() || null;
+  const paneId = environment.HERDR_PANE_ID?.trim();
+  const workspaceId = environment.HERDR_WORKSPACE_ID?.trim();
+  const location = paneId && workspaceId && session ? { paneId, workspaceId, session } :
+    await herdrContext({ binary: environment.HERDR_BIN_PATH?.trim() || "herdr", session });
+  const profile = ompProfileSchema.safeParse(environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim() || "default");
+  if (!profile.success) throw new StartupBootError("Invalid OMP_PROFILE/PI_PROFILE; use the active OMP profile name and retry Startup");
   return {
-    paneId: z.string().min(1).parse(environment.HERDR_PANE_ID),
-    workspaceId: z.string().min(1).parse(environment.HERDR_WORKSPACE_ID),
-    session: z.string().min(1).parse(environment.STARTUP_HERDR_SESSION ?? environment.HERDR_SESSION),
-    profile: ompProfileSchema.parse(environment.OMP_PROFILE),
+    ...location, profile: profile.data,
   };
 }
 function verifyManifest(manifest: LaunchManifest): void {
@@ -64,13 +68,14 @@ export function sameRoot(admission: Admission, ctx: NativeContext): boolean {
 export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment): Promise<Admission> {
   verifyManifest(manifest);
   const nativeSession: string = await nativeRoot(host, ctx);
-  const location = paneEnvironment(environment);
-  if (location.profile !== manifest.profile) throw new StartupBootError("Actual named OMP profile differs from the launch manifest");
-  const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId: location.paneId });
+  const actualProfile = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim();
+  if (actualProfile && actualProfile !== manifest.profile) throw new StartupBootError("Actual named OMP profile differs from the launch manifest");
+  const paneId: string = environment.HERDR_PANE_ID?.trim() || (await paneEnvironment(environment)).paneId;
+  const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId });
   const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000 });
   try { await bridge.poll(); }
   catch (error: unknown) { bridge.close(); throw error; }
-  return { client, context: ctx };
+  return { client, context: ctx, close: bridge.close };
 }
 function nativeResult(value: Json): NativeResult {
   const image = z.object({ type: z.literal("image"), data: z.string(), mimeType: z.string().startsWith("image/") }).passthrough().safeParse(value);
@@ -148,6 +153,44 @@ export function installLaunchedEmployee(host: HostAPI, manifestPath: string): vo
   let admitted: Admission | null = null;
   let failure: string | null = null;
   let failureTurnPending: boolean = false;
+  let retryTimer: ReturnType<typeof setInterval> | null = null;
+  let pending: Promise<void> | null = null;
+  let stopped: boolean = false;
+  async function initialize(ctx: NativeContext): Promise<void> {
+    let manifest: LaunchManifest | null = null;
+    try {
+      manifest = manifestSchema.parse(readPrivateJson(manifestPath));
+      const next = await attach(host, ctx, manifest, process.env);
+      if (stopped) { next.close(); return; }
+      admitted = next;
+      failure = null;
+      failureTurnPending = false;
+      if (retryTimer !== null) { ctx.clearTimer(retryTimer); retryTimer = null; }
+    } catch (error: unknown) {
+      const detail: string = error instanceof Error ? error.message : String(error);
+      const reason: string = manifest === null ? detail : detail.replaceAll(manifest.credential, "[redacted]");
+      if (stopped) return;
+      if (failure !== reason) {
+        failureTurnPending = true;
+        host.sendMessage({ customType: "startup-boot-error", content: `Startup employee boot blocked: ${reason}. Admission will retry in 5 seconds; /startup-retry retries immediately.`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+      }
+      failure = reason;
+      ctx.abort?.();
+      if (manifest !== null) {
+        try { await reportLaunchFailure({ socketPath: manifest.socketPath, credential: manifest.credential, error: reason }); }
+        catch (reportError: unknown) {
+          host.sendMessage({ customType: "startup-boot-report-error", content: reportError instanceof Error ? reportError.message : String(reportError), display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+        }
+      }
+      if (!stopped && retryTimer === null) retryTimer = ctx.setInterval(() => { void retry(ctx); }, 5000);
+    }
+  }
+  async function retry(ctx: NativeContext): Promise<void> {
+    if (stopped || ctx.agent.kind !== "main" || admitted !== null) return;
+    if (pending !== null) return pending;
+    pending = initialize(ctx);
+    try { await pending; } finally { pending = null; }
+  }
   host.on("tool_call", (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
     if (failure !== null || admitted === null || !sameRoot(admitted, ctx))
@@ -158,20 +201,22 @@ export function installLaunchedEmployee(host: HostAPI, manifestPath: string): vo
     if (ctx.agent.kind === "main" && (failure !== null || admitted === null || !sameRoot(admitted, ctx))) ctx.abort?.();
   });
   registerTools(host, () => failure === null ? admitted : null);
+  host.registerCommand("startup-retry", { description: "Retry Startup employee admission in the existing pane.", handler: async (_args, ctx) => { await retry(ctx); } });
   host.on("session_start", async (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
-    try {
-      if (admitted !== null) throw new StartupBootError("Launched employee is already bound; root switching requires explicit relaunch");
-      const manifest: LaunchManifest = manifestSchema.parse(readPrivateJson(manifestPath));
-      admitted = await attach(host, ctx, manifest, process.env);
-      failure = null;
-    } catch (error: unknown) {
-      failure = error instanceof Error ? error.message : String(error);
-      failureTurnPending = true;
-      host.sendMessage({ customType: "startup-boot-error", content: `Startup employee boot blocked: ${failure}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+    if (admitted !== null) {
+      failure = "Launched employee is already bound; root switching requires explicit relaunch";
+      host.sendMessage({ customType: "startup-boot-error", content: failure, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
       ctx.abort?.();
-      throw error;
+      return;
     }
+    await retry(ctx);
+  });
+  host.on("session_shutdown", (_event, ctx) => {
+    if (ctx.agent.kind !== "main") return;
+    stopped = true;
+    if (retryTimer !== null) { ctx.clearTimer(retryTimer); retryTimer = null; }
+    admitted?.close();
   });
   host.on("session_stop", (_event, ctx) => {
     if (failure === null || !failureTurnPending || ctx.agent.kind !== "main") return;
