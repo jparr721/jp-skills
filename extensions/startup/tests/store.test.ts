@@ -1873,6 +1873,22 @@ test("manager claims technical reports ahead of retained lifecycle backlog", () 
   f.store.close();
 });
 
+test("fresh technical reports bypass retained direct-pane oversight notices", () => {
+  const f = fixture();
+  const t = active(f, "pane-oversight-priority", []);
+  for (let index = 0; index < 20; index += 1) f.store.runtimeAlert({
+    id: `pane-oversight-${index}`, correlation: "pane-oversight-priority",
+    payload: { kind: "direct-pane-input", employeeId: t.dev, text: "Earlier employee control input", observedAt: 1 },
+  });
+  f.store.sendCue({ sender: t.architectBinding, cue: { id: "fresh-gate-proof", recipient: "manager", kind: "report", correlation: "pane-oversight-priority", payload: "Current exact-head gate proof" } });
+  expect(f.store.employeeView("manager").messages[0]?.id).toBe("fresh-gate-proof");
+  expect(f.store.claimNext({ employee: f.store.managerBinding })?.message.id).toBe("fresh-gate-proof");
+  f.store.settleClaim({ employee: f.store.managerBinding, result: completed("fresh-gate-receipt") });
+  expect(f.store.employeeView("manager").messages.map((m) => m.id)).toEqual(Array.from({ length: 20 }, (_, index) => `pane-oversight-${index}`));
+  expect(f.store.claimNext({ employee: f.store.managerBinding })?.message.id).toBe("pane-oversight-0");
+  f.store.close();
+});
+
 
 test("routine PA reports remain durable summaries while PA alerts and technical reports are claimable", () => {
   const f = fixture();

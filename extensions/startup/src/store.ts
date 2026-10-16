@@ -333,7 +333,6 @@ export function openStore(args: {
       if (!parsed.success) return 2;
       const data = parsed.data;
       if (data.kind === "runtime-observation") return null;
-      if (data.kind === "direct-pane-input") return 0;
       if (["boot-failed", "launch-uncertain", "layout-uncertain", "launch-stalled"].includes(data.kind)) {
         const runtime = data.employeeId === undefined ? null : runtimeFor(data.employeeId);
         return runtime?.state === "ready" && runtime.error === null ? null : 0;

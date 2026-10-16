@@ -8,7 +8,7 @@ Retain `id, source, status, repo, remote, target, merge-strategy, branch, worktr
 
 ## Manager inbox delivery
 
-Manager claiming and automatic wakes use the same ordered actionable inbox: current failures and questions first, crew technical reports next, then other unresolved alerts, preserving message sequence within each class. Workers retain their own FIFO inboxes. Use `startup_claim`; the projected ready list already reflects delivery priority.
+Manager claiming and automatic wakes use the same ordered actionable inbox: current failures and questions first, crew technical reports next, then direct-pane oversight notices and other unresolved alerts, preserving message sequence within each class. Employee-pane input observations retain the original input for oversight; they do not preempt technical proof. Workers retain their own FIFO inboxes. Use `startup_claim`; the projected ready list already reflects delivery priority.
 
 Routine PA reports and lifecycle idle/done observations remain durable TO manager. They do not require a manager inference turn or automatic historical-mail drain. `STARTUP_INBOX` supplies the deferred count and latest PA report when the manager next works. Current PA alerts/questions remain actionable; scheduled PA checks and authenticated polling continue.
 
