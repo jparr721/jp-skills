@@ -2,6 +2,21 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.13] - 2026-10-16
+
+### Fixed
+
+- Unchanged durable messages no longer generate another inference wake every 30 seconds. New messages coalesce behind one scheduled native wake.
+- Provider failures pause automatic inference while authenticated polling continues. The pause survives same-transcript reattachment and requires explicit interactive/RPC input to resume; automatic cues and connection recovery cannot clear it.
+- Repeated unchanged HTTP400/403/409 command failures, including unresolved claims, are suppressed locally and abort the native turn. Corrected commands, changed claim state and fresh authentication permit recovery. Capacity admission/release and service failures remain retryable.
+- Coordinator/store source and protocol remain unchanged; preserve the existing coordinator and refresh clients to retain active claims and crew state.
+
+### Verification
+
+- Regressions reproduced before the fix; 326 tests, 1653 assertions, TypeScript checking and six probe-driver tests pass.
+- Twelve installed OMP offline-provider checks pass. After one simulated provider failure, 100 new inbox states and a queued retry produce zero additional provider calls. No paid verification calls, budget changes or credential changes.
+- Request suppression is proven; post-fix billing savings and live provider-cache percentages remain unmeasured. See docs/startup-v7/cost-control-acceptance.json.
+
 ## [7.0.12] - 2026-10-16
 
 ### Fixed
