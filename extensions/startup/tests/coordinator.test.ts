@@ -626,3 +626,16 @@ test("supervision does not load completed result or claim history", async () => 
   try { await f.coordinator.tick(); expect(f.coordinator.health().supervision.errors).toEqual([]); }
   finally { f.store.snapshot = snapshot; }
 });
+
+test("root capacity polling reconciliation never loads semantic work history", async () => {
+  const f = fixture(8);
+  const { manager, paConnection } = await f.ready();
+  const snapshot = f.store.snapshot;
+  f.store.snapshot = () => { throw new Error("Capacity reconciliation must not load semantic work history"); };
+  try {
+    for (const connection of [manager, paConnection]) {
+      expect(await f.coordinator.command(connection, { kind: "begin_turn" })).toEqual({ admitted: true });
+      expect(await f.coordinator.command(connection, { kind: "end_turn" })).toEqual({ released: true });
+    }
+  } finally { f.store.snapshot = snapshot; }
+});

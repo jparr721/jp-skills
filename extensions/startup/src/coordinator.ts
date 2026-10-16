@@ -275,7 +275,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   async function execute(connection: string, value: Json): Promise<Json> {
     const request = commandSchema.parse(value);
     const current = actor(connection);
-    const before = encode(store.snapshot());
+    const before = request.kind === "begin_turn" || request.kind === "end_turn" ? null : encode(store.snapshot());
     let output: unknown;
     switch (request.kind) {
       case "begin_turn": {
@@ -410,7 +410,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       case "retire": manager(connection); output = store.retireEmployees({ manager: current.binding, employeeIds: request.employeeIds, evidence: request.evidence }); break;
       case "block": manager(connection); output = store.runtimeAlert({ id: `block-${request.key}-${digest(encode(request.evidence)).slice(0, 12)}`, correlation: request.key, payload: { kind: "reported-blocker", evidence: request.evidence } }); break;
     }
-    if (before !== encode(store.snapshot())) progress(current.employee.id);
+    if (before !== null && before !== encode(store.snapshot())) progress(current.employee.id);
     return output === undefined ? null : json(output);
   }
   function waitReason(current: Employee, view: ReturnType<StartupStore["employeeView"]>): string | null {
