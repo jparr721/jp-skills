@@ -1,0 +1,821 @@
+{
+  "release": "7.0.18",
+  "observedFromUtc": "2026-10-16T20:14:21.138000+00:00",
+  "observedThroughUtc": "2026-10-16T20:54:52.225000+00:00",
+  "scope": "Authorized PR4537 landing and original dependent-crew integration; no new release or native restart",
+  "pr4537": {
+    "url": "https://github.com/sythelabs/warlock/pull/4537",
+    "approvedHead": "2e9c65778eb428176e5dac22218eefe21eb8b076",
+    "mergedAtUtc": "2026-10-16T20:13:08Z",
+    "mergeCommit": "93642ed18724837cd8952491e5888424b2be0638",
+    "gates": {
+      "checks": {
+        "skipped": 1,
+        "success": 36
+      },
+      "requiredCheck": "merge gate",
+      "requiredCheckSuccess": true,
+      "githubReviewCountRequired": false,
+      "ownArchitectAndIndependentQaApprove": true,
+      "method": "normal merge commit, API conditional on exact approved head"
+    },
+    "canonicalReviewItem": "DONE revision29 preserved; actual landing is independently verified GitHub state"
+  },
+  "pr4536": {
+    "url": "https://github.com/sythelabs/warlock/pull/4536",
+    "crew": "818b18bf-6d32-461c-b4b5-1758003a2d8f",
+    "originalHead": "122f5a1817100b9268234de787e5cc195488e2d7",
+    "pushedHead": "e477dfd365d70dec51980e0db2a56fe8714ffeda",
+    "foundationIsAncestor": true,
+    "integrationCommit": "db7f2c39684c4fcdeb37fcccaf4e8913a156e469",
+    "fixCommit": "b6ad369bf564f81f5d96ac3ceb4f7d3d52db5a32",
+    "netFilesAgainstFoundation": [
+      ".github/workflows/ci.yml",
+      "apps/web/package.json",
+      "docs/runbooks/railway-production-environment.md",
+      "turbo.json"
+    ],
+    "fixes": [
+      "Select web for any apps/api package change",
+      "Include workspace package sources in app build hash inputs"
+    ],
+    "localDevProof": "Turbo JSON parses, CI shell bash -n passes; not a full build claim",
+    "latestChecks": [
+      {
+        "name": "apply Railway IaC (production)",
+        "status": "completed",
+        "conclusion": "skipped",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456727/job/117189426906"
+      },
+      {
+        "name": "merge gate",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456727/job/117189222739"
+      },
+      {
+        "name": "per-package builds",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456727/job/117185053270"
+      },
+      {
+        "name": "migrations",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456727/job/117185053205"
+      },
+      {
+        "name": "quality",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456727/job/117185052937"
+      },
+      {
+        "name": "tests",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456727/job/117185052645"
+      },
+      {
+        "name": "typecheck (packages/host-protocol)",
+        "status": "queued",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184009318"
+      },
+      {
+        "name": "typecheck (packages/request-policy)",
+        "status": "queued",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008982"
+      },
+      {
+        "name": "typecheck (packages/emails)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008903"
+      },
+      {
+        "name": "typecheck (packages/command-palette-core)",
+        "status": "queued",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008847"
+      },
+      {
+        "name": "typecheck (apps/homepage)",
+        "status": "queued",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008838"
+      },
+      {
+        "name": "typecheck (apps/scan-service)",
+        "status": "queued",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008822"
+      },
+      {
+        "name": "typecheck (packages/slash-commands)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008816"
+      },
+      {
+        "name": "typecheck (packages/command-palette-codegen)",
+        "status": "queued",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008804"
+      },
+      {
+        "name": "typecheck (packages/app-schemas)",
+        "status": "queued",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008799"
+      },
+      {
+        "name": "typecheck (packages/auth-policy)",
+        "status": "queued",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008793"
+      },
+      {
+        "name": "typecheck (packages/http-problem)",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008772"
+      },
+      {
+        "name": "typecheck (apps/host-agent)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008758"
+      },
+      {
+        "name": "typecheck (packages/operator-presets)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008756"
+      },
+      {
+        "name": "typecheck (apps/e2e)",
+        "status": "queued",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008738"
+      },
+      {
+        "name": "typecheck (packages/policy-constants)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008721"
+      },
+      {
+        "name": "typecheck (apps/api)",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008686"
+      },
+      {
+        "name": "typecheck (packages/api-types)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008684"
+      },
+      {
+        "name": "typecheck (apps/web)",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008682"
+      },
+      {
+        "name": "typecheck (packages/scan-protocol)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008646"
+      },
+      {
+        "name": "typecheck (packages/command-palette-react)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008608"
+      },
+      {
+        "name": "production configuration contracts",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008329"
+      }
+    ],
+    "firstFixHead": "b6ad369bf564f81f5d96ac3ceb4f7d3d52db5a32",
+    "formatFixCommit": "e477dfd365d70dec51980e0db2a56fe8714ffeda",
+    "currentCanonical": {
+      "id": "pr-4536-review",
+      "revision": 17,
+      "status": "QUEUED"
+    },
+    "independentProof": [
+      "Actual historical API package.json change: old apps/api/src pathspec misses it, new apps/api selects it",
+      "All six build-task workspace input declarations preserved",
+      "Format-only second commit verified and bunx biome check turbo.json exits0",
+      "Subject registry build passes"
+    ],
+    "remaining": "Exact-new-head CI still incomplete at observation. Local full web build lacked existing client env; no full local build success or merge claimed. Original intake head is historical, current explicit directive uses e477dfd3."
+  },
+  "pr4538": {
+    "url": "https://github.com/sythelabs/warlock/pull/4538",
+    "crew": "6097b797-5f6c-4194-8fc7-ae7a9fe7f54d",
+    "originalHead": "75ea5475c0646d83e91a3a7ad2edb96118e25de5",
+    "pushedHead": "f11f2035c57fc0edafcaffa0e4ff126a2b8f9e93",
+    "parents": [
+      "75ea5475c0646d83e91a3a7ad2edb96118e25de5",
+      "93642ed18724837cd8952491e5888424b2be0638"
+    ],
+    "netFilesAgainstMain": 0,
+    "independentQaResult": "qa-row4-proof-20261016-gen1",
+    "proof": [
+      "scan-service bundled build PASS",
+      "build outputs assertion PASS, five contracts",
+      "empty selection rejected exit1",
+      "68 scan-service tests PASS",
+      "typecheck PASS",
+      "API filtered build PASS"
+    ],
+    "ciFailure": {
+      "job": "https://github.com/sythelabs/warlock/actions/runs/38961933384/job/117178873683",
+      "step": "Assert declared and produced build outputs",
+      "log": [
+        "Tasks: 0 successful, 0 total",
+        "MISMATCH: no selected build tasks verified; empty selection must not pass"
+      ],
+      "disposition": "Zero residual diff and own architect/manager already-integrated receipts verified. User authorized closure: GitHub PR closed without merge, redundant rows superseded, crew finished and retired; guard and history preserved."
+    },
+    "latestChecks": [
+      {
+        "name": "tests",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38961933384/job/117178873990"
+      },
+      {
+        "name": "migrations",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38961933384/job/117178873967"
+      },
+      {
+        "name": "quality",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38961933384/job/117178873880"
+      },
+      {
+        "name": "per-package builds",
+        "status": "completed",
+        "conclusion": "failure",
+        "details_url": "https://github.com/sythelabs/warlock/actions/runs/38961933384/job/117178873683"
+      }
+    ]
+  },
+  "canonicalTransitions": [
+    {
+      "atAudit": 10693364,
+      "item": "pr-4538-row-4",
+      "revision": 2,
+      "action": "assign",
+      "status": "EXECUTING"
+    },
+    {
+      "atAudit": 10705611,
+      "item": "pr-4536-review",
+      "revision": 7,
+      "action": "decide",
+      "status": "QUEUED"
+    },
+    {
+      "atAudit": 10707096,
+      "item": "pr-4536-review",
+      "revision": 8,
+      "action": "assign",
+      "status": "EXECUTING"
+    },
+    {
+      "atAudit": 10722082,
+      "item": "pr-4538-row-4",
+      "revision": 3,
+      "action": "review",
+      "status": "REVIEW"
+    },
+    {
+      "atAudit": 10731897,
+      "item": "pr-4538-row-4",
+      "revision": 4,
+      "action": "qa_assign",
+      "status": "REVIEW"
+    },
+    {
+      "atAudit": 10740480,
+      "item": "pr-4538-row-4",
+      "revision": 5,
+      "action": "qa",
+      "status": "REVIEW"
+    },
+    {
+      "atAudit": 10761595,
+      "item": "pr-4536-review",
+      "revision": 9,
+      "action": "review",
+      "status": "REVIEW"
+    },
+    {
+      "atAudit": 10768799,
+      "item": "pr-4536-review",
+      "revision": 10,
+      "action": "qa_assign",
+      "status": "REVIEW"
+    },
+    {
+      "atAudit": 10800096,
+      "item": "pr-4536-review",
+      "revision": 11,
+      "action": "qa",
+      "status": "REVIEW"
+    },
+    {
+      "atAudit": 10803068,
+      "item": "pr-4536-review",
+      "revision": 12,
+      "action": "gate",
+      "status": "QUEUED"
+    },
+    {
+      "atAudit": 10803961,
+      "item": "pr-4536-review",
+      "revision": 13,
+      "action": "assign",
+      "status": "EXECUTING"
+    },
+    {
+      "atAudit": 10809191,
+      "item": "pr-4536-review",
+      "revision": 14,
+      "action": "review",
+      "status": "REVIEW"
+    },
+    {
+      "atAudit": 10811492,
+      "item": "pr-4536-review",
+      "revision": 15,
+      "action": "qa_assign",
+      "status": "REVIEW"
+    },
+    {
+      "atAudit": 10821513,
+      "item": "pr-4536-review",
+      "revision": 16,
+      "action": "qa",
+      "status": "REVIEW"
+    },
+    {
+      "atAudit": 10823244,
+      "item": "pr-4536-review",
+      "revision": 17,
+      "action": "gate",
+      "status": "QUEUED"
+    },
+    {
+      "atAudit": 10833652,
+      "item": "pr-4538-row-4",
+      "revision": 6,
+      "action": "decide",
+      "status": "REJECTED"
+    }
+  ],
+  "technicalResults": [
+    {
+      "employeeId": "fb115a98-2a78-43ce-afe8-453cab4fb851",
+      "id": "pr-4538-row-4",
+      "kind": "completed",
+      "output": {
+        "assertScript": "PASS exit 0: OK 5 contracts, 1 selected verified",
+        "base": "main",
+        "build": "PASS turbo scan-service build, 1 successful, Bundled 853 modules",
+        "dist": "dist/scan-service.js 2688276B + .map 5424216B",
+        "emptySelection": "FAIL exit 1 with MISMATCH no selected build tasks verified (F1 guard proven)",
+        "f1Guard": "inherited via merged PR4537 commit 2e9c65778e, present lines 95-97",
+        "head": "f11f2035c57fc0edafcaffa0e4ff126a2b8f9e93",
+        "merge": "origin/main 93642ed187 merged, no rebase, pushed 75ea5475c0..f11f2035c5",
+        "pr": "https://github.com/sythelabs/warlock/pull/4538",
+        "pushed": true,
+        "tests": "PASS bun test apps/scan-service: 68 pass 0 fail (root bun test misfire ignored, wrong scope)",
+        "typecheck": "PASS apps/scan-service tsgo exit 0 (21 tasks via turbo cache)"
+      },
+      "reports": [
+        {
+          "id": "row4-report-20261017",
+          "recipient": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0",
+          "sequence": 17503
+        },
+        {
+          "id": "item-result-item-arch-assign-row4-dev-20261017-fb115a98-2a78-43ce-afe8-453cab4fb851",
+          "recipient": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0",
+          "sequence": 17504
+        }
+      ]
+    },
+    {
+      "employeeId": "fb115a98-2a78-43ce-afe8-453cab4fb851",
+      "id": "pr-4538-row-4-reviewreq-ack",
+      "kind": "completed",
+      "output": {
+        "status": "REVIEW recorded rev 3 with settled resultId pr-4538-row-4, ready for QA",
+        "verdict": "done"
+      },
+      "reports": []
+    },
+    {
+      "employeeId": "46e578d6-7244-402b-a2ee-902a3a347fd2",
+      "id": "qa-row4-proof-20261016-gen1",
+      "kind": "completed",
+      "output": "QA APPROVE pr-4538-row-4 rev4 head f11f2035c5 (post-PR4537-merge). Scoped proof in fix-4538 worktree (clean): scan-service dist build PASS (853 modules, 2.69MB js + 5.42MB map); dist executes (env-gate fires); CI-style turbo --filter=scan-service PASS; assert-build-outputs PASS (5 contracts); bun test 68/68 PASS; tsgo PASS; api filter build PASS. PR-owned delta since row-3: PR4537 merge (pkgs CI foundation - merge dependency now satisfied) plus CI postgres action extraction and empty-selection guard in assert script. Start cutover NOT done (start still src entrypoint; manager-coordinated). No browser surface for build-config change. Overlap: none with rows 1-3 (distinct items).",
+      "reports": []
+    },
+    {
+      "employeeId": "46e578d6-7244-402b-a2ee-902a3a347fd2",
+      "id": "qa-row4-record-dup-20261017",
+      "kind": "completed",
+      "output": "No-op: row-4 QA proof already settled (qa-row4-proof-20261016-gen1) and verdict already recorded via startup_item qa at rev5 APPROVE. Architect record cue is a duplicate of completed work; no new proof performed.",
+      "reports": []
+    },
+    {
+      "employeeId": "ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+      "id": "dev-pr4536-rev8-integration-20261016",
+      "kind": "completed",
+      "output": "rev8 DONE (no merge, branch push only). Repo warlock origin git@github.com:sythelabs/warlock.git, worktree ~/.config/jp-skills/worktrees/warlock/fix-4536 branch build/per-package-web. Commits: b6ad369bf5 carryover fixes, db7f2c3968 merge origin/main, foundation 93642ed187 PR4537 merged in main. Files: .github/workflows/ci.yml (api filter apps/api/src->apps/api + comment), turbo.json (packages/** hash inputs on build/api/homepage/scan-service/web/host-agent), docs/runbooks/railway-production-environment.md (paragraph aligned). Carryovers resolved: scan-service build script + verifiedTasks==0 guard already in main via 4537 (verified present); api non-src hole + stale-cache hole fixed in b6ad369b. Verify: turbo.json parses OK, CI shell snippet bash -n OK, branch clean, pushed 122f5a18..b6ad369b. CI on new head: CI run 38962491867 + validation 38962491880 both queued on sha b6ad369b (pending at settle). PR4536 OPEN, no merge attempted per noMerge:true.",
+      "reports": [
+        {
+          "id": "item-result-item-arch-assign-pr4536-03-ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+          "recipient": "66334a19-ead4-4bbb-ac66-c7a477174557",
+          "sequence": 17531
+        }
+      ]
+    },
+    {
+      "employeeId": "48c630ba-41a6-4eaf-b4c1-471ebc851fe8",
+      "id": "qa-pr4536-rev8-20261016",
+      "kind": "completed",
+      "output": "QA REDO pr-4536-review rev10 (resultId dev-pr4536-rev8-integration-20261016). Scope per arch-qaassign-pr4536-01: whole-apps/api selection + packages/** hash inputs + full build proof. REGRESSION1 PASS: commit 39777cb8e1 touching apps/api/package.json - old pathspec apps/api/src matches EMPTY, new apps/api matches apps/api/package.json; non-src api drift now selects web. REGRESSION2 PASS: turbo.json parses OK; $TURBO_ROOT$/packages/** present in build, host-agent#build, api#build, homepage#build, scan-service#build, web#build inputs; web#build retains apps/api/src/**. HEAD MISMATCH: requested exact-head 122f5a1817100b9268234de787e5cc195488e2d7 != actual b6ad369bf564f81f5d96ac3ceb4f7d3d52db5a32 (branch advanced: db7f2c3968 merge origin/main incl 93642ed187 PR4537 + b6ad369b carryover; apps/web/package.json heap change from cf4d781642/f86de007b2/5b7d886ba0 carryovers). CI NOT GREEN: all checks pending on b6ad369b (per-package builds/tests/quality/migrations/typechecks, runs 38962491867/38962491880). BUILD PROOF FAIL: turbo build --filter=web after bun install - build:subject-registry OK, web#build FAIL EnvSchema.parse lib/utils/env.ts:237 (expected string, received undefined) collecting /user/grc/tasks/[id]; missing client env locally, not PR-caused, but no full build proof exists. REDO: re-baseline acceptance to b6ad369b, await green current-head CI, supply full build proof with env.",
+      "reports": []
+    },
+    {
+      "employeeId": "ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+      "id": "dev-pr4536-rev13-format-20261016",
+      "kind": "completed",
+      "output": "rev13 DONE (no merge). Repo warlock origin git@github.com:sythelabs/warlock.git, worktree ~/.config/jp-skills/worktrees/warlock/fix-4536 branch build/per-package-web. File: turbo.json only - biome format --write expanded web#build inputs to multi-line; content unchanged. Preserved: whole-apps/api web selection in ci.yml (untouched), packages/** hash inputs on all build tasks (verified present), PR4537 scan-service build script + verifiedTasks==0 guard (untouched). Verify: bunx biome check turbo.json passes locally; pre-commit hook ran biome check on 9190 files clean. Pushed b6ad369b..e477dfd3, new head e477dfd365d70dec51980e0db2a56fe8714ffeda. PR4536 OPEN, no merge per noMerge:true.",
+      "reports": [
+        {
+          "id": "item-result-item-arch-assign-pr4536-04-ee169f60-0948-44b7-9885-aa3e0dbc85ce",
+          "recipient": "66334a19-ead4-4bbb-ac66-c7a477174557",
+          "sequence": 17576
+        }
+      ]
+    },
+    {
+      "employeeId": "48c630ba-41a6-4eaf-b4c1-471ebc851fe8",
+      "id": "qa-pr4536-rev13-20261016",
+      "kind": "completed",
+      "output": "QA REDO pr-4536-review rev15 (resultId dev-pr4536-rev13-format-20261016). Scope per arch-qaassign-pr4536-02: format-only diff + preserved contracts + full build proof with env + exact-new-head CI. FORMAT-ONLY PASS: e477dfd3 vs b6ad369b = turbo.json only, web#build inputs expanded single-line to multi-line, identical entries ($TURBO_DEFAULT$, .env*, apps/api/src/**, packages/**). PRESERVED PASS: whole-apps/api web selection in ci.yml line 157 (-- apps/api) untouched; packages/** hash inputs present on all 6 build tasks (build, host-agent#build, api#build, homepage#build, scan-service#build, web#build); PR4537 verifiedTasks==0 guard intact in scripts/assert-build-outputs.ts:61,81,95. FORMAT PASS: bunx biome check turbo.json exit 0. REGISTRY PASS: bun --filter=web run build:subject-registry exit 0, wrote subjects/index.ts. CI NOT GREEN: new head e477dfd365d70dec51980e0db2a56fe8714ffeda, all 21 checks pending (run 38963456678, production contracts + all typechecks); required current-head CI not green. HEAD: acceptance still names 122f5a18, actual e477dfd3 - needs re-baselining. No merge attempted (branch-only pushes). REDO: await green CI on e477dfd3, re-baseline acceptance to e477dfd3, CI per-package-builds job supplies full build proof with env.",
+      "reports": []
+    }
+  ],
+  "usage": {
+    "scope": "Appended native assistant usage from all original hired roots, actual authorized work; not reconciled billing",
+    "wholeWindow": {
+      "minutes": 40.5181,
+      "requests": 383,
+      "inputTokens": 867111,
+      "outputTokens": 207612,
+      "cacheReadTokens": 122275305,
+      "cacheWriteTokens": 0,
+      "cacheReusePercent": 99.2958,
+      "nativeRecordedCostUsd": 0.37278411,
+      "nativeRecordedCostUsdPerMinute": 0.0092004
+    },
+    "lastFiveMinutes": {
+      "minutes": 5.0,
+      "requests": 14,
+      "inputTokens": 15114,
+      "outputTokens": 6707,
+      "cacheReadTokens": 8670766,
+      "cacheWriteTokens": 0,
+      "cacheReusePercent": 99.826,
+      "nativeRecordedCostUsd": 0.020194332,
+      "nativeRecordedCostUsdPerMinute": 0.0040389
+    },
+    "byRole": {
+      "manager": {
+        "minutes": 40.5181,
+        "requests": 63,
+        "inputTokens": 124688,
+        "outputTokens": 54828,
+        "cacheReadTokens": 36473295,
+        "cacheWriteTokens": 0,
+        "cacheReusePercent": 99.6593,
+        "nativeRecordedCostUsd": 0.09638099,
+        "nativeRecordedCostUsdPerMinute": 0.0023787
+      },
+      "pa": {
+        "minutes": 40.5181,
+        "requests": 101,
+        "inputTokens": 89130,
+        "outputTokens": 22012,
+        "cacheReadTokens": 66687509,
+        "cacheWriteTokens": 0,
+        "cacheReusePercent": 99.8665,
+        "nativeRecordedCostUsd": 0.146690418,
+        "nativeRecordedCostUsdPerMinute": 0.0036204
+      },
+      "architect": {
+        "minutes": 40.5181,
+        "requests": 83,
+        "inputTokens": 107042,
+        "outputTokens": 53286,
+        "cacheReadTokens": 9660323,
+        "cacheWriteTokens": 0,
+        "cacheReusePercent": 98.9041,
+        "nativeRecordedCostUsd": 0.040682046,
+        "nativeRecordedCostUsdPerMinute": 0.001004
+      },
+      "dev": {
+        "minutes": 40.5181,
+        "requests": 74,
+        "inputTokens": 318217,
+        "outputTokens": 44621,
+        "cacheReadTokens": 6643287,
+        "cacheWriteTokens": 0,
+        "cacheReusePercent": 95.4289,
+        "nativeRecordedCostUsd": 0.054032474,
+        "nativeRecordedCostUsdPerMinute": 0.0013335
+      },
+      "qa": {
+        "minutes": 40.5181,
+        "requests": 62,
+        "inputTokens": 228034,
+        "outputTokens": 32865,
+        "cacheReadTokens": 2810891,
+        "cacheWriteTokens": 0,
+        "cacheReusePercent": 92.4962,
+        "nativeRecordedCostUsd": 0.034998182,
+        "nativeRecordedCostUsdPerMinute": 0.0008638
+      }
+    },
+    "noMatchedBeforeAfterSavingsClaim": true,
+    "implementationWindow": {
+      "minutes": 20.9288,
+      "requests": 266,
+      "inputTokens": 704823,
+      "outputTokens": 164137,
+      "cacheReadTokens": 70311492,
+      "cacheWriteTokens": 0,
+      "cacheReusePercent": 99.0075,
+      "nativeRecordedCostUsd": 0.243932684,
+      "nativeRecordedCostUsdPerMinute": 0.0116553
+    }
+  },
+  "loopChecks": {
+    "providerErrorStops": 0,
+    "newProviderPauseNotices": 0,
+    "toolErrors": [
+      {
+        "role": "manager",
+        "employeeId": "manager",
+        "at": "2026-10-16T20:16:56.496Z",
+        "fingerprint": "32235da69f78253487ce89d19dd575d895aed50e01e07ce123f9553441b55df5",
+        "tool": "write",
+        "category": "other",
+        "text": "xd://startup_send expects a JSON args object as content (JSON Parse error: Unable to parse JSON string). Write `?` for docs."
+      },
+      {
+        "role": "manager",
+        "employeeId": "manager",
+        "at": "2026-10-16T20:19:02.513Z",
+        "fingerprint": "897e03fe0a727f38292e807acf59a5545413d6ad3317d8990b78240a538d775d",
+        "tool": "write",
+        "category": "other",
+        "text": "xd://startup_resolve expects a JSON args object as content (JSON Parse error: Unable to parse JSON string). Write `?` for docs."
+      },
+      {
+        "role": "architect",
+        "employeeId": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0",
+        "at": "2026-10-16T20:23:17.251Z",
+        "fingerprint": "e81130dd5bc284d00c15d11d4d5ca42b584e1c6dd0d09fecdc510e5dce5b3187",
+        "tool": "read",
+        "category": "other",
+        "text": "Not found: fb115a98-2a78-43ce-afe8-453cab4fb851\nList agents with history://"
+      },
+      {
+        "role": "architect",
+        "employeeId": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0",
+        "at": "2026-10-16T20:24:18.466Z",
+        "fingerprint": "6756b1ea66d5796b8aa150f652ec2ac7a708accd3ac5bfaeb74e61789b1e7ba5",
+        "tool": "write",
+        "category": "command-rejected",
+        "text": "Startup POST /command HTTP 403: {\"error\":\"StoreAuthorityError\",\"message\":\"Only the current assigned dev may submit item review\"}; retryable=false; action=Inspect current claim and command arguments, settle or reconcile existing work, or correct the request. Do not repeat unchanged arguments."
+      },
+      {
+        "role": "architect",
+        "employeeId": "8e780cf9-8cdb-409b-88aa-dd84bca32ed0",
+        "at": "2026-10-16T20:26:51.531Z",
+        "fingerprint": "004733d2e47b635ce6aaafa4ff8a5eaa3017b29f94f1283fdd0fcaaad68bae10",
+        "tool": "write",
+        "category": "command-rejected",
+        "text": "Startup POST /command HTTP 403: {\"error\":\"StoreAuthorityError\",\"message\":\"Only the owning assigned QA may record proof\"}; retryable=false; action=Inspect current claim and command arguments, settle or reconcile existing work, or correct the request. Do not repeat unchanged arguments."
+      },
+      {
+        "role": "architect",
+        "employeeId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+        "at": "2026-10-16T20:15:41.033Z",
+        "fingerprint": "27ef750bc88028b1c906878c5bf4f44a9835a1c3bcd0f78c40f6a51fc2b734bc",
+        "tool": "write",
+        "category": "other",
+        "text": "Startup POST /command HTTP 500: {\"error\":\"StoreRecoveryError\",\"message\":\"Reconcile item claims, assignments and grants before resume or completion\"}"
+      },
+      {
+        "role": "architect",
+        "employeeId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+        "at": "2026-10-16T20:21:41.958Z",
+        "fingerprint": "752f7a07ac95f17954419ccc397907f72819b488bcf2e21f3845f862c23c801c",
+        "tool": "write",
+        "category": "command-rejected",
+        "text": "Startup POST /command HTTP 409: {\"error\":\"StoreConflictError\",\"message\":\"Immutable request arch-resume-pr4536-04 conflicts with its saved payload\"}; retryable=false; action=Inspect current claim and command arguments, settle or reconcile existing work, or correct the request. Do not repeat unchanged arguments."
+      },
+      {
+        "role": "architect",
+        "employeeId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+        "at": "2026-10-16T20:29:45.797Z",
+        "fingerprint": "2d69f19b2a1aeaf9832cf82c7ac6ef47424aad7ea81509e3ddc3f200f3a23ecf",
+        "tool": "write",
+        "category": "command-rejected",
+        "text": "Startup POST /command HTTP 409: {\"error\":\"StoreConflictError\",\"message\":\"Item transition has a stale revision\"}; retryable=false; action=Inspect current claim and command arguments, settle or reconcile existing work, or correct the request. Do not repeat unchanged arguments."
+      },
+      {
+        "role": "architect",
+        "employeeId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+        "at": "2026-10-16T20:29:52.653Z",
+        "fingerprint": "4d2e797f541b9284196404964eb68e8ec91e28ee8f64134c02f7555c430b8e66",
+        "tool": "write",
+        "category": "command-rejected",
+        "text": "Startup POST /command HTTP 403: {\"error\":\"StoreAuthorityError\",\"message\":\"Only the current assigned dev may submit item review\"}; retryable=false; action=Inspect current claim and command arguments, settle or reconcile existing work, or correct the request. Do not repeat unchanged arguments."
+      },
+      {
+        "role": "architect",
+        "employeeId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+        "at": "2026-10-16T20:35:26.986Z",
+        "fingerprint": "75c2e2748ab840b652529775c7c74068cf7d291fdf6f7656299831628d5457c0",
+        "tool": "read",
+        "category": "other",
+        "text": "Failed to execute JSON query: Error: expected nothing\n  [<inline>]\n1  $MAP(.items[] | select(.id==\"pr-4536-review\"))\n       \n                                                \n                             unexpected token\n"
+      },
+      {
+        "role": "qa",
+        "employeeId": "48c630ba-41a6-4eaf-b4c1-471ebc851fe8",
+        "at": "2026-10-16T20:30:54.092Z",
+        "fingerprint": "7fac865be9200eace53a31e5651d45395a3289f8316ff589ccb5b1fce2f343cd",
+        "tool": "read",
+        "category": "other",
+        "text": "Path '/home/jsp/Projects/sythelabs/startup/sythelabs/' not found"
+      },
+      {
+        "role": "qa",
+        "employeeId": "48c630ba-41a6-4eaf-b4c1-471ebc851fe8",
+        "at": "2026-10-16T20:34:45.559Z",
+        "fingerprint": "b600f98be45f65ca9d2a33a52b849c22da8983562994700da42429b284594eaf",
+        "tool": "write",
+        "category": "command-rejected",
+        "text": "Startup POST /command HTTP 403: {\"error\":\"StoreAuthorityError\",\"message\":\"Item requires its own durable completed assignment result\"}; retryable=false; action=Inspect current claim and command arguments, settle or reconcile existing work, or correct the request. Do not repeat unchanged arguments."
+      },
+      {
+        "role": "qa",
+        "employeeId": "48c630ba-41a6-4eaf-b4c1-471ebc851fe8",
+        "at": "2026-10-16T20:34:54.829Z",
+        "fingerprint": "37ac9ed571bf998f6fa7c3e9160760653fde89f3feea10b84753102a57037b80",
+        "tool": "write",
+        "category": "other",
+        "text": "[\n  {\n    \"code\": \"unrecognized_keys\",\n    \"keys\": [\n      \"claimId\"\n    ],\n    \"path\": [],\n    \"message\": \"Unrecognized key: \\\"claimId\\\"\"\n  }\n]"
+      }
+    ],
+    "identicalRejectedCallFingerprintsRepeated": {},
+    "limits": "One-off malformed JSON, stale revision, authority and read errors occurred. Exact receipt corrections were required. Some administrative recap inference remains; zero waste or error-free operation is not claimed."
+  },
+  "pa": {
+    "newSettledDuties": 34,
+    "uniqueScheduledDuties": 34,
+    "oneReportToManagerPerSettlement": true,
+    "newReportIdsUnique": true,
+    "lastScheduledAt": 1792184037746,
+    "latencyIncident": {
+      "ttftMs": 312776.0786109995,
+      "requestDurationMs": 313258.14141700044,
+      "recoveredWithoutPrompt": true,
+      "effect": "One duty was late; subsequent duties resumed. Fresh control polls did not prove inference responsiveness."
+    }
+  },
+  "preservation": {
+    "coordinatorPid": 1293017,
+    "ownerEpoch": 13,
+    "originalNativeSessionsObserved": 59,
+    "hiredNativeRoots": 32,
+    "freshPolls5s": 32,
+    "allReadyRuntimeIdentitiesUnchanged": true,
+    "allCrewIdsAndMembersUnchanged": true,
+    "crews": 20,
+    "historicalPr4564ClaimDisposition": "Explicit user cleanup reconciled it once after verified GitHub merge; settled record/message/assignment retained without replay",
+    "mutations": "Aspen controls through infrastructure Ansible and authenticated typed coordinator commands only. No live SQL edits or coordinator restart. User-authorized completed crew processes stopped; remaining roots preserved.",
+    "intentionalRetirements": 27
+  },
+  "health": {
+    "status": 200,
+    "latencyMs": 0.91,
+    "supervisorPollAgesMs": {
+      "manager": 892,
+      "pa": 526
+    },
+    "supervisionErrors": []
+  },
+  "completedStreams": {
+    "authorization": "User: Please also close up work streams that are done",
+    "closedSupersededPr": {
+      "number": 4538,
+      "state": "closed",
+      "merged": false,
+      "closedAtUtc": "2026-10-16T20:37:19Z"
+    },
+    "streams": [
+      {
+        "pr": 4537,
+        "teamId": "0404d5a8-dc98-4d8b-a1b2-7c11186aae13",
+        "retiredEmployees": 3,
+        "stoppedProcesses": 3,
+        "closedTab": "w2:t0"
+      },
+      {
+        "pr": 4538,
+        "teamId": "6097b797-5f6c-4194-8fc7-ae7a9fe7f54d",
+        "retiredEmployees": 3,
+        "stoppedProcesses": 3,
+        "closedTab": "w2:tZ"
+      },
+      {
+        "pr": 4563,
+        "teamId": "9b944b60-1cf7-4c5a-9473-1fa6034088d3",
+        "retiredEmployees": 3,
+        "stoppedProcesses": 3,
+        "closedTab": "w2:tR"
+      },
+      {
+        "pr": 4564,
+        "teamId": "68af7929-5fd7-478b-9f7c-615ec7480374",
+        "retiredEmployees": 3,
+        "stoppedProcesses": 3,
+        "closedTab": "w2:tQ"
+      },
+      {
+        "pr": 4565,
+        "teamId": "f299dbaa-98e8-4757-b2c7-66643b183dba",
+        "retiredEmployees": 3,
+        "stoppedProcesses": 3,
+        "closedTab": "w2:tP"
+      },
+      {
+        "pr": 4556,
+        "teamId": "b91969d5-66f2-43e0-a645-78b0ab5b9d26",
+        "retiredEmployees": 3,
+        "stoppedProcesses": 3,
+        "closedTab": "w2:tJ"
+      },
+      {
+        "pr": 4562,
+        "teamId": "93199e06-8f9c-431d-b5b5-547b6bc61835",
+        "retiredEmployees": 3,
+        "stoppedProcesses": 3,
+        "closedTab": "w2:tS"
+      },
+      {
+        "pr": 4567,
+        "teamId": "ca1aa5bb-5f81-4651-b30c-13e099ec63eb",
+        "retiredEmployees": 3,
+        "stoppedProcesses": 3,
+        "closedTab": "w2:tN"
+      },
+      {
+        "pr": 4569,
+        "teamId": "5c5a7129-1531-466d-95d0-bf2a4c61ccb1",
+        "retiredEmployees": 3,
+        "stoppedProcesses": 3,
+        "closedTab": "w2:tK"
+      }
+    ],
+    "allOriginalRecordIdsPreserved": true,
+    "finishedCrewsIncludingPreviouslyRetired": 10,
+    "noReadyToLandOpenPrFalselyClosed": true,
+    "supersededStatusMeaning": "Redundant review/tracking rows use terminal REJECTED with fulfillment evidence; actual merged READY_TO_LAND rows record MERGED. No fabricated approvals or CI success."
+  },
+  "evidenceTextNormalization": "ASCII punctuation; exact original native outputs retained in private maintenance evidence."
+}
