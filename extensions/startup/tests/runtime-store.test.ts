@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -166,4 +167,47 @@ test("abandonment requires manager evidence, expired connection and a never-admi
   expect(() => f.store.abandonUnadmittedRuntime({ ...request, verifiedAbsentAt: 1200, manager: { employeeId: id, generation: 0, nativeHandle: "forged" } })).toThrow();
   expect(f.store.runtimeAbandonments()).toHaveLength(0);
   expect(f.store.snapshot().employees.find((e) => e.id === id)?.generation).toBe(0);
+});
+
+
+test("employee polling selects only its pending messages, unresolved claims and reconciliation grants", () => {
+  const f = fixture();
+  const db = new Database(f.path);
+  const insert = db.query("INSERT INTO records(kind,id,payload) VALUES(?,?,?)");
+  f.store.runtimeAlert({ id: "own-alert", correlation: "manager", payload: "pending" });
+  for (const [kind, fields, states] of [
+    ["message", { recipient: "other" }, ["pending", "claimed", "acknowledged"]],
+    ["claim", { employeeId: "other" }, ["active", "reconciliation", "settled"]],
+    ["grant", { employeeId: "other" }, ["held", "reconciliation", "released"]],
+  ] satisfies readonly (readonly [string, object, readonly string[]])[]) {
+    for (const state of states) insert.run(kind, `${kind}-${state}`, JSON.stringify({ ...fields, [kind === "grant" ? "state" : "status"]: state }));
+  }
+  insert.run("message", "old-own-message", JSON.stringify({ recipient: "manager", status: "acknowledged" }));
+  insert.run("claim", "old-own-claim", JSON.stringify({ employeeId: "manager", status: "settled" }));
+  insert.run("grant", "released-own-grant", JSON.stringify({ employeeId: "manager", state: "released" }));
+  expect(f.store.employeeView("manager")).toMatchObject({ team: null, claims: [], grants: [] });
+  expect(f.store.employeeView("manager").messages.map((m) => m.id)).toEqual(["own-alert"]);
+  insert.run("claim", "malformed-own-active", JSON.stringify({ employeeId: "manager", status: "active" }));
+  expect(() => f.store.employeeView("manager")).toThrow();
+  db.close();
+});
+
+test("polling indexes migrate existing records and stay current through message settlement", () => {
+  const f = fixture();
+  const alert = f.store.runtimeAlert({ id: "own-alert", correlation: "manager", payload: "pending" });
+  const db = new Database(f.path);
+  for (const name of ["records_message_recipient_status", "records_claim_employee_status", "records_grant_employee_state", "records_runtime_employee_generation"]) db.exec(`DROP INDEX ${name}`);
+  db.close(); f.store.close();
+  const reopened = openStore({ path: f.path, scope: f.scope, owner: f.owner, now: () => 101 }); stores.push(reopened);
+  reopened.bindEmployee({ manager: reopened.managerBinding, binding: { ...reopened.managerBinding, assignment: null, source: f.launch.source } });
+  expect(reopened.employeeView("manager").messages).toEqual([alert]);
+  const check = new Database(f.path);
+  const plan = JSON.stringify(check.query("EXPLAIN QUERY PLAN SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.recipient')=? AND json_extract(payload,'$.status')='pending' ORDER BY rowid").all("manager"));
+  expect(plan).toContain("SEARCH records USING INDEX records_message_recipient_status");
+  check.close();
+  const receipt = reopened.claimNext({ employee: reopened.managerBinding });
+  const claim = receipt?.claim;
+  if (!claim) throw new Error("Missing alert claim");
+  expect(reopened.employeeView("manager").messages).toHaveLength(0);
+  expect(reopened.employeeView("manager").claims).toEqual([claim]);
 });

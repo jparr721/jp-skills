@@ -80,8 +80,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   }
   function runtime(id: string): RuntimeBinding {
     const current = employee(id);
-    const records = store.runtimeBindings().filter((r) => r.employeeId === id && r.generation >= current.generation);
-    const found = records.findLast(() => true);
+    const found = store.employeeRuntime(id, current.generation);
     if (!found) throw new StoreAuthorityError(`Employee ${id} has no prepared runtime`);
     return found;
   }
@@ -136,14 +135,14 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     return current;
   }
   function paState(): string | null {
-    const pa = store.snapshot().employees.filter((e) => e.role === "pa" && e.employment === "hired");
+    const pa = store.employees().filter((e) => e.role === "pa" && e.employment === "hired");
     if (pa.length !== 1) return "pa-missing";
     const current = pa[0];
     if (!current || current.source === null || current.error !== null) return "pa-not-admitted";
     const bound = runtime(current.id);
     if (bound.state !== "ready" || bound.error !== null || now() - bound.lastPoll > policy.connectionDeadlineMs) return "pa-offline";
     if (!observerAvailable) return "pa-observer-unavailable";
-    const outstanding = store.snapshot().messages.find((m) => m.recipient === current.id && m.id.startsWith("pa-check-") && m.status !== "acknowledged");
+    const outstanding = store.outstandingMessages(current.id).find((m) => m.id.startsWith("pa-check-"));
     if (outstanding) {
       const payload = z.object({ scheduledAt: z.number() }).parse(outstanding.payload);
       if (now() - payload.scheduledAt > policy.progressDeadlineMs) return "pa-overdue";
@@ -418,10 +417,11 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     if (view.claims.length > 0) return "Settle or explicitly reconcile your outstanding claim before ending.";
     if (view.messages.length > 0 && view.team?.state !== "reserved") return "Claim your pending durable inbox before ending.";
     if (current.role !== "manager") return null;
-    const snapshot = store.snapshot();
-    if (paState() !== null) return `PA supervision is degraded: ${paState()}. Report and recover the existing PA identity.`;
-    if (snapshot.inputs.some((i) => i.disposition === null)) return "Classify saved human inputs before ending.";
-    if (snapshot.intakes.some((i) => i.teamId === null)) return "Delegate every saved independent work event before ending.";
+    const paHealth = paState();
+    if (paHealth !== null) return `PA supervision is degraded: ${paHealth}. Report and recover the existing PA identity.`;
+    const pending = store.managerPendingWork();
+    if (pending.unclassifiedInput) return "Classify saved human inputs before ending.";
+    if (pending.undelegatedIntake) return "Delegate every saved independent work event before ending.";
     try {
       const ready = store.queueItems().find((row) => ["QUEUED", "READY_TO_LAND"].includes(z.string().parse(row.status)));
       return ready ? `Advance ready item ${ready.id} or record its concrete blocker before ending.` : null;
@@ -478,7 +478,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const managerObserved = observations.some((o) => o.nativeSession === managerRuntime.nativeSession && o.terminalId === managerRuntime.terminalId);
     const managerOffline = (observerAvailable && !managerObserved) || now() - managerRuntime.lastPoll > policy.connectionDeadlineMs;
     const managerPresence = managerOffline ? "offline" : observerAvailable ? "online" : "unknown";
-    const snapshot = store.snapshot();
+    const snapshot = store.supervisionView();
     const pa = snapshot.employees.find((e) => e.role === "pa" && e.employment === "hired");
     if (pa?.source !== null && pa !== undefined) {
       if (managerOffline) {
@@ -488,7 +488,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       }
       const checks = snapshot.messages.filter((m) => m.recipient === pa.id && m.id.startsWith("pa-check-"));
       const outstanding = checks.some((m) => m.status !== "acknowledged");
-      const last = checks.at(-1);
+      const last = store.lastPaCheck(pa.id);
       const lastDue = last ? z.object({ scheduledAt: z.number() }).parse(last.payload).scheduledAt : 0;
       if (!outstanding && now() - lastDue >= policy.paCadenceMs) store.sendCue({ sender: store.managerBinding, cue: { id: `pa-check-${runtime(pa.id).launchId}-${now()}`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "pa-check", scheduledAt: now(), managerPresence, unclassifiedInputs: snapshot.inputs.filter((i) => i.disposition === null).length, unresolvedClaims: snapshot.claims.filter((c) => c.status !== "settled").length, pendingMessages: snapshot.messages.filter((m) => m.status === "pending").length, crews: snapshot.teams.map((t) => ({ id: t.id, state: t.state })) } } });
     }
@@ -511,7 +511,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
         if (now() - progress.changedAt > policy.progressDeadlineMs) alertOnce({ id: `stale-item-${row.id}-${progress.revision}-${row.status}`, correlation: row.id, payload: { kind: "stale-item", itemId: row.id, state: row.status, responsible, revision: progress.revision, lastProgress: progress.changedAt } });
       }
     } catch (error: unknown) { failure("queue", null, error); }
-    const messages = store.snapshot().messages;
+    const messages = snapshot.messages;
     for (const saved of currentRuntimes()) {
       if (["prepared", "starting", "uncertain"].includes(saved.state) && now() - saved.lastSeen > policy.connectionDeadlineMs)
         alertOnce({ id: `launch-stalled-${saved.launchId}`, correlation: saved.launchId, payload: { kind: "launch-stalled", employeeId: saved.employeeId, state: saved.state, error: saved.error, preparedAt: saved.lastSeen } });

@@ -603,3 +603,26 @@ test("manager reconciliation restores crew inbox delivery without replaying unce
   await f.coordinator.command(manager, { kind: "reconcile", claimId: claimed.claim.id, evidence: "Verified saved receipts; no mutation replay" });
   await expect(f.coordinator.command(manager, { kind: "reconcile", claimId: claimed.claim.id, evidence: "Conflicting evidence" })).rejects.toThrow("conflicts");
 });
+
+
+test("manager and PA polling do not load full history or unrelated runtime bindings", async () => {
+  const f = fixture(8);
+  const { manager, paConnection } = await f.ready();
+  const snapshot = f.store.snapshot;
+  const runtimes = f.store.runtimeBindings;
+  f.store.snapshot = () => { throw new Error("Global history must not be on the polling path"); };
+  f.store.runtimeBindings = () => { throw new Error("Global runtime scan must not be on the manager/PA polling path"); };
+  try {
+    expect((await f.coordinator.poll(manager)).projection).toContain("STARTUP_BINDING");
+    expect((await f.coordinator.poll(paConnection)).projection).toContain("STARTUP_BINDING");
+  } finally { f.store.snapshot = snapshot; f.store.runtimeBindings = runtimes; }
+});
+
+test("supervision does not load completed result or claim history", async () => {
+  const f = fixture(8);
+  await f.ready();
+  const snapshot = f.store.snapshot;
+  f.store.snapshot = () => { throw new Error("Completed history must not be on the supervision path"); };
+  try { await f.coordinator.tick(); expect(f.coordinator.health().supervision.errors).toEqual([]); }
+  finally { f.store.snapshot = snapshot; }
+});

@@ -270,6 +270,12 @@ export function openStore(args: {
   db.exec(
     "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS lease(singleton INTEGER PRIMARY KEY CHECK(singleton=1), token TEXT NOT NULL, epoch INTEGER NOT NULL, generation INTEGER NOT NULL, expires INTEGER NOT NULL);",
   );
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS records_message_recipient_status ON records(json_extract(payload,'$.recipient'),json_extract(payload,'$.status')) WHERE kind='message';
+    CREATE INDEX IF NOT EXISTS records_claim_employee_status ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.status')) WHERE kind='claim';
+    CREATE INDEX IF NOT EXISTS records_grant_employee_state ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.state')) WHERE kind='grant';
+    CREATE INDEX IF NOT EXISTS records_runtime_employee_generation ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.generation')) WHERE kind='runtimeBinding';
+  `);
   const token: string = randomUUID();
   let closed: boolean = false;
   function now(): number {
@@ -291,6 +297,18 @@ export function openStore(args: {
         (row: unknown): T =>
           schema.parse(JSON.parse(storedSchema.parse(row).payload)),
       );
+  }
+  function selected<T>(sql: string, params: readonly (string | number)[], schema: z.ZodType<T>): readonly T[] {
+    return db.query(sql).all(...params).map((row: unknown): T => schema.parse(JSON.parse(storedSchema.parse(row).payload)));
+  }
+  function employeeView(employeeId: string) {
+    const current = employee(employeeId);
+    return {
+      team: current.assignment === null ? null : team(current.assignment),
+      messages: selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.recipient')=? AND json_extract(payload,'$.status')='pending' ORDER BY rowid", [current.id], messageSchema),
+      claims: selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.status') IN ('active','reconciliation') ORDER BY rowid", [current.id], claimSchema),
+      grants: selected("SELECT payload FROM records WHERE kind='grant' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.state')='reconciliation' ORDER BY rowid", [current.id], grantSchema),
+    };
   }
   function put(kind: string, id: string, payload: unknown): void {
     const body: string = encode(payload);
@@ -760,13 +778,28 @@ export function openStore(args: {
     getTeam: team,
     hasMessage(id: string): boolean { return read("message", id, messageSchema) !== null; },
     employees(): readonly Employee[] { return all("employee", employeeSchema); },
-    employeeView(employeeId: string) {
-      const current = employee(employeeId);
+    employeeView,
+    outstandingMessages(employeeId: string): readonly Message[] {
+      return selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.recipient')=? AND json_extract(payload,'$.status') IN ('pending','claimed') ORDER BY rowid", [employeeId], messageSchema);
+    },
+    lastPaCheck(employeeId: string): Message | null {
+      return selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.recipient')=? AND id LIKE 'pa-check-%' ORDER BY rowid DESC LIMIT 1", [employeeId], messageSchema)[0] ?? null;
+    },
+    managerPendingWork(): Readonly<{ unclassifiedInput: boolean; undelegatedIntake: boolean }> {
       return {
-        team: current.assignment === null ? null : team(current.assignment),
-        messages: all("message", messageSchema).filter((message) => message.recipient === current.id && message.status === "pending"),
-        claims: all("claim", claimSchema).filter((claim) => claim.employeeId === current.id && claim.status !== "settled"),
-        grants: all("grant", grantSchema).filter((grant) => grant.employeeId === current.id && grant.state === "reconciliation"),
+        unclassifiedInput: db.query("SELECT 1 FROM records WHERE kind='receivedInput' AND json_extract(payload,'$.disposition') IS NULL LIMIT 1").get() !== null,
+        undelegatedIntake: db.query("SELECT 1 FROM records WHERE kind='intake' AND json_extract(payload,'$.teamId') IS NULL LIMIT 1").get() !== null,
+      };
+    },
+    supervisionView(): Pick<Snapshot, "employees" | "teams" | "messages" | "claims" | "inputs" | "queueRevisions" | "itemExecutions"> {
+      return {
+        employees: all("employee", employeeSchema),
+        teams: all("team", teamSchema),
+        messages: selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.status') IN ('pending','claimed') ORDER BY rowid", [], messageSchema),
+        claims: selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.status') IN ('active','reconciliation') ORDER BY rowid", [], claimSchema),
+        inputs: selected("SELECT payload FROM records WHERE kind='receivedInput' AND json_extract(payload,'$.disposition') IS NULL ORDER BY rowid", [], receivedInputSchema),
+        queueRevisions: all("queueOwner", queueOwnerSchema),
+        itemExecutions: all("itemExecution", itemExecutionSchema),
       };
     },
     managerBinding: bindingSchema.parse({
@@ -2707,6 +2740,9 @@ export function openStore(args: {
     },
     runtimeBindings(): readonly RuntimeBinding[] {
       return all("runtimeBinding", runtimeBindingSchema);
+    },
+    employeeRuntime(employeeId: string, minimumGeneration: number): RuntimeBinding | null {
+      return selected("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.generation')>=? ORDER BY json_extract(payload,'$.generation') DESC LIMIT 1", [employeeId, minimumGeneration], runtimeBindingSchema)[0] ?? null;
     },
     observeRuntime(input: Readonly<{ employeeId: string; generation: number; nativeSession: string; state: NonNullable<RuntimeBinding["observedState"]>; sequence: number; observedAt: number }>): void {
       tx(() => {
