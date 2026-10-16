@@ -79,14 +79,14 @@
       },
       {
         "name": "typecheck (packages/host-protocol)",
-        "status": "queued",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184009318"
       },
       {
         "name": "typecheck (packages/request-policy)",
-        "status": "queued",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008982"
       },
       {
@@ -97,20 +97,20 @@
       },
       {
         "name": "typecheck (packages/command-palette-core)",
-        "status": "queued",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008847"
       },
       {
         "name": "typecheck (apps/homepage)",
-        "status": "queued",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008838"
       },
       {
         "name": "typecheck (apps/scan-service)",
-        "status": "queued",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008822"
       },
       {
@@ -121,26 +121,26 @@
       },
       {
         "name": "typecheck (packages/command-palette-codegen)",
-        "status": "queued",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008804"
       },
       {
         "name": "typecheck (packages/app-schemas)",
-        "status": "queued",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008799"
       },
       {
         "name": "typecheck (packages/auth-policy)",
-        "status": "queued",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008793"
       },
       {
         "name": "typecheck (packages/http-problem)",
-        "status": "in_progress",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008772"
       },
       {
@@ -157,8 +157,8 @@
       },
       {
         "name": "typecheck (apps/e2e)",
-        "status": "queued",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008738"
       },
       {
@@ -169,8 +169,8 @@
       },
       {
         "name": "typecheck (apps/api)",
-        "status": "in_progress",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008686"
       },
       {
@@ -181,8 +181,8 @@
       },
       {
         "name": "typecheck (apps/web)",
-        "status": "in_progress",
-        "conclusion": null,
+        "status": "completed",
+        "conclusion": "success",
         "details_url": "https://github.com/sythelabs/warlock/actions/runs/38963456678/job/117184008682"
       },
       {
@@ -208,8 +208,8 @@
     "formatFixCommit": "e477dfd365d70dec51980e0db2a56fe8714ffeda",
     "currentCanonical": {
       "id": "pr-4536-review",
-      "revision": 17,
-      "status": "QUEUED"
+      "revision": 22,
+      "status": "READY_TO_LAND"
     },
     "independentProof": [
       "Actual historical API package.json change: old apps/api/src pathspec misses it, new apps/api selects it",
@@ -217,7 +217,29 @@
       "Format-only second commit verified and bunx biome check turbo.json exits0",
       "Subject registry build passes"
     ],
-    "remaining": "Exact-new-head CI still incomplete at observation. Local full web build lacked existing client env; no full local build success or merge claimed. Original intake head is historical, current explicit directive uses e477dfd3."
+    "remaining": "Original crew reached READY_TO_LAND22 with independent QA APPROVE, owning architect APPROVE and exact-head green CI. PR remains open; no additional main merge requested or performed.",
+    "ciCompletion": {
+      "observedAtUtc": "2026-10-16T20:59:31.771928+00:00",
+      "success": 26,
+      "skipped": 1,
+      "failure": 0,
+      "pending": 0,
+      "requiredMergeGate": "success",
+      "configuredPerPackageBuild": "success",
+      "receiptDeliveredToOriginalManagerAndArchitect": true
+    },
+    "finalQa": {
+      "verdict": "APPROVE",
+      "resultId": "qa-pr4536-rev18-20261016",
+      "proof": "QA APPROVE pr-4536-review rev20 (resultId dev-pr4536-rev18-verify-20261016). Scope per arch-qaassign-pr4536-03: current CI run 38963456727 26 SUCCESS 1 SKIPPED plus saved REGRESSION1/2. HEAD IDENTITY PASS: local HEAD == origin/build/per-package-web == PR4536 headRefOid == e477dfd365d70dec51980e0db2a56fe8714ffeda; worktree clean. CI GREEN PASS: gh run view 38963456727 conclusion success status completed on headSha e477dfd3; jobs: merge gate / migrations / per-package builds / quality / tests success, apply Railway IaC skipped (expected, production-only). REGRESSION1 PASS (re-verified on current head): ci.yml:157 api_changes uses whole-package pathspec -- apps/api. REGRESSION2 PASS (re-verified): turbo.json parses; $TURBO_ROOT$/packages/** present on all 6 build tasks (build, host-agent#build, api#build, homepage#build, scan-service#build, web#build). Ancestor chain intact per dev verify (b6ad369b parent, 93642ed1 PR4537 ancestor, format-only e477dfd3). No merge attempted (branch-only). APPROVE: exact-new-head review + QA + CI green satisfied."
+    },
+    "finalArchitectGate": {
+      "verdict": "APPROVE",
+      "actorId": "66334a19-ead4-4bbb-ac66-c7a477174557",
+      "revision": 22,
+      "auditSequence": 10940618,
+      "observedAtUtc": "2026-10-16T21:02:57.103000+00:00"
+    }
   },
   "pr4538": {
     "url": "https://github.com/sythelabs/warlock/pull/4538",
@@ -577,6 +599,24 @@
       "cacheReusePercent": 99.0075,
       "nativeRecordedCostUsd": 0.243932684,
       "nativeRecordedCostUsdPerMinute": 0.0116553
+    },
+    "throughFinalOwnQaAndGate": {
+      "fromUtc": "2026-10-16T20:14:21.138000+00:00",
+      "throughUtc": "2026-10-16T21:02:57.103000+00:00",
+      "minutes": 48.5994,
+      "requests": 452,
+      "inputTokens": 1070914,
+      "outputTokens": 233268,
+      "cacheReadTokens": 150461677,
+      "cacheReusePercent": 99.2933,
+      "nativeRecordedCostUsd": 0.454668354,
+      "nativeRecordedCostUsdPerMinute": 0.0093554,
+      "newPaSettlements": 42,
+      "oneReportToManagerPerSettlement": true,
+      "providerErrors": 0,
+      "newPauseNotices": 0,
+      "activeOperationalRoots": 32,
+      "freshActivePolls5s": 32
     }
   },
   "loopChecks": {
@@ -702,7 +742,14 @@
       }
     ],
     "identicalRejectedCallFingerprintsRepeated": {},
-    "limits": "One-off malformed JSON, stale revision, authority and read errors occurred. Exact receipt corrections were required. Some administrative recap inference remains; zero waste or error-free operation is not claimed."
+    "limits": "One-off malformed JSON, stale revision, authority and read errors occurred. Exact receipt corrections were required. Some administrative recap inference remains; zero waste or error-free operation is not claimed.",
+    "finalGateFollowup": {
+      "newNativeToolErrors": 0,
+      "newProviderPauseNotices": 0,
+      "providerErrorStops": 0,
+      "actualReadyRevision": 22,
+      "implementationOrBuildRestartRequested": false
+    }
   },
   "pa": {
     "newSettledDuties": 34,
@@ -815,7 +862,18 @@
     "allOriginalRecordIdsPreserved": true,
     "finishedCrewsIncludingPreviouslyRetired": 10,
     "noReadyToLandOpenPrFalselyClosed": true,
-    "supersededStatusMeaning": "Redundant review/tracking rows use terminal REJECTED with fulfillment evidence; actual merged READY_TO_LAND rows record MERGED. No fabricated approvals or CI success."
+    "supersededStatusMeaning": "Redundant review/tracking rows use terminal REJECTED with fulfillment evidence; actual merged READY_TO_LAND rows record MERGED. No fabricated approvals or CI success.",
+    "keptActiveSuccessorWork": [
+      {
+        "originalPr": 4557,
+        "originalPrState": "closed without merge",
+        "closedAtUtc": "2026-10-16T20:56:59Z",
+        "successorPr": 4573,
+        "successorState": "open",
+        "crewId": "6d69a36a-aa6a-4026-923d-2446f64243e8",
+        "disposition": "Original PR was superseded; underlying slice-B work remains unfinished. Crew/history retained; no duplicate implementation or crew requested."
+      }
+    ]
   },
   "evidenceTextNormalization": "ASCII punctuation; exact original native outputs retained in private maintenance evidence."
 }
