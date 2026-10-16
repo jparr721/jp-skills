@@ -97,7 +97,7 @@ def main() -> int:
                 "stages": [], "checks": {}}
     args.evidence.parent.mkdir(parents=True, exist_ok=True)
     args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")
-    for stage in ["admitted", "denied", "disconnected", "synthetic-denied", "negative"]:
+    for stage in ["admitted", "denied", "disconnected", "synthetic-denied", "negative", "cache"]:
         result = run_stage(omp, repo, workspace, stage, negative / source.name if stage == "negative" else source)
         evidence["stages"].append(result)
         args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")
@@ -105,14 +105,18 @@ def main() -> int:
     stages = {stage["stage"]: stage for stage in evidence["stages"]}
     admitted = stages["admitted"]
     providers = [event for event in admitted["events"] if event["kind"] == "provider" and not event["helper"]]
+    cache_prompts = [event["cachePrompt"] for event in stages["cache"]["events"] if event["kind"] == "provider"]
     checks = {"compiled_omp_identified": re.fullmatch(r"omp/\S+", version) is not None,
               "all_native_stages_complete": all(stage["exitCode"] == 0 and stage["report"] and stage["report"]["status"] == "COMPLETE" for stage in stages.values()),
-              "canonical_role_loop_in_actual_root_provider": bool(providers) and all(event["roleComplete"] and event["loopComplete"] and event["developerProjection"] for event in providers),
+              "canonical_role_loop_in_actual_root_provider": bool(providers) and all(event["roleComplete"] and event["loopComplete"] for event in providers),
               "actual_native_helper_startup_tool_denied": any(event["kind"] == "provider" and event["helper"] and any(result["toolName"] == "startup_guard_probe" and result.get("isError") and "Native helper has no Startup employee authority" in str(result["content"]) for result in event["priorToolResults"]) for event in admitted["events"]) and not any(event["kind"] == "sentinel_executed" for event in admitted["events"]),
               "begin_turn_denial_blocks_native_write_and_bash": not stages["denied"]["writeExists"] and not stages["denied"]["bashExists"] and sum(event["kind"] == "mutation_denied" for event in stages["denied"]["events"]) == 2,
               "failed_connection_blocks_native_write_and_bash": not stages["disconnected"]["writeExists"] and not stages["disconnected"]["bashExists"] and sum(event["kind"] == "mutation_denied" for event in stages["disconnected"]["events"]) == 2,
               "denied_synthetic_context_blocks_provider": stages["synthetic-denied"]["report"] is not None and stages["synthetic-denied"]["report"].get("beginCount", 0) >= 2 and stages["synthetic-denied"]["actualProviderRequests"] == 0,
-              "negative_control_detects_missing_tool_guard": stages["negative"]["writeExists"] and stages["negative"]["bashExists"]}
+              "negative_control_detects_missing_tool_guard": stages["negative"]["writeExists"] and stages["negative"]["bashExists"],
+              "cache_system_prompt_is_stable": len(cache_prompts) == 2 and cache_prompts[0]["systemPrompt"] == cache_prompts[1]["systemPrompt"] and "STARTUP_CHECKPOINT" not in str(cache_prompts[0]["systemPrompt"]),
+              "cache_conversation_prefix_is_preserved": len(cache_prompts) == 2 and cache_prompts[0]["messages"][:-1] == cache_prompts[1]["messages"][:len(cache_prompts[0]["messages"]) - 1],
+              "cache_live_state_is_trailing_user_data": len(cache_prompts) == 2 and all(prompt["messages"][-1]["role"] == "user" and f"STARTUP_CHECKPOINT={index}" in str(prompt["messages"][-1]["content"]) for index, prompt in enumerate(cache_prompts))}
     evidence["checks"] = checks
     evidence["status"] = "PASS" if all(checks.values()) else "FAIL"
     args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")

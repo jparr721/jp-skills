@@ -10,7 +10,7 @@ import { connectEmployee, EmployeeSettlementError, installEmployeeBridge, instal
 import { itemActionSchema } from "./items";
 import { herdrContext } from "./herdr-runtime";
 import type { NativeContext, NativeResult } from "./omp-adapter";
-import { loadProfile, verifyProfile } from "./profiles";
+import { loadProfile, profileText, verifyProfile, type Profile } from "./profiles";
 import { readPrivateJson } from "./v7-launch";
 
 const manifestSchema = z.strictObject({
@@ -54,25 +54,26 @@ export async function paneEnvironment(environment: Environment): Promise<Readonl
     ...location, profile: profile.data,
   };
 }
-function verifyManifest(manifest: LaunchManifest): void {
+function verifyManifest(manifest: LaunchManifest): Profile {
   const role = roleSchema.parse(basename(dirname(manifest.source.rolePath)).replace(/^startup-role-/, ""));
   const profile = loadProfile({ skillsRoot: manifest.skillsRoot, role, employeeId: manifest.employeeId, generation: manifest.generation });
   verifyProfile(profile);
   if (encode(profile.source) !== encode(manifest.source)) throw new StartupBootError("Canonical source hashes differ from the launch manifest");
   if ((role === "manager") !== (manifest.employeeId === "manager")) throw new StartupBootError("Manager source does not match the launch employee identity");
+  return profile;
 }
 export function sameRoot(admission: Admission, ctx: NativeContext): boolean {
   return ctx.agent.kind === "main" && ctx.agent.id === admission.context.agent.id &&
     ctx.sessionManager.getSessionId() === admission.context.sessionManager.getSessionId();
 }
 export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment): Promise<Admission> {
-  verifyManifest(manifest);
+  const profile: Profile = verifyManifest(manifest);
   const nativeSession: string = await nativeRoot(host, ctx);
   const actualProfile = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim();
   if (actualProfile && actualProfile !== manifest.profile) throw new StartupBootError("Actual named OMP profile differs from the launch manifest");
   const paneId: string = environment.HERDR_PANE_ID?.trim() || (await paneEnvironment(environment)).paneId;
   const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId });
-  const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000 });
+  const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000, instructions: profileText(profile) });
   try { await bridge.poll(); }
   catch (error: unknown) { bridge.close(); throw error; }
   return { client, context: ctx, close: bridge.close };

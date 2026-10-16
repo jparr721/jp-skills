@@ -234,6 +234,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   client: EmployeeClient;
   ctx: NativeContext;
   intervalMs: number;
+  instructions: string;
 }>): Readonly<{ poll: () => Promise<void>; close: () => void }> {
   z.number().int().positive().parse(input.intervalMs);
   if (input.ctx.agent.kind !== "main")
@@ -342,22 +343,24 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
       host.sendMessage({ customType: "startup-turn-blocked", content: `Startup turn blocked: ${turnBlocked}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
     }
   }
-  function projectedText(): string {
-    return current?.projection ?? "Startup employee is blocked until its canonical source and coordinator connection are admitted.";
+  function projectedState(): string {
+    const projection: string = current?.projection ?? "Startup employee is blocked until its canonical source and coordinator connection are admitted.";
+    return projection.startsWith(input.instructions) ? projection.slice(input.instructions.length).trimStart() : projection;
   }
   host.on("before_agent_start", async (event, ctx) => {
     if (closed || !isRoot(ctx)) return;
     const parsed = beforeStartSchema.parse(event);
     await admitTurn();
-    return { systemPrompt: [...parsed.systemPrompt, projectedText()] };
+    return { systemPrompt: [...parsed.systemPrompt, input.instructions] };
   });
   host.on("context", async (event, ctx) => {
     if (closed || !isRoot(ctx)) return;
     const parsed = contextSchema.parse(event);
     await admitTurn();
-    return { messages: [
-      { role: "developer", content: projectedText(), timestamp: Date.now() },
+    const state: string = projectedState();
+    return { messages: state.length === 0 ? parsed.messages : [
       ...parsed.messages,
+      { role: "user", content: state, timestamp: Date.now() },
     ] };
   });
   host.on("tool_call", (event, ctx) => {

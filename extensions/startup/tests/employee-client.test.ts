@@ -15,6 +15,7 @@ import type { Json, Source } from "../src/contracts";
 import type { NativeContext } from "../src/omp-adapter";
 
 const cleanup: (() => void)[] = [];
+const instructions: string = "COMPLETE CANONICAL ROLE AND LOOP";
 afterEach(() => {
   for (const close of cleanup.splice(0).reverse()) close();
 });
@@ -128,7 +129,7 @@ test("native idle reconciliation releases capacity held by a context-only side r
   fixture.setPoll({ projection: "canonical", pendingMessageIds: [], waitReason: null, toolBlockReason: null });
   const client = await connect(fixture);
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await native.emit("context", { messages: [] }, native.ctx);
   native.setRunState(true, true);
@@ -146,7 +147,7 @@ test("an idle reattached native root reconciles a reservation from its prior pro
   const client = await connect(fixture);
   const native = nativeFixture();
   native.setRunState(true, false);
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
   await bridge.poll();
@@ -218,7 +219,7 @@ test("an idle native session recovers a stranded queued wake without queuing tur
   const fixture = serverFixture();
   const client = await connect(fixture);
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
   expect(native.messages).toHaveLength(0);
@@ -235,7 +236,7 @@ test("a thousand durable messages produce one native wake and wait behind an alr
   native.setRunState(true, false);
   const pending = Array.from({ length: 1000 }, (_, i) => `cue-${i}`);
   fixture.setPoll({ projection: "canonical", pendingMessageIds: pending, toolBlockReason: null, waitReason: "Drain inbox" });
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
   expect(native.messages).toHaveLength(1);
@@ -254,7 +255,7 @@ test("bridge injects canonical projection only into the bound root and deduplica
   const client = await connect(fixture);
   const native = nativeFixture();
   native.setRunState(true, false);
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
   await bridge.poll();
@@ -265,8 +266,7 @@ test("bridge injects canonical projection only into the bound root and deduplica
   expect(await native.emit("before_agent_start", { systemPrompt: ["native"] }, native.ctx)).toEqual({ systemPrompt: ["native", "COMPLETE CANONICAL ROLE AND LOOP"] });
   const result = await native.emit("context", { messages: [{ role: "user", content: "hello" }] }, native.ctx);
   const context = z.object({ messages: z.array(z.object({ role: z.string(), content: z.unknown() }).passthrough()) }).parse(result);
-  expect(context.messages[0]?.content).toBe("COMPLETE CANONICAL ROLE AND LOOP");
-  expect(context.messages[1]).toEqual({ role: "user", content: "hello" });
+  expect(context.messages).toEqual([{ role: "user", content: "hello" }]);
   const helper: NativeContext = { ...native.ctx, agent: { id: "helper-1", kind: "task", parentId: "root-1" } };
   expect(await native.emit("context", { messages: [] }, helper)).toBeUndefined();
   expect(await native.emit("before_agent_start", { systemPrompt: [] }, helper)).toBeUndefined();
@@ -285,11 +285,43 @@ test("bridge injects canonical projection only into the bound root and deduplica
   expect(native.timers.size).toBe(0);
 });
 
+test("changing Startup state preserves the system prompt and the complete conversation prefix", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  const instructions: string = "COMPLETE CANONICAL ROLE AND LOOP";
+  const input = { client, ctx: native.ctx, intervalMs: 60000, instructions };
+  const bridge = installEmployeeBridge(native.host, input);
+  cleanup.push(bridge.close);
+  const history = [
+    { role: "user", content: "Review the assigned change", timestamp: 1 },
+    { role: "assistant", content: [{ type: "toolCall", id: "read-1", name: "read", arguments: { path: "app.ts" } }], timestamp: 2 },
+    { role: "toolResult", toolCallId: "read-1", toolName: "read", content: [{ type: "text", text: "source" }], timestamp: 3 },
+  ];
+  const prompts: unknown[] = [];
+  const contexts: Readonly<{ messages: readonly unknown[] }>[] = [];
+  for (const checkpoint of ["before-claim", "active-claim", "settled-claim"]) {
+    fixture.setPoll({ projection: `${instructions}\nSTARTUP_CHECKPOINT=${checkpoint}\nSTARTUP_CLAIMS=${checkpoint}`, pendingMessageIds: [], toolBlockReason: null, waitReason: null });
+    prompts.push(await native.emit("before_agent_start", { systemPrompt: ["native"] }, native.ctx));
+    contexts.push(z.object({ messages: z.array(z.unknown()) }).parse(await native.emit("context", { messages: history }, native.ctx)));
+  }
+  for (const prompt of prompts) expect(prompt).toEqual({ systemPrompt: ["native", instructions] });
+  for (const context of contexts) {
+    expect(context.messages.slice(0, history.length)).toEqual(history);
+    const state = z.object({ role: z.literal("user"), content: z.string() }).parse(context.messages.at(-1));
+    expect(state.content).not.toContain(instructions);
+    expect(state.content).toContain("STARTUP_CHECKPOINT=");
+    expect(context.messages).toHaveLength(history.length + 1);
+  }
+  expect(JSON.stringify(contexts[0]?.messages.at(-1))).toContain("before-claim");
+  expect(JSON.stringify(contexts[2]?.messages.at(-1))).toContain("settled-claim");
+});
+
 test("bridge polling failure blocks stale employee actions and visibly reports coordinator unavailability", async () => {
   const fixture = serverFixture();
   const client = await connect(fixture);
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
   fixture.pollError(new Response("coordinator unavailable", { status: 503 }));
@@ -309,7 +341,7 @@ test("native timer coalesces in-flight polls and session mismatch cannot inherit
   let resume: (value: Response) => void = () => { throw new Error("Poll is not waiting"); };
   fixture.delayPoll(new Promise<Response>((resolve) => { resume = resolve; }));
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 5 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 5 });
   cleanup.push(bridge.close);
   const first: Promise<void> = bridge.poll();
   const second: Promise<void> = bridge.poll();
@@ -351,7 +383,7 @@ test("native root turns acquire and release capacity without producing completio
   const fixture = serverFixture();
   const client = await connect(fixture);
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await native.emit("before_agent_start", { systemPrompt: ["base"] }, native.ctx);
   await native.emit("agent_end", { willContinue: true }, native.ctx);
@@ -363,7 +395,7 @@ test("a persistent blocked stop reason gets one continuation and then parks", as
   const fixture = serverFixture();
   const client = await connect(fixture);
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
   expect(await native.emit("session_stop", {}, native.ctx)).toHaveProperty("continue", true);
@@ -374,7 +406,7 @@ test("synthetic context cannot reach a provider when root capacity admission is 
   const fixture = serverFixture();
   const client = await connect(fixture);
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   fixture.commandError(Response.json({ error: "capacity" }, { status: 403 }));
   await native.emit("context", { messages: [] }, native.ctx);
@@ -397,7 +429,7 @@ test("reconciliation blocks technical mutations while retaining typed reporting 
   const client = await connect(fixture);
   fixture.setPoll({ projection: "canonical", pendingMessageIds: [], waitReason: "Recover claim", toolBlockReason: "Claim requires reconciliation" });
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
   expect(await native.emit("tool_call", { toolName: "bash", input: { command: "write" } }, native.ctx)).toEqual({ block: true, reason: "Claim requires reconciliation" });
@@ -410,7 +442,7 @@ test("a missed native capacity release is retried after read-only connection rec
   const fixture = serverFixture();
   const client = await connect(fixture);
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await native.emit("before_agent_start", { systemPrompt: [] }, native.ctx);
   fixture.commandError(new Response("temporarily offline", { status: 503 }));
@@ -443,7 +475,7 @@ test("bridge emits one recovery notice per failed connection episode and no init
   fixture.setPoll({ projection: "canonical", pendingMessageIds: [], toolBlockReason: null, waitReason: null });
   const client = await connect(fixture);
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
   expect(native.messages).toHaveLength(0);
@@ -473,7 +505,7 @@ test("repeated transport failures with different elapsed times emit one unavaila
   if (!(transport instanceof EmployeeTransportError)) throw new Error("Expected the real Unix transport error");
   const diagnostic = transport.diagnostic;
   let elapsedMs = 1;
-  const bridge = installEmployeeBridge(native.host, { client: { ...client, poll: async () => { throw new EmployeeTransportError({ ...diagnostic, elapsedMs: elapsedMs++ }); } }, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client: { ...client, poll: async () => { throw new EmployeeTransportError({ ...diagnostic, elapsedMs: elapsedMs++ }); } }, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await expect(bridge.poll()).rejects.toThrow("/poll");
   await expect(bridge.poll()).rejects.toThrow("/poll");
@@ -485,7 +517,7 @@ test("recovery wakes an idle root to settle its stranded claim without waking a 
   fixture.setPoll({ projection: "canonical", pendingMessageIds: [], toolBlockReason: null, waitReason: "Settle or explicitly reconcile your outstanding claim before ending." });
   const client = await connect(fixture);
   const native = nativeFixture(); native.setRunState(true, false);
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 }); cleanup.push(bridge.close);
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 }); cleanup.push(bridge.close);
   await bridge.poll();
   fixture.pollError(new Response("outage", { status: 503 }));
   await expect(bridge.poll()).rejects.toThrow("503");
@@ -499,7 +531,7 @@ test("deterministic settlement retries are suppressed across healthy polling and
   fixture.setPoll({ projection: 'canonical\nSTARTUP_CLAIMS={"generation":1,"claims":[{"id":"one","status":"active"}]}', pendingMessageIds: ["new-mail"], toolBlockReason: null, waitReason: "Settle your outstanding claim" });
   const client = await connect(fixture);
   const native = nativeFixture();
-  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000 });
   cleanup.push(bridge.close);
   await bridge.poll();
   fixture.commandError(Response.json({ error: "ClaimSettlementError", message: "Inspect the existing cue", recovery: { code: "settlement_conflict", retryable: false, action: "Correct result.outgoing; do not repeat the unchanged request", employeeId: "dev-1", generation: 1, claimId: "one" } }, { status: 409 }));

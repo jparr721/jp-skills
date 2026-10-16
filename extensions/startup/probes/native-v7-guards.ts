@@ -21,6 +21,7 @@ export default function guardProbe(pi: ExtensionAPI): void {
   let beginCount: number = 0;
   let providerCount: number = 0;
   let rootProviderCount: number = 0;
+  let stateVersion: number = 0;
   const projection: string = `STARTUP_NATIVE_V7_GUARD\n${role}\n${loop}`;
   const client: EmployeeClient = {
     async request(command: Json): Promise<Json> {
@@ -35,7 +36,7 @@ export default function guardProbe(pi: ExtensionAPI): void {
     async poll(): Promise<EmployeePoll> {
       record({ kind: "client_poll" });
       if (stage === "disconnected") throw new Error("Fixture coordinator connection failed");
-      return { projection, pendingMessageIds: [], toolBlockReason: null, waitReason: null };
+      return { projection: stage === "cache" ? `${projection}\nSTARTUP_CHECKPOINT=${stateVersion}` : projection, pendingMessageIds: [], toolBlockReason: null, waitReason: null };
     },
     settlementBlock: () => null,
     close(): void { record({ kind: "client_close" }); },
@@ -47,6 +48,7 @@ export default function guardProbe(pi: ExtensionAPI): void {
     parameters: pi.zod.object({}),
     async execute(_id, _params, _signal, _update, ctx) {
       record({ kind: "sentinel_executed", actor: ctx.agent });
+      stateVersion += 1;
       return { content: [{ type: "text", text: "sentinel executed" }] };
     },
   });
@@ -62,6 +64,7 @@ export default function guardProbe(pi: ExtensionAPI): void {
       record({ kind: "provider", stage, helper, providerCount, rootProviderCount,
         roleComplete: text.includes(role), loopComplete: text.includes(loop),
         developerProjection: context.messages.some(message => message.role === "developer" && typeof message.content === "string" && message.content.includes(projection)),
+        cachePrompt: stage === "cache" ? { systemPrompt: context.systemPrompt, messages: context.messages } : null,
         tools: context.tools?.map(tool => tool.name), projection: helper ? null : text,
         priorToolResults: context.messages.filter(message => message.role === "toolResult") });
       if (providerCount > 12) throw new Error("Bounded V7 guard provider exceeded 12 requests");
@@ -71,6 +74,8 @@ export default function guardProbe(pi: ExtensionAPI): void {
         call = hasResult
           ? { type: "toolCall", id: `yield-${providerCount}`, name: "yield", arguments: { data: { complete: true } } }
           : { type: "toolCall", id: `sentinel-${providerCount}`, name: "startup_guard_probe", arguments: {} };
+      } else if (stage === "cache" && rootProviderCount === 1) {
+        call = { type: "toolCall", id: "cache-state-change", name: "startup_guard_probe", arguments: {} };
       } else if (stage === "admitted" && !context.messages.some(message => message.role === "toolResult" && message.toolName === "task")) {
         call = { type: "toolCall", id: "native-helper", name: "task", arguments: {
           context: "Isolated native helper guard check",
@@ -101,7 +106,7 @@ export default function guardProbe(pi: ExtensionAPI): void {
         if (!root?.session?.extensionRunner) throw new Error("Native root runner unavailable");
         record({ kind: "root", version: pi.pi.VERSION, actor: ctx.agent, sessionId: ctx.sessionManager.getSessionId(), sessionFile: ctx.sessionManager.getSessionFile(), abortAvailable: typeof ctx.abort === "function" });
         const module: typeof import("../src/employee-client") = await import(env("STARTUP_GUARD_MODULE"));
-        bridge = module.installEmployeeBridge(pi, { client, ctx, intervalMs: 60000 });
+        bridge = module.installEmployeeBridge(pi, { client, ctx, intervalMs: 60000, instructions: projection });
         try { await root.session.prompt("Run the isolated V7 guard fixture."); }
         catch (error: unknown) { record({ kind: "prompt_error", error: error instanceof Error ? error.message : String(error) }); }
         record({ kind: "prompt_settled", beginCount, providerCount, rootProviderCount });
@@ -116,7 +121,7 @@ export default function guardProbe(pi: ExtensionAPI): void {
             if (Date.now() >= deadline) throw new Error("Native helper failed to settle");
             await new Promise<void>(resolve => { ctx.setTimeout(resolve, 20); });
           }
-        } else {
+        } else if (stage !== "cache") {
           for (const operation of [
             { name: "write", args: { path: env("STARTUP_GUARD_WRITE"), content: "unauthorized fixture mutation" } },
             { name: "bash", args: { command: `printf denied > '${env("STARTUP_GUARD_BASH")}'` } },
