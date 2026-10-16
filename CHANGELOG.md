@@ -2,6 +2,19 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.1.0] - 2026-10-16
+
+### Added
+
+- The Startup coordinator socket exposes a host integration for Ronin. `GET /status` is a bounded read-only picture of binding, store revision, setup receipts, queue rows and their receipts, crews, staff, PA supervision, and unclassified input. It does not record input, route, claim, renew the owner lease, replay intents, recover, or dispatch.
+- `POST /host/admit` records one external input with an explicit `general`, `startup`, or `startup_outcome` mode. An identical `requestId` returns the original receipt. A changed payload under that id is HTTP 409.
+- `POST /host/cancel` and `GET /host/receipt/:id` cancel one request or one queue item and return a durable receipt. Item cancel settles only that item's saved worker generations and does not stop the shared manager root. Socket mode `0600` remains the only authentication.
+
+### Verification
+
+- 350 tests, 2015 assertions, and TypeScript checking pass. New socket tests use real SQLite and an owned Unix socket. They show `/status` leaving the audit revision, lease expiry, and input history unchanged, and they show admit retries returning the original receipt or HTTP 409.
+- Restart the coordinator to load the new routes. Existing `staff.sqlite` state stays in place; no migration and no replay.
+
 ## [7.0.18] - 2026-10-16
 
 ### Fixed
