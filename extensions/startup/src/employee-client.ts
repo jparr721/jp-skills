@@ -280,15 +280,17 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
       failureStartedAt = null;
       failureIdentity = null;
       for (const id of notified.keys()) if (!next.pendingMessageIds.includes(id)) notified.delete(id);
-      for (const id of input.client.settlementBlock() === null ? next.pendingMessageIds : []) {
+      const due = input.client.settlementBlock() === null ? next.pendingMessageIds.filter((id) => {
         const notifiedAt = notified.get(id);
-        if (notifiedAt !== undefined && Date.now() - notifiedAt < 30000) continue;
+        return notifiedAt === undefined || Date.now() - notifiedAt >= 30000;
+      }) : [];
+      if (due.length > 0 && !nativePending()) {
         host.sendMessage({
           customType: "startup-cue",
-          content: `Startup inbox cue ${id} is durable. Claim your own inbox and follow the canonical loop.`,
+          content: `Startup inbox has ${next.pendingMessageIds.length} durable message(s). Claim your own inbox and follow the canonical loop.`,
           display: false,
         }, { triggerTurn: true, deliverAs: "nextTurn" });
-        notified.set(id, Date.now());
+        for (const id of due) notified.set(id, Date.now());
       }
     } catch (error: unknown) {
       if (closed) return;

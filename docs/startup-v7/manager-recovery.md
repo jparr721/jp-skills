@@ -16,6 +16,8 @@ The existing entry module now owns saved-root recovery. It verifies the native t
 
 The store owns observation deduplication. Idle and done share one quiescent episode. A sequence-only update advances the observation checkpoint without creating another manager alert. A new observed work/completion cycle still produces an alert. Superseded pending lifecycle alerts are acknowledged with durable `observationCompaction` receipts, retaining their original payloads and audit history. The newest pending alert per launch, employee and generation remains. Claimed mail, task reports, questions, assignments and settlement evidence are excluded.
 
+Live acceptance also exposed a second amplification path: the native bridge previously enqueued a wake for each pending message. The bridge now sends one inbox wake per poll, containing the pending count, and waits behind an existing native pending message. Durable messages remain individually claimable. The regression test uses 1,000 pending messages plus an arrival during an already queued wake.
+
 ## Synthesis decision
 
 Selected the eager, exact-saved-root candidate because native session start already supplies the required identity and the existing bridge owns polling and execution gating. Adopted the alternative candidate's separation of coordinator admission readiness from manager connectivity, and its requirement that retirement preserve work history. A lazy gate on every native boundary would require a wider bridge refactor and duplicate authority discovery across events. A new retirement protocol with stop intents was unnecessary for this repair: existing guarded store operations plus verified maintenance process stops preserve the same identities and evidence.

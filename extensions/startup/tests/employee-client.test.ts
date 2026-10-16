@@ -214,6 +214,26 @@ test("invalid admission receipt and malformed poll response fail at the boundary
   await expect(client.poll()).rejects.toThrow("JSON");
 });
 
+test("a thousand durable messages produce one native wake and wait behind an already queued wake", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  const pending = Array.from({ length: 1000 }, (_, i) => `cue-${i}`);
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: pending, toolBlockReason: null, waitReason: "Drain inbox" });
+  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  expect(native.messages).toHaveLength(1);
+  expect(native.messages[0]?.content).toContain("1000");
+  native.setRunState(false, true);
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: [...pending, "later-cue"], toolBlockReason: null, waitReason: "Drain inbox" });
+  await bridge.poll();
+  expect(native.messages).toHaveLength(1);
+  native.setRunState(false, false);
+  await bridge.poll();
+  expect(native.messages).toHaveLength(2);
+});
+
 test("bridge injects canonical projection only into the bound root and deduplicates own inbox wakes", async () => {
   const fixture = serverFixture();
   const client = await connect(fixture);
@@ -223,7 +243,7 @@ test("bridge injects canonical projection only into the bound root and deduplica
   await bridge.poll();
   await bridge.poll();
   expect(native.messages).toEqual([
-    { content: "Startup inbox cue own-cue-1 is durable. Claim your own inbox and follow the canonical loop.", triggerTurn: true, deliverAs: "nextTurn" },
+    { content: "Startup inbox has 1 durable message(s). Claim your own inbox and follow the canonical loop.", triggerTurn: true, deliverAs: "nextTurn" },
   ]);
   expect(await native.emit("before_agent_start", { systemPrompt: ["native"] }, native.ctx)).toEqual({ systemPrompt: ["native", "COMPLETE CANONICAL ROLE AND LOOP"] });
   const result = await native.emit("context", { messages: [{ role: "user", content: "hello" }] }, native.ctx);
