@@ -2,6 +2,17 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.8] - 2026-10-15
+
+### Fixed
+
+- A parked no-claim settlement rejection now clears when genuinely new ready inbox work arrives, so the next scheduled PA duty can wake its resident employee. With an outstanding claim, unrelated mail leaves that claim's retry guard intact. This corrects an edge case found during final 7.0.7 acceptance.
+- Native client modules are unchanged from 7.0.7; the coordinator supplies the additional recovery state through the existing compatible projection field.
+
+### Verification
+
+- 309 tests, 1531 assertions and TypeScript checking passed. The 7.0.7 client modules also pass six driver tests, eight compiled-OMP guard checks and a compiled-OMP settlement proof: two model attempts, one rejected HTTP write, native duplicate abort and no subsequent file/shell writes. The client source hashes remain identical in this release.
+
 ## [7.0.7] - 2026-10-15
 
 ### Fixed
