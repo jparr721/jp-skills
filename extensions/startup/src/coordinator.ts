@@ -476,7 +476,8 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     }
     const managerRuntime = runtime("manager");
     const managerObserved = observations.some((o) => o.nativeSession === managerRuntime.nativeSession && o.terminalId === managerRuntime.terminalId);
-    const managerOffline = !managerObserved || now() - managerRuntime.lastPoll > policy.connectionDeadlineMs;
+    const managerOffline = (observerAvailable && !managerObserved) || now() - managerRuntime.lastPoll > policy.connectionDeadlineMs;
+    const managerPresence = managerOffline ? "offline" : observerAvailable ? "online" : "unknown";
     const snapshot = store.snapshot();
     const pa = snapshot.employees.find((e) => e.role === "pa" && e.employment === "hired");
     if (pa?.source !== null && pa !== undefined) {
@@ -489,7 +490,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       const outstanding = checks.some((m) => m.status !== "acknowledged");
       const last = checks.at(-1);
       const lastDue = last ? z.object({ scheduledAt: z.number() }).parse(last.payload).scheduledAt : 0;
-      if (!outstanding && now() - lastDue >= policy.paCadenceMs) store.sendCue({ sender: store.managerBinding, cue: { id: `pa-check-${runtime(pa.id).launchId}-${now()}`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "pa-check", scheduledAt: now(), managerPresence: managerOffline ? "offline" : "online", unclassifiedInputs: snapshot.inputs.filter((i) => i.disposition === null).length, unresolvedClaims: snapshot.claims.filter((c) => c.status !== "settled").length, pendingMessages: snapshot.messages.filter((m) => m.status === "pending").length, crews: snapshot.teams.map((t) => ({ id: t.id, state: t.state })) } } });
+      if (!outstanding && now() - lastDue >= policy.paCadenceMs) store.sendCue({ sender: store.managerBinding, cue: { id: `pa-check-${runtime(pa.id).launchId}-${now()}`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "pa-check", scheduledAt: now(), managerPresence, unclassifiedInputs: snapshot.inputs.filter((i) => i.disposition === null).length, unresolvedClaims: snapshot.claims.filter((c) => c.status !== "settled").length, pendingMessages: snapshot.messages.filter((m) => m.status === "pending").length, crews: snapshot.teams.map((t) => ({ id: t.id, state: t.state })) } } });
     }
     const health = paState();
     if (health !== null) alertOnce({ id: `pa-health-${health}-${pa ? runtime(pa.id).launchId : "missing"}`, correlation: "manager-supervision", payload: { kind: health, observedAt: now() } });

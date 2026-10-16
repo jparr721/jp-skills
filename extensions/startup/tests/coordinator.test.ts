@@ -193,6 +193,20 @@ test("failed observation collection still schedules a PA check and marks health 
   expect(f.coordinator.health().status).toBe("running");
 });
 
+test("lost observations mean unknown manager presence and do not flood the PA with false offline duties", async () => {
+  const f = fixture(8);
+  const { manager, pa } = await f.ready();
+  f.failObservation(new Error("controlled missing snapshot"));
+  await f.coordinator.tick();
+  await f.coordinator.poll(manager);
+  f.advance(1050);
+  await f.coordinator.tick();
+  const messages = f.store.snapshot().messages;
+  expect(messages.filter((m) => m.recipient === pa)).toHaveLength(1);
+  expect(messages.find((m) => m.recipient === pa)?.payload).toMatchObject({ kind: "pa-check", managerPresence: "unknown" });
+  expect(messages.some((m) => JSON.stringify(m.payload).includes('"kind":"manager-offline"'))).toBe(false);
+});
+
 test("PA control polling does not depend on loading unrelated global history", async () => {
   const f = fixture(8);
   const { paConnection } = await f.ready();
