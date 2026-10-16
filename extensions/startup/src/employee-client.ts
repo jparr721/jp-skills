@@ -224,7 +224,8 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
       current = next;
       if (failure !== null) {
         const outageMs: number = Date.now() - (failureStartedAt ?? Date.now());
-        host.sendMessage({ customType: "startup-connection-restored", content: `Startup coordinator connection restored; authenticated polling resumed. outageMs=${outageMs}`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+        const resumeWork: boolean = next.waitReason !== null && nativeIdle() && !nativePending();
+        host.sendMessage({ customType: "startup-connection-restored", content: `Startup coordinator connection restored; authenticated polling resumed. outageMs=${outageMs}`, display: true }, { triggerTurn: resumeWork, deliverAs: "nextTurn" });
         process.stderr.write(JSON.stringify({ level: "info", component: "startup-connection", state: "restored", outageMs, observedAt: Date.now() }) + "\n");
       }
       failure = null;

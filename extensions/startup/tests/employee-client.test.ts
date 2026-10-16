@@ -441,3 +441,17 @@ test("repeated transport failures with different elapsed times emit one unavaila
   await expect(bridge.poll()).rejects.toThrow("/poll");
   expect(native.messages.filter((m) => m.content.includes("unavailable"))).toHaveLength(1);
 });
+
+test("recovery wakes an idle root to settle its stranded claim without waking a clean idle root", async () => {
+  const fixture = serverFixture();
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: [], toolBlockReason: null, waitReason: "Settle or explicitly reconcile your outstanding claim before ending." });
+  const client = await connect(fixture);
+  const native = nativeFixture(); native.setRunState(true, false);
+  const bridge = installEmployeeBridge(native.host, { client, ctx: native.ctx, intervalMs: 60000 }); cleanup.push(bridge.close);
+  await bridge.poll();
+  fixture.pollError(new Response("outage", { status: 503 }));
+  await expect(bridge.poll()).rejects.toThrow("503");
+  fixture.pollError(Response.json({ projection: "canonical", pendingMessageIds: [], toolBlockReason: null, waitReason: "Settle or explicitly reconcile your outstanding claim before ending." }));
+  await bridge.poll();
+  expect(native.messages.at(-1)).toMatchObject({ triggerTurn: true, deliverAs: "nextTurn" });
+});
