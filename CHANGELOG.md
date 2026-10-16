@@ -2,6 +2,20 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.3] - 2026-10-15
+
+### Fixed
+
+- Herdr's seen/unseen completion display can alternate between `done` and `idle` without advancing its lifecycle sequence. Accept those display changes without duplicate alerts or semantic progress; conflicting activity states and regressed sequences remain errors.
+- Isolate observation collection, individual observation and canonical queue read errors. Failed reads produce durable manager diagnostics while other observations, PA checks and independent deadline checks continue.
+- Report degraded/stale supervision through HTTP 503 and completion/success timestamps. Keep the production timer running through failures and recover HTTP 200 after a successful cycle.
+- Read and write array, `items` and `rows` queue containers without dropping metadata or rewriting their shape. Reject ambiguous dual-key documents explicitly.
+- Employee control polls avoid unrelated global history, and supervision no longer repeatedly loads the same history per employee or queue item.
+
+### Verification
+
+- 276 tests, 1403 assertions, TypeScript checking, six driver tests and eight installed-OMP native guard checks passed. A production-timer integration test settled two PA checks during queue read failures and observed health recover without a restart.
+
 ## [7.0.2] - 2026-10-15
 
 ### Fixed
