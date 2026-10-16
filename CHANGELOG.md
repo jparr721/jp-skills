@@ -2,6 +2,18 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.0.10] - 2026-10-16
+
+### Fixed
+
+- Native inbox polling sends one aggregate wake instead of one wake per durable message, and waits behind an already queued native message. This prevents a recovered manager's retained backlog from flooding its model context while preserving every individual inbox record.
+- Includes the manager reconnection, lifecycle alert compaction, connectivity health and finished-crew retirement fixes from 7.0.9. The additional wake amplification was reproduced during live Aspen acceptance.
+
+### Verification
+
+- 316 tests, 1584 assertions, TypeScript checking, six probe-driver tests and eight compiled-OMP guard checks passed. The new regression proves 1,000 messages produce one wake and a later message waits behind a queued wake.
+- Live Aspen recovery, reconciliation, progress and cleanup evidence: docs/startup-v7/aspen-manager-recovery-acceptance.json.
+
 ## [7.0.9] - 2026-10-16
 
 ### Fixed
