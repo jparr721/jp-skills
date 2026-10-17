@@ -60,6 +60,7 @@ export type Coordinator = Readonly<{
   command: (connection: string, command: Json) => Promise<Json>;
   poll: (connection: string) => Promise<Poll>;
   tick: () => Promise<void>;
+  launching: () => Promise<void>;
   hostStatus: (query: unknown) => HostStatus;
   hostAdmit: (request: unknown) => Promise<HostReceipt>;
   hostCancel: (request: unknown) => Promise<HostReceipt>;
@@ -75,6 +76,8 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   const connections = new Map<string, Readonly<{ employeeId: string; generation: number; epoch: number }>>();
   let serial: Promise<void> = Promise.resolve();
   let ticking: Promise<void> | null = null;
+  let launches: Promise<void> = Promise.resolve();
+  const launchingIds = new Set<string>();
   const openedAt = now();
   let supervision: CoordinatorHealth["supervision"] = { lastStartedAt: null, lastCompletedAt: null, lastSuccessAt: null, errors: [] };
   let observerAvailable: boolean = true;
@@ -209,6 +212,26 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       store.runtimeAlert({ id: `layout-uncertain-${saved.launchId}`, correlation: saved.launchId, payload: { kind: "layout-uncertain", employeeId: id, error: reason } });
       throw error;
     }
+  }
+  function assertNotLaunching(ids: readonly string[]): void {
+    const busy = ids.filter((id) => launchingIds.has(id));
+    if (busy.length > 0) throw new StoreConflictError(`Employees ${busy.join(", ")} are already launching; follow progress through startup_staff and launch alerts`);
+  }
+  // Pane launches wait for native readiness, so they run after the durable receipt returns, one at a time per coordinator.
+  function launchInBackground(ids: readonly string[], step: (id: string) => Promise<void>): void {
+    assertNotLaunching(ids);
+    for (const id of ids) launchingIds.add(id);
+    launches = launches.then(async () => {
+      let index = 0;
+      try {
+        for (; index < ids.length; index += 1) await step(ids[index]!);
+      } catch (error: unknown) {
+        const reason = error instanceof Error ? error.message : String(error);
+        alertOnce({ id: `launch-interrupted-${digest(encode({ ids, index, reason })).slice(0, 32)}`, correlation: ids[index]!, payload: { kind: "launch-interrupted", failedEmployeeId: ids[index]!, unlaunchedEmployeeIds: ids.slice(index + 1), error: reason, observedAt: now() } });
+      } finally {
+        for (const id of ids) launchingIds.delete(id);
+      }
+    });
   }
   async function createEmployeeTab(id: string, label: string): Promise<Readonly<{ tabId: string; paneId: string }>> {
     const saved = runtime(id);
@@ -377,21 +400,21 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
           output = store.snapshot().teams.find((t) => t.id === team.id);
           break;
         }
-        const first = await createEmployeeTab(ids.architect, `${config.name} crew ${team.id.slice(0, 8)}`);
-        for (const [index, id] of members.entries()) {
+        let first: Readonly<{ tabId: string; paneId: string }> | null = null;
+        launchInBackground(members, async (id) => {
           const bound = runtime(id);
-          const location = index === 0 ? first : await allocate(id, async () => ({ tabId: first.tabId, paneId: await herdr.split({ paneId: first.paneId, cwd: config.boundRoot, env: { OMPCODE: "", OMP_PROFILE: config.profile, STARTUP_V7_MANIFEST: join(launchDirectory, `${bound.launchId}.json`) } }) }));
+          const tab = first;
+          const location = tab === null ? await createEmployeeTab(id, `${config.name} crew ${team.id.slice(0, 8)}`) : await allocate(id, async () => ({ tabId: tab.tabId, paneId: await herdr.split({ paneId: tab.paneId, cwd: config.boundRoot, env: { OMPCODE: "", OMP_PROFILE: config.profile, STARTUP_V7_MANIFEST: join(launchDirectory, `${bound.launchId}.json`) } }) }));
+          first = tab ?? location;
           await launch(id, location);
-        }
+        });
         output = store.snapshot().teams.find((t) => t.id === team.id); break;
       }
       case "activate": {
         manager(connection);
-        for (const id of request.employeeIds) {
-          const saved = runtime(id);
-          if (saved.state !== "prepared") throw new StoreAuthorityError("Existing launch requires identity reconciliation; never blindly start it again");
-          await launch(id, await createEmployeeTab(id, `${config.name} ${employee(id).role}`));
-        }
+        assertNotLaunching(request.employeeIds);
+        if (request.employeeIds.some((id) => runtime(id).state !== "prepared")) throw new StoreAuthorityError("Existing launch requires identity reconciliation; never blindly start it again");
+        launchInBackground(request.employeeIds, async (id) => launch(id, await createEmployeeTab(id, `${config.name} ${employee(id).role}`)));
         output = { activated: request.employeeIds }; break;
       }
       case "replace": {
@@ -570,6 +593,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       void operation.then(() => { ticking = null; }, () => { ticking = null; });
       return operation;
     },
+    launching(): Promise<void> { return launches; },
     hostStatus(query: unknown): HostStatus { return host.status(query); },
     hostAdmit(request: unknown): Promise<HostReceipt> {
       const operation = serial.then(() => host.admit(request));

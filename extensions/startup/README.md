@@ -66,8 +66,8 @@ Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md
 | Public tool | Purpose and boundary |
 | --- | --- |
 | `startup_hire {requestId,role,additional}` | Manager reserves additional architect/QA/dev/DevOps identities; stable retries add zero. The single permanent PA is automatic. |
-| `startup_delegate {eventId,developers}` | Manager admits a complete crew for persisted intake; retries retain its original membership. Non-architect `crew-ready` notices carry no work and settle complete for every result kind. |
-| `startup_activate {employeeIds}` | Manager starts existing prepared identities; uncertain starts require reconciliation. |
+| `startup_delegate {eventId,developers}` | Manager admits a complete crew for persisted intake; retries retain its original membership. Returns once the crew is durably reserved; pane launches continue serially in the coordinator and report through `startup_staff` runtime state and `layout-uncertain`/`launch-uncertain`/`launch-interrupted` alerts. Non-architect `crew-ready` notices carry no work and settle complete for every result kind. |
+| `startup_activate {employeeIds}` | Manager starts existing prepared identities; uncertain starts require reconciliation. Returns once the launch is queued; the same launch progress and alerts as delegate apply, and a retry while still launching is refused. |
 | `startup_replace {employeeId,evidence}` | Manager replacement after explicit failure/identity evidence and unresolved-work reconciliation. |
 | `startup_route {inputId,disposition,reason,amendItemIds}` | Manager classifies a saved native receipt as work/status/control/conversation/decision. |
 | `startup_intake {eventId,input,amendItemIds}` | Manager saves externally supplied work before delegation. |

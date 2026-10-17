@@ -60,6 +60,7 @@ export async function serveRuntimeHost(input: Readonly<{ config: RuntimeHostConf
     if (tickTimer !== null) clearInterval(tickTimer);
     server.stop(true);
     if (tickWork !== null) await tickWork;
+    await coordinator.launching();
     store.close();
   }
   try { await coordinator.start(); }

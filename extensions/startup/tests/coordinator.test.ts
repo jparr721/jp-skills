@@ -32,6 +32,7 @@ function fixture(executionLimit: number) {
   const store = openStore({ path: join(stateDirectory, "staff.sqlite"), scope: { home, boundRoot, host: "host", name: "test", managerSession: "manager-session" }, owner: { id: "coordinator", managerGeneration: 1, leaseMs: 60000 }, now: () => now });
   stores.push(store);
   const observations: HerdrObservation[] = [{ name: "manager", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1", terminalId: "term1", nativeSession: managerFile, state: "idle", stateSequence: 1, interactiveReady: true }];
+  const launches: Readonly<{ paneId: string; name: string; args: readonly string[] }>[] = [];
   let next = 2;
   let launchBarrier: Promise<void> | null = null;
   let layoutFailure: Error | null = null;
@@ -48,6 +49,7 @@ function fixture(executionLimit: number) {
     },
     split: async () => `w1:p${next++}`,
     launch: async (input) => {
+      launches.push(input);
       if (launchBarrier) await launchBarrier;
       const nativeSession = join(root, `${input.name}.jsonl`);
       writeFileSync(nativeSession, JSON.stringify({ type: "session", id: input.name }) + "\n");
@@ -78,11 +80,12 @@ function fixture(executionLimit: number) {
   async function delegate(manager: string, eventId: string) {
     await coordinator.command(manager, { kind: "intake", eventId, input: "fix", amendItemIds: [] });
     await coordinator.command(manager, { kind: "delegate", eventId, developers: 1 });
+    await coordinator.launching();
     const team = store.snapshot().teams.find((t) => t.eventId === eventId);
     if (!team) throw new Error("Missing team");
     return team;
   }
-  return { coordinator, store, config, observations, ready, admit, delegate, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
+  return { coordinator, store, config, observations, launches, ready, admit, delegate, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
 }
 
 test("admission preserves observation progress committed while its Herdr read is pending", async () => {
@@ -257,7 +260,7 @@ test("an existing crew can report while a new crew waits for native readiness", 
       Bun.sleep(50).then(() => false),
     ]);
     expect(reported).toBe(true);
-  } finally { barrier.resolve(); await launching; }
+  } finally { barrier.resolve(); await launching; await f.coordinator.launching(); }
 });
 
 test("uncertain pane creation is fenced before a manager retries activation", async () => {
@@ -266,7 +269,9 @@ test("uncertain pane creation is fenced before a manager retries activation", as
   const receipt = z.object({ employees: z.array(z.object({ id: z.string() })) }).parse(await f.coordinator.command(manager, { kind: "hire", requestId: "hire-ops", role: "devops", additional: 1 }));
   const id = receipt.employees[0]!.id;
   f.failLayout(new Error("ambiguous create response"));
-  await expect(f.coordinator.command(manager, { kind: "activate", employeeIds: [id] })).rejects.toThrow("ambiguous");
+  await f.coordinator.command(manager, { kind: "activate", employeeIds: [id] });
+  await f.coordinator.launching();
+  expect(f.store.snapshot().messages.some((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"layout-uncertain"') && JSON.stringify(m.payload).includes("ambiguous"))).toBe(true);
   const calls = f.layoutCalls();
   await expect(f.coordinator.command(manager, { kind: "activate", employeeIds: [id] })).rejects.toThrow("reconciliation");
   expect(f.layoutCalls()).toBe(calls);
@@ -525,6 +530,7 @@ test("explicit intake retains complete paged text and native attachments for its
   const image = { type: "image", data: "YQ==", mimeType: "image/png" };
   await f.coordinator.command(manager, { kind: "intake", eventId: "long", input: { text, images: [image] }, amendItemIds: [] });
   await f.coordinator.command(manager, { kind: "delegate", eventId: "long", developers: 1 });
+  await f.coordinator.launching();
   const team = f.store.snapshot().teams[0]!;
   const architect = await f.admit(team.architect);
   await f.admit(team.qa);
@@ -564,6 +570,7 @@ test("manager recovery fences a stranded unadmitted crew generation and admits a
   expect(await f.coordinator.command(manager, { kind: "replace", employeeId: id, evidence: "Stopped original launch and verified absence" })).toEqual({ generation: 2 });
   expect(f.store.runtimeBindings().filter((r) => r.employeeId === id)).toHaveLength(2);
   await f.coordinator.command(manager, { kind: "activate", employeeIds: [id] });
+  await f.coordinator.launching();
   const dev = await f.admit(id);
   expect(f.store.snapshot().employees.find((e) => e.id === id)?.generation).toBe(2);
   expect(await f.coordinator.command(dev, { kind: "claim" })).toBeNull();
@@ -1027,4 +1034,43 @@ test("an item assignment blocked by unresolved work names the assignment and its
   await expect(assign("ITEM-B")).rejects.toThrow(`Item dev has unresolved work: assignment ${claimed.message.id} is waiting; the manager must startup_resolve it with evidence`);
   await f.coordinator.command(manager, { kind: "resolve", assignmentId: claimed.message.id, evidence: "Architect answered" });
   await expect(assign("ITEM-B")).resolves.toMatchObject({ status: "EXECUTING" });
+});
+
+test("delegate and activate return durable receipts without waiting for pane launches", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  await f.coordinator.command(manager, { kind: "intake", eventId: "slow-crew", input: "work", amendItemIds: [] });
+  const barrier = Promise.withResolvers<void>();
+  f.delayLaunch(barrier.promise);
+  try {
+    const launched = f.launches.length;
+    const delegated = await Promise.race([f.coordinator.command(manager, { kind: "delegate", eventId: "slow-crew", developers: 1 }), Bun.sleep(100).then(() => "blocked" as const)]);
+    expect(delegated).toMatchObject({ eventId: "slow-crew", state: "reserved" });
+    const hire = z.object({ employees: z.array(z.object({ id: z.string() })) }).parse(await f.coordinator.command(manager, { kind: "hire", requestId: "slow-ops", role: "devops", additional: 1 }));
+    const id = hire.employees[0]!.id;
+    expect(await Promise.race([f.coordinator.command(manager, { kind: "activate", employeeIds: [id] }), Bun.sleep(100).then(() => "blocked" as const)])).toEqual({ activated: [id] });
+    await expect(f.coordinator.command(manager, { kind: "activate", employeeIds: [id] })).rejects.toThrow("already launching");
+    expect(f.launches.length).toBe(launched + 1);
+  } finally { barrier.resolve(); }
+  await f.coordinator.launching();
+  const team = f.store.snapshot().teams.find((t) => t.eventId === "slow-crew")!;
+  for (const id of [team.architect, team.qa, ...team.devs]) await f.admit(id);
+  expect(f.store.snapshot().teams.find((t) => t.id === team.id)?.state).toBe("ready");
+});
+
+test("a background crew launch failure is saved as manager alerts and leaves unlaunched members prepared", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  await f.coordinator.command(manager, { kind: "intake", eventId: "broken-crew", input: "work", amendItemIds: [] });
+  f.failLayout(new Error("ambiguous create response"));
+  const team = z.object({ id: z.string(), architect: z.string(), qa: z.string(), devs: z.array(z.string()) }).parse(await f.coordinator.command(manager, { kind: "delegate", eventId: "broken-crew", developers: 1 }));
+  await f.coordinator.launching();
+  const runtime = (id: string) => f.store.runtimeBindings().findLast((r) => r.employeeId === id);
+  expect(runtime(team.architect)?.state).toBe("uncertain");
+  expect([team.qa, ...team.devs].map((id) => runtime(id)?.state)).toEqual(["prepared", "prepared"]);
+  const alerts = f.store.snapshot().messages.filter((m) => m.recipient === "manager").map((m) => JSON.stringify(m.payload));
+  expect(alerts.some((payload) => payload.includes('"kind":"layout-uncertain"'))).toBe(true);
+  const interrupted = alerts.find((payload) => payload.includes('"kind":"launch-interrupted"'));
+  expect(interrupted).toContain(team.qa);
+  expect(interrupted).toContain("ambiguous create response");
 });
