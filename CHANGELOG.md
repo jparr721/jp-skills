@@ -2,6 +2,18 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.3.0] - 2026-10-17
+
+### Added
+
+- Startup OMP employees launch on the OMP model role bound to their Startup role: architect `plan`, dev `slow`, QA `advisor`, DevOps `slow`, PA `smol`. The binding is one table in `extensions/startup/src/model-roles.ts`; retune a model in the OMP profile's `modelRoles`.
+- Manager boot checks that the profile resolves every bound role through `ctx.models` and blocks with the missing roles named. There is no fallback to `default`. An already-admitted manager is not re-checked.
+
+### Verification
+
+- 498 tests, 2501 assertions, and TypeScript checking pass.
+- Upgrade note: a profile that sets only `modelRoles.default` (such as `startup-v7`) now blocks manager boot until `plan` and `advisor` are assigned.
+
 ## [7.2.0] - 2026-10-16
 
 ### Added
