@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { openCoordinator, serveCoordinator, type Coordinator } from "./src/coordinator";
+import { isClaudeConfig, openCoordinator, serveCoordinator, type Coordinator } from "./src/coordinator";
 import { createHerdrRuntime, runHerdrCommand, type HerdrRuntime } from "./src/herdr-runtime";
 import { openStore, type StartupStore } from "./src/store";
-import { readPrivateJson, runtimeHostConfigSchema, type RuntimeHostConfig } from "./src/v7-launch";
+import { readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
 
 export type RuntimeHost = Readonly<{
   coordinator: Coordinator;
@@ -17,14 +17,14 @@ function report(config: RuntimeHostConfig, operation: string, error: unknown): v
   process.stderr.write(JSON.stringify({ level: "error", component: "startup-v7-runtime", startup: config.name, operation, error: detail, observedAt: Date.now() }) + "\n");
 }
 export async function startRuntimeHost(input: RuntimeHostConfig): Promise<RuntimeHost> {
-  const config: RuntimeHostConfig = runtimeHostConfigSchema.parse(input);
+  const config: RuntimeHostConfig = parseRuntimeHostConfig(input);
   if (process.env.HERDR_ENV !== "1") throw new Error("Startup runtime requires its inherited Herdr environment");
   const store = openStore({
     path: join(config.home, "startup", config.name, "staff.sqlite"),
     scope: { home: config.home, host: `${hostname()}:startup-v7`, name: config.name, boundRoot: config.boundRoot, managerSession: config.managerSession },
     owner: { id: randomUUID(), managerGeneration: config.ownerGeneration, leaseMs: 60000 }, now: Date.now,
   });
-  const herdr = createHerdrRuntime({ session: config.herdrSession, workspaceId: config.workspaceId, binary: config.herdrBinary, run: runHerdrCommand });
+  const herdr = createHerdrRuntime({ session: config.herdrSession, workspaceId: config.workspaceId, binary: config.herdrBinary, run: runHerdrCommand, agent: isClaudeConfig(config) ? "claude" : "omp" });
   return serveRuntimeHost({ config, store, herdr });
 }
 export async function serveRuntimeHost(input: Readonly<{ config: RuntimeHostConfig; store: StartupStore; herdr: HerdrRuntime }>): Promise<RuntimeHost> {
@@ -79,7 +79,7 @@ export async function serveRuntimeHost(input: Readonly<{ config: RuntimeHostConf
 }
 if (import.meta.main) {
   const [path] = z.tuple([z.string().startsWith("/")]).parse(process.argv.slice(2));
-  const config: RuntimeHostConfig = runtimeHostConfigSchema.parse(readPrivateJson(path));
+  const config: RuntimeHostConfig = parseRuntimeHostConfig(readPrivateJson(path));
   try {
     const host: RuntimeHost = await startRuntimeHost(config);
     process.stderr.write(JSON.stringify({ level: "info", component: "startup-v7-runtime", startup: config.name, operation: "started", pid: process.pid, observedAt: Date.now() }) + "\n");

@@ -74,4 +74,4 @@ Capacity-blocked pending delivery is different: the cue is unclaimed and the coo
 
 ## Coordinator ownership
 
-The authenticated OMP extension sends commands to the coordinator, the exclusive state writer and lease owner. Preserve runtime receipts and journal recovery; direct queue-file writes are not an alternate execution path. Missing coordinator/OMP/Herdr readiness requires explicit recovery. Lifecycle observations and watchdog alerts preserve work history without manufacturing completion or authority.
+The authenticated harness client (OMP extension or Claude Startup bridge) sends commands to the coordinator, the exclusive state writer and lease owner. Preserve runtime receipts and journal recovery; direct queue-file writes are not an alternate execution path. Missing coordinator/harness/Herdr readiness requires explicit recovery. Lifecycle observations and watchdog alerts preserve work history without manufacturing completion or authority.

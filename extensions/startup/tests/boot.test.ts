@@ -15,6 +15,7 @@ import {
   bootSelection,
   parseBootCommand,
   writeBootGuidance,
+  writeClaudeGuidance,
 } from "../src/boot";
 const directories: string[] = [];
 afterEach(() => {
@@ -173,4 +174,47 @@ test("boot separator ignores quoted path content and retains complete work", () 
     directory: "/path -- with spaces",
     work: 'inspect "quoted" work',
   });
+});
+
+test("Claude guidance imports AGENTS.md in a managed CLAUDE.md block and preserves user bytes", () => {
+  const f = fixture();
+  const selected = bootSelection({ ...f, cwd: f.root, command: parseBootCommand("new example"), explicitName: null, executionLimit: null });
+  if (!selected) throw new Error("Missing selection");
+  const prior = "User Claude notes\r\nKeep bytes";
+  writeFileSync(join(f.root, "CLAUDE.md"), prior);
+  const agents = writeBootGuidance(selected);
+  const agentBytes = readFileSync(agents);
+  const path = writeClaudeGuidance(selected);
+  expect(path).toBe(join(f.root, "CLAUDE.md"));
+  const text = readFileSync(path, "utf8");
+  expect(text.startsWith(`${prior}\n<!-- jp-skills-startup:begin -->\n<!-- identity: ${JSON.stringify({ version: 1, name: "example", boundRoot: f.root, skillsRoot: f.skillsRoot })} -->\n@AGENTS.md\n`)).toBe(true);
+  expect(text.endsWith("<!-- jp-skills-startup:end -->\n")).toBe(true);
+  expect(text).toContain("mcp__startup__startup_*");
+  const bytes = readFileSync(path);
+  writeClaudeGuidance(selected);
+  expect(readFileSync(path)).toEqual(bytes);
+  expect(readFileSync(agents)).toEqual(agentBytes);
+  rmSync(path);
+  writeClaudeGuidance(selected);
+  expect(readFileSync(path, "utf8").startsWith("<!-- jp-skills-startup:begin -->")).toBe(true);
+});
+test("Claude guidance rejects malformed sections, invalid UTF-8 and symlinks without touching bytes", () => {
+  const f = fixture();
+  const selected = bootSelection({ ...f, cwd: f.root, command: parseBootCommand("new example"), explicitName: null, executionLimit: null });
+  if (!selected) throw new Error("Missing selection");
+  const file = join(f.root, "CLAUDE.md");
+  for (const text of ["user\n<!-- jp-skills-startup:begin -->", "<!-- jp-skills-startup:begin -->\nwrong\n<!-- jp-skills-startup:end -->"]) {
+    writeFileSync(file, text);
+    expect(() => writeClaudeGuidance(selected)).toThrow();
+    expect(readFileSync(file, "utf8")).toBe(text);
+  }
+  const invalid = Buffer.from([0xff, 0x0a]);
+  writeFileSync(file, invalid);
+  expect(() => writeClaudeGuidance(selected)).toThrow("CLAUDE.md must be valid UTF-8");
+  expect(readFileSync(file)).toEqual(invalid);
+  rmSync(file);
+  writeFileSync(join(f.root, "user.md"), "user");
+  symlinkSync(join(f.root, "user.md"), file);
+  expect(() => writeClaudeGuidance(selected)).toThrow("symlink");
+  expect(readFileSync(join(f.root, "user.md"), "utf8")).toBe("user");
 });

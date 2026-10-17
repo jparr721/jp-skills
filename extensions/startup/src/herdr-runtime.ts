@@ -150,11 +150,17 @@ export function createHerdrRuntime(input: Readonly<{
   workspaceId: string;
   binary: string;
   run: (argv: readonly string[]) => Promise<CommandResult>;
+  agent: "omp" | "claude";
 }>): HerdrRuntime {
-  const config = z.object({ session: targetSchema, workspaceId: targetSchema, binary: textSchema }).safeParse(input);
+  const config = z.object({ session: targetSchema, workspaceId: targetSchema, binary: textSchema, agent: z.enum(["omp", "claude"]) }).safeParse(input);
   if (!config.success)
     throw new HerdrRuntimeError({ code: "invalid_request", command: [input.binary], exitCode: null, stdout: "", stderr: "", detail: config.error.message });
   const prefix: readonly string[] = [config.data.binary, "--session", config.data.session];
+  const kind: "omp" | "claude" = config.data.agent;
+  const label: string = kind === "claude" ? "Claude" : "OMP";
+  function foreignSession(session: z.infer<typeof agentSchema>["agent_session"]): boolean {
+    return session !== null && session !== undefined && (session.agent !== kind || (kind === "claude" && session.kind !== "id"));
+  }
   function fail(code: FailureCode, command: readonly string[], result: CommandResult, detail: string): never {
     throw new HerdrRuntimeError({ code, command, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, detail });
   }
@@ -215,17 +221,17 @@ export function createHerdrRuntime(input: Readonly<{
     },
     launch: async (request): Promise<HerdrObservation> => {
       const parsed = validate(launchSchema, request, [...prefix, "agent", "start"]);
-      const response = await execute(["agent", "start", parsed.name, "--kind", "omp", "--pane", parsed.paneId, "--", ...parsed.args], z.object({ id: textSchema, result: launchResultSchema }), "invalid_response");
+      const response = await execute(["agent", "start", parsed.name, "--kind", kind, "--pane", parsed.paneId, "--", ...parsed.args], z.object({ id: textSchema, result: launchResultSchema }), "invalid_response");
       const agent = response.data.result.agent;
-      if (agent.workspace_id !== config.data.workspaceId || agent.pane_id !== parsed.paneId || agent.name !== parsed.name || agent.agent !== "omp" || !agent.interactive_ready || agent.launch_pending === true || (agent.agent_session !== null && agent.agent_session !== undefined && agent.agent_session.agent !== "omp"))
-        fail("binding_mismatch", response.command, response.result, "Started agent does not match the expected ready OMP pane identity");
+      if (agent.workspace_id !== config.data.workspaceId || agent.pane_id !== parsed.paneId || agent.name !== parsed.name || agent.agent !== kind || !agent.interactive_ready || agent.launch_pending === true || foreignSession(agent.agent_session))
+        fail("binding_mismatch", response.command, response.result, `Started agent does not match the expected ready ${label} pane identity`);
       return normalize(agent);
     },
     observe: async (): Promise<readonly HerdrObservation[]> => {
       const response = await execute(["agent", "list"], z.object({ id: textSchema, result: listResultSchema }), "invalid_response");
-      const agents = response.data.result.agents.filter((agent) => agent.workspace_id === config.data.workspaceId && (agent.launch_pending === true || agent.agent === "omp"));
-      if (agents.some((agent) => agent.agent_session !== undefined && agent.agent_session !== null && agent.agent_session.agent !== "omp"))
-        fail("binding_mismatch", response.command, response.result, "OMP native session identity belongs to a different agent kind");
+      const agents = response.data.result.agents.filter((agent) => agent.workspace_id === config.data.workspaceId && (agent.launch_pending === true || agent.agent === kind));
+      if (agents.some((agent) => foreignSession(agent.agent_session)))
+        fail("binding_mismatch", response.command, response.result, `${label} native session identity belongs to a different agent kind`);
       return agents.map(normalize);
     },
   };

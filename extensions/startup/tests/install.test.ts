@@ -1,17 +1,20 @@
 import { afterEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { manageInstallation, pluginsDirectory } from "../install";
+import { manageClaudeInstallation, manageInstallation, pluginsDirectory } from "../install";
 const temporary: string[] = [];
 afterEach(() => {
   for (const path of temporary.splice(0))
@@ -196,4 +199,74 @@ else {
   manageInstallation({ ...f, action: "uninstall", omp: "must-not-execute" });
   expect(readFileSync(lock, "utf8")).toBe(original);
   expect(existsSync(join(f.plugins, "node_modules/@jp-skills/startup"))).toBe(false);
+});
+
+function claudeFixture(version: string) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "startup-claude-install-")));
+  temporary.push(root);
+  const source = realpathSync(resolve(import.meta.dir, ".."));
+  const skillsRoot = realpathSync(resolve(source, "../.."));
+  const claudeDir = join(root, ".claude");
+  mkdirSync(join(claudeDir, "hooks"), { recursive: true });
+  mkdirSync(join(claudeDir, "skills"));
+  const hook = join(claudeDir, "hooks", "herdr-agent-state.sh");
+  writeFileSync(hook, "#!/bin/bash\n# HERDR_INTEGRATION_ID=claude\n# HERDR_INTEGRATION_VERSION=11\n");
+  writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({ hooks: { SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: `bash '${hook}' session`, timeout: 10 }] }] } }));
+  const names = readdirSync(join(skillsRoot, "skills")).filter((name) => name === "startup" || name === "hire" || name.startsWith("startup-"));
+  for (const name of names) symlinkSync(join(skillsRoot, "skills", name), join(claudeDir, "skills", name));
+  const claude = join(root, "claude-fixture");
+  writeFileSync(claude, `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(version)} + String.fromCharCode(10));\n`, { mode: 0o700 });
+  return {
+    root, source, skillsRoot, claudeDir, names,
+    launcher: join(root, ".local/bin/startup-claude"),
+    receipt: join(root, ".local/share/jp-skills/startup-claude.install.json"),
+    options: { action: "install-claude" as const, source, claude, bun: process.execPath, home: root, env: { CLAUDE_CONFIG_DIR: claudeDir } },
+  };
+}
+test.each(["2.1.302 (Claude Code)", "2.1.310 (Claude Code)", "3.0.0 (Claude Code)"])("install-claude accepts %s, writes the owned launcher and uninstalls it by receipt", (version: string) => {
+  const f = claudeFixture(version);
+  expect(manageClaudeInstallation(f.options)).toEqual({ action: "install-claude", launcher: f.launcher, receipt: f.receipt });
+  const launcher = readFileSync(f.launcher, "utf8");
+  expect(launcher).toBe(`#!/bin/sh\nexec '${process.execPath}' '${join(f.source, "claude-manager.ts")}' "$@"\n`);
+  expect(statSync(f.launcher).mode & 0o777).toBe(0o755);
+  expect(JSON.parse(readFileSync(f.receipt, "utf8"))).toEqual({ version: 1, source: f.source, launcher: f.launcher, sha256: createHash("sha256").update(launcher).digest("hex") });
+  expect(() => manageClaudeInstallation(f.options)).toThrow("already installed");
+  manageClaudeInstallation({ ...f.options, action: "uninstall-claude", claude: "must-not-execute" });
+  expect(existsSync(f.launcher)).toBe(false);
+  expect(existsSync(f.receipt)).toBe(false);
+});
+test.each([
+  ["2.1.200 (Claude Code)", "found 2.1.200"],
+  ["2.0.999 (Claude Code)", "found 2.0.999"],
+  ["claude 2.1.302", "claude 2.1.302"],
+])("install-claude rejects Claude Code version output %s before writing", (version: string, message: string) => {
+  const f = claudeFixture(version);
+  expect(() => manageClaudeInstallation(f.options)).toThrow(message);
+  expect(existsSync(f.launcher)).toBe(false);
+  expect(existsSync(f.receipt)).toBe(false);
+});
+test("install-claude requires an executable claude, the Herdr hook and skills from this checkout", () => {
+  const missing = claudeFixture("2.1.302 (Claude Code)");
+  expect(() => manageClaudeInstallation({ ...missing.options, claude: "must-not-execute" })).toThrow("requires Claude Code");
+  const unregistered = claudeFixture("2.1.302 (Claude Code)");
+  writeFileSync(join(unregistered.claudeDir, "settings.json"), JSON.stringify({ hooks: {} }));
+  expect(() => manageClaudeInstallation(unregistered.options)).toThrow("not registered as a SessionStart hook");
+  const foreign = claudeFixture("2.1.302 (Claude Code)");
+  rmSync(join(foreign.claudeDir, "skills", "startup"));
+  mkdirSync(join(foreign.claudeDir, "skills", "startup"));
+  writeFileSync(join(foreign.claudeDir, "skills", "startup", "SKILL.md"), "foreign skill");
+  expect(() => manageClaudeInstallation(foreign.options)).toThrow("skills/startup");
+  const absent = claudeFixture("2.1.302 (Claude Code)");
+  rmSync(join(absent.claudeDir, "skills", "hire"));
+  expect(() => manageClaudeInstallation(absent.options)).toThrow("skills/hire");
+  for (const f of [missing, unregistered, foreign, absent]) expect(existsSync(f.launcher)).toBe(false);
+});
+test("uninstall-claude refuses a changed launcher or a missing receipt and preserves both files", () => {
+  const f = claudeFixture("2.1.302 (Claude Code)");
+  expect(() => manageClaudeInstallation({ ...f.options, action: "uninstall-claude" })).toThrow("No owned startup-claude installation receipt");
+  manageClaudeInstallation(f.options);
+  writeFileSync(f.launcher, "#!/bin/sh\nexec user-edited\n");
+  expect(() => manageClaudeInstallation({ ...f.options, action: "uninstall-claude" })).toThrow("changed since installation");
+  expect(readFileSync(f.launcher, "utf8")).toBe("#!/bin/sh\nexec user-edited\n");
+  expect(existsSync(f.receipt)).toBe(true);
 });

@@ -1,6 +1,6 @@
 # Startup V7 companion
 
-The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP root in a directly interactive Herdr pane. The manager's inference or process can stop while the coordinator continues observing.
+The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP or Claude Code root in a directly interactive Herdr pane. One Startup uses one harness, fixed by the manager's first boot. OMP setup follows; Claude Code setup is in [Claude Code](#claude-code). The manager's inference or process can stop while the coordinator continues observing.
 
 V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path. Companion installation remains an explicit named-profile action.
 
@@ -37,6 +37,55 @@ bun extensions/startup/install.ts uninstall startup-v7
 ```
 
 Repository development does not install into a normal profile or upgrade an existing V6 Startup.
+
+## Claude Code
+
+Requirements: Claude Code 2.1.302 or newer, Bun, Herdr's managed Claude integration (`~/.claude/hooks/herdr-agent-state.sh` with `# HERDR_INTEGRATION_ID=claude` and a numeric `# HERDR_INTEGRATION_VERSION`, registered as a SessionStart hook in `~/.claude/settings.json`), and `~/.claude/skills/startup`, `startup-*` and `hire` resolving into this checkout.
+
+```sh
+bun install --cwd extensions/startup --frozen-lockfile
+bun extensions/startup/install.ts install-claude
+```
+
+`install-claude` checks those requirements and writes `~/.local/bin/startup-claude` plus an ownership receipt. `uninstall-claude` removes both only when their bytes still match the receipt. The OMP `install|uninstall PROFILE` paths are unchanged.
+
+Boot: open a Herdr pane in the bound root, run `startup-claude`, then type `/startup new NAME` (or `select NAME`, `status`, `-- WORK`). The bound root must be trusted in Claude Code (it or an ancestor has `hasTrustDialogAccepted`), and `STARTUP_EXECUTION_LIMIT` is required because Claude Code exposes no native helper concurrency. First boot also writes a managed block in root `CLAUDE.md` that imports `AGENTS.md`. `startup-claude` refuses a Startup bound to OMP.
+
+`startup-claude` resumes the saved manager session or starts a new one:
+
+```text
+claude --session-id UUID | --resume MANAGER_SESSION \
+  --append-system-prompt-file <home>/startup/claude/manager.prompt.md \
+  --settings <home>/startup/claude/settings.json \
+  --mcp-config <home>/startup/claude/mcp.json -n startup-manager
+```
+
+Employees start with `herdr agent start NAME --kind claude --pane PANE -- --session-id LAUNCH_ID --append-system-prompt-file <state>/launches/LAUNCH_ID.prompt.md --settings <home>/startup/claude/settings.json --mcp-config <home>/startup/claude/mcp.json -n NAME`. They keep the user's default Claude setting sources and permission mode.
+
+| OMP mechanism | Claude Code mechanism |
+| --- | --- |
+| Extension host and `startup_*` tools | `claude-bridge.ts` MCP server `startup` runs the unchanged employee bridge. Tools are `mcp__startup__startup_*`, loaded with ToolSearch `select:`. |
+| Native session identity | Session UUID: the employee `launchId` passed as `--session-id`, matched against Herdr `agent_session {kind:"id"}`. |
+| Role/loop system suffix | `--append-system-prompt-file`, checked against the admitted profile text each turn. |
+| `begin_turn`, stop continuation | `mcp_tool` hooks: UserPromptSubmit, PostToolUse, Stop. |
+| Tool guard | PreToolUse `command` hook `claude-pretool.ts` with `onFailure:"block"`: it asks the bridge over its socket, and any failure denies the tool. |
+| `end_turn` and exact idle | Transcript end markers (`turn_duration`, interrupt row, StopFailure). |
+| Idle wake via `sendMessage` | An `asyncRewake` waiter starts a task-notification turn; nothing is typed into the composer. |
+| `/startup` command | UserPromptSubmit intercepts the raw `/startup` line before skill expansion. `/startup-retry` is not provided; the 5s retry and `/startup` cover it. |
+| Human pane input receipt | Transcript human rows, including images, about 200 ms after submit. |
+
+Known limits:
+
+- Live state is injected as UserPromptSubmit/PostToolUse `additionalContext` only when it changes, and Claude Code persists it in the transcript; it is not ephemeral.
+- Turn and receipt detection reads an undocumented transcript format. A turn without the expected rows fails loudly within 10s and blocks tools.
+- Images typed directly in a pane are receipted from the transcript after submit; a bridge crash in that window loses the receipt. `/startup -- WORK` is receipted text-only, so send screenshots as a separate message.
+- Claude Code honors `onFailure:"block"` only on `command` and `http` hooks. A failed UserPromptSubmit `mcp_tool` hook lets the prompt run without `begin_turn`; tool calls stay gated by the fail-closed PreToolUse command hook.
+- A transcript ledger failure releases the held turn, blocks tools and refuses later turns until the pane is relaunched.
+- The StopFailure pause and `interactive_ready` for crew reuse are not yet live-verified.
+- Employees load the user's Claude hooks, plugins and MCP servers, the same trust model as OMP employees.
+- A full manager boot runs inside one 120s UserPromptSubmit hook; a timeout falls back to the 5s retry.
+- All employees share one Claude subscription's rate limits.
+- A Herdr server restart that resumes with bare `claude --resume` loses the bridge, so the employee is never re-admitted.
 
 ## Boot and input
 

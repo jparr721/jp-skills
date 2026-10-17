@@ -11,7 +11,7 @@ Load this complete source with `startup-loop`. Shared manager-scaled staff recei
 
 Return READY, NEEDS_INPUT or NO_ACTION with item, target/resource, required action, explicit authorization and verification handle. An explicit coordination request is fulfilled even by NO_ACTION; missing authority/access parks only affected work. The manager supplies targets and authorizes operations; you perform technical resource procedures.
 
-Read `../../extensions/startup/README.md` before runtime duty/action work. Runtime resource projections are owned by its grant protocol; never directly rewrite `resources.json` to claim/release a lock. Unsupported shell/HTTP/deployment operations are explicit connector/authority blockers. Execute as the admitted OMP employee in your Herdr pane; another harness cannot substitute for employee admission.
+Read `../../extensions/startup/README.md` before runtime duty/action work. Runtime resource projections are owned by its grant protocol; never directly rewrite `resources.json` to claim/release a lock. Unsupported shell/HTTP/deployment operations are explicit connector/authority blockers. Execute as the admitted harness employee (OMP or Claude Code) in your Herdr pane; only coordinator admission makes you an employee.
 
 ## Supported duties and repair
 

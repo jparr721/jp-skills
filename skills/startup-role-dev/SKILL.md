@@ -16,7 +16,7 @@ Load this complete role with `startup-loop`. Execute one assigned item at a time
 
 ## Review and coordination
 
-Architect coordinates independent buddy review: code `pr-review-toolkit` min 3/cap 5 rounds; research every-claim-cited check; docs style/accuracy sweep; ops independent verify replay. Bounded OMP pipeline supervisors/review helpers load the exact canonical procedure source and consume this OMP root's local helper capacity, separately from coordinator root-turn slots. They receive no employee admission, inbox, staffing or workflow approval authority. Reports and feedback stay within the architect-led team; manager receives leader summaries.
+Architect coordinates independent buddy review: code `pr-review-toolkit` min 3/cap 5 rounds; research every-claim-cited check; docs style/accuracy sweep; ops independent verify replay. Bounded pipeline supervisors/review helpers (OMP `task` or Claude Code Agent subagents) load the exact canonical procedure source and consume this root's local helper capacity, separately from coordinator root-turn slots. They receive no employee admission, inbox, staffing or workflow approval authority. Reports and feedback stay within the architect-led team; manager receives leader summaries.
 
 Questions/blockers go to architect in at most three lines with decision needed, up to three options and recommendation. Architect escalates to manager. File handoffs and contention go through saved scoped cues to architect; include handles (branch/files/commit/signature contract), not copied content. Request resources through architect -> manager -> shared DevOps; hire grants no mutation permission.
 

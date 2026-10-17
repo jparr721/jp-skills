@@ -10,13 +10,19 @@ import { loadProfile, profileText, verifyProfile, type Profile } from "./profile
 import { runtimePolicySchema, type RuntimeBinding, type RuntimePolicy } from "./runtime-contracts";
 import type { StartupStore } from "./store";
 import type { HerdrObservation, HerdrRuntime } from "./herdr-runtime";
+import { claudeEmployeeArgs, writeClaudeFiles } from "./claude-launch";
 
-export type CoordinatorConfig = Readonly<{
+export type OmpCoordinatorConfig = Readonly<{
   name: string; stateDirectory: string; boundRoot: string; skillsRoot: string;
   socketPath: string; profile: string; herdrIntegration: string;
   managerSession: string; managerFile: string; managerPaneId: string;
   managerCredential: string; policy: RuntimePolicy;
 }>;
+export type ClaudeCoordinatorConfig = OmpCoordinatorConfig & Readonly<{ harness: "claude"; home: string }>;
+export type CoordinatorConfig = OmpCoordinatorConfig | ClaudeCoordinatorConfig;
+export function isClaudeConfig(config: CoordinatorConfig): config is ClaudeCoordinatorConfig {
+  return "harness" in config && config.harness === "claude";
+}
 const commandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("claim") }),
   z.strictObject({ kind: z.literal("begin_turn") }),
@@ -72,6 +78,8 @@ function json(value: unknown): Json { return jsonSchema.parse(JSON.parse(JSON.st
 
 export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: HerdrRuntime; config: CoordinatorConfig; now: () => number }>): Coordinator {
   const { store, herdr, config, now } = input;
+  const claude: ClaudeCoordinatorConfig | null = isClaudeConfig(config) ? config : null;
+  let claudeFiles: Readonly<{ settingsFile: string; mcpFile: string }> | null = null;
   const policy = runtimePolicySchema.parse(config.policy);
   const connections = new Map<string, Readonly<{ employeeId: string; generation: number; epoch: number }>>();
   let serial: Promise<void> = Promise.resolve();
@@ -97,20 +105,22 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   function profile(current: Employee, generation: number): Profile {
     return loadProfile({ skillsRoot: config.skillsRoot, role: current.role, employeeId: current.id, generation });
   }
-  function launchFiles(current: RuntimeBinding, credential: string): string {
+  function launchArtifact(launchId: string): string {
+    return join(launchDirectory, `${launchId}${claude === null ? ".ts" : ".prompt.md"}`);
+  }
+  function launchFiles(current: RuntimeBinding, credential: string): void {
     const path = join(launchDirectory, `${current.launchId}.json`);
     const manifest = encode({ socketPath: config.socketPath, credential, source: current.source, employeeId: current.employeeId, generation: current.generation, profile: config.profile, skillsRoot: config.skillsRoot });
     if (existsSync(path)) {
       if (lstatSync(path).isSymbolicLink() || readFileSync(path, "utf8") !== manifest)
         throw new StoreConflictError("Launch manifest ownership conflicts with its reserved generation");
     } else writeFileSync(path, manifest, { mode: 0o600, flag: "wx" });
-    const bootstrap = join(launchDirectory, `${current.launchId}.ts`);
-    const content = `import { installLaunchedEmployee } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/src/employee-entry.ts"))};\nimport type { HostAPI } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/index.ts"))};\nexport default (host: HostAPI): void => installLaunchedEmployee(host, ${JSON.stringify(path)});\n`;
+    const bootstrap = launchArtifact(current.launchId);
+    const content = claude !== null ? profileText(profile(employee(current.employeeId), current.generation)) : `import { installLaunchedEmployee } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/src/employee-entry.ts"))};\nimport type { HostAPI } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/index.ts"))};\nexport default (host: HostAPI): void => installLaunchedEmployee(host, ${JSON.stringify(path)});\n`;
     if (existsSync(bootstrap)) {
       if (lstatSync(bootstrap).isSymbolicLink() || readFileSync(bootstrap, "utf8") !== content)
         throw new StoreConflictError("Launch bootstrap ownership conflicts with its reserved generation");
     } else writeFileSync(bootstrap, content, { mode: 0o600, flag: "wx" });
-    return bootstrap;
   }
   function prepare(id: string, credential: string): RuntimeBinding {
     const current = employee(id);
@@ -118,7 +128,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const existing = store.runtimeBindings().find((r) => r.employeeId === id && r.generation === generation);
     if (existing) {
       const manifestPath = join(launchDirectory, `${existing.launchId}.json`);
-      const bootstrapPath = join(launchDirectory, `${existing.launchId}.ts`);
+      const bootstrapPath = launchArtifact(existing.launchId);
       if (!existsSync(manifestPath) || !existsSync(bootstrapPath)) throw new StoreConflictError("Prepared launch artifacts are missing; reconcile this employee before activation");
       return existing;
     }
@@ -185,10 +195,12 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   async function launch(id: string, location: Readonly<{ tabId: string; paneId: string }>): Promise<void> {
     const saved = runtime(id);
     if (saved.state !== "starting" || saved.paneId !== location.paneId) throw new StoreConflictError("Launch requires the recorded pane allocation intent");
-    const current = store.updateRuntime({ ...saved, tabId: location.tabId, paneId: location.paneId, state: "starting" });
-    const bootstrap = join(launchDirectory, `${current.launchId}.ts`);
+    const current = store.updateRuntime({ ...saved, tabId: location.tabId, paneId: location.paneId, state: "starting", ...(claude === null ? {} : { nativeSession: saved.launchId }) });
+    const bootstrap = launchArtifact(current.launchId);
+    const name = `s-${current.launchId.replaceAll("-", "").slice(0, 28)}`;
     try {
-      await herdr.launch({ paneId: location.paneId, name: `s-${current.launchId.replaceAll("-", "").slice(0, 28)}`, args: ["--profile", config.profile, "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot] });
+      if (claude !== null && claudeFiles === null) throw new StoreConflictError("Claude launch requires the shared hook files written at coordinator start");
+      await herdr.launch({ paneId: location.paneId, name, args: claudeFiles === null ? ["--profile", config.profile, "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot] : claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: claudeFiles.settingsFile, mcpFile: claudeFiles.mcpFile, name }) });
       const latest = runtime(id);
       if (latest.state === "uncertain" && latest.error !== null) throw new StoreConflictError(`Startup employee boot failed: ${latest.error}`);
     } catch (error: unknown) {
@@ -233,18 +245,23 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       }
     });
   }
+  function paneEnvironment(launchId: string): Readonly<Record<string, string>> {
+    const manifest = join(launchDirectory, `${launchId}.json`);
+    return claude === null ? { OMPCODE: "", OMP_PROFILE: config.profile, STARTUP_V7_MANIFEST: manifest } : { STARTUP_V7_MANIFEST: manifest };
+  }
   async function createEmployeeTab(id: string, label: string): Promise<Readonly<{ tabId: string; paneId: string }>> {
     const saved = runtime(id);
     return allocate(id, async () => {
-      const tab = await herdr.createCrew({ label, cwd: config.boundRoot, env: { OMPCODE: "", OMP_PROFILE: config.profile, STARTUP_V7_MANIFEST: join(launchDirectory, `${saved.launchId}.json`) } });
+      const tab = await herdr.createCrew({ label, cwd: config.boundRoot, env: paneEnvironment(saved.launchId) });
       return { tabId: tab.tabId, paneId: tab.rootPaneId };
     });
   }
   async function start(): Promise<void> {
     await herdr.check();
     const observations = await herdr.observe();
-    const root = observations.find((o) => o.paneId === config.managerPaneId && o.nativeSession === config.managerFile);
-    if (!root) throw new StoreAuthorityError("Manager pane does not report the actual native manager transcript");
+    const root = observations.find((o) => o.paneId === config.managerPaneId && o.nativeSession === (claude === null ? config.managerFile : config.managerSession));
+    if (!root) throw new StoreAuthorityError(claude === null ? "Manager pane does not report the actual native manager transcript" : "Manager pane does not report the actual native Claude manager session");
+    if (claude !== null) claudeFiles = writeClaudeFiles({ home: claude.home, skillsRoot: config.skillsRoot, bun: process.execPath });
     store.compactRuntimeObservations();
     const currentManager = prepare("manager", config.managerCredential);
     if (currentManager.state === "prepared") store.updateRuntime({ ...currentManager, paneId: root.paneId, tabId: root.tabId, terminalId: root.terminalId, nativeSession: root.nativeSession, state: "starting" });
@@ -269,10 +286,14 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     if (encode(canonical.source) !== encode(saved.source)) throw new StoreFenceError("Canonical source changed before admission");
     const observation = (await herdr.observe()).find((o) => o.paneId === request.paneId && o.nativeSession === request.nativeSession);
     if (saved.paneId !== request.paneId || (saved.nativeSession !== null && saved.nativeSession !== request.nativeSession)) throw new StoreAuthorityError("Admission pane or native session does not match the saved launch");
-    if (!observation) throw new AdmissionPendingError("The expected pane has not reported its native OMP session yet; no admission was committed");
+    if (!observation) throw new AdmissionPendingError(`The expected pane has not reported its native ${claude === null ? "OMP" : "Claude"} session yet; no admission was committed`);
     if (saved.terminalId !== null && saved.terminalId !== observation.terminalId) throw new StoreAuthorityError("Admission terminal does not match the saved launch");
-    const headers = readFileSync(request.nativeSession, "utf8").split("\n").filter((line) => line.trim()).map((line) => z.object({ type: z.string() }).passthrough().parse(JSON.parse(line))).filter((row) => row.type === "session");
-    if (headers.length !== 1 || (current.role === "manager" && headers[0]?.id !== config.managerSession)) throw new StoreAuthorityError("Native transcript identity conflicts with employee admission");
+    if (claude !== null) {
+      if (request.nativeSession !== (current.role === "manager" ? config.managerSession : saved.nativeSession)) throw new StoreAuthorityError("Native Claude session conflicts with employee admission");
+    } else {
+      const headers = readFileSync(request.nativeSession, "utf8").split("\n").filter((line) => line.trim()).map((line) => z.object({ type: z.string() }).passthrough().parse(JSON.parse(line))).filter((row) => row.type === "session");
+      if (headers.length !== 1 || (current.role === "manager" && headers[0]?.id !== config.managerSession)) throw new StoreAuthorityError("Native transcript identity conflicts with employee admission");
+    }
     if (current.nativeHandle === null || current.source === null) store.bindEmployee({ manager: store.managerBinding, binding: { employeeId: current.id, generation: saved.generation, nativeHandle: current.role === "manager" ? config.managerSession : `${request.nativeSession}#${saved.generation}`, source: saved.source, assignment: current.assignment } });
     const latestRuntime = runtime(current.id);
     if (latestRuntime.launchId !== saved.launchId || latestRuntime.state === "abandoned") throw new StoreFenceError("Launch was superseded during native admission");
@@ -404,7 +425,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
         launchInBackground(members, async (id) => {
           const bound = runtime(id);
           const tab = first;
-          const location = tab === null ? await createEmployeeTab(id, `${config.name} crew ${team.id.slice(0, 8)}`) : await allocate(id, async () => ({ tabId: tab.tabId, paneId: await herdr.split({ paneId: tab.paneId, cwd: config.boundRoot, env: { OMPCODE: "", OMP_PROFILE: config.profile, STARTUP_V7_MANIFEST: join(launchDirectory, `${bound.launchId}.json`) } }) }));
+          const location = tab === null ? await createEmployeeTab(id, `${config.name} crew ${team.id.slice(0, 8)}`) : await allocate(id, async () => ({ tabId: tab.tabId, paneId: await herdr.split({ paneId: tab.paneId, cwd: config.boundRoot, env: paneEnvironment(bound.launchId) }) }));
           first = tab ?? location;
           await launch(id, location);
         });

@@ -5,23 +5,26 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { cfgTaskMaxConcurrency } from "@oh-my-pi/pi-coding-agent/task/settings";
 import type { HostAPI } from "./index";
-import { bootSelection, parseBootCommand, StartupBootError, writeBootGuidance, type BootCommand, type Selection } from "./src/boot";
+import { bootSelection, parseBootCommand, StartupBootError, writeBootGuidance, writeClaudeGuidance, type BootCommand, type Selection } from "./src/boot";
 import { encode } from "./src/contracts";
-import { attach, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment } from "./src/employee-entry";
+import { attach, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
 import type { NativeContext } from "./src/omp-adapter";
 import { loadProfile, verifyProfile } from "./src/profiles";
-import { launchRuntimeHost, readPrivateJson, runtimeHostConfigSchema, type RuntimeHostConfig } from "./src/v7-launch";
+import { launchRuntimeHost, readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
 
 export { installLaunchedEmployee } from "./src/employee-entry";
-type EntryConfig = Readonly<{
+export type EntryConfig = Readonly<{
   home: string;
   skillsRoot: string;
   environment: Environment;
   launch: (config: RuntimeHostConfig) => Promise<RuntimeHostConfig>;
   nativeLimit: (ctx: NativeContext) => number;
+  harness: "omp" | "claude";
+  root: NativeRootFn;
+  integration: (environment: Environment) => string;
 }>;
 
-function integrationPath(environment: Environment): string {
+export function integrationPath(environment: Environment): string {
   const path: string = realpathSync(environment.STARTUP_HERDR_OMP_EXTENSION ?? join(environment.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"), "extensions", "herdr-omp-agent-state.ts"));
   const source: string = readFileSync(path, "utf8");
   if (!/^\/\/ HERDR_INTEGRATION_ID=omp$/m.test(source) || !/^\/\/ HERDR_INTEGRATION_VERSION=[1-9]\d*$/m.test(source))
@@ -50,7 +53,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   });
   registerTools(host, () => failure === null ? admitted : null);
   async function initialize(ctx: NativeContext, command: BootCommand | null): Promise<void> {
-    const nativeFile: string = (await nativeRoot(host, ctx)).file;
+    const nativeFile: string = (await input.root(host, ctx)).file;
     const location = await paneEnvironment(input.environment);
     const next: Selection | null = bootSelection({ cwd: ctx.cwd, home: input.home, skillsRoot: input.skillsRoot, command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
     if (next === null) return;
@@ -65,10 +68,10 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       return;
     }
     const savedPath: string = join(next.home, "startup", next.name, "runtime-config.json");
-    const saved: RuntimeHostConfig | null = existsSync(savedPath) ? runtimeHostConfigSchema.parse(readPrivateJson(savedPath)) : null;
-    if (saved !== null && (saved.name !== next.name || saved.home !== next.home || saved.stateDirectory !== join(next.home, "startup", next.name) ||
+    const saved: RuntimeHostConfig | null = existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null;
+    if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.name !== next.name || saved.home !== next.home || saved.stateDirectory !== join(next.home, "startup", next.name) ||
       saved.boundRoot !== next.boundRoot || saved.skillsRoot !== next.skillsRoot || saved.managerSession !== ctx.sessionManager.getSessionId() ||
-      realpathSync(saved.managerFile) !== realpathSync(nativeFile) || saved.managerPaneId !== location.paneId || saved.profile !== location.profile ||
+      (input.harness === "omp" && realpathSync(saved.managerFile) !== realpathSync(nativeFile)) || saved.managerPaneId !== location.paneId || saved.profile !== location.profile ||
       saved.workspaceId !== location.workspaceId || saved.herdrSession !== location.session))
       throw new StartupBootError("Resume requires the saved manager transcript, Herdr pane, profile and Startup root. Reopen that manager session; do not create another crew or replace its state.");
     const executionLimit: number = saved?.policy.executionLimit ?? next.executionLimit ?? (z.number().int().positive().safe().parse(input.nativeLimit(ctx)) + 2);
@@ -76,17 +79,19 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     const profile = loadProfile({ skillsRoot: next.skillsRoot, role: "manager", employeeId: "manager", generation: 1 });
     verifyProfile(profile);
     if (saved === null) writeBootGuidance(next);
+    if (saved === null && input.harness === "claude") writeClaudeGuidance(next);
     const stateDirectory: string = join(next.home, "startup", next.name);
-    const config: RuntimeHostConfig = await input.launch(saved ?? {
+    const fresh: RuntimeHostConfig = {
       name: next.name, stateDirectory, boundRoot: next.boundRoot, skillsRoot: next.skillsRoot,
       socketPath: join(stateDirectory, "runtime.sock"), profile: location.profile,
       managerSession: ctx.sessionManager.getSessionId(), managerFile: nativeFile, managerPaneId: location.paneId,
       managerCredential: randomUUID(), policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit },
       home: next.home, herdrSession: location.session, workspaceId: location.workspaceId,
-      herdrBinary: input.environment.HERDR_BIN_PATH ?? "herdr", herdrIntegration: integrationPath(input.environment), ownerGeneration: 1,
-    });
+      herdrBinary: input.environment.HERDR_BIN_PATH ?? "herdr", herdrIntegration: input.integration(input.environment), ownerGeneration: 1,
+    };
+    const config: RuntimeHostConfig = await input.launch(saved ?? (input.harness === "claude" ? { ...fresh, harness: "claude" } : fresh));
     runtimeConfig = config;
-    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, skillsRoot: next.skillsRoot }, input.environment);
+    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, skillsRoot: next.skillsRoot }, input.environment, input.root);
     if (stopped) { connected.close(); return; }
     admitted = connected;
     selection = next;
@@ -180,6 +185,7 @@ export default function startupV7(host: HostAPI): void {
     home: resolve(process.env.JP_SKILLS_HOME ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "jp-skills")),
     skillsRoot: resolve(process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")),
     environment: process.env, launch: launchRuntimeHost,
+    harness: "omp", root: nativeRoot, integration: integrationPath,
     nativeLimit: (ctx) => {
       const session = host.pi.AgentRegistry.global().get(ctx.agent.id)?.session;
       if (session === undefined || session === null) throw new StartupBootError("Native root execution capacity is unavailable; set STARTUP_EXECUTION_LIMIT explicitly");

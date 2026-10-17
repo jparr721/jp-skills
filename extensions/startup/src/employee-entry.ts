@@ -21,8 +21,10 @@ const manifestSchema = z.strictObject({
 export type LaunchManifest = z.infer<typeof manifestSchema>;
 export type Environment = Readonly<Record<string, string | undefined>>;
 export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext; close: () => void }>;
-export const inputSchema = z.object({ text: z.string(), source: z.enum(["interactive", "rpc", "extension"]), images: z.array(jsonSchema).optional() });
-export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<Readonly<{ file: string; lastAssistant: unknown }>> {
+export const inputSchema = z.object({ id: idSchema.optional(), text: z.string(), source: z.enum(["interactive", "rpc", "extension"]), images: z.array(jsonSchema).optional() });
+export type NativeRoot = Readonly<{ nativeSession: string; file: string; lastAssistant: unknown }>;
+export type NativeRootFn = (host: HostAPI, ctx: NativeContext) => Promise<NativeRoot>;
+export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<NativeRoot> {
   if (typeof ctx.abort !== "function") throw new StartupBootError("Startup V7 requires the actual native abort capability before admission");
   const ref = host.pi.AgentRegistry.global().get(ctx.agent.id);
   if (ctx.agent.kind !== "main" || ref?.kind !== "main" || ref.parentId !== undefined ||
@@ -45,7 +47,7 @@ export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<Rea
     const parsed = assistant.safeParse(row);
     return parsed.success && parsed.data.message.stopReason !== "aborted";
   });
-  return { file, lastAssistant: lastAssistant === undefined ? undefined : assistant.parse(lastAssistant).message };
+  return { nativeSession: file, file, lastAssistant: lastAssistant === undefined ? undefined : assistant.parse(lastAssistant).message };
 }
 export async function paneEnvironment(environment: Environment): Promise<Readonly<{ paneId: string; workspaceId: string; session: string; profile: string }>> {
   const session = environment.STARTUP_HERDR_SESSION?.trim() || environment.HERDR_SESSION?.trim() || null;
@@ -71,10 +73,10 @@ export function sameRoot(admission: Admission, ctx: NativeContext): boolean {
   return ctx.agent.kind === "main" && ctx.agent.id === admission.context.agent.id &&
     ctx.sessionManager.getSessionId() === admission.context.sessionManager.getSessionId();
 }
-export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment): Promise<Admission> {
+export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment, nativeRootOf: NativeRootFn): Promise<Admission> {
   const profile: Profile = verifyManifest(manifest);
-  const root = await nativeRoot(host, ctx);
-  const nativeSession: string = root.file;
+  const root: NativeRoot = await nativeRootOf(host, ctx);
+  const nativeSession: string = root.nativeSession;
   const actualProfile = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim();
   if (actualProfile && actualProfile !== manifest.profile) throw new StartupBootError("Actual named OMP profile differs from the launch manifest");
   const paneId: string = environment.HERDR_PANE_ID?.trim() || (await paneEnvironment(environment)).paneId;
@@ -163,11 +165,14 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
 export async function receive(admission: Admission, event: unknown): Promise<string | null> {
   const parsed = inputSchema.parse(event);
   if (parsed.source === "extension") return null;
-  const id: string = randomUUID();
+  const id: string = parsed.id ?? randomUUID();
   await admission.client.request({ kind: "receive", id, source: parsed.source, raw: { text: parsed.text, images: parsed.images ?? [] } });
   return id;
 }
 export function installLaunchedEmployee(host: HostAPI, manifestPath: string): void {
+  installLaunchedEmployeeWith(host, manifestPath, nativeRoot);
+}
+export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string, root: NativeRootFn): void {
   let admitted: Admission | null = null;
   let failure: string | null = null;
   let failureTurnPending: boolean = false;
@@ -178,7 +183,7 @@ export function installLaunchedEmployee(host: HostAPI, manifestPath: string): vo
     let manifest: LaunchManifest | null = null;
     try {
       manifest = manifestSchema.parse(readPrivateJson(manifestPath));
-      const next = await attach(host, ctx, manifest, process.env);
+      const next = await attach(host, ctx, manifest, process.env, root);
       if (stopped) { next.close(); return; }
       admitted = next;
       failure = null;

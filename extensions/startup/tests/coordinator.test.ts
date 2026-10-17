@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
@@ -9,6 +9,8 @@ import { openCoordinator, serveCoordinator, type Coordinator } from "../src/coor
 import type { HerdrObservation, HerdrRuntime } from "../src/herdr-runtime";
 import { connectEmployee } from "../src/employee-client";
 import { hostReceiptSchema, hostStatusSchema, sourceSchema } from "../src/contracts";
+import { claudeMcpConfig } from "../src/claude-launch";
+import { loadProfile, profileText } from "../src/profiles";
 
 const roots: string[] = [];
 const stores: StartupStore[] = [];
@@ -20,6 +22,9 @@ afterEach(() => {
 });
 const manifestSchema = z.object({ credential: z.string(), source: sourceSchema });
 function fixture(executionLimit: number) {
+  return harnessFixture(executionLimit, "omp");
+}
+function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
   const root = mkdtempSync(join(tmpdir(), "sv7-"));
   roots.push(root);
   const home = join(root, "home");
@@ -31,8 +36,10 @@ function fixture(executionLimit: number) {
   let now = 1000;
   const store = openStore({ path: join(stateDirectory, "staff.sqlite"), scope: { home, boundRoot, host: "host", name: "test", managerSession: "manager-session" }, owner: { id: "coordinator", managerGeneration: 1, leaseMs: 60000 }, now: () => now });
   stores.push(store);
-  const observations: HerdrObservation[] = [{ name: "manager", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1", terminalId: "term1", nativeSession: managerFile, state: "idle", stateSequence: 1, interactiveReady: true }];
+  const managerNative = harness === "claude" ? "manager-session" : managerFile;
+  const observations: HerdrObservation[] = [{ name: "manager", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1", terminalId: "term1", nativeSession: managerNative, state: "idle", stateSequence: 1, interactiveReady: true }];
   const launches: Readonly<{ paneId: string; name: string; args: readonly string[] }>[] = [];
+  const layouts: Readonly<Record<string, string>>[] = [];
   let next = 2;
   let launchBarrier: Promise<void> | null = null;
   let layoutFailure: Error | null = null;
@@ -42,24 +49,25 @@ function fixture(executionLimit: number) {
   const herdr: HerdrRuntime = {
     check: async () => {},
     renameCrew: async () => {},
-    createCrew: async () => {
+    createCrew: async (input) => {
+      layouts.push(input.env);
       layoutCalls += 1;
       if (layoutFailure) throw layoutFailure;
       return { tabId: `w1:t${next}`, rootPaneId: `w1:p${next++}` };
     },
-    split: async () => `w1:p${next++}`,
+    split: async (input) => { layouts.push(input.env); return `w1:p${next++}`; },
     launch: async (input) => {
       launches.push(input);
       if (launchBarrier) await launchBarrier;
-      const nativeSession = join(root, `${input.name}.jsonl`);
-      writeFileSync(nativeSession, JSON.stringify({ type: "session", id: input.name }) + "\n");
+      const nativeSession = harness === "claude" ? input.args[input.args.indexOf("--session-id") + 1]! : join(root, `${input.name}.jsonl`);
+      if (harness === "omp") writeFileSync(nativeSession, JSON.stringify({ type: "session", id: input.name }) + "\n");
       const observation: HerdrObservation = { name: input.name, workspaceId: "w1", tabId: "w1:t2", paneId: input.paneId, terminalId: `term-${input.name}`, nativeSession, state: "idle", stateSequence: 1, interactiveReady: true };
       observations.push(observation);
       return observation;
     },
     observe: async () => { if (observationBarrier) await observationBarrier; if (observationFailure) throw observationFailure; return observations; },
   };
-  const config = { name: "test", stateDirectory, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(root, "c.sock"), profile: "test", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit } };
+  const config = { name: "test", stateDirectory, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(root, "c.sock"), profile: "test", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness, home } : {}) };
   const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => now });
   async function admit(employeeId: string): Promise<string> {
     const runtime = store.runtimeBindings().findLast((r) => r.employeeId === employeeId);
@@ -71,7 +79,7 @@ function fixture(executionLimit: number) {
   }
   async function ready() {
     await coordinator.start();
-    const manager = await coordinator.admit({ credential: "manager-secret", nativeSession: managerFile, paneId: "w1:p1", source: store.runtimeBindings().find((r) => r.employeeId === "manager")!.source });
+    const manager = await coordinator.admit({ credential: "manager-secret", nativeSession: managerNative, paneId: "w1:p1", source: store.runtimeBindings().find((r) => r.employeeId === "manager")!.source });
     const pa = store.snapshot().employees.find((e) => e.role === "pa");
     if (!pa) throw new Error("Missing PA");
     const paConnection = await admit(pa.id);
@@ -85,7 +93,7 @@ function fixture(executionLimit: number) {
     if (!team) throw new Error("Missing team");
     return team;
   }
-  return { coordinator, store, config, observations, launches, ready, admit, delegate, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
+  return { coordinator, store, config, observations, launches, layouts, root, ready, admit, delegate, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
 }
 
 test("admission preserves observation progress committed while its Herdr read is pending", async () => {
@@ -994,6 +1002,93 @@ test("host cancel withdraws one request and settles only that item's worker gene
   expect(f.store.employeeRuntime("manager", 1)).toMatchObject({ launchId: managerRuntime.launchId, state: "ready" });
   expect(hostReceiptSchema.parse(await f.coordinator.hostCancel({ requestOrItemId: "ITEM-1", intentId: "cancel-item" }))).toEqual(itemReceipt);
   expect(admitted.mode).toBe("startup_outcome");
+});
+
+test("Claude employees launch with an assigned session, prompt suffix and shared hook files only", async () => {
+  const f = harnessFixture(8, "claude");
+  const { pa } = await f.ready();
+  const saved = f.store.runtimeBindings().find((r) => r.employeeId === pa);
+  if (!saved?.paneId) throw new Error("Missing PA launch");
+  const launches = join(f.config.stateDirectory, "launches");
+  const promptFile = join(launches, `${saved.launchId}.prompt.md`);
+  const shared = join(f.root, "home", "startup", "claude");
+  const name = `s-${saved.launchId.replaceAll("-", "").slice(0, 28)}`;
+  expect(f.launches).toEqual([{ paneId: saved.paneId, name, args: ["--session-id", saved.launchId, "--append-system-prompt-file", promptFile, "--settings", join(shared, "settings.json"), "--mcp-config", join(shared, "mcp.json"), "-n", name] }]);
+  expect(f.layouts).toEqual([{ STARTUP_V7_MANIFEST: join(launches, `${saved.launchId}.json`) }]);
+  expect(readFileSync(promptFile, "utf8")).toBe(profileText(loadProfile({ skillsRoot: f.config.skillsRoot, role: "pa", employeeId: pa, generation: saved.generation })));
+  expect(statSync(promptFile).mode & 0o777).toBe(0o600);
+  expect(existsSync(join(launches, `${saved.launchId}.ts`))).toBe(false);
+  expect(readFileSync(join(shared, "mcp.json"), "utf8")).toBe(JSON.stringify(claudeMcpConfig({ bun: process.execPath, skillsRoot: f.config.skillsRoot })));
+  expect(saved).toMatchObject({ state: "ready", nativeSession: saved.launchId });
+  expect(existsSync(saved.launchId)).toBe(false);
+});
+
+test("Claude crew panes carry only the manifest and admit by assigned session without a transcript", async () => {
+  const f = harnessFixture(8, "claude");
+  const { manager } = await f.ready();
+  const team = await f.delegate(manager, "claude-work");
+  for (const id of [team.architect, team.qa, ...team.devs]) {
+    const launched = f.store.runtimeBindings().findLast((r) => r.employeeId === id);
+    expect(launched?.nativeSession).toBe(launched?.launchId);
+    await f.admit(id);
+  }
+  expect(f.layouts.slice(1).every((env) => Object.keys(env).join() === "STARTUP_V7_MANIFEST")).toBe(true);
+  expect(f.layouts).toHaveLength(4);
+  expect(f.launches.every((launch) => launch.args[0] === "--session-id" && launch.args[1] !== undefined && f.store.runtimeBindings().some((r) => r.launchId === launch.args[1] && r.state === "ready"))).toBe(true);
+});
+
+test("Claude admission waits for the assigned session and refuses a mismatched one", async () => {
+  const f = harnessFixture(8, "claude");
+  await f.coordinator.start();
+  await f.coordinator.admit({ credential: "manager-secret", nativeSession: "manager-session", paneId: "w1:p1", source: f.store.runtimeBindings().find((r) => r.employeeId === "manager")!.source });
+  const saved = f.store.runtimeBindings().find((r) => r.employeeId !== "manager");
+  if (!saved?.paneId) throw new Error("Missing PA launch");
+  const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${saved.launchId}.json`), "utf8")));
+  const observation = f.observations.find((o) => o.paneId === saved.paneId)!;
+  f.observations.splice(f.observations.indexOf(observation), 1, { ...observation, nativeSession: "stale-session" });
+  const request = { credential: manifest.credential, paneId: saved.paneId, source: manifest.source };
+  await expect(f.coordinator.admit({ ...request, nativeSession: saved.launchId })).rejects.toThrow("has not reported its native Claude session yet");
+  await expect(f.coordinator.admit({ ...request, nativeSession: "stale-session" })).rejects.toThrow("does not match the saved launch");
+  expect(f.store.runtimeBindings().find((r) => r.launchId === saved.launchId)?.state).toBe("starting");
+  f.observations.splice(f.observations.indexOf(f.observations.find((o) => o.paneId === saved.paneId)!), 1, observation);
+  await expect(f.coordinator.admit({ ...request, nativeSession: saved.launchId })).resolves.toHaveProperty("connection");
+  await expect(f.coordinator.admit({ credential: "manager-secret", nativeSession: "other-manager", paneId: "w1:p1", source: manifest.source })).rejects.toThrow();
+});
+
+test("Claude manager start matches its saved session rather than its transcript path", async () => {
+  const f = harnessFixture(8, "claude");
+  const reported = f.observations[0]!;
+  f.observations.splice(0, 1, { ...reported, nativeSession: f.config.managerFile });
+  await expect(f.coordinator.start()).rejects.toThrow("Manager pane");
+  expect(f.launches).toHaveLength(0);
+  f.observations.splice(0, 1, reported);
+  const manager = await f.ready();
+  expect(manager.manager).toBeString();
+});
+
+test("Claude crew reuse keeps each prior process session", async () => {
+  const f = harnessFixture(8, "claude");
+  const { manager } = await f.ready();
+  const first = await f.delegate(manager, "first");
+  const connections = new Map<string, string>();
+  for (const id of [first.architect, first.qa, ...first.devs]) connections.set(id, await f.admit(id));
+  const sessions = new Map(f.store.runtimeBindings().filter((r) => connections.has(r.employeeId)).map((r) => [r.employeeId, r.nativeSession]));
+  for (const [id, connection] of connections) {
+    const claimed = z.object({ claim: z.object({ id: z.string() }) }).parse(await f.coordinator.command(connection, { kind: "claim" }));
+    if (id === first.architect) await f.coordinator.command(connection, { kind: "capture", capture: { captureId: "empty-capture", eventId: "first", rows: [], receipt: "no tasks" } });
+    await f.coordinator.command(connection, { kind: "settle", claimId: claimed.claim.id, result: { id: `done-${id}`, kind: "completed", output: "done", checkpoint: null, outgoing: [] } });
+  }
+  await f.coordinator.command(manager, { kind: "finish", teamId: first.id, evidence: "all work resolved" });
+  const launched = f.launches.length;
+  const second = await f.delegate(manager, "second");
+  expect(second.architect).toBe(first.architect);
+  expect(f.launches).toHaveLength(launched);
+  for (const id of connections.keys()) {
+    const reused = f.store.runtimeBindings().findLast((r) => r.employeeId === id);
+    expect(reused?.nativeSession).toBe(sessions.get(id)!);
+    expect(reused?.launchId).not.toBe(sessions.get(id)!);
+    await f.admit(id);
+  }
 });
 
 for (const kind of ["question", "uncertain"] as const) test(`a crew-ready notice settled as ${kind} never blocks the member's later item assignment`, async () => {

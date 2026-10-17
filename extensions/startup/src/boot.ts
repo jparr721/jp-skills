@@ -10,7 +10,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 
 export class StartupBootError extends Error {}
@@ -229,6 +229,50 @@ function atomicFile(path: string, prior: Buffer | null, next: string): void {
     if (existsSync(temporary)) rmSync(temporary);
   }
 }
+function guidanceIdentity(selection: Selection): string {
+  const { boundRoot, skillsRoot, name } = selection;
+  return JSON.stringify({ version: 1, name, boundRoot, skillsRoot });
+}
+function managedText(
+  path: string,
+  identity: string,
+  content: string,
+): Readonly<{ prior: Buffer | null; next: string }> {
+  const prior = existsSync(path) ? (regular(path), readFileSync(path)) : null;
+  const text = prior?.toString("utf8") ?? "";
+  if (prior !== null && !Buffer.from(text).equals(prior))
+    throw new StartupBootError(
+      `${basename(path)} must be valid UTF-8; original bytes preserved: ${path}`,
+    );
+  const starts = text.split(begin).length - 1;
+  const ends = text.split(end).length - 1;
+  if (
+    starts !== ends ||
+    starts > 1 ||
+    text.split("<!-- jp-skills-startup:").length - 1 !== starts + ends ||
+    (starts === 0 && text.includes("<!-- jp-skills-startup:"))
+  )
+    throw new StartupBootError(`Malformed Startup managed section: ${path}`);
+  if (starts === 1) {
+    const start = text.indexOf(begin);
+    const finish = text.indexOf(end);
+    if (
+      finish < start ||
+      !text.slice(start, finish).includes(`<!-- identity: ${identity} -->`)
+    )
+      throw new StartupBootError(
+        `Conflicting Startup managed section: ${path}`,
+      );
+    return {
+      prior,
+      next: text.slice(0, start) + content + text.slice(finish + end.length),
+    };
+  }
+  return {
+    prior,
+    next: text + (text && !text.endsWith("\n") ? "\n" : "") + content + "\n",
+  };
+}
 export function writeBootGuidance(selection: Selection): string {
   const { boundRoot, skillsRoot, name } = selection;
   const source = (skill: string): string =>
@@ -236,7 +280,7 @@ export function writeBootGuidance(selection: Selection): string {
   for (const skill of ["startup-role-manager", "startup-loop"])
     if (!readFileSync(source(skill), "utf8").trim())
       throw new StartupBootError(`Canonical source empty: ${source(skill)}`);
-  const identity = JSON.stringify({ version: 1, name, boundRoot, skillsRoot });
+  const identity = guidanceIdentity(selection);
   const content = [
     begin,
     `<!-- identity: ${identity} -->`,
@@ -250,35 +294,7 @@ export function writeBootGuidance(selection: Selection): string {
     end,
   ].join("\n");
   const path = join(boundRoot, "AGENTS.md");
-  const prior = existsSync(path) ? (regular(path), readFileSync(path)) : null;
-  const text = prior?.toString("utf8") ?? "";
-  if (prior !== null && !Buffer.from(text).equals(prior))
-    throw new StartupBootError(
-      `AGENTS.md must be valid UTF-8; original bytes preserved: ${path}`,
-    );
-  const starts = text.split(begin).length - 1;
-  const ends = text.split(end).length - 1;
-  if (
-    starts !== ends ||
-    starts > 1 ||
-    text.split("<!-- jp-skills-startup:").length - 1 !== starts + ends ||
-    (starts === 0 && text.includes("<!-- jp-skills-startup:"))
-  )
-    throw new StartupBootError(`Malformed Startup managed section: ${path}`);
-  let next: string;
-  if (starts === 1) {
-    const start = text.indexOf(begin);
-    const finish = text.indexOf(end);
-    if (
-      finish < start ||
-      !text.slice(start, finish).includes(`<!-- identity: ${identity} -->`)
-    )
-      throw new StartupBootError(
-        `Conflicting Startup managed section: ${path}`,
-      );
-    next = text.slice(0, start) + content + text.slice(finish + end.length);
-  } else
-    next = text + (text && !text.endsWith("\n") ? "\n" : "") + content + "\n";
+  const { prior, next } = managedText(path, identity, content);
   const directory = join(boundRoot, ".startup");
   if (existsSync(directory) && lstatSync(directory).isSymbolicLink())
     throw new StartupBootError(
@@ -315,6 +331,20 @@ export function writeBootGuidance(selection: Selection): string {
       ) + "\n",
       { flag: "wx", mode: 0o600 },
     );
+  return path;
+}
+export function writeClaudeGuidance(selection: Selection): string {
+  const identity = guidanceIdentity(selection);
+  const content = [
+    begin,
+    `<!-- identity: ${identity} -->`,
+    "@AGENTS.md",
+    "In Claude Code the Startup tools are mcp__startup__startup_*; load them with ToolSearch select: before use. Manager intake is startup_route then startup_delegate. Start or resume the manager with startup-claude; /startup is intercepted by the Startup bridge.",
+    end,
+  ].join("\n");
+  const path = join(selection.boundRoot, "CLAUDE.md");
+  const { prior, next } = managedText(path, identity, content);
+  atomicFile(path, prior, next);
   return path;
 }
 if (import.meta.main) {

@@ -2,18 +2,9 @@ import { spawn } from "node:child_process";
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { CoordinatorConfig } from "./coordinator";
 import { runtimePolicySchema } from "./runtime-contracts";
 
-export type RuntimeHostConfig = CoordinatorConfig & Readonly<{
-  home: string;
-  herdrSession: string;
-  workspaceId: string;
-  herdrBinary: string;
-  herdrIntegration: string;
-  ownerGeneration: number;
-}>;
-export const runtimeHostConfigSchema: z.ZodType<RuntimeHostConfig> = z.strictObject({
+const ompConfigSchema = z.strictObject({
   name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
   home: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
   boundRoot: z.string().startsWith("/"), skillsRoot: z.string().startsWith("/"),
@@ -24,6 +15,12 @@ export const runtimeHostConfigSchema: z.ZodType<RuntimeHostConfig> = z.strictObj
   herdrBinary: z.string().min(1), herdrIntegration: z.string().startsWith("/"),
   ownerGeneration: z.number().int().nonnegative().safe(), policy: runtimePolicySchema,
 });
+const claudeConfigSchema = ompConfigSchema.extend({ harness: z.literal("claude") });
+export type RuntimeHostConfig = Readonly<z.infer<typeof ompConfigSchema> | z.infer<typeof claudeConfigSchema>>;
+// The harness key selects one schema, so an invalid OMP config reports exactly the OMP schema's issues.
+export function parseRuntimeHostConfig(value: unknown): RuntimeHostConfig {
+  return typeof value === "object" && value !== null && "harness" in value ? claudeConfigSchema.parse(value) : ompConfigSchema.parse(value);
+}
 const intentSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("prepared"), startedAt: z.number().int().nonnegative() }),
   z.strictObject({ state: z.literal("spawned"), startedAt: z.number().int().nonnegative(), pid: z.number().int().positive() }),
@@ -70,12 +67,12 @@ async function health(socketPath: string): Promise<void> {
   throw new RuntimeLaunchError(`Coordinator health deadline 10000ms exceeded: ${lastError instanceof Error ? lastError.message : String(lastError)}; inspect runtime.log and preserve launch intent before recovery`);
 }
 export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<RuntimeHostConfig> {
-  const proposed: RuntimeHostConfig = runtimeHostConfigSchema.parse(input);
+  const proposed: RuntimeHostConfig = parseRuntimeHostConfig(input);
   mkdirSync(proposed.stateDirectory, { recursive: true, mode: 0o700 });
   const configPath: string = join(proposed.stateDirectory, "runtime-config.json");
   let config: RuntimeHostConfig = proposed;
   if (existsSync(configPath)) {
-    config = runtimeHostConfigSchema.parse(readPrivateJson(configPath));
+    config = parseRuntimeHostConfig(readPrivateJson(configPath));
     const { managerCredential: savedCredential, ...saved } = config;
     const { managerCredential: proposedCredential, ...requested } = proposed;
     void savedCredential; void proposedCredential;

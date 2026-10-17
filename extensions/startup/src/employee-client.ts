@@ -425,14 +425,16 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     const parsed = z.object({ message: z.unknown() }).safeParse(event);
     if (parsed.success) observeAssistant(parsed.data.message);
   });
-  host.on("input", (event, ctx) => {
+  function resumeInput(event: unknown, ctx: NativeContext): void {
     if (closed || !isRoot(ctx)) return;
     const parsed = z.object({ source: z.enum(["interactive", "rpc"]) }).safeParse(event);
     if (!parsed.success) return;
     inferencePaused = false;
     wakeQueued = false;
     continuedReason = null;
-  });
+  }
+  host.on("input", resumeInput);
+  host.on("input_submitted", resumeInput);
   host.on("agent_end", async (event, ctx) => {
     if (closed || !isRoot(ctx)) return;
     const parsed = z.object({ willContinue: z.boolean().optional() }).passthrough().parse(event);

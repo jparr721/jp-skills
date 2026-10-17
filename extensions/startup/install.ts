@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   closeSync,
   existsSync,
   fstatSync,
@@ -6,6 +7,7 @@ import {
   unlinkSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -15,7 +17,9 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { z } from "zod";
+import { claudeIntegrationPath } from "./src/claude-launch";
 
 export class StartupInstallError extends Error {}
 const packageName = "@jp-skills/startup";
@@ -277,7 +281,121 @@ export function manageInstallation(options: InstallOptions): Readonly<{
       );
   }
 }
-if (import.meta.main) {
+const claudeReceiptSchema = z.strictObject({
+  version: z.literal(1),
+  source: z.string(),
+  launcher: z.string(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+});
+export type ClaudeInstallOptions = Readonly<{
+  action: "install-claude" | "uninstall-claude";
+  source: string;
+  claude: string;
+  bun: string;
+  home: string;
+  env: NodeJS.ProcessEnv;
+}>;
+const minimumClaude: readonly [number, number, number] = [2, 1, 302];
+function sha256(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+function requireClaudeVersion(claude: string, env: NodeJS.ProcessEnv): void {
+  const result = spawnSync(claude, ["--version"], { env, encoding: "utf8" });
+  const output: string = (result.stdout ?? "").trim();
+  const match = /^(\d+)\.(\d+)\.(\d+) \(Claude Code\)$/.exec(output);
+  if (result.status !== 0 || match === null)
+    throw new StartupInstallError(
+      `Installer requires Claude Code with a working --version command; executable=${claude}, status=${result.status}, stdout=${output}, stderr=${result.stderr ?? ""}`,
+    );
+  const found: readonly number[] = match.slice(1, 4).map(Number);
+  const index: number = found.findIndex((part, position) => part !== minimumClaude[position]);
+  if (index !== -1 && (found[index] ?? 0) < (minimumClaude[index] ?? 0))
+    throw new StartupInstallError(
+      `Startup requires Claude Code ${minimumClaude.join(".")} or newer; found ${found.join(".")}`,
+    );
+}
+function requireCheckoutSkills(skillsRoot: string, claudeDirectory: string): void {
+  const names: readonly string[] = readdirSync(join(skillsRoot, "skills")).filter(
+    (name) => name === "startup" || name === "hire" || name.startsWith("startup-"),
+  );
+  for (const name of names) {
+    const installed = join(claudeDirectory, "skills", name);
+    const expected = realpathSync(join(skillsRoot, "skills", name));
+    if (!existsSync(join(installed, "SKILL.md")) || realpathSync(installed) !== expected)
+      throw new StartupInstallError(
+        `Claude Code skill ${installed} must resolve to this checkout's ${expected}; link it before installing startup-claude`,
+      );
+  }
+}
+export function manageClaudeInstallation(options: ClaudeInstallOptions): Readonly<{
+  action: string;
+  launcher: string;
+  receipt: string;
+}> {
+  const source = realpathSync(options.source);
+  const launcher = join(options.home, ".local", "bin", "startup-claude");
+  const receiptPath = join(options.home, ".local", "share", "jp-skills", "startup-claude.install.json");
+  const result = { action: options.action, launcher, receipt: receiptPath };
+  if (options.action === "uninstall-claude") {
+    const prior = readRegular(receiptPath);
+    if (prior === null)
+      throw new StartupInstallError(
+        "No owned startup-claude installation receipt; refusing to remove another launcher",
+      );
+    const receipt = claudeReceiptSchema.parse(JSON.parse(prior));
+    const current = readRegular(launcher);
+    if (receipt.launcher !== launcher || current === null || sha256(current) !== receipt.sha256)
+      throw new StartupInstallError(
+        `startup-claude launcher changed since installation; preserve ${launcher} and ${receiptPath} and reconcile them explicitly`,
+      );
+    rmSync(launcher);
+    rmSync(receiptPath);
+    return result;
+  }
+  requireClaudeVersion(options.claude, options.env);
+  claudeIntegrationPath(options.env);
+  requireCheckoutSkills(realpathSync(join(source, "..", "..")), options.env.CLAUDE_CONFIG_DIR ?? join(options.home, ".claude"));
+  const bun = spawnSync(options.bun, ["--version"], { env: options.env, encoding: "utf8" });
+  if (bun.status !== 0 || !/^\d+\.\d+\.\d+/.test((bun.stdout ?? "").trim()))
+    throw new StartupInstallError(
+      `Installer requires Bun at ${options.bun}; status=${bun.status}, stdout=${bun.stdout ?? ""}, stderr=${bun.stderr ?? ""}`,
+    );
+  if (lstatSync(launcher, { throwIfNoEntry: false }) !== undefined || lstatSync(receiptPath, { throwIfNoEntry: false }) !== undefined)
+    throw new StartupInstallError(
+      `startup-claude is already installed or its path is owned elsewhere; run uninstall-claude or remove ${launcher} explicitly`,
+    );
+  const content = `#!/bin/sh\nexec ${shellQuote(options.bun)} ${shellQuote(join(source, "claude-manager.ts"))} "$@"\n`;
+  mkdirSync(dirname(launcher), { recursive: true });
+  mkdirSync(dirname(receiptPath), { recursive: true });
+  writeFileSync(launcher, content, { flag: "wx", mode: 0o755 });
+  chmodSync(launcher, 0o755);
+  writeFileSync(
+    receiptPath,
+    JSON.stringify({ version: 1, source, launcher, sha256: sha256(content) }, null, 2) + "\n",
+    { flag: "wx", mode: 0o600 },
+  );
+  return result;
+}
+if (import.meta.main && ["install-claude", "uninstall-claude"].includes(process.argv[2] ?? "")) {
+  const [action] = z
+    .tuple([z.enum(["install-claude", "uninstall-claude"])])
+    .parse(process.argv.slice(2));
+  process.stdout.write(
+    JSON.stringify(
+      manageClaudeInstallation({
+        action,
+        source: import.meta.dir,
+        claude: "claude",
+        bun: process.execPath,
+        home: homedir(),
+        env: process.env,
+      }),
+    ) + "\n",
+  );
+} else if (import.meta.main) {
   const [action, profile] = z
     .tuple([z.enum(["install", "uninstall"]), ompProfileSchema])
     .parse(process.argv.slice(2));

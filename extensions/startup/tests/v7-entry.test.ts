@@ -11,8 +11,11 @@ import { connectEmployee } from "../src/employee-client";
 import { loadProfile } from "../src/profiles";
 import { startRuntimeHost } from "../runtime-host";
 mock.module("@oh-my-pi/pi-coding-agent/task/settings", () => ({ cfgTaskMaxConcurrency: { get: () => 6 } }));
-const { installLaunchedEmployee, installStartupV7 } = await import("../v7");
-import { launchRuntimeHost, type RuntimeHostConfig } from "../src/v7-launch";
+const { installLaunchedEmployee, installStartupV7, integrationPath } = await import("../v7");
+const { nativeRoot } = await import("../src/employee-entry");
+const { installLaunchedEmployeeWith } = await import("../src/employee-entry");
+const omp = { harness: "omp", root: nativeRoot, integration: integrationPath } as const;
+import { launchRuntimeHost, parseRuntimeHostConfig, type RuntimeHostConfig } from "../src/v7-launch";
 
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); });
@@ -116,7 +119,7 @@ function fixture() {
 test("manager extension loads before native action methods become available", () => {
   const f = fixture();
   const host: HostAPI = { ...f.host, getCommands: () => { throw new Error("Extension runtime not initialized"); } };
-  expect(() => installStartupV7(host, {
+  expect(() => installStartupV7(host, { ...omp,
     home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment,
     launch: async (config) => ({ ...config, socketPath: f.socketPath }),
   })).not.toThrow();
@@ -135,7 +138,7 @@ test("ordinary manager resume automatically reconnects the exact saved root with
   writeFileSync(path, JSON.stringify(config), { mode: 0o600 });
   const original = readFileSync(path, "utf8");
   const launched: RuntimeHostConfig[] = [];
-  installStartupV7(f.host, { home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => { throw new Error("Resume must reuse saved capacity"); }, environment: f.environment, launch: async (saved) => { launched.push(saved); return saved; } });
+  installStartupV7(f.host, { ...omp, home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => { throw new Error("Resume must reuse saved capacity"); }, environment: f.environment, launch: async (saved) => { launched.push(saved); return saved; } });
   await f.emit("session_start", {}, f.ctx);
   expect(launched).toEqual([config]);
   expect(f.admissions).toHaveLength(1);
@@ -176,7 +179,7 @@ test("manager resume refuses a foreign root, pane or profile before using saved 
     writeFileSync(join(f.cwd, ".startup", "config.md"), "Startup alpha");
     writeFileSync(join(config.stateDirectory, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
     let launched = false;
-    installStartupV7(f.host, { home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (saved) => { launched = true; return saved; } });
+    installStartupV7(f.host, { ...omp, home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (saved) => { launched = true; return saved; } });
     await expect(f.emit("session_start", {}, f.ctx)).resolves.toBeUndefined();
     expect(launched).toBe(false);
     expect(f.admissions).toHaveLength(0);
@@ -198,7 +201,7 @@ test("manager resume retries a failed initial poll in the same root and stops it
   const callbacks: (() => void)[] = [];
   const ctx: NativeContext = { ...f.ctx, setInterval(callback, ms) { if (ms === 5000) callbacks.push(callback); return f.ctx.setInterval(callback, ms); } };
   f.setAvailable(false);
-  installStartupV7(f.host, { home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (saved) => saved });
+  installStartupV7(f.host, { ...omp, home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (saved) => saved });
   await f.emit("session_start", {}, ctx);
   expect(f.messages.join("\n")).toContain("retries in 5 seconds");
   expect(await f.emit("tool_call", { toolName: "bash" }, ctx)).toMatchObject({ block: true });
@@ -315,7 +318,7 @@ test("missing OMP profile means the native default profile for a manager", async
   const f = fixture();
   f.environment.OMP_PROFILE = undefined;
   const launched: RuntimeHostConfig[] = [];
-  installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; } });
+  installStartupV7(f.host, { ...omp, home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; } });
   await f.emit("input", { text: "/startup new defaults", source: "interactive", images: [] }, f.ctx);
   expect(launched[0]?.profile).toBe("default");
   expect(f.admissions).toHaveLength(1);
@@ -328,7 +331,7 @@ test.each([null, "fixture"])("manager resolves absent Herdr environment from the
   for (const key of ["HERDR_ENV", "HERDR_PANE_ID", "HERDR_WORKSPACE_ID", "HERDR_SESSION", "STARTUP_HERDR_SESSION"]) f.environment[key] = undefined;
   f.environment.HERDR_BIN_PATH = binary;
   const launched: RuntimeHostConfig[] = [];
-  installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; } });
+  installStartupV7(f.host, { ...omp, home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; } });
   await f.emit("input", { text: "/startup new recovered", source: "interactive", images: [] }, f.ctx);
   expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
   expect(launched[0]).toMatchObject({ managerPaneId: "w1:p1", workspaceId: "w1", herdrSession: session ?? "default" });
@@ -343,7 +346,7 @@ test.each(["exit", "json", "shape"])("Herdr CLI %s failure is handled and a corr
   f.environment.HERDR_SESSION = undefined;
   f.environment.STARTUP_HERDR_SESSION = undefined;
   f.environment.HERDR_BIN_PATH = binary;
-  installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+  installStartupV7(f.host, { ...omp, home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
   const command = f.commands.get("startup");
   if (!command) throw new Error("Missing Startup command");
   await expect(command.handler("new corrected", f.ctx)).resolves.toBeUndefined();
@@ -370,7 +373,7 @@ test("modified canonical source and parented transcript fail before any credenti
 test("manager boot preserves native command work and binds independent runtime config to original session", async () => {
   const f = fixture();
   const launched: RuntimeHostConfig[] = [];
-  installStartupV7(f.host, {
+  installStartupV7(f.host, { ...omp,
     home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment,
     launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; },
   });
@@ -397,7 +400,7 @@ test("invalid profiles and missing native abort are reported without launching a
     const context: NativeContext = kind === "abort" ? withoutAbort : f.ctx;
     const environment = { ...f.environment };
     if (kind === "profile") environment.OMP_PROFILE = "invalid/profile";
-    installStartupV7(host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment, launch: async (config) => { launched = true; return config; } });
+    installStartupV7(host, { ...omp, home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment, launch: async (config) => { launched = true; return config; } });
     expect(await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, context)).toEqual({ handled: true });
     expect(launched).toBe(false);
     expect(f.messages.join("\n")).toContain("blocked");
@@ -427,6 +430,9 @@ test("existing live runtime intent is reused without spawning a duplicate host",
 
 
 function runtimeFixture(f: ReturnType<typeof fixture>): Readonly<{ config: RuntimeHostConfig; stateFile: string }> {
+  return harnessRuntimeFixture(f, "omp");
+}
+function harnessRuntimeFixture(f: ReturnType<typeof fixture>, harness: "omp" | "claude"): Readonly<{ config: RuntimeHostConfig; stateFile: string }> {
   const home: string = join(f.root, "runtime-home");
   const stateDirectory: string = join(home, "startup", "alpha");
   const socketPath: string = join(f.root, "actual-runtime.sock");
@@ -451,23 +457,27 @@ else if (args[0] === "agent" && args[1] === "start") {
   const health = await fetch("http://localhost/health", { unix: ${JSON.stringify(socketPath)} });
   state.serverSeenBeforeLaunch = health.ok;
   if (state.rejectLaunch) { process.stderr.write("Fixture PA approval blocked"); process.exit(1); }
-  const native = ${JSON.stringify(join(f.root, "fake-pa.jsonl"))};
-  writeFileSync(native, JSON.stringify({ type: "session", id: args[2] }) + String.fromCharCode(10));
-  const agent = { ...location, agent: "omp", name: args[2], agent_status: "idle", state_change_seq: 1, interactive_ready: true, agent_session: { source: "herdr:omp", agent: "omp", kind: "path", value: native } };
+  const kind = ${JSON.stringify(harness)};
+  if (args[4] !== kind) throw new Error("Unexpected agent kind " + args[4]);
+  const native = kind === "claude" ? args[args.indexOf("--session-id") + 1] : ${JSON.stringify(join(f.root, "fake-pa.jsonl"))};
+  if (kind === "omp") writeFileSync(native, JSON.stringify({ type: "session", id: args[2] }) + String.fromCharCode(10));
+  const agent = { ...location, agent: kind, name: args[2], agent_status: "idle", state_change_seq: 1, interactive_ready: true, agent_session: { source: "herdr:" + kind, agent: kind, kind: kind === "claude" ? "id" : "path", value: native } };
   state.agents.push(agent);
+  state.started = [...(state.started ?? []), args];
   writeFileSync(stateFile, JSON.stringify(state));
   result = { id: "fixture", result: { type: "agent_started", agent, argv: ["omp"] } };
 } else throw new Error("Unexpected fake Herdr command " + JSON.stringify(args));
 process.stdout.write(JSON.stringify(result));
 `;
   writeFileSync(fake, script, { mode: 0o700 }); chmodSync(fake, 0o700);
-  writeFileSync(stateFile, JSON.stringify({ agents: [{ agent: "omp", name: "manager", workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", terminal_id: "term-1", agent_status: "idle", state_change_seq: 1, interactive_ready: true, agent_session: { source: "herdr:omp", agent: "omp", kind: "path", value: f.file } }] }));
+  const managerSession = harness === "claude" ? { source: "herdr:claude", agent: "claude", kind: "id", value: "native-root" } : { source: "herdr:omp", agent: "omp", kind: "path", value: f.file };
+  writeFileSync(stateFile, JSON.stringify({ agents: [{ agent: harness, name: "manager", workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", terminal_id: "term-1", agent_status: "idle", state_change_seq: 1, interactive_ready: true, agent_session: managerSession }] }));
   const config: RuntimeHostConfig = {
-    name: "alpha", home, stateDirectory, boundRoot: f.cwd, skillsRoot: f.skillsRoot, socketPath, profile: "isolated-test", managerSession: "native-root", managerFile: f.file, managerPaneId: "w1:p1", managerCredential: "private-credential",
+    name: "alpha", home, stateDirectory, boundRoot: f.cwd, skillsRoot: f.skillsRoot, socketPath, profile: "isolated-test", managerSession: "native-root", managerFile: harness === "claude" ? join(f.root, "claude-manager-not-written.jsonl") : f.file, managerPaneId: "w1:p1", managerCredential: "private-credential",
     herdrSession: "fixture", workspaceId: "w1", herdrBinary: fake, herdrIntegration: f.environment.STARTUP_HERDR_OMP_EXTENSION ?? "", ownerGeneration: 1,
     policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 8 },
   };
-  return { config, stateFile };
+  return { config: harness === "claude" ? { ...config, harness } : config, stateFile };
 }
 
 test("production timer keeps issuing PA checks while queue reads fail and recovers from degraded health", async () => {
@@ -610,7 +620,7 @@ test("fresh native helper factories block employee tools before any root attachm
   for (const factory of ["launched", "manager"]) {
     const f = fixture(); f.useEnvironment();
     if (factory === "launched") installLaunchedEmployee(f.host, f.manifest("dev"));
-    else installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => config });
+    else installStartupV7(f.host, { ...omp, home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => config });
     const helper: NativeContext = { ...f.ctx, agent: { id: "helper", kind: "task", parentId: "Main" } };
     await f.emit("session_start", {}, helper);
     expect(await f.emit("tool_call", { toolName: "startup_settle", input: {} }, helper)).toMatchObject({ block: true });
@@ -637,7 +647,7 @@ test("named OMP profile accepted by installer is accepted by employee admission"
 test("explicit manager select recovers a stopped coordinator in the same native root", async () => {
   const f = fixture();
   const launched: RuntimeHostConfig[] = [];
-  installStartupV7(f.host, {
+  installStartupV7(f.host, { ...omp,
     home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment,
     launch: async (config) => { launched.push(config); f.setAvailable(true); return { ...config, socketPath: f.socketPath }; },
   });
@@ -656,7 +666,7 @@ test("explicit manager select recovers a stopped coordinator in the same native 
 test.each(["18.8.8", "18.10.4", "19.0.0", "19.0.0-preview.1"])("native manager admission accepts capable OMP %s", async (version: string) => {
   const f = fixture();
   const host: HostAPI = { ...f.host, pi: { ...f.host.pi, VERSION: version } };
-  installStartupV7(host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+  installStartupV7(host, { ...omp, home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
   await f.emit("input", { text: "/startup new capable", source: "interactive", images: [] }, f.ctx);
   expect(f.admissions).toHaveLength(1);
   expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
@@ -667,7 +677,7 @@ test.each([9, 10, 11])("managed Herdr integration revision %s is validated by ru
   const path = f.environment.STARTUP_HERDR_OMP_EXTENSION;
   if (!path) throw new Error("Missing integration fixture");
   writeFileSync(path, `// HERDR_INTEGRATION_ID=omp\n// HERDR_INTEGRATION_VERSION=${revision}\n`);
-  installStartupV7(f.host, { home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+  installStartupV7(f.host, { ...omp, home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
   await f.emit("input", { text: "/startup new capable", source: "interactive", images: [] }, f.ctx);
   expect(f.admissions).toHaveLength(1);
 });
@@ -714,4 +724,107 @@ test("duplicate rejected native claims abort the turn and stop automatic continu
   expect(f.requests.filter((request) => z.object({ kind: z.literal("claim") }).safeParse(request).success)).toHaveLength(1);
   expect(f.getAborts()).toBe(1);
   expect(await f.emit("session_stop", {}, f.ctx)).toBeUndefined();
+});
+
+const claudeManagerFile = (f: ReturnType<typeof fixture>): string => join(f.root, "claude-manager-not-written.jsonl");
+function claudeEntry(f: ReturnType<typeof fixture>) {
+  return { harness: "claude", integration: () => "/fixture/claude/hooks/herdr-agent-state.sh",
+    root: async () => ({ nativeSession: "native-root", file: claudeManagerFile(f), lastAssistant: undefined }) } as const;
+}
+
+test("runtime config parses saved OMP bytes unchanged, accepts Claude and rejects a mixed harness", () => {
+  const f = fixture();
+  const { config } = runtimeFixture(f);
+  const saved: string = JSON.stringify(config);
+  expect(JSON.stringify(parseRuntimeHostConfig(JSON.parse(saved)))).toBe(saved);
+  expect("harness" in parseRuntimeHostConfig(JSON.parse(saved))).toBe(false);
+  const claude: string = JSON.stringify({ ...config, harness: "claude" });
+  expect(JSON.stringify(parseRuntimeHostConfig(JSON.parse(claude)))).toBe(claude);
+  for (const harness of ["omp", "codex", null]) expect(() => parseRuntimeHostConfig({ ...config, harness })).toThrow(z.ZodError);
+});
+
+test("an invalid OMP runtime config reports only the OMP schema issues", () => {
+  const f = fixture();
+  const { config } = runtimeFixture(f);
+  let caught: unknown = null;
+  try { parseRuntimeHostConfig({ ...config, name: "a b" }); } catch (error: unknown) { caught = error; }
+  const issues = z.object({ issues: z.array(z.object({ code: z.string(), path: z.array(z.union([z.string(), z.number()])) })) }).parse(caught).issues;
+  expect(issues).toEqual([expect.objectContaining({ code: "invalid_format", path: ["name"] })]);
+});
+
+test("Claude manager first boot saves a Claude config, admits by session id and imports AGENTS.md", async () => {
+  const f = fixture();
+  const launched: RuntimeHostConfig[] = [];
+  installStartupV7(f.host, { ...claudeEntry(f), home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; } });
+  await f.emit("input", { text: "/startup new claudeco", source: "interactive", images: [] }, f.ctx);
+  expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
+  expect(launched).toHaveLength(1);
+  expect(launched[0]).toMatchObject({ harness: "claude", managerSession: "native-root", managerFile: claudeManagerFile(f), herdrIntegration: "/fixture/claude/hooks/herdr-agent-state.sh" });
+  expect(parseRuntimeHostConfig(launched[0])).toEqual(launched[0]!);
+  expect(existsSync(claudeManagerFile(f))).toBe(false);
+  expect(f.admissions[0]).toMatchObject({ credential: launched[0]?.managerCredential, nativeSession: "native-root" });
+  const guidance = readFileSync(join(realpathSync(f.cwd), "CLAUDE.md"), "utf8");
+  expect(guidance).toContain("@AGENTS.md");
+  expect(existsSync(join(realpathSync(f.cwd), "AGENTS.md"))).toBe(true);
+});
+
+test("OMP manager first boot leaves CLAUDE.md untouched", async () => {
+  const f = fixture();
+  installStartupV7(f.host, { ...omp, home: join(f.root, "home"), skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+  await f.emit("input", { text: "/startup new ompco", source: "interactive", images: [] }, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+  expect(existsSync(join(f.cwd, "CLAUDE.md"))).toBe(false);
+});
+
+test.each(["claude", "omp"] as const)("manager resume requires the saved harness when the bridge is %s", async (bridge) => {
+  const f = fixture();
+  const { config: initial } = harnessRuntimeFixture(f, "claude");
+  const config = { ...initial, socketPath: f.socketPath, boundRoot: realpathSync(f.cwd), skillsRoot: realpathSync(f.skillsRoot) };
+  mkdirSync(config.stateDirectory, { recursive: true });
+  writeFileSync(join(config.stateDirectory, "binding.json"), JSON.stringify({ name: "alpha", bound_root: f.cwd }));
+  mkdirSync(join(f.cwd, ".startup"));
+  writeFileSync(join(f.cwd, ".startup", "config.md"), "Startup alpha");
+  writeFileSync(join(config.stateDirectory, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  const launched: RuntimeHostConfig[] = [];
+  installStartupV7(f.host, { ...(bridge === "claude" ? claudeEntry(f) : omp), home: config.home, skillsRoot: f.skillsRoot, nativeLimit: () => 6, environment: f.environment, launch: async (saved) => { launched.push(saved); return saved; } });
+  await f.emit("session_start", {}, f.ctx);
+  if (bridge === "claude") {
+    expect(launched).toEqual([config]);
+    expect(f.admissions[0]).toMatchObject({ nativeSession: "native-root" });
+  } else {
+    expect(launched).toHaveLength(0);
+    expect(f.messages.join("\n")).toContain("saved manager");
+  }
+});
+
+test("a launched employee admits through the supplied native root seam", async () => {
+  const f = fixture(); f.useEnvironment();
+  installLaunchedEmployeeWith(f.host, f.manifest("dev"), async () => ({ nativeSession: "claude-launch-id", file: join(f.root, "absent.jsonl"), lastAssistant: undefined }));
+  await f.emit("session_start", {}, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+  expect(f.admissions[0]).toMatchObject({ nativeSession: "claude-launch-id", paneId: "w1:p1" });
+});
+
+test("Claude runtime launches the PA with the claude kind and admits it by its assigned session", async () => {
+  const f = fixture(); f.useEnvironment();
+  const { config, stateFile } = harnessRuntimeFixture(f, "claude");
+  const runtime = await startRuntimeHost(config);
+  const clients: Awaited<ReturnType<typeof connectEmployee>>[] = [];
+  try {
+    const database = new Database(join(config.stateDirectory, "staff.sqlite"), { readonly: true });
+    const saved = z.object({ payload: z.string() }).parse(database.query("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId') != 'manager'").get());
+    database.close();
+    const pa = z.object({ employeeId: z.string(), launchId: z.string(), nativeSession: z.string() }).parse(JSON.parse(saved.payload));
+    expect(pa.nativeSession).toBe(pa.launchId);
+    const launches = join(config.stateDirectory, "launches");
+    const shared = join(config.home, "startup", "claude");
+    const name = `s-${pa.launchId.replaceAll("-", "").slice(0, 28)}`;
+    const state = z.object({ started: z.array(z.array(z.string())) }).parse(JSON.parse(readFileSync(stateFile, "utf8")));
+    expect(state.started).toEqual([["agent", "start", name, "--kind", "claude", "--pane", "w1:p2", "--", "--session-id", pa.launchId, "--append-system-prompt-file", join(launches, `${pa.launchId}.prompt.md`), "--settings", join(shared, "settings.json"), "--mcp-config", join(shared, "mcp.json"), "-n", name]]);
+    expect(existsSync(join(launches, `${pa.launchId}.ts`))).toBe(false);
+    const manifest = z.object({ credential: z.string(), source: sourceSchema }).parse(JSON.parse(readFileSync(join(launches, `${pa.launchId}.json`), "utf8")));
+    clients.push(await connectEmployee({ socketPath: config.socketPath, credential: manifest.credential, source: manifest.source, nativeSession: pa.launchId, paneId: "w1:p2" }));
+    clients.push(await connectEmployee({ socketPath: config.socketPath, credential: config.managerCredential, nativeSession: "native-root", paneId: "w1:p1", source: loadProfile({ skillsRoot: f.skillsRoot, role: "manager", employeeId: "manager", generation: 1 }).source }));
+    expect((await clients[1]!.poll()).projection).toContain("Complete canonical manager persona");
+  } finally { for (const client of clients) client.close(); await runtime.close(); }
 });

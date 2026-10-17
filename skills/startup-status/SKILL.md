@@ -9,13 +9,13 @@ Resolve selection through `startup`. Status is read-only except explicit bulleti
 
 ## Render
 
-1. Coordinator/OMP/Herdr readiness, actual source admission, root-turn slots/explicit ceilings, employee role/session generation/pane/state, pending hires and activation errors, event-crew hierarchy. Keep each OMP root's local helper limit separate; no aggregate global helper usage is enforced. Distinguish reserved/starting/uncertain/failed from admitted. Show singleton automatically reserved PA source readiness, supervision deadlines and degraded blockers on new delegation/landing. Scheduled PA idle is healthy.
+1. Coordinator/harness (OMP or Claude Code)/Herdr readiness, actual source admission, root-turn slots/explicit ceilings, employee role/session generation/pane/state, pending hires and activation errors, event-crew hierarchy. Keep each harness root's local helper limit separate; no aggregate global helper usage is enforced. Distinguish reserved/starting/uncertain/failed from admitted. Show singleton automatically reserved PA source readiness, supervision deadlines and degraded blockers on new delegation/landing. Scheduled PA idle is healthy.
 2. Canonical queue rows: ID/status/request/repo/target/base/branch/stack-mode/requested_roles, current revision and concrete blockers. Keep terminal rows visible. Legacy missing payload is unresolved; missing requested_roles behaves as `[]`.
 3. Received input disposition/intake coverage, pending inbox/claims/assignments and recovery blockers. Unrelated unfinished intake is never a reason another ready team must wait.
 4. Duties: supported configured/currentHealth/lastObservation/blocker fields. Show due information only from supported staff snapshot/assigned data. Runtime ONLINE/OFFLINE and current unknown/stale health remain distinct from timestamped historical JSON acceptance. Include durable manager lifecycle/progress alerts, observation gaps and missed manager/PA deadlines; idle/done never means accepted work.
 5. Open bulletin items, sprint merged count since recorded retro, aging BLOCKED/NEEDS_DECISION rows, unresolved legacy queue/lock ownership.
 
-Native `/startup status` displays supported runtime staffing/duties. This skill adds queue, ledger, bulletin and memory context. Use the mandatory runtime contract in `../startup/references/role-dispatch.md`; unavailable observations remain explicit unknown/offline state.
+Native `/startup status` (in Claude Code intercepted by the Startup bridge) displays supported runtime staffing/duties. This skill adds queue, ledger, bulletin and memory context. Use the mandatory runtime contract in `../startup/references/role-dispatch.md`; unavailable observations remain explicit unknown/offline state.
 
 ## Bulletin wipe
 

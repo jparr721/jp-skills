@@ -742,3 +742,22 @@ test("replaying claim A does not release a rejected settlement for claim B", asy
   await expect(client.request(blocked)).rejects.toMatchObject({ repeated: true });
   expect(fixture.requests.filter((r) => r.path === "/command")).toHaveLength(2);
 });
+
+test("a submitted Claude prompt clears a provider pause like native root input", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  const native = nativeFixture();
+  native.setRunState(true, false);
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000, lastAssistant: { role: "assistant", stopReason: "error" } });
+  cleanup.push(bridge.close);
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: ["new-duty"], toolBlockReason: null, waitReason: "Drain inbox" });
+  await bridge.poll();
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(0);
+  await native.emit("input_submitted", { source: "interactive", text: "Provider repaired" }, { ...native.ctx, agent: { id: "helper", kind: "subagent" } });
+  await native.emit("input_submitted", { source: "extension", text: "synthetic" }, native.ctx);
+  await bridge.poll();
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(0);
+  await native.emit("input_submitted", { source: "interactive", text: "Provider repaired" }, native.ctx);
+  await bridge.poll();
+  expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(1);
+});
