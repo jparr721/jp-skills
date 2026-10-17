@@ -2,6 +2,26 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.2.0] - 2026-10-16
+
+### Added
+
+- Startup V7 runs on Claude Code (2.1.302+) as well as OMP. One Startup uses one harness, fixed by the manager's first boot. `bun extensions/startup/install.ts install-claude` checks Herdr's managed Claude integration and the linked Startup skills, then writes the `startup-claude` launcher with an ownership receipt; `uninstall-claude` removes both only while their bytes match the receipt.
+- `startup-claude` resumes or starts the manager session. Employees start in Herdr panes with their `launchId` as `--session-id`, the role/loop source as `--append-system-prompt-file`, and shared hook settings and MCP config. The `claude-bridge.ts` MCP server `startup` runs the unchanged employee bridge and exposes the `startup_*` tools.
+- UserPromptSubmit, PostToolUse and Stop hooks drive `begin_turn` and stop continuation; a fail-closed PreToolUse command hook guards every tool. `asyncRewake` waiters wake idle employees without typing into the composer. A transcript ledger detects turn ends and receipts human pane input, including images. First boot writes a managed root `CLAUDE.md` block that imports `AGENTS.md`.
+
+### Fixed
+
+- Non-architect `crew-ready` notices carry no work and settle complete for every result kind, including question and reconciled uncertain results. They no longer block the member's later item assignment. Unresolved-work conflicts name the blocking assignment, its state and its recovery step.
+- `startup_delegate` and `startup_activate` return their durable receipt before pane launches. Launches continue serially in the coordinator; a failure is saved as `layout-uncertain`/`launch-uncertain`/`launch-interrupted` manager alerts naming unlaunched members, a retry while launching is refused, and runtime shutdown waits for launches.
+
+### Verification
+
+- 488 tests, 2473 assertions, and TypeScript checking pass.
+- Live Claude Code acceptance in an isolated Herdr session: item `readme-hello-line` reached DONE at revision 7, delegate replied in 68 ms, 22/22 claims settled, and all slots were released.
+- Known limits: live state injected as `additionalContext` is persisted in the transcript, not ephemeral; a Herdr session restore resumes bare `claude` without the bridge, so the employee is never re-admitted; `STARTUP_EXECUTION_LIMIT` is required.
+- Restart the coordinator to load the fixes. Existing OMP `staff.sqlite` state stays in place; no migration and no replay.
+
 ## [7.1.0] - 2026-10-16
 
 ### Added
