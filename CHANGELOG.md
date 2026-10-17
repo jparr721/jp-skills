@@ -2,6 +2,23 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.4.0] - 2026-10-17
+
+### Added
+
+- `install.ts install|uninstall` take an optional profile: with none, the only saved named OMP profile is used, otherwise a terminal prompt picks one of the saved profiles.
+- `config.ts` lists saved OMP profiles and Startups, reads a saved Startup's runtime config with the manager credential redacted, and switches a Startup's OMP profile after the fact. A switch refuses while the coordinator runs or its launch is uncertain and prints the resume command for the new profile.
+
+### Changed
+
+- Each employee launch uses the profile recorded in its launch manifest instead of the live coordinator config, so a switch cannot split one launch across two profiles.
+
+### Verification
+
+- 510 tests, 2544 assertions, and TypeScript checking pass.
+- Resume by path under another profile appends to the original manager transcript (checked against OMP 18.11.1). The numbered prompt and its Ctrl-C and Ctrl-D cancel were exercised in a real pty.
+- Known limits: a switch needs the coordinator process stopped first; employees already running keep their launch profile until relaunched; the new profile must resolve every bound model role.
+
 ## [7.3.0] - 2026-10-17
 
 ### Added
