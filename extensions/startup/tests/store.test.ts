@@ -349,15 +349,15 @@ test("staff cannot hire, impersonate another generation, capture intake or bypas
 test("settlement is atomic and idempotent; questions acknowledge mail but retain waiting assignment", (): void => {
   const f = fixture();
   const t = active(f, "event", []);
-  const next = f.store.claimNext({ employee: t.devBinding });
+  const next = f.store.claimNext({ employee: t.architectBinding });
   if (next === null) throw new Error("No assignment");
   expect(() =>
     f.store.settleClaim({
-      employee: t.devBinding,
+      employee: t.architectBinding,
       claimId: next.claim.id,
       result: {
         ...completed("invalid"),
-        outgoing: [cue("bad", "manager", "report")],
+        outgoing: [cue("bad", t.qa, "report")],
       },
     }),
   ).toThrow();
@@ -368,16 +368,16 @@ test("settlement is atomic and idempotent; questions acknowledge mail but retain
     kind: "question" as const,
     output: "Need decision",
     checkpoint: { pending: true },
-    outgoing: [cue("question", t.architect, "question")],
+    outgoing: [cue("question", "manager", "question")],
   };
   const result = f.store.settleClaim({
-    employee: t.devBinding,
+    employee: t.architectBinding,
     claimId: next.claim.id,
     result: question,
   });
   expect(
     f.store.settleClaim({
-      employee: t.devBinding,
+      employee: t.architectBinding,
       claimId: next.claim.id,
       result: question,
     }),
@@ -395,7 +395,7 @@ test("settlement is atomic and idempotent; questions acknowledge mail but retain
   ).toBe("waiting");
   expect(() =>
     f.store.settleClaim({
-      employee: t.devBinding,
+      employee: t.architectBinding,
       claimId: next.claim.id,
       result: { ...question, output: "different" },
     }),
@@ -407,6 +407,23 @@ test("settlement is atomic and idempotent; questions acknowledge mail but retain
       evidence: "done",
     }),
   ).toThrow();
+  f.store.close();
+});
+
+test("a member's team reservation notice settles complete for every result kind while the architect intake can wait", (): void => {
+  const f = fixture();
+  const t = active(f, "notice", []);
+  const settle = (binding: typeof t.devBinding, kind: "question" | "uncertain", recipient: string): string => {
+    const next = f.store.claimNext({ employee: binding });
+    if (next === null) throw new Error("No reservation cue");
+    f.store.settleClaim({ employee: binding, claimId: next.claim.id, result: { id: `notice-${binding.employeeId}`, kind, output: "no item yet", checkpoint: null, outgoing: kind === "question" ? [cue(`ask-${binding.employeeId}`, recipient, "question")] : [] } });
+    if (kind === "uncertain") f.store.reconcileClaim({ manager: f.store.managerBinding, claimId: next.claim.id, evidence: "no side effects" });
+    return next.message.id;
+  };
+  const state = (id: string): string | undefined => f.store.snapshot().assignments.find((value): boolean => value.id === id)?.state;
+  expect(state(settle(t.devBinding, "question", t.architect))).toBe("complete");
+  expect(state(settle(t.qaBinding, "uncertain", t.architect))).toBe("complete");
+  expect(state(settle(t.architectBinding, "question", "manager"))).toBe("waiting");
   f.store.close();
 });
 

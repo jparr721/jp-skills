@@ -66,7 +66,7 @@ Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md
 | Public tool | Purpose and boundary |
 | --- | --- |
 | `startup_hire {requestId,role,additional}` | Manager reserves additional architect/QA/dev/DevOps identities; stable retries add zero. The single permanent PA is automatic. |
-| `startup_delegate {eventId,developers}` | Manager admits a complete crew for persisted intake; retries retain its original membership. |
+| `startup_delegate {eventId,developers}` | Manager admits a complete crew for persisted intake; retries retain its original membership. Non-architect `crew-ready` notices carry no work and settle complete for every result kind. |
 | `startup_activate {employeeIds}` | Manager starts existing prepared identities; uncertain starts require reconciliation. |
 | `startup_replace {employeeId,evidence}` | Manager replacement after explicit failure/identity evidence and unresolved-work reconciliation. |
 | `startup_route {inputId,disposition,reason,amendItemIds}` | Manager classifies a saved native receipt as work/status/control/conversation/decision. |

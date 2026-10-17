@@ -626,6 +626,33 @@ export function openStore(args: {
   function members(current: Team): readonly string[] {
     return [current.architect, current.qa, ...current.devs];
   }
+  // A non-architect member's team reservation cue only announces readiness; it carries no work to pause.
+  function readinessNotice(message: Message): boolean {
+    if (message.kind !== "assignment" || message.teamId === null) return false;
+    const owner: Team = team(message.teamId);
+    return (
+      message.recipient !== owner.architect &&
+      read("teamRequest", owner.eventId, teamRequestSchema)?.cues.some(
+        (cue): boolean => cue.id === message.id,
+      ) === true
+    );
+  }
+  function assertNoUnresolvedWork(employeeId: string, label: string): void {
+    const blocking: Assignment | undefined = all("assignment", assignmentSchema).find(
+      (assignment): boolean =>
+        assignment.employeeId === employeeId && assignment.state !== "complete",
+    );
+    if (blocking === undefined) return;
+    const recovery: string =
+      blocking.state === "pending"
+        ? "its recipient must claim and settle it first"
+        : blocking.state === "waiting"
+          ? "the manager must startup_resolve it with evidence"
+          : "the manager must startup_reconcile its claim first";
+    throw new StoreConflictError(
+      `${label} has unresolved work: assignment ${blocking.id} is ${blocking.state}; ${recovery}`,
+    );
+  }
   function ready(current: Team): boolean {
     return members(current).every((id): boolean => {
       const member: Employee = employee(id);
@@ -2137,14 +2164,7 @@ export function openStore(args: {
               throw new StoreAuthorityError(
                 "Item assignee must be an owning team dev",
               );
-            if (
-              all("assignment", assignmentSchema).some(
-                (assignment) =>
-                  assignment.employeeId === request.employeeId &&
-                  assignment.state !== "complete",
-              )
-            )
-              throw new StoreConflictError("Item dev has unresolved work");
+            assertNoUnresolvedWork(request.employeeId, "Item dev");
             const member = employee(request.employeeId);
             const messageId = cue(member.id, "assignment", {
               kind: "item-execution",
@@ -2211,14 +2231,7 @@ export function openStore(args: {
               throw new StoreAuthorityError(
                 "Only the owning architect may assign pending QA review",
               );
-            if (
-              all("assignment", assignmentSchema).some(
-                (assignment) =>
-                  assignment.employeeId === current.qa &&
-                  assignment.state !== "complete",
-              )
-            )
-              throw new StoreConflictError("QA has unresolved work");
+            assertNoUnresolvedWork(current.qa, "QA");
             execution = {
               ...execution,
               qaGeneration: employee(current.qa).generation,
@@ -2578,7 +2591,7 @@ export function openStore(args: {
             id: incoming.id,
             employeeId: current.id,
             state:
-              result.kind === "completed"
+              result.kind === "completed" || readinessNotice(incoming)
                 ? "complete"
                 : result.kind === "question"
                   ? "waiting"
@@ -2640,7 +2653,7 @@ export function openStore(args: {
         put("claim", saved.id, { ...saved, status: "settled" });
         put("message", message.id, { ...message, status: "acknowledged" });
         const assignment = read("assignment", message.id, assignmentSchema);
-        if (assignment !== null && saved.status === "reconciliation")
+        if (assignment !== null && saved.status === "reconciliation" && !readinessNotice(message))
           put("assignment", assignment.id, { ...assignment, state: "waiting" });
         const current: Employee = employee(saved.employeeId);
         if (current.assignment !== null) {

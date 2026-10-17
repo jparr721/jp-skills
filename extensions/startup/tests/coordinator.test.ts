@@ -988,3 +988,43 @@ test("host cancel withdraws one request and settles only that item's worker gene
   expect(hostReceiptSchema.parse(await f.coordinator.hostCancel({ requestOrItemId: "ITEM-1", intentId: "cancel-item" }))).toEqual(itemReceipt);
   expect(admitted.mode).toBe("startup_outcome");
 });
+
+for (const kind of ["question", "uncertain"] as const) test(`a crew-ready notice settled as ${kind} never blocks the member's later item assignment`, async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  const team = await f.delegate(manager, `crew-notice-${kind}`);
+  const architect = await f.admit(team.architect);
+  const qa = await f.admit(team.qa);
+  const dev = await f.admit(team.devs[0]!);
+  for (const [id, connection] of [[team.qa, qa], [team.devs[0]!, dev]] as const) {
+    const claimed = z.object({ claim: z.object({ id: z.string() }), message: z.object({ payload: z.object({ kind: z.literal("crew-ready") }) }) }).parse(await f.coordinator.command(connection, { kind: "claim" }));
+    await f.coordinator.command(connection, { kind: "settle", claimId: claimed.claim.id, result: { id: `notice-${kind}-${id}`, kind, output: "No item yet", checkpoint: null, outgoing: kind === "question" ? [{ id: `notice-question-${id}`, recipient: team.architect, kind: "question", correlation: `crew-notice-${kind}`, payload: "Which item?" }] : [] } });
+    if (kind === "uncertain") await f.coordinator.command(manager, { kind: "reconcile", claimId: claimed.claim.id, evidence: "Readiness notice had no side effects" });
+  }
+  expect(f.store.snapshot().assignments.filter((a) => [team.qa, team.devs[0]!].includes(a.employeeId)).map((a) => a.state)).toEqual(["complete", "complete"]);
+  await f.coordinator.command(architect, { kind: "capture", capture: { captureId: `capture-${kind}`, eventId: `crew-notice-${kind}`, rows: [{ id: `ITEM-${kind}`, expectedRevision: null, fields: { status: "QUEUED", procedure: "code-review", request: "work", acceptance: "proof", blocked_on: [] } }], receipt: "captured" } });
+  await expect(f.coordinator.command(architect, { kind: "item", request: { action: "assign", requestId: `assign-${kind}`, itemId: `ITEM-${kind}`, expectedRevision: 1, employeeId: team.devs[0]!, evidence: "Execute" } })).resolves.toMatchObject({ status: "EXECUTING" });
+});
+
+test("an item assignment blocked by unresolved work names the assignment and its recovery", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  const team = await f.delegate(manager, "blocked-assign");
+  const architect = await f.admit(team.architect);
+  await f.admit(team.qa);
+  const dev = await f.admit(team.devs[0]!);
+  const notice = f.store.snapshot().assignments.find((a) => a.employeeId === team.devs[0]!);
+  if (!notice) throw new Error("Missing crew assignment");
+  const rows = ["ITEM-A", "ITEM-B"].map((id) => ({ id, expectedRevision: null, fields: { status: "QUEUED", procedure: "code-review", request: "work", acceptance: "proof", blocked_on: [] } }));
+  await f.coordinator.command(architect, { kind: "capture", capture: { captureId: "capture-blocked", eventId: "blocked-assign", rows, receipt: "captured" } });
+  const assign = (itemId: string) => f.coordinator.command(architect, { kind: "item", request: { action: "assign", requestId: `assign-${itemId}`, itemId, expectedRevision: 1, employeeId: team.devs[0]!, evidence: "Execute" } });
+  await expect(assign("ITEM-A")).rejects.toThrow(`Item dev has unresolved work: assignment ${notice.id} is pending; its recipient must claim and settle it first`);
+  await f.coordinator.command(dev, { kind: "claim" });
+  await f.coordinator.command(dev, { kind: "settle", result: { id: "notice-done", kind: "completed", output: "ready", checkpoint: null, outgoing: [] } });
+  await assign("ITEM-A");
+  const claimed = z.object({ message: z.object({ id: z.string() }) }).parse(await f.coordinator.command(dev, { kind: "claim" }));
+  await f.coordinator.command(dev, { kind: "settle", result: { id: "item-question", kind: "question", output: "Which file?", checkpoint: null, outgoing: [{ id: "item-question-cue", recipient: team.architect, kind: "question", correlation: "ITEM-A", payload: "Which file?" }] } });
+  await expect(assign("ITEM-B")).rejects.toThrow(`Item dev has unresolved work: assignment ${claimed.message.id} is waiting; the manager must startup_resolve it with evidence`);
+  await f.coordinator.command(manager, { kind: "resolve", assignmentId: claimed.message.id, evidence: "Architect answered" });
+  await expect(assign("ITEM-B")).resolves.toMatchObject({ status: "EXECUTING" });
+});
