@@ -1018,6 +1018,23 @@ test("OMP employees launch on the OMP model role bound to their Startup role", a
   expect(team.devs).toHaveLength(1);
 });
 
+test("OMP employees launch on the profile recorded in their launch manifest", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  await f.coordinator.command(manager, { kind: "intake", eventId: "switch", input: "fix", amendItemIds: [] });
+  await f.coordinator.command(manager, { kind: "delegate", eventId: "switch", developers: 1 });
+  (f.config as { profile: string }).profile = "switched";
+  await f.coordinator.launching();
+  const crew = f.launches.filter((launch) => launch.args.includes("--model"));
+  expect(crew.length).toBeGreaterThan(0);
+  for (const launch of crew) {
+    const binding = f.store.runtimeBindings().find((r) => launch.name === `s-${r.launchId.replaceAll("-", "").slice(0, 28)}`);
+    const manifest = manifestSchema.extend({ profile: z.string() }).parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${binding?.launchId}.json`), "utf8")));
+    expect(manifest.profile).toBe("test");
+    expect(launch.args[launch.args.indexOf("--profile") + 1]).toBe("test");
+  }
+});
+
 test("Claude employees launch with an assigned session, prompt suffix and shared hook files only", async () => {
   const f = harnessFixture(8, "claude");
   const { pa } = await f.ready();

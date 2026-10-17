@@ -38,6 +38,25 @@ bun extensions/startup/install.ts uninstall startup-v7
 
 Repository development does not install into a normal profile or upgrade an existing V6 Startup.
 
+## Profiles
+
+`install` and `uninstall` take an optional profile. With no name they use the only saved named OMP profile, or list the saved ones and ask you to pick one (a terminal is required; otherwise pass the name):
+
+```sh
+bun extensions/startup/install.ts install [PROFILE]
+```
+
+`config.ts` reads and changes saved Startups, including ones created before this existed:
+
+```sh
+bun extensions/startup/config.ts profiles                       # saved OMP profiles
+bun extensions/startup/config.ts list                           # saved Startups, harness and profile
+bun extensions/startup/config.ts get NAME [KEY]                 # runtime config, manager credential redacted
+bun extensions/startup/config.ts set NAME profile [PROFILE]     # switch the Startup's OMP profile
+```
+
+`set` rewrites only `profile` in the Startup's `runtime-config.json`. It refuses while the coordinator process runs or its launch is uncertain, for a Claude Code Startup, and for a profile that is neither saved nor `default`. It prints the command that resumes the manager in the new profile. Resume by path keeps the original manager transcript, so crews, queue and history are preserved. Each launch keeps the profile recorded in its manifest when the launch was prepared; launches prepared after the switch use the new profile. The new profile must resolve each [model role](#model-roles), or manager boot blocks and names the missing ones.
+
 ## Model roles
 
 OMP employees launch with `--model @ROLE`, so each Startup role runs on one OMP model role from the manager's profile. The binding lives in `src/model-roles.ts`; the manager is launched by you, so it keeps whatever model you start it with:

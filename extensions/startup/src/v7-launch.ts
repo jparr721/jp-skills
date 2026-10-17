@@ -21,7 +21,7 @@ export type RuntimeHostConfig = Readonly<z.infer<typeof ompConfigSchema> | z.inf
 export function parseRuntimeHostConfig(value: unknown): RuntimeHostConfig {
   return typeof value === "object" && value !== null && "harness" in value ? claudeConfigSchema.parse(value) : ompConfigSchema.parse(value);
 }
-const intentSchema = z.discriminatedUnion("state", [
+export const intentSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("prepared"), startedAt: z.number().int().nonnegative() }),
   z.strictObject({ state: z.literal("spawned"), startedAt: z.number().int().nonnegative(), pid: z.number().int().positive() }),
 ]);
@@ -33,7 +33,7 @@ export function readPrivateJson(path: string): unknown {
     throw new RuntimeLaunchError(`Startup private file must be a regular owner-only file: ${path}`);
   return JSON.parse(readFileSync(path, "utf8"));
 }
-function processAlive(pid: number): boolean {
+export function processAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; }
   catch (error: unknown) {
     const parsed = z.object({ code: z.string() }).safeParse(error);

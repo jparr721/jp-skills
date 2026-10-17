@@ -15,6 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { createInterface } from "node:readline/promises";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -48,11 +49,7 @@ export type InstallOptions = Readonly<{
   omp: string;
   env: NodeJS.ProcessEnv;
 }>;
-export function pluginsDirectory(
-  profile: string,
-  env: NodeJS.ProcessEnv,
-): string {
-  ompProfileSchema.parse(profile);
+function configDirectoryName(env: NodeJS.ProcessEnv): string {
   const configName = env.PI_CONFIG_DIR ?? ".omp";
   if (
     !/^[a-zA-Z0-9._-]+$/.test(configName) ||
@@ -62,6 +59,85 @@ export function pluginsDirectory(
     throw new StartupInstallError(
       "PI_CONFIG_DIR must be a single directory name under the real home",
     );
+  return configName;
+}
+export function savedOmpProfiles(
+  env: NodeJS.ProcessEnv,
+  home: string,
+): readonly string[] {
+  const roots: readonly string[] = [
+    ...(env.XDG_DATA_HOME && (process.platform === "darwin" || process.platform === "linux")
+      ? [join(resolve(env.XDG_DATA_HOME), "omp", "profiles")]
+      : []),
+    join(home, configDirectoryName(env), "profiles"),
+  ];
+  const names: ReadonlySet<string> = new Set(
+    roots.flatMap((root) =>
+      existsSync(root)
+        ? readdirSync(root, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory() && ompProfileSchema.safeParse(entry.name).success)
+            .map((entry) => entry.name)
+        : [],
+    ),
+  );
+  return [...names].sort();
+}
+export function pickProfile(saved: readonly string[], answer: string): string {
+  const chosen: string | undefined = /^[1-9]\d*$/.test(answer.trim()) ? saved[Number(answer.trim()) - 1] : undefined;
+  if (chosen === undefined)
+    throw new StartupInstallError(`Answer a number from 1 to ${saved.length} to pick a saved OMP profile; received "${answer}"`);
+  return chosen;
+}
+export async function askProfile(saved: readonly string[]): Promise<string> {
+  if (!process.stdin.isTTY)
+    throw new StartupInstallError(
+      `Several saved OMP profiles exist and no terminal is available to ask; pass one of: ${saved.join(", ")}`,
+    );
+  const terminal = createInterface({ input: process.stdin, output: process.stderr });
+  // Bun leaves question() pending on Ctrl-C and Ctrl-D, so a closed terminal must cancel the prompt.
+  const cancelled = new Promise<never>((_, reject) => {
+    terminal.once("close", () => reject(new StartupInstallError("Profile prompt cancelled")));
+  });
+  terminal.once("SIGINT", () => terminal.close());
+  try {
+    const answer: string = await Promise.race([
+      terminal.question(
+        `Saved OMP profiles:\n${saved.map((name, index) => `  ${index + 1}. ${name}`).join("\n")}\nPick one: `,
+      ),
+      cancelled,
+    ]);
+    return pickProfile(saved, answer);
+  } finally {
+    terminal.close();
+  }
+}
+export async function chooseProfile(
+  input: Readonly<{
+    saved: readonly string[];
+    requested: string | null;
+    ask: (saved: readonly string[]) => Promise<string>;
+  }>,
+): Promise<string> {
+  if (input.requested !== null) return ompProfileSchema.parse(input.requested);
+  const only: string | undefined = input.saved[0];
+  if (only === undefined)
+    throw new StartupInstallError(
+      "No saved OMP profiles exist; create one with `omp --profile NAME` or pass the profile name",
+    );
+  if (input.saved.length === 1) return only;
+  const answer: string = await input.ask(input.saved);
+  if (!input.saved.includes(answer))
+    throw new StartupInstallError(
+      `${answer} is not a saved profile; saved OMP profiles: ${input.saved.join(", ")}`,
+    );
+  return answer;
+}
+export function pluginsDirectory(
+  profile: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  ompProfileSchema.parse(profile);
+  const configName = configDirectoryName(env);
   const xdg = env.XDG_DATA_HOME
     ? join(resolve(env.XDG_DATA_HOME), "omp", "profiles", profile)
     : null;
@@ -299,7 +375,7 @@ const minimumClaude: readonly [number, number, number] = [2, 1, 302];
 function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
-function shellQuote(value: string): string {
+export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 function requireClaudeVersion(claude: string, env: NodeJS.ProcessEnv): void {
@@ -396,9 +472,14 @@ if (import.meta.main && ["install-claude", "uninstall-claude"].includes(process.
     ) + "\n",
   );
 } else if (import.meta.main) {
-  const [action, profile] = z
-    .tuple([z.enum(["install", "uninstall"]), ompProfileSchema])
+  const [action, requested] = z
+    .tuple([z.enum(["install", "uninstall"]), ompProfileSchema.optional()])
     .parse(process.argv.slice(2));
+  const profile: string = await chooseProfile({
+    saved: savedOmpProfiles(process.env, homedir()),
+    requested: requested ?? null,
+    ask: askProfile,
+  });
   process.stdout.write(
     JSON.stringify(
       manageInstallation({

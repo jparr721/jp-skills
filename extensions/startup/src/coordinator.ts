@@ -6,6 +6,7 @@ import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, s
 import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
 import { itemActionSchema, terminalItemStatuses } from "./items";
+import { ompProfileSchema } from "../install";
 import { ompModelArgs } from "./model-roles";
 import { loadProfile, profileText, verifyProfile, type Profile } from "./profiles";
 import { runtimePolicySchema, type RuntimeBinding, type RuntimePolicy } from "./runtime-contracts";
@@ -109,6 +110,10 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   function launchArtifact(launchId: string): string {
     return join(launchDirectory, `${launchId}${claude === null ? ".ts" : ".prompt.md"}`);
   }
+  // A launch keeps the profile its manifest was written under, so switching config.profile never splits one launch across profiles.
+  function launchProfile(launchId: string): string {
+    return z.object({ profile: ompProfileSchema }).parse(JSON.parse(readFileSync(join(launchDirectory, `${launchId}.json`), "utf8"))).profile;
+  }
   function launchFiles(current: RuntimeBinding, credential: string): void {
     const path = join(launchDirectory, `${current.launchId}.json`);
     const manifest = encode({ socketPath: config.socketPath, credential, source: current.source, employeeId: current.employeeId, generation: current.generation, profile: config.profile, skillsRoot: config.skillsRoot });
@@ -201,7 +206,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const name = `s-${current.launchId.replaceAll("-", "").slice(0, 28)}`;
     try {
       if (claude !== null && claudeFiles === null) throw new StoreConflictError("Claude launch requires the shared hook files written at coordinator start");
-      await herdr.launch({ paneId: location.paneId, name, args: claudeFiles === null ? ["--profile", config.profile, ...ompModelArgs(employee(id).role), "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot] : claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: claudeFiles.settingsFile, mcpFile: claudeFiles.mcpFile, name }) });
+      await herdr.launch({ paneId: location.paneId, name, args: claudeFiles === null ? ["--profile", launchProfile(current.launchId), ...ompModelArgs(employee(id).role), "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot] : claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: claudeFiles.settingsFile, mcpFile: claudeFiles.mcpFile, name }) });
       const latest = runtime(id);
       if (latest.state === "uncertain" && latest.error !== null) throw new StoreConflictError(`Startup employee boot failed: ${latest.error}`);
     } catch (error: unknown) {
@@ -248,7 +253,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   }
   function paneEnvironment(launchId: string): Readonly<Record<string, string>> {
     const manifest = join(launchDirectory, `${launchId}.json`);
-    return claude === null ? { OMPCODE: "", OMP_PROFILE: config.profile, STARTUP_V7_MANIFEST: manifest } : { STARTUP_V7_MANIFEST: manifest };
+    return claude === null ? { OMPCODE: "", OMP_PROFILE: launchProfile(launchId), STARTUP_V7_MANIFEST: manifest } : { STARTUP_V7_MANIFEST: manifest };
   }
   async function createEmployeeTab(id: string, label: string): Promise<Readonly<{ tabId: string; paneId: string }>> {
     const saved = runtime(id);
