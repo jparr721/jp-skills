@@ -38,6 +38,22 @@ bun extensions/startup/install.ts uninstall startup-v7
 
 Repository development does not install into a normal profile or upgrade an existing V6 Startup.
 
+## Model roles
+
+OMP employees launch with `--model @ROLE`, so each Startup role runs on one OMP model role from the manager's profile. The binding lives in `src/model-roles.ts`; the manager is launched by you, so it keeps whatever model you start it with:
+
+| Startup role | OMP model role |
+| --- | --- |
+| architect | `plan` |
+| dev | `slow` |
+| qa | `advisor` |
+| devops | `slow` |
+| pa | `smol` |
+
+Retune a model by assigning the role in the profile's `config.yml` `modelRoles` or with the `/model` role picker; Startup needs no change. `advisor` also drives OMP's advisor runtime, `plan` its plan mode, so a change applies to both uses. Subagents the dev spawns with `task` still use `modelRoles.task`.
+
+Boot refuses to start when the profile cannot resolve a bound role (`ctx.models.resolve("@ROLE")`), naming each missing role and the Startup roles that need it. There is no fallback to `default`. Claude Code employees are unchanged and use the harness's own model selection.
+
 ## Claude Code
 
 Requirements: Claude Code 2.1.302 or newer, Bun, Herdr's managed Claude integration (`~/.claude/hooks/herdr-agent-state.sh` with `# HERDR_INTEGRATION_ID=claude` and a numeric `# HERDR_INTEGRATION_VERSION`, registered as a SessionStart hook in `~/.claude/settings.json`), and `~/.claude/skills/startup`, `startup-*` and `hire` resolving into this checkout.

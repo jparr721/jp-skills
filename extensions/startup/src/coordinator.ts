@@ -6,6 +6,7 @@ import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, s
 import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
 import { itemActionSchema, terminalItemStatuses } from "./items";
+import { ompModelArgs } from "./model-roles";
 import { loadProfile, profileText, verifyProfile, type Profile } from "./profiles";
 import { runtimePolicySchema, type RuntimeBinding, type RuntimePolicy } from "./runtime-contracts";
 import type { StartupStore } from "./store";
@@ -200,7 +201,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const name = `s-${current.launchId.replaceAll("-", "").slice(0, 28)}`;
     try {
       if (claude !== null && claudeFiles === null) throw new StoreConflictError("Claude launch requires the shared hook files written at coordinator start");
-      await herdr.launch({ paneId: location.paneId, name, args: claudeFiles === null ? ["--profile", config.profile, "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot] : claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: claudeFiles.settingsFile, mcpFile: claudeFiles.mcpFile, name }) });
+      await herdr.launch({ paneId: location.paneId, name, args: claudeFiles === null ? ["--profile", config.profile, ...ompModelArgs(employee(id).role), "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot] : claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: claudeFiles.settingsFile, mcpFile: claudeFiles.mcpFile, name }) });
       const latest = runtime(id);
       if (latest.state === "uncertain" && latest.error !== null) throw new StoreConflictError(`Startup employee boot failed: ${latest.error}`);
     } catch (error: unknown) {

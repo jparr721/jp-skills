@@ -8,6 +8,7 @@ import type { HostAPI } from "./index";
 import { bootSelection, parseBootCommand, StartupBootError, writeBootGuidance, writeClaudeGuidance, type BootCommand, type Selection } from "./src/boot";
 import { encode } from "./src/contracts";
 import { attach, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
+import { requireOmpModelRoles } from "./src/model-roles";
 import type { NativeContext } from "./src/omp-adapter";
 import { loadProfile, verifyProfile } from "./src/profiles";
 import { launchRuntimeHost, readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
@@ -67,6 +68,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       failureTurnPending = false;
       return;
     }
+    if (input.harness === "omp") requireOmpModelRoles(ctx.models, location.profile);
     const savedPath: string = join(next.home, "startup", next.name, "runtime-config.json");
     const saved: RuntimeHostConfig | null = existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null;
     if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.name !== next.name || saved.home !== next.home || saved.stateDirectory !== join(next.home, "startup", next.name) ||
