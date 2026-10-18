@@ -24,6 +24,7 @@ import {
   StoreAuthorityError,
   StoreFenceError,
 } from "./contracts";
+import { ompSessionSettingsReportSchema, type OmpSessionSettingsReport } from "./runtime-contracts";
 import {
   openStore,
   type StartupStore,
@@ -66,6 +67,11 @@ export type NativeSession = Readonly<{
     getAllJobs: (filter: Readonly<{ ownerId: string }>) => readonly unknown[];
   }>;
   settings: unknown;
+  model?: Readonly<{ provider: string; id: string; name: string }>;
+  thinkingLevel?: string;
+  configuredThinkingLevel?: () => string | undefined;
+  getAvailableModels?: () => readonly Readonly<{ provider: string; id: string; name: string }>[];
+  getAvailableThinkingLevels?: () => readonly string[];
   effectiveExtensionRoots?: unknown;
   getSessionAgents?: () => readonly Readonly<{
     name: string;
@@ -81,6 +87,30 @@ export type NativeSession = Readonly<{
       }>
     | undefined;
 }>;
+
+export function readOmpSessionSettings(input: Readonly<{
+  session: NativeSession | null;
+  nativeSession: string;
+  agentSessionId: string;
+  observedAt: number;
+}>): OmpSessionSettingsReport {
+  const identity = { nativeSession: input.nativeSession, agentSessionId: input.agentSessionId, observedAt: input.observedAt };
+  const session = input.session;
+  if (session === null || session.sessionManager.getSessionId() !== input.agentSessionId ||
+    typeof session.getAvailableModels !== "function" || typeof session.configuredThinkingLevel !== "function" ||
+    typeof session.getAvailableThinkingLevels !== "function")
+    return ompSessionSettingsReportSchema.parse({ status: "unavailable", reason: "omp_session_api_unavailable", ...identity });
+  const model = session.model;
+  return ompSessionSettingsReportSchema.parse({
+    status: "available",
+    ...identity,
+    model: model === undefined ? null : { provider: model.provider, id: model.id, name: model.name },
+    availableModels: session.getAvailableModels().map((available) => ({ provider: available.provider, id: available.id, name: available.name })),
+    configuredEffort: session.configuredThinkingLevel() ?? null,
+    effectiveEffort: session.thinkingLevel ?? null,
+    availableEfforts: session.getAvailableThinkingLevels(),
+  });
+}
 export type NativeRef = Readonly<{
   id: string;
   kind: string;

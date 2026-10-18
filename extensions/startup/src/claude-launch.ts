@@ -34,8 +34,8 @@ export function claudeMcpConfig(input: BridgeInput): Json {
 function sharedArgs(input: Readonly<{ promptFile: string; settingsFile: string; mcpFile: string; name: string }>): readonly string[] {
   return ["--append-system-prompt-file", input.promptFile, "--settings", input.settingsFile, "--mcp-config", input.mcpFile, "-n", input.name];
 }
-export function claudeEmployeeArgs(input: Readonly<{ sessionId: string; promptFile: string; settingsFile: string; mcpFile: string; name: string }>): readonly string[] {
-  return ["--session-id", input.sessionId, ...sharedArgs(input)];
+export function claudeEmployeeArgs(input: Readonly<{ sessionId: string; promptFile: string; settingsFile: string; mcpFile: string; name: string; model: string | null; effort: string | null }>): readonly string[] {
+  return ["--session-id", input.sessionId, ...(input.model === null ? [] : ["--model", input.model]), ...(input.effort === null ? [] : ["--effort", input.effort]), ...sharedArgs(input)];
 }
 export function claudeManagerArgs(input: Readonly<{ session: Readonly<{ kind: "new" | "resume"; id: string }>; promptFile: string; settingsFile: string; mcpFile: string }>): readonly string[] {
   return [input.session.kind === "new" ? "--session-id" : "--resume", input.session.id, ...sharedArgs({ ...input, name: "startup-manager" })];

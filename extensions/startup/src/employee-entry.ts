@@ -8,7 +8,7 @@ import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, r
 import { connectEmployee, EmployeeCommandError, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
 import { itemActionSchema } from "./items";
 import { herdrContext } from "./herdr-runtime";
-import type { NativeContext, NativeResult } from "./omp-adapter";
+import { readOmpSessionSettings, type NativeContext, type NativeResult } from "./omp-adapter";
 import { loadProfile, profileText, verifyProfile, type Profile } from "./profiles";
 import { readPrivateJson } from "./v7-launch";
 
@@ -85,8 +85,15 @@ export async function attach(host: HostAPI, ctx: NativeContext, manifest: Launch
   const actualProfile = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim();
   if (actualProfile && actualProfile !== manifest.profile) throw new StartupBootError("Actual named OMP profile differs from the launch manifest");
   const paneId: string = environment.HERDR_PANE_ID?.trim() || (await paneEnvironment(environment)).paneId;
-  const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId });
-  const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000, instructions: profileText(profile), lastAssistant: root.lastAssistant });
+  const agentSessionId: string | null = manifest.harness === "omp" ? ctx.sessionManager.getSessionId() : null;
+  const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId, ...(agentSessionId === null ? {} : { agentSessionId }) });
+  const settingsReport = manifest.harness === "omp" ? (): ReturnType<typeof readOmpSessionSettings> => {
+      const current = host.pi.AgentRegistry.global().get(ctx.agent.id);
+      if (agentSessionId === null || current?.kind !== "main" || current.parentId !== undefined || current.session === null || current.session.sessionManager.getSessionId() !== agentSessionId || current.session.sessionManager.getSessionFile() !== root.nativeSession)
+        throw new StartupBootError("OMP settings observation no longer matches the admitted native root session");
+      return readOmpSessionSettings({ session: current.session, nativeSession: root.nativeSession, agentSessionId, observedAt: Date.now() });
+    } : undefined;
+  const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000, instructions: profileText(profile), lastAssistant: root.lastAssistant, ...(settingsReport === undefined ? {} : { settingsReport }) });
   try { await bridge.poll(); }
   catch (error: unknown) { bridge.close(); throw error; }
   return { client, context: ctx, close: bridge.close };

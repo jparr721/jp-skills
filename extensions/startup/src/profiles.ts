@@ -16,8 +16,12 @@ import {
   type Source,
   roleSchema,
 } from "./contracts";
+import { requestedRoleSettingsSchema, roleSettingsInputSchema, runtimeHarnessSchema, type RequestedRoleSettings, type RoleSettingsInput, type SavedRoleSettings } from "./runtime-contracts";
 
 export class ProfileSourceError extends Error {}
+export type RoleSettingsValidation =
+  | Readonly<{ status: "accepted"; requested: RequestedRoleSettings }>
+  | Readonly<{ status: "unsupported"; requested: RoleSettingsInput; reason: string }>;
 export type Profile = Readonly<{
   employeeId: string;
   generation: number;
@@ -30,6 +34,32 @@ export type Profile = Readonly<{
 }>;
 function revision(content: string): string {
   return createHash("sha256").update(content).digest("hex");
+}
+export function validateRoleSettings(input: RoleSettingsInput): RoleSettingsValidation {
+  const parsed: RoleSettingsInput = roleSettingsInputSchema.parse(input);
+  const model: string | null = parsed.model === null ? null : parsed.model.trim();
+  const effort: string | null = parsed.effort === null ? null : parsed.effort.trim();
+  if (model !== null && (model.length === 0 || model.length > 256 || /[\u0000-\u001f\u007f]/.test(model)))
+    return { status: "unsupported", requested: parsed, reason: "Model must be a nonempty CLI value without control characters" };
+  const allowedEfforts: readonly string[] = parsed.harness === "omp"
+    ? ["off", "minimal", "low", "medium", "high", "xhigh", "max", "auto"]
+    : ["low", "medium", "high", "xhigh", "max"];
+  if (effort !== null && !allowedEfforts.includes(effort))
+    return { status: "unsupported", requested: parsed, reason: `${parsed.harness} CLI does not support effort value ${effort}` };
+  const requested: RequestedRoleSettings = requestedRoleSettingsSchema.parse({
+    role: parsed.role,
+    harness: runtimeHarnessSchema.parse(parsed.harness),
+    model: { value: model, validation: model === null ? "not_requested" : "unverified" },
+    effort: { value: effort, validation: effort === null ? "not_requested" : "unverified" },
+  });
+  return { status: "accepted", requested };
+}
+export function ompSettingsArgs(settings: SavedRoleSettings): readonly string[] {
+  if (settings.requested.harness !== "omp") throw new ProfileSourceError("OMP launch settings require an OMP selection");
+  const args: string[] = [];
+  if (settings.requested.model.value !== null) args.push("--model", settings.requested.model.value);
+  if (settings.requested.effort.value !== null) args.push("--thinking", settings.requested.effort.value);
+  return args;
 }
 export function loadProfile(
   input: Readonly<{

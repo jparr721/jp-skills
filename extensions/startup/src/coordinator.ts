@@ -7,8 +7,8 @@ import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, s
 import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
 import { itemActionSchema, terminalItemStatuses } from "./items";
-import { loadProfile, profileText, verifyProfile, type Profile } from "./profiles";
-import { runtimePolicySchema, type RuntimeBinding, type RuntimePolicy } from "./runtime-contracts";
+import { loadProfile, ompSettingsArgs, profileText, verifyProfile, type Profile } from "./profiles";
+import { effectiveRoleSettingsSchema, ompSessionSettingsReportSchema, runtimeCapabilitySchema, runtimeHarnessSchema, runtimePolicySchema, type EffectiveRoleSettings, type OmpSessionSettingsReport, type RuntimeBinding, type RuntimeCapability, type RuntimePolicy } from "./runtime-contracts";
 import type { StartupStore } from "./store";
 import type { HerdrObservation, HerdrRuntime } from "./herdr-runtime";
 import { claudeEmployeeArgs, writeClaudeFiles } from "./claude-launch";
@@ -49,7 +49,7 @@ const commandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("retire"), employeeIds: z.array(idSchema).min(1), evidence: jsonSchema }),
   z.strictObject({ kind: z.literal("block"), key: idSchema, evidence: jsonSchema }),
 ]);
-const admissionSchema = z.strictObject({ credential: idSchema, nativeSession: idSchema, paneId: idSchema, source: sourceSchema });
+const admissionSchema = z.strictObject({ credential: idSchema, nativeSession: idSchema, agentSessionId: idSchema.optional(), paneId: idSchema, source: sourceSchema });
 const launchFailureSchema = z.strictObject({ credential: idSchema, error: z.string().min(1).max(8192) });
 type Poll = Readonly<{ toolBlockReason: string | null; projection: string; pendingMessageIds: readonly string[]; waitReason: string | null }>;
 type SupervisionFailure = Readonly<{ component: "herdr" | "observation" | "queue"; employeeId: string | null; error: string }>;
@@ -62,10 +62,10 @@ type CoordinatorHealth = Readonly<{
 export type Coordinator = Readonly<{
   start: () => Promise<void>;
   health: () => CoordinatorHealth;
-  admit: (input: Readonly<{ credential: string; nativeSession: string; paneId: string; source: Source }>) => Promise<{ connection: string }>;
+  admit: (input: Readonly<{ credential: string; nativeSession: string; agentSessionId?: string; paneId: string; source: Source }>) => Promise<{ connection: string }>;
   launchFailure: (input: z.infer<typeof launchFailureSchema>) => void;
   command: (connection: string, command: Json) => Promise<Json>;
-  poll: (connection: string) => Promise<Poll>;
+  poll: (connection: string, settingsReport?: OmpSessionSettingsReport) => Promise<Poll>;
   tick: () => Promise<void>;
   launching: () => Promise<void>;
   hostStatus: (query: unknown) => HostStatus;
@@ -84,9 +84,10 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     throw new StartupBootError("Coordinator requires the canonical Startup root and stock OMP default profile");
   assertStartupPath(root, config.socketPath, "socket");
   const claude: ClaudeCoordinatorConfig | null = isClaudeConfig(config) ? config : null;
-  let claudeFiles: Readonly<{ settingsFile: string; mcpFile: string }> | null = null;
+  const managerHarness: "omp" | "claude" = claude === null ? "omp" : "claude";
+  let claudeFiles: ReturnType<typeof writeClaudeFiles> | null = null;
   const policy = runtimePolicySchema.parse(config.policy);
-  const connections = new Map<string, Readonly<{ employeeId: string; generation: number; epoch: number }>>();
+  const connections = new Map<string, Readonly<{ employeeId: string; generation: number; epoch: number; agentSessionId: string | null }>>();
   let serial: Promise<void> = Promise.resolve();
   let ticking: Promise<void> | null = null;
   let launches: Promise<void> = Promise.resolve();
@@ -112,24 +113,29 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   function profile(current: Employee, generation: number): Profile {
     return loadProfile({ skillsRoot: config.skillsRoot, role: current.role, employeeId: current.id, generation });
   }
-  function launchArtifact(launchId: string): string {
-    return join(launchDirectory, `${launchId}${claude === null ? ".ts" : ".prompt.md"}`);
+  function launchArtifact(current: RuntimeBinding): string {
+    return join(launchDirectory, `${current.launchId}${current.settings.requested.harness === "omp" ? ".ts" : ".prompt.md"}`);
   }
   function launchFiles(current: RuntimeBinding, credential: string): void {
+    const harness = runtimeHarnessSchema.parse(current.settings.requested.harness);
     const path = join(launchDirectory, `${current.launchId}.json`);
     assertStartupPath(root, path, "file");
-    const manifest = encode({ socketPath: config.socketPath, credential, source: current.source, employeeId: current.employeeId, generation: current.generation, profile: config.profile, harness: claude === null ? "omp" : "claude", skillsHome: config.skillsHome, startupRoot: config.startupRoot, skillsRoot: config.skillsRoot });
+    const manifest = encode({ socketPath: config.socketPath, credential, source: current.source, employeeId: current.employeeId, generation: current.generation, profile: config.profile, harness, skillsHome: config.skillsHome, startupRoot: config.startupRoot, skillsRoot: config.skillsRoot });
     if (existsSync(path)) {
       if (lstatSync(path).isSymbolicLink() || readFileSync(path, "utf8") !== manifest)
         throw new StoreConflictError("Launch manifest ownership conflicts with its reserved generation");
     } else writeFileSync(path, manifest, { mode: 0o600, flag: "wx" });
-    const bootstrap = launchArtifact(current.launchId);
+    const bootstrap = launchArtifact(current);
     assertStartupPath(root, bootstrap, "file");
-    const content = claude !== null ? profileText(profile(employee(current.employeeId), current.generation)) : `import { installLaunchedEmployee } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/src/employee-entry.ts"))};\nimport type { HostAPI } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/index.ts"))};\nexport default (host: HostAPI): void => installLaunchedEmployee(host, ${JSON.stringify(path)});\n`;
+    const content = harness === "claude" ? profileText(profile(employee(current.employeeId), current.generation)) : `import { installLaunchedEmployee } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/src/employee-entry.ts"))};\nimport type { HostAPI } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/index.ts"))};\nexport default (host: HostAPI): void => installLaunchedEmployee(host, ${JSON.stringify(path)});\n`;
     if (existsSync(bootstrap)) {
       if (lstatSync(bootstrap).isSymbolicLink() || readFileSync(bootstrap, "utf8") !== content)
         throw new StoreConflictError("Launch bootstrap ownership conflicts with its reserved generation");
     } else writeFileSync(bootstrap, content, { mode: 0o600, flag: "wx" });
+  }
+  function claudeRuntimeFiles(): ReturnType<typeof writeClaudeFiles> {
+    if (claudeFiles === null) claudeFiles = writeClaudeFiles({ startupRoot: config.startupRoot, skillsRoot: config.skillsRoot, bun: process.execPath });
+    return claudeFiles;
   }
   function prepare(id: string, credential: string): RuntimeBinding {
     const current = employee(id);
@@ -137,12 +143,12 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const existing = store.runtimeBindings().find((r) => r.employeeId === id && r.generation === generation);
     if (existing) {
       const manifestPath = join(launchDirectory, `${existing.launchId}.json`);
-      const bootstrapPath = launchArtifact(existing.launchId);
+      const bootstrapPath = launchArtifact(existing);
       if (!existsSync(manifestPath) || !existsSync(bootstrapPath)) throw new StoreConflictError("Prepared launch artifacts are missing; reconcile this employee before activation");
       return existing;
     }
     const source = profile(current, generation).source;
-    const prepared: RuntimeBinding = { employeeId: id, generation, launchId: randomUUID(), credentialDigest: digest(credential), source, paneId: null, terminalId: null, tabId: null, nativeSession: null, state: "prepared", error: null, lastSeen: now(), lastPoll: 0, lastProgress: now(), turnActive: false, stateSequence: null, observedState: null };
+    const prepared: RuntimeBinding = { employeeId: id, generation, launchId: randomUUID(), credentialDigest: digest(credential), source, settings: store.roleSettings(current.role), paneId: null, terminalId: null, tabId: null, nativeSession: null, state: "prepared", error: null, lastSeen: now(), lastPoll: 0, lastProgress: now(), turnActive: false, stateSequence: null, observedState: null };
     launchFiles(prepared, credential);
     return store.prepareRuntime(prepared);
   }
@@ -204,12 +210,19 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   async function launch(id: string, location: Readonly<{ tabId: string; paneId: string }>): Promise<void> {
     const saved = runtime(id);
     if (saved.state !== "starting" || saved.paneId !== location.paneId) throw new StoreConflictError("Launch requires the recorded pane allocation intent");
-    const current = store.updateRuntime({ ...saved, tabId: location.tabId, paneId: location.paneId, state: "starting", ...(claude === null ? {} : { nativeSession: saved.launchId }) });
-    const bootstrap = launchArtifact(current.launchId);
+    const harness = saved.settings.requested.harness;
+    const current = store.updateRuntime({ ...saved, tabId: location.tabId, paneId: location.paneId, state: "starting", ...(harness === "claude" ? { nativeSession: saved.launchId } : {}) });
+    const bootstrap = launchArtifact(current);
     const name = `s-${current.launchId.replaceAll("-", "").slice(0, 28)}`;
     try {
-      if (claude !== null && claudeFiles === null) throw new StoreConflictError("Claude launch requires the shared hook files written at coordinator start");
-      await herdr.launch({ paneId: location.paneId, name, args: claudeFiles === null ? ["--profile", config.profile, "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot] : claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: claudeFiles.settingsFile, mcpFile: claudeFiles.mcpFile, name }) });
+      const selected = current.settings.requested;
+      const args = harness === "omp"
+        ? ["--profile", config.profile, "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot, ...ompSettingsArgs(current.settings)]
+        : (() => {
+          const files = claudeRuntimeFiles();
+          return claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: files.settingsFile, mcpFile: files.mcpFile, name, model: selected.model.value, effort: selected.effort.value });
+        })();
+      await herdr.launch({ harness, paneId: location.paneId, name, args });
       const latest = runtime(id);
       if (latest.state === "uncertain" && latest.error !== null) throw new StoreConflictError(`Startup employee boot failed: ${latest.error}`);
     } catch (error: unknown) {
@@ -254,29 +267,31 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       }
     });
   }
-  function paneEnvironment(launchId: string): Readonly<Record<string, string>> {
-    const manifest = join(launchDirectory, `${launchId}.json`);
+  function paneEnvironment(current: RuntimeBinding): Readonly<Record<string, string>> {
+    const manifest = join(launchDirectory, `${current.launchId}.json`);
     assertStartupPath(root, manifest, "file");
     const base: Readonly<Record<string, string>> = { JP_SKILLS_HOME: config.skillsHome, STARTUP_ROOT: config.startupRoot, STARTUP_V7_MANIFEST: manifest };
-    return claude === null
+    return current.settings.requested.harness === "omp"
       ? { ...base, OMPCODE: "", OMP_PROFILE: "default", PI_PROFILE: "default", PI_CODING_AGENT_DIR: config.startupRoot, STARTUP_HERDR_OMP_EXTENSION: config.herdrIntegration }
       : { ...base, CLAUDE_CONFIG_DIR: config.startupRoot };
   }
   async function createEmployeeTab(id: string, label: string): Promise<Readonly<{ tabId: string; paneId: string }>> {
     const saved = runtime(id);
     return allocate(id, async () => {
-      const tab = await herdr.createCrew({ label, cwd: config.boundRoot, env: paneEnvironment(saved.launchId) });
+      const tab = await herdr.createCrew({ label, cwd: config.boundRoot, env: paneEnvironment(saved) });
       return { tabId: tab.tabId, paneId: tab.rootPaneId };
     });
   }
   async function start(): Promise<void> {
     await herdr.check();
     const observations = await herdr.observe();
-    const root = observations.find((o) => o.paneId === config.managerPaneId && o.nativeSession === (claude === null ? config.managerFile : config.managerSession));
-    if (!root) throw new StoreAuthorityError(claude === null ? "Manager pane does not report the actual native manager transcript" : "Manager pane does not report the actual native Claude manager session");
-    if (claude !== null) claudeFiles = writeClaudeFiles({ startupRoot: config.startupRoot, skillsRoot: config.skillsRoot, bun: process.execPath });
+    const root = observations.find((o) => o.paneId === config.managerPaneId && o.nativeSession === (managerHarness === "omp" ? config.managerFile : config.managerSession) && o.harness === managerHarness);
+    if (!root) throw new StoreAuthorityError(managerHarness === "omp" ? "Manager pane does not report the actual native OMP manager transcript" : "Manager pane does not report the actual native Claude manager session");
+    store.initializeRoleSettings(managerHarness);
     store.compactRuntimeObservations();
     const currentManager = prepare("manager", config.managerCredential);
+    if (currentManager.settings.requested.harness !== managerHarness) throw new StoreConflictError("The saved manager launch harness differs from its active native session; start a new manager session to apply that future-launch setting");
+    if (managerHarness === "claude") claudeRuntimeFiles();
     if (currentManager.state === "prepared") store.updateRuntime({ ...currentManager, paneId: root.paneId, tabId: root.tabId, terminalId: root.terminalId, nativeSession: root.nativeSession, state: "starting" });
     const paProfile = loadProfile({ skillsRoot: config.skillsRoot, role: "pa", employeeId: "pending", generation: 1 });
     const receipt = store.reserveHire({ authority: { kind: "employee", binding: store.managerBinding }, request: { requestId: "v7-manager-pa", role: "pa", additional: 1, revision: paProfile.source.roleRevision } });
@@ -287,7 +302,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     prepare(pa.id, randomBytes(32).toString("hex"));
     await launch(pa.id, await createEmployeeTab(pa.id, `${config.name} manager PA`));
   }
-  async function admit(value: Readonly<{ credential: string; nativeSession: string; paneId: string; source: Source }>): Promise<{ connection: string }> {
+  async function admit(value: Readonly<{ credential: string; nativeSession: string; agentSessionId?: string; paneId: string; source: Source }>): Promise<{ connection: string }> {
     const request = admissionSchema.parse(value);
     const saved = store.runtimeBindings().findLast((r) => r.credentialDigest === digest(request.credential));
     if (saved?.state === "abandoned") throw new StoreFenceError("Launch credential was abandoned by explicit manager recovery");
@@ -297,11 +312,12 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     if (latest.launchId !== saved.launchId) throw new StoreFenceError("Launch credential belongs to a superseded generation");
     const canonical = profile(current, saved.generation);
     if (encode(canonical.source) !== encode(saved.source)) throw new StoreFenceError("Canonical source changed before admission");
-    const observation = (await herdr.observe()).find((o) => o.paneId === request.paneId && o.nativeSession === request.nativeSession);
+    const harness = saved.settings.requested.harness;
+    const observation = (await herdr.observe()).find((o) => o.paneId === request.paneId && o.nativeSession === request.nativeSession && o.harness === harness);
     if (saved.paneId !== request.paneId || (saved.nativeSession !== null && saved.nativeSession !== request.nativeSession)) throw new StoreAuthorityError("Admission pane or native session does not match the saved launch");
-    if (!observation) throw new AdmissionPendingError(`The expected pane has not reported its native ${claude === null ? "OMP" : "Claude"} session yet; no admission was committed`);
+    if (!observation) throw new AdmissionPendingError(`The expected pane has not reported its native ${harness === "omp" ? "OMP" : "Claude"} session yet; no admission was committed`);
     if (saved.terminalId !== null && saved.terminalId !== observation.terminalId) throw new StoreAuthorityError("Admission terminal does not match the saved launch");
-    if (claude !== null) {
+    if (harness === "claude") {
       if (request.nativeSession !== (current.role === "manager" ? config.managerSession : saved.nativeSession)) throw new StoreAuthorityError("Native Claude session conflicts with employee admission");
     } else {
       const headers = readFileSync(request.nativeSession, "utf8").split("\n").filter((line) => line.trim()).map((line) => z.object({ type: z.string() }).passthrough().parse(JSON.parse(line))).filter((row) => row.type === "session");
@@ -312,7 +328,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     if (latestRuntime.launchId !== saved.launchId || latestRuntime.state === "abandoned") throw new StoreFenceError("Launch was superseded during native admission");
     store.updateRuntime({ ...latestRuntime, state: "ready", error: null, nativeSession: request.nativeSession, terminalId: observation.terminalId, lastPoll: now(), lastSeen: now() });
     const connection = randomBytes(32).toString("hex");
-    connections.set(connection, { employeeId: current.id, generation: saved.generation, epoch: store.ownerEpoch });
+    connections.set(connection, { employeeId: current.id, generation: saved.generation, epoch: store.ownerEpoch, agentSessionId: request.agentSessionId ?? null });
     return { connection };
   }
   function launchFailure(value: z.infer<typeof launchFailureSchema>): void {
@@ -383,7 +399,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       case "staff": {
         manager(connection);
         const snapshot = store.snapshot();
-        output = { health: paState() ?? "ready", supervision, manager: { id: "manager", pa: snapshot.employees.filter((e) => e.role === "pa"), crews: snapshot.teams.map((team) => ({ id: team.id, eventId: team.eventId, state: team.state, architect: { id: team.architect, qa: team.qa, devs: team.devs }, items: team.items })) }, employees: snapshot.employees.map((e) => ({ id: e.id, role: e.role, assignment: e.assignment, generation: e.generation, error: e.error })), runtime: store.runtimeBindings().map(({ credentialDigest: _credential, ...rest }) => rest), recovery: { claims: snapshot.claims.filter((c) => c.status !== "settled"), grants: snapshot.grants.filter((g) => g.state !== "released"), assignments: snapshot.assignments.filter((a) => a.state !== "complete") }, inputs: snapshot.inputs.map((i) => ({ id: i.id, disposition: i.disposition })), intakes: snapshot.intakes.map((i) => ({ eventId: i.request.eventId, teamId: i.teamId })) }; break;
+        output = { health: paState() ?? "ready", supervision, manager: { id: "manager", pa: snapshot.employees.filter((e) => e.role === "pa"), crews: snapshot.teams.map((team) => ({ id: team.id, eventId: team.eventId, state: team.state, architect: { id: team.architect, qa: team.qa, devs: team.devs }, items: team.items })) }, employees: snapshot.employees.map((e) => ({ id: e.id, role: e.role, assignment: e.assignment, generation: e.generation, error: e.error })), runtime: store.runtimeBindings().map(({ credentialDigest: _credential, ...rest }) => ({ ...rest, capability: runtimeCapabilityFor(rest), effectiveSettings: effectiveSettings(rest) })), roleSettings: store.allRoleSettings(), recovery: { claims: snapshot.claims.filter((c) => c.status !== "settled"), grants: snapshot.grants.filter((g) => g.state !== "released"), assignments: snapshot.assignments.filter((a) => a.state !== "complete") }, inputs: snapshot.inputs.map((i) => ({ id: i.id, disposition: i.disposition })), intakes: snapshot.intakes.map((i) => ({ eventId: i.request.eventId, teamId: i.teamId })) }; break;
       }
       case "intake": manager(connection); output = store.recordIntake({ manager: current.binding, event: { eventId: request.eventId, input: request.input, amendItemIds: request.amendItemIds } }); break;
       case "route": manager(connection); output = store.routeInput({ manager: current.binding, inputId: request.inputId, disposition: { kind: request.disposition, reason: request.reason, amendItemIds: request.amendItemIds } }); break;
@@ -406,7 +422,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
         const reusable = snapshot.teams.find((team) => team.state === "finished" && team.devs.length === request.developers && [team.architect, team.qa, ...team.devs].every((id) => {
           const current = employee(id);
           const bound = runtime(id);
-          return current.assignment === null && current.error === null && bound.state === "ready" && !bound.turnActive && bound.error === null && observations.some((o) => o.nativeSession === bound.nativeSession && o.terminalId === bound.terminalId && o.interactiveReady && ["idle", "done"].includes(o.state)) && !snapshot.messages.some((m) => m.recipient === id && m.status !== "acknowledged") && !snapshot.claims.some((c) => c.employeeId === id && c.status !== "settled") && !snapshot.grants.some((g) => g.employeeId === id && g.state !== "released");
+          return current.assignment === null && current.error === null && bound.state === "ready" && !bound.turnActive && bound.error === null && observations.some((o) => o.harness === bound.settings.requested.harness && o.nativeSession === bound.nativeSession && o.terminalId === bound.terminalId && o.interactiveReady && ["idle", "done"].includes(o.state)) && !snapshot.messages.some((m) => m.recipient === id && m.status !== "acknowledged") && !snapshot.claims.some((c) => c.employeeId === id && c.status !== "settled") && !snapshot.grants.some((g) => g.employeeId === id && g.state !== "released");
         }));
         const previous = new Map<string, RuntimeBinding>();
         if (reusable) for (const id of [reusable.architect, reusable.qa, ...reusable.devs]) previous.set(id, runtime(id));
@@ -438,7 +454,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
         launchInBackground(members, async (id) => {
           const bound = runtime(id);
           const tab = first;
-          const location = tab === null ? await createEmployeeTab(id, `${config.name} crew ${team.id.slice(0, 8)}`) : await allocate(id, async () => ({ tabId: tab.tabId, paneId: await herdr.split({ paneId: tab.paneId, cwd: config.boundRoot, env: paneEnvironment(bound.launchId) }) }));
+          const location = tab === null ? await createEmployeeTab(id, `${config.name} crew ${team.id.slice(0, 8)}`) : await allocate(id, async () => ({ tabId: tab.tabId, paneId: await herdr.split({ paneId: tab.paneId, cwd: config.boundRoot, env: paneEnvironment(bound) }) }));
           first = tab ?? location;
           await launch(id, location);
         });
@@ -505,8 +521,45 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       return `Canonical queue unavailable; preserve its contents and repair the reported read error: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
-  async function poll(connection: string): Promise<Poll> {
+  function effectiveSettings(binding: Pick<RuntimeBinding, "employeeId" | "generation" | "launchId" | "settings" | "state" | "nativeSession">): EffectiveRoleSettings {
+    const saved = store.effectiveRoleSettings(binding.employeeId, binding.generation);
+    if (saved !== null && saved.session !== null && activeObservationMatches(binding, saved.session)) return saved;
+    if (binding.state === "ready" && binding.nativeSession !== null) {
+      const identity = { ownerId: store.ownerId, ownerEpoch: store.ownerEpoch, employeeId: binding.employeeId, generation: binding.generation, launchId: binding.launchId, nativeSession: binding.nativeSession, agentSessionId: null };
+      return effectiveRoleSettingsSchema.parse({ status: "unavailable", harness: binding.settings.requested.harness, reason: binding.settings.requested.harness === "omp" ? "session_not_observed" : "claude_cli_readback_unavailable", session: identity, observedAt: null });
+    }
+    return effectiveRoleSettingsSchema.parse({ status: "unavailable", harness: binding.settings.requested.harness, reason: "session_not_observed", session: null, observedAt: null });
+  }
+  function runtimeCapabilityFor(binding: Pick<RuntimeBinding, "employeeId" | "generation" | "launchId" | "settings" | "state" | "nativeSession">): RuntimeCapability {
+    const saved = store.runtimeCapability(binding.employeeId, binding.generation);
+    if (saved !== null && saved.session !== null && activeObservationMatches(binding, saved.session)) return saved;
+    if (binding.state === "ready" && binding.nativeSession !== null) {
+      const identity = { ownerId: store.ownerId, ownerEpoch: store.ownerEpoch, employeeId: binding.employeeId, generation: binding.generation, launchId: binding.launchId, nativeSession: binding.nativeSession, agentSessionId: null };
+      return runtimeCapabilitySchema.parse({ status: "unavailable", harness: binding.settings.requested.harness, reason: binding.settings.requested.harness === "omp" ? "session_not_observed" : "claude_cli_catalog_unavailable", session: identity, observedAt: null });
+    }
+    return runtimeCapabilitySchema.parse({ status: "unavailable", harness: binding.settings.requested.harness, reason: "session_not_observed", session: null, observedAt: null });
+  }
+  function activeObservationMatches(binding: Pick<RuntimeBinding, "employeeId" | "generation" | "launchId" | "state" | "nativeSession">, session: NonNullable<RuntimeCapability["session"]>): boolean {
+    return binding.state === "ready" && binding.nativeSession !== null && session.ownerId === store.ownerId && session.ownerEpoch === store.ownerEpoch &&
+      session.employeeId === binding.employeeId && session.generation === binding.generation && session.launchId === binding.launchId && session.nativeSession === binding.nativeSession;
+  }
+  async function poll(connection: string, settingsReport?: OmpSessionSettingsReport): Promise<Poll> {
     const current = actor(connection);
+    if (settingsReport !== undefined) {
+      const report = ompSessionSettingsReportSchema.parse(settingsReport);
+      const admitted = connections.get(connection);
+      if (current.runtime.settings.requested.harness !== "omp" || admitted?.agentSessionId === null || admitted?.agentSessionId === undefined ||
+        report.nativeSession !== current.runtime.nativeSession || report.agentSessionId !== admitted.agentSessionId)
+        throw new StoreFenceError("OMP settings report does not match the authenticated native session and reserved launch generation");
+      const identity = { ownerId: store.ownerId, ownerEpoch: store.ownerEpoch, employeeId: current.employee.id, generation: current.employee.generation, launchId: current.runtime.launchId, nativeSession: current.runtime.nativeSession!, agentSessionId: report.agentSessionId };
+      const capability = report.status === "available"
+        ? runtimeCapabilitySchema.parse({ status: "available", harness: "omp", session: identity, availableModels: report.availableModels, availableEfforts: report.availableEfforts, observedAt: report.observedAt })
+        : runtimeCapabilitySchema.parse({ status: "unavailable", harness: "omp", reason: report.reason, session: identity, observedAt: report.observedAt });
+      const effective = report.status === "available"
+        ? effectiveRoleSettingsSchema.parse({ status: "available", harness: "omp", session: identity, model: report.model, configuredEffort: report.configuredEffort, effectiveEffort: report.effectiveEffort, observedAt: report.observedAt })
+        : effectiveRoleSettingsSchema.parse({ status: "unavailable", harness: "omp", reason: report.reason, session: identity, observedAt: report.observedAt });
+      store.recordRuntimeSettings({ capability, effective });
+    }
     store.updateRuntime({ ...current.runtime, lastPoll: now() });
     const view = store.employeeView(current.employee.id);
     const available = turnAvailable(current.employee);
@@ -534,7 +587,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     observerAvailable = !errors.some((error) => error.component === "herdr");
     for (const saved of currentRuntimes().filter((r) => observerAvailable && r.state === "ready" && r.employeeId !== "manager")) {
       try {
-        const observation = observations.find((o) => o.nativeSession === saved.nativeSession && o.terminalId === saved.terminalId);
+        const observation = observations.find((o) => o.harness === saved.settings.requested.harness && o.nativeSession === saved.nativeSession && o.terminalId === saved.terminalId);
         if (!observation) {
           errors.push({ component: "observation", employeeId: saved.employeeId, error: "Herdr session not observed" });
           store.updateRuntime({ ...saved, error: "Herdr session not observed" });
@@ -552,7 +605,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       } catch (error: unknown) { failure("observation", saved.employeeId, error); }
     }
     const managerRuntime = runtime("manager");
-    const managerObserved = observations.some((o) => o.nativeSession === managerRuntime.nativeSession && o.terminalId === managerRuntime.terminalId);
+    const managerObserved = observations.some((o) => o.harness === managerRuntime.settings.requested.harness && o.nativeSession === managerRuntime.nativeSession && o.terminalId === managerRuntime.terminalId);
     if (observerAvailable && managerObserved) store.updateRuntime({ ...managerRuntime, lastSeen: now() });
     const managerOffline = (observerAvailable && !managerObserved) || now() - managerRuntime.lastPoll > policy.connectionDeadlineMs;
     const managerPresence = managerOffline ? "offline" : observerAvailable ? "online" : "unknown";
@@ -671,7 +724,10 @@ export function serveCoordinator(input: Readonly<{ coordinator: Coordinator; soc
         if (raw.length === 0 || raw.includes("/")) return Response.json({ error: "unknown_endpoint" }, { status: 404 });
         return Response.json(input.coordinator.hostReceipt(decodeURIComponent(raw)));
       }
-      if (request.method === "POST" && path === "/admit") return Response.json(await input.coordinator.admit(admissionSchema.parse(await request.json())));
+      if (request.method === "POST" && path === "/admit") {
+        const admitted = admissionSchema.parse(await request.json());
+        return Response.json(await input.coordinator.admit({ credential: admitted.credential, nativeSession: admitted.nativeSession, paneId: admitted.paneId, source: admitted.source, ...(admitted.agentSessionId === undefined ? {} : { agentSessionId: admitted.agentSessionId }) }));
+      }
       if (request.method === "POST" && path === "/launch-failure") {
         input.coordinator.launchFailure(launchFailureSchema.parse(await request.json()));
         return Response.json({ recorded: true });
@@ -680,6 +736,7 @@ export function serveCoordinator(input: Readonly<{ coordinator: Coordinator; soc
       if (!authorization?.startsWith("Bearer ")) throw new StoreAuthorityError("Employee connection credential is required");
       const connection = authorization.slice(7);
       if (request.method === "GET" && path === "/poll") return Response.json(await input.coordinator.poll(connection));
+      if (request.method === "POST" && path === "/poll") return Response.json(await input.coordinator.poll(connection, ompSessionSettingsReportSchema.parse(await request.json())));
       if (request.method === "POST" && path === "/command") return Response.json(await input.coordinator.command(connection, jsonSchema.parse(await request.json())));
       return Response.json({ error: "unknown_endpoint" }, { status: 404 });
     } catch (error: unknown) {

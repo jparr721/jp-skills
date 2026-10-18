@@ -13,9 +13,11 @@ import { join } from "node:path";
 import { loadProfile, projectEmployee, verifyProfile } from "../src/profiles";
 import {
   createAdapter,
+  readOmpSessionSettings,
   type NativeContext,
   type NativeRef,
   type NativeResult,
+  type NativeSession,
   type StartupAdapter,
 } from "../src/omp-adapter";
 import { z } from "zod";
@@ -70,6 +72,29 @@ test("missing canonical source blocks profiles honestly", (): void => {
       generation: 1,
     }),
   ).toThrow();
+});
+
+test("OMP session settings read the actual AgentSession model, effort and catalogs", (): void => {
+  const nativeSession: NativeSession = {
+    sessionManager: { getSessionId: () => "omp-session", getSessionFile: () => "/startup/omp-session.jsonl" },
+    settings: {},
+    model: { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" },
+    thinkingLevel: "high",
+    configuredThinkingLevel: () => "auto",
+    getAvailableModels: () => [{ provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }],
+    getAvailableThinkingLevels: () => ["low", "high"],
+    getPlanModeState: () => undefined,
+    getToolByName: () => undefined,
+  };
+  expect(readOmpSessionSettings({ session: nativeSession, nativeSession: "/startup/omp-session.jsonl", agentSessionId: "omp-session", observedAt: 50 })).toEqual({
+    status: "available", nativeSession: "/startup/omp-session.jsonl", agentSessionId: "omp-session", observedAt: 50,
+    model: { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" },
+    availableModels: [{ provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }],
+    configuredEffort: "auto", effectiveEffort: "high", availableEfforts: ["low", "high"],
+  });
+  expect(readOmpSessionSettings({ session: nativeSession, nativeSession: "/startup/omp-session.jsonl", agentSessionId: "another-session", observedAt: 51 })).toMatchObject({ status: "unavailable", reason: "omp_session_api_unavailable" });
+  const { getAvailableModels: _getAvailableModels, ...sessionWithoutCatalog }: NativeSession = nativeSession;
+  expect(readOmpSessionSettings({ session: sessionWithoutCatalog, nativeSession: "/startup/omp-session.jsonl", agentSessionId: "omp-session", observedAt: 52 })).toMatchObject({ status: "unavailable", reason: "omp_session_api_unavailable" });
 });
 
 const adapters: StartupAdapter[] = [];

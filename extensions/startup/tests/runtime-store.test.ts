@@ -26,8 +26,9 @@ function fixture() {
   let clock = 100;
   const store = openStore({ path, scope, owner, now: () => clock });
   stores.push(store);
+  store.initializeRoleSettings("omp");
   const source = { rolePath: "/canonical/startup-role-manager/SKILL.md", roleRevision: "role-hash", loopPath: "/canonical/startup-loop/SKILL.md", loopRevision: "loop-hash" };
-  const launch: RuntimeBinding = { employeeId: "manager", generation: 1, launchId: "launch-manager", credentialDigest: "digest", source, paneId: "w1:p1", terminalId: "term1", tabId: "w1:t1", nativeSession: "manager-session", state: "ready", error: null, lastSeen: 100, lastPoll: 100, lastProgress: 100, turnActive: false, stateSequence: null, observedState: null };
+  const launch: RuntimeBinding = { employeeId: "manager", generation: 1, launchId: "launch-manager", credentialDigest: "digest", source, settings: store.roleSettings("manager"), paneId: "w1:p1", terminalId: "term1", tabId: "w1:t1", nativeSession: "manager-session", state: "ready", error: null, lastSeen: 100, lastPoll: 100, lastProgress: 100, turnActive: false, stateSequence: null, observedState: null };
   return { store, launch, path, scope, owner, advance: (time: number): void => { clock = time; } };
 }
 
@@ -169,7 +170,7 @@ test("abandoning an absent never-admitted launch consumes its generation and pre
   const id = hired.employees[0]?.id;
   if (!id) throw new Error("Missing hired employee");
   const source = { ...f.launch.source, rolePath: "/canonical/startup-role-dev/SKILL.md" };
-  const old: RuntimeBinding = { ...f.launch, employeeId: id, generation: 1, launchId: "stranded-launch", credentialDigest: "old-digest", source, paneId: null, terminalId: null, tabId: null, nativeSession: null, state: "uncertain", lastPoll: 0 };
+  const old: RuntimeBinding = { ...f.launch, employeeId: id, generation: 1, launchId: "stranded-launch", credentialDigest: "old-digest", source, settings: f.store.roleSettings("dev"), paneId: null, terminalId: null, tabId: null, nativeSession: null, state: "uncertain", lastPoll: 0 };
   f.store.prepareRuntime(old);
   f.advance(1200);
   const request = { manager: f.store.managerBinding, employeeId: id, launchId: old.launchId, evidence: "Verified unknown shell allocation stopped and original root absent", verifiedAbsentAt: 1200, connectionDeadlineMs: 1000 };
@@ -195,7 +196,7 @@ test("abandonment requires manager evidence, expired connection and a never-admi
   const hired = f.store.reserveHire({ authority: { kind: "employee", binding: f.store.managerBinding }, request: { requestId: "stranded", role: "dev", additional: 1, revision: "role-hash" } });
   const id = hired.employees[0]?.id;
   if (!id) throw new Error("Missing hired employee");
-  const old: RuntimeBinding = { ...f.launch, employeeId: id, generation: 1, launchId: "stranded-launch", source: { ...f.launch.source, rolePath: "/canonical/startup-role-dev/SKILL.md" }, state: "prepared", nativeSession: null, paneId: null, terminalId: null, tabId: null, lastPoll: 0 };
+  const old: RuntimeBinding = { ...f.launch, employeeId: id, generation: 1, launchId: "stranded-launch", source: { ...f.launch.source, rolePath: "/canonical/startup-role-dev/SKILL.md" }, settings: f.store.roleSettings("dev"), state: "prepared", nativeSession: null, paneId: null, terminalId: null, tabId: null, lastPoll: 0 };
   f.store.prepareRuntime(old);
   const request = { manager: f.store.managerBinding, employeeId: id, launchId: old.launchId, evidence: "absent", verifiedAbsentAt: 100, connectionDeadlineMs: 1000 };
   expect(() => f.store.abandonUnadmittedRuntime(request)).toThrow("recent");

@@ -58,7 +58,7 @@ function fixture() {
   };
   const ref: NativeRef = {
     id: "Main", kind: "main", status: "idle", createdAt: 1, sessionFile: file,
-    session: { sessionManager: ctx.sessionManager, settings: {}, getPlanModeState: () => undefined, getToolByName: () => undefined },
+    session: { sessionManager: ctx.sessionManager, settings: {}, model: { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }, thinkingLevel: "high", configuredThinkingLevel: () => "auto", getAvailableModels: () => [{ provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }], getAvailableThinkingLevels: () => ["low", "high"], getPlanModeState: () => undefined, getToolByName: () => undefined },
   };
   const schema: ReturnType<HostAPI["zod"]["object"]> = { or: () => schema, and: () => schema, toJsonSchema: () => ({}) };
   const host: HostAPI = {
@@ -76,6 +76,7 @@ function fixture() {
   cleanup.push(() => { for (const timer of timers) clearInterval(timer); });
   const requests: Json[] = [];
   const admissions: Json[] = [];
+  const pollReports: Json[] = [];
   const socketPath: string = join(root, "runtime.sock");
   let projection: string = "Complete canonical dev persona\nComplete canonical shared loop";
   let available: boolean = true;
@@ -85,7 +86,10 @@ function fixture() {
     if (path === "/health") return Response.json({ status: "running" });
     if (path === "/admit") { admissions.push(z.json().parse(await request.json())); return Response.json({ connection: "private-token" }); }
     if (path === "/poll" && !available) return new Response("Owned coordinator stopped", { status: 503 });
-    if (path === "/poll") return Response.json({ projection, pendingMessageIds: [], waitReason: null, toolBlockReason: null });
+    if (path === "/poll") {
+      if (request.method === "POST") pollReports.push(z.json().parse(await request.json()));
+      return Response.json({ projection, pendingMessageIds: [], waitReason: null, toolBlockReason: null });
+    }
     const command: Json = z.json().parse(await request.json());
     requests.push(command);
     if (z.object({ kind: z.literal("image") }).safeParse(command).success)
@@ -127,7 +131,7 @@ function fixture() {
     useEnvironment();
     return path;
   }
-  return { root, skillsRoot, skillsHome, configHome, cwd, file, ctx, host, tools, commands, messages, requests, admissions, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; }, setAvailable(value: boolean) { available = value; }, setCommandResponse(value: Response) { commandResponse = value; } };
+  return { root, skillsRoot, skillsHome, configHome, cwd, file, ctx, host, tools, commands, messages, requests, admissions, pollReports, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; }, setAvailable(value: boolean) { available = value; }, setCommandResponse(value: Response) { commandResponse = value; } };
 }
 function entryRoots(f: ReturnType<typeof fixture>, startupRoot: string | null = f.environment.STARTUP_ROOT ?? null) {
   if (startupRoot !== null) {
@@ -187,6 +191,7 @@ test("employee reattachment restores a provider pause even after a gated turn wa
   installLaunchedEmployee(f.host, f.manifest("dev"));
   await f.emit("session_start", {}, f.ctx);
   expect(f.admissions).toHaveLength(1);
+  expect(f.pollReports[0]).toMatchObject({ status: "available", nativeSession: f.file, agentSessionId: "native-root", model: { id: "gpt-5.2" }, configuredEffort: "auto", effectiveEffort: "high", availableModels: [{ provider: "openai", id: "gpt-5.2" }], availableEfforts: ["low", "high"] });
   expect(f.messages.join("\n")).toContain("inference paused");
   await f.emit("context", { messages: [] }, f.ctx);
   expect(f.getAborts()).toBeGreaterThan(0);
@@ -406,6 +411,7 @@ test("manager boot preserves native command work and binds independent runtime c
   expect(existsSync(join(launched[0]!.startupRoot, "binding.json"))).toBe(true);
   expect(f.requests[0]).toMatchObject({ kind: "receive", raw: { text: "/startup new alpha --  fix exact work  ", images: [] } });
   expect(f.requests[1]).toMatchObject({ kind: "route", disposition: "work" });
+  expect(f.pollReports[0]).toMatchObject({ status: "available", nativeSession: f.file, agentSessionId: "native-root", model: { id: "gpt-5.2" }, configuredEffort: "auto", effectiveEffort: "high" });
   const command = f.commands.get("startup");
   if (!command) throw new Error("Missing Startup command");
   await command.handler("new alpha --  fix exact work  ", f.ctx);

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { encode, idSchema, jsonSchema, sourceSchema, settlementRecoverySchema, type SettlementRecovery, type Json, type Source } from "./contracts";
 import type { HostAPI } from "../index";
 import type { NativeContext } from "./omp-adapter";
+import { ompSessionSettingsReportSchema, type OmpSessionSettingsReport } from "./runtime-contracts";
 
 const pollSchema = z.strictObject({
   projection: z.string().min(1),
@@ -13,6 +14,7 @@ const admissionSchema = z.strictObject({
   socketPath: z.string().startsWith("/"),
   credential: z.string().min(1),
   nativeSession: z.string().min(1),
+  agentSessionId: z.string().min(1).optional(),
   paneId: z.string().min(1),
   source: sourceSchema,
 });
@@ -24,7 +26,7 @@ const toolSchema = z.object({ toolName: z.string(), input: z.unknown() });
 export type EmployeePoll = z.infer<typeof pollSchema>;
 export type EmployeeClient = Readonly<{
   request: (command: Json) => Promise<Json>;
-  poll: () => Promise<EmployeePoll>;
+  poll: (settingsReport?: OmpSessionSettingsReport) => Promise<EmployeePoll>;
   close: () => void;
   settlementBlock: () => string | null;
 }>;
@@ -103,6 +105,7 @@ export async function connectEmployee(input: Readonly<{
   socketPath: string;
   credential: string;
   nativeSession: string;
+  agentSessionId?: string;
   paneId: string;
   source: Source;
 }>): Promise<EmployeeClient> {
@@ -169,6 +172,7 @@ export async function connectEmployee(input: Readonly<{
     const receipt: Json = await exchange("POST", "/admit", {
     credential: admitted.credential,
     nativeSession: admitted.nativeSession,
+    ...(admitted.agentSessionId === undefined ? {} : { agentSessionId: admitted.agentSessionId }),
     paneId: admitted.paneId,
     source: admitted.source,
   });
@@ -234,14 +238,16 @@ export async function connectEmployee(input: Readonly<{
       }
     },
     settlementBlock: () => settlementBlocked?.message ?? commandBlocked?.message ?? null,
-    async poll(): Promise<EmployeePoll> {
+    async poll(settingsReport?: OmpSessionSettingsReport): Promise<EmployeePoll> {
+      const report: Json | null = settingsReport === undefined ? null : jsonSchema.parse(ompSessionSettingsReportSchema.parse(settingsReport));
+      const pollRequest = (): Promise<Json> => report === null ? exchange("GET", "/poll", null) : exchange("POST", "/poll", report);
       let body: Json;
-      try { body = await exchange("GET", "/poll", null); }
+      try { body = await pollRequest(); }
       catch (error: unknown) {
         if (!(error instanceof EmployeeHttpError) || ![401, 403, 409].includes(error.status)) throw error;
         connection = null;
         await awaitAdmission();
-        body = await exchange("GET", "/poll", null);
+        body = await pollRequest();
       }
       const parsed = pollSchema.safeParse(body);
       if (!parsed.success)
@@ -263,6 +269,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   ctx: NativeContext;
   intervalMs: number;
   instructions: string;
+  settingsReport?: () => OmpSessionSettingsReport;
   lastAssistant?: unknown;
 }>): Readonly<{ poll: () => Promise<void>; close: () => void }> {
   z.number().int().positive().parse(input.intervalMs);
@@ -304,7 +311,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   observeAssistant(input.lastAssistant);
   async function refresh(): Promise<void> {
     try {
-      const next: EmployeePoll = await input.client.poll();
+      const next: EmployeePoll = await input.client.poll(input.settingsReport?.());
       if (turnHeld && nativeIdle() && !nativePending()) releasePending = true;
       if (releasePending) { await input.client.request({ kind: "end_turn" }); releasePending = false; turnHeld = false; }
       if (closed) return;

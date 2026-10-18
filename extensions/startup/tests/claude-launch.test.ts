@@ -43,12 +43,17 @@ test("employee and manager argv are exact and fit the canonical line limit", () 
   const sessionId = "0f8fad5b-d9cb-469f-a165-70867728950e";
   const state = "/Users/someone/.config/jp-skills/startup/example-startup";
   const files = { settingsFile: "/Users/someone/.config/jp-skills/startup/claude/settings.json", mcpFile: "/Users/someone/.config/jp-skills/startup/claude/mcp.json" };
-  const employee = claudeEmployeeArgs({ sessionId, promptFile: `${state}/launches/${sessionId}.prompt.md`, ...files, name: "s-0f8fad5bd9cb469fa16570867728" });
+  const employee = claudeEmployeeArgs({ sessionId, promptFile: `${state}/launches/${sessionId}.prompt.md`, ...files, name: "s-0f8fad5bd9cb469fa16570867728", model: null, effort: null });
   expect(employee).toEqual(["--session-id", sessionId, "--append-system-prompt-file", `${state}/launches/${sessionId}.prompt.md`, "--settings", files.settingsFile, "--mcp-config", files.mcpFile, "-n", "s-0f8fad5bd9cb469fa16570867728"]);
   expect(Buffer.byteLength(["herdr", "--session", "default", "agent", "start", "s-0f8fad5bd9cb469fa16570867728", "--kind", "claude", "--pane", "w1:p12", "--", ...employee].join(" "))).toBeLessThanOrEqual(900);
   const promptFile = "/Users/someone/.config/jp-skills/startup/claude/manager.prompt.md";
   expect(claudeManagerArgs({ session: { kind: "new", id: sessionId }, promptFile, ...files })).toEqual(["--session-id", sessionId, "--append-system-prompt-file", promptFile, "--settings", files.settingsFile, "--mcp-config", files.mcpFile, "-n", "startup-manager"]);
   expect(claudeManagerArgs({ session: { kind: "resume", id: sessionId }, promptFile, ...files })).toEqual(["--resume", sessionId, "--append-system-prompt-file", promptFile, "--settings", files.settingsFile, "--mcp-config", files.mcpFile, "-n", "startup-manager"]);
+});
+
+test("Claude employee argv carries only the selected interactive CLI model and effort", () => {
+  const args = claudeEmployeeArgs({ sessionId: "00000000-0000-4000-8000-000000000001", promptFile: "/startup/prompt.md", settingsFile: "/startup/settings.json", mcpFile: "/startup/mcp.json", name: "startup-dev", model: "sonnet", effort: "xhigh" });
+  expect(args.slice(0, 6)).toEqual(["--session-id", "00000000-0000-4000-8000-000000000001", "--model", "sonnet", "--effort", "xhigh"]);
 });
 
 test("shared Claude files are private, created once and compared byte for byte", () => {

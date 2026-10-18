@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadProfile, writeProfile } from "../src/profiles";
+import { loadProfile, ompSettingsArgs, validateRoleSettings, writeProfile } from "../src/profiles";
 test("generated profile preserves foreign content, symlinks and exact replay", () => {
  const root=realpathSync(mkdtempSync(join(tmpdir(),"startup-profile-")));
  try {
@@ -27,4 +27,14 @@ test("canonical generated employees admit bounded native procedure helpers", () 
   const pa=loadProfile({skillsRoot:root,role:"pa",employeeId:"assistant",generation:1});
   expect(readFileSync(writeProfile({root:startupRoot,profile:pa}),"utf8")).not.toContain("spawns:");
  }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+test("role settings validate only documented CLI effort values and freeze OMP argv", () => {
+ const omp=validateRoleSettings({role:"dev",harness:"omp",model:"openai/gpt-5.2",effort:"xhigh"});
+ expect(omp.status).toBe("accepted");
+ if(omp.status!=="accepted")throw new Error("OMP settings should be accepted");
+ expect(ompSettingsArgs({role:"dev",requested:omp.requested,scope:"future_launch",revision:4,provenance:{kind:"manager_request",actor:"manager",generation:1,updatedAt:1}})).toEqual(["--model","openai/gpt-5.2","--thinking","xhigh"]);
+ expect(validateRoleSettings({role:"dev",harness:"omp",model:null,effort:"auto"}).status).toBe("accepted");
+ expect(validateRoleSettings({role:"dev",harness:"claude",model:"sonnet",effort:"xhigh"}).status).toBe("accepted");
+ expect(validateRoleSettings({role:"dev",harness:"claude",model:"sonnet",effort:"auto"})).toMatchObject({status:"unsupported"});
 });

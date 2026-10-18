@@ -13,8 +13,9 @@ import {
 } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
-import { runtimeAbandonmentSchema, runtimeBindingSchema, type RuntimeAbandonment, type RuntimeBinding } from "./runtime-contracts";
+import { effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
 import { assertStartupPath, ensureStartupRoot } from "./boot";
+import { validateRoleSettings } from "./profiles";
 import {
   authoritySchema,
   bindingSchema,
@@ -45,6 +46,7 @@ import {
   messageSchema,
   ownerSchema,
   resultSchema,
+  roleSchema,
   rowSchema,
   scopeSchema,
   sourceSchema,
@@ -1238,6 +1240,7 @@ export function openStore(args: {
 
   return {
     ownerEpoch: epoch,
+    ownerId: owner.id,
     getEmployee: employee,
     getTeam: team,
     hasMessage(id: string): boolean { return read("message", id, messageSchema) !== null; },
@@ -1273,6 +1276,60 @@ export function openStore(args: {
     }),
     renewLease(): void {
       tx((): void => {});
+    },
+    initializeRoleSettings(defaultHarness: "omp" | "claude"): readonly SavedRoleSettings[] {
+      const harness = runtimeHarnessSchema.parse(defaultHarness);
+      return tx((): readonly SavedRoleSettings[] => roleSchema.options.map((role) => {
+        const current: SavedRoleSettings | null = read("roleSettings", role, savedRoleSettingsSchema);
+        if (current !== null) return current;
+        const input = roleSettingsInputSchema.parse({ role, harness, model: null, effort: null });
+        const requested = requestedRoleSettingsSchema.parse({
+          role: input.role,
+          harness: input.harness,
+          model: { value: input.model, validation: "not_requested" },
+          effort: { value: input.effort, validation: "not_requested" },
+        });
+        const saved = savedRoleSettingsSchema.parse({
+          role,
+          requested,
+          scope: "future_launch",
+          revision: 0,
+          provenance: roleSettingsProvenanceSchema.parse({ kind: "startup_default", actor: "startup", generation: null, updatedAt: now() }),
+        });
+        put("roleSettings", role, saved);
+        return saved;
+      }));
+    },
+    roleSettings(role: Employee["role"]): SavedRoleSettings {
+      const parsed = roleSchema.parse(role);
+      const found: SavedRoleSettings | null = read("roleSettings", parsed, savedRoleSettingsSchema);
+      if (found === null) throw new StoreConflictError(`No saved runtime settings for role ${parsed}`);
+      return found;
+    },
+    allRoleSettings(): readonly SavedRoleSettings[] {
+      return all("roleSettings", savedRoleSettingsSchema);
+    },
+    saveRoleSettings(input: Readonly<{ manager: Binding; requested: RequestedRoleSettings; expectedRevision: number }>): SavedRoleSettings {
+      return tx((): SavedRoleSettings => {
+        const actor = manager(input.manager);
+        const request = requestedRoleSettingsSchema.parse(input.requested);
+        const validation = validateRoleSettings({ role: request.role, harness: request.harness, model: request.model.value, effort: request.effort.value });
+        if (validation.status === "unsupported") throw new StoreAuthorityError(validation.reason);
+        const requested = validation.requested;
+        const current: SavedRoleSettings | null = read("roleSettings", requested.role, savedRoleSettingsSchema);
+        if (current === null) throw new StoreConflictError(`No saved runtime settings for role ${requested.role}`);
+        if (current.revision !== timeSchema.parse(input.expectedRevision))
+          throw new StoreConflictError(`Runtime settings revision changed for role ${requested.role}; refresh the saved setting before retrying`);
+        const saved: SavedRoleSettings = savedRoleSettingsSchema.parse({
+          role: requested.role,
+          requested,
+          scope: "future_launch",
+          revision: current.revision + 1,
+          provenance: roleSettingsProvenanceSchema.parse({ kind: "manager_request", actor: actor.id, generation: actor.generation, updatedAt: now() }),
+        });
+        put("roleSettings", requested.role, saved);
+        return saved;
+      });
     },
     recoverManager(input: { readonly evidence: Json }): Employee {
       return tx((): Employee => {
@@ -3174,14 +3231,19 @@ export function openStore(args: {
       return tx(() => {
         const runtime = runtimeBindingSchema.parse(input);
         const current = employee(runtime.employeeId);
+        if (runtime.settings.role !== current.role)
+          throw new StoreAuthorityError("Frozen launch settings do not match the reserved employee role");
         const key = `${runtime.employeeId}/${runtime.generation}`;
         const saved = read("runtimeBinding", key, runtimeBindingSchema);
         if (saved !== null) {
           if (saved.state === "abandoned") throw new StoreFenceError("Runtime generation was abandoned by manager recovery");
-          if (saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source))
+          if (saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source) || !sameDocument(saved.settings, runtime.settings))
             throw new StoreConflictError("Runtime generation already has a different launch reservation");
           return saved;
         }
+        const selected: SavedRoleSettings | null = read("roleSettings", current.role, savedRoleSettingsSchema);
+        if (selected === null || selected.revision !== runtime.settings.revision || !sameDocument(selected, runtime.settings))
+          throw new StoreConflictError("Role settings changed while the launch was being prepared; reserve a new launch with the current revision");
         if (runtime.generation !== (current.role === "manager" ? current.generation : current.generation + 1))
           throw new StoreFenceError("Runtime launch must match the next reserved employee generation");
         if (!runtime.source.rolePath.endsWith(`/startup-role-${current.role}/SKILL.md`) || (current.canonicalRevision !== null && runtime.source.roleRevision !== current.canonicalRevision))
@@ -3195,7 +3257,7 @@ export function openStore(args: {
         const runtime = runtimeBindingSchema.parse(input);
         const key = `${runtime.employeeId}/${runtime.generation}`;
         const saved = read("runtimeBinding", key, runtimeBindingSchema);
-        if (saved === null || saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source))
+        if (saved === null || saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source) || !sameDocument(saved.settings, runtime.settings))
           throw new StoreFenceError("Runtime update does not match its saved launch reservation");
         if (saved.state === "abandoned") {
           if (!sameDocument(saved, runtime)) throw new StoreFenceError("Runtime generation was abandoned by manager recovery");
@@ -3213,6 +3275,38 @@ export function openStore(args: {
     },
     runtimeBindings(): readonly RuntimeBinding[] {
       return all("runtimeBinding", runtimeBindingSchema);
+    },
+    recordRuntimeSettings(input: Readonly<{ capability: RuntimeCapability; effective: EffectiveRoleSettings }>): Readonly<{ capability: RuntimeCapability; effective: EffectiveRoleSettings }> {
+      return tx(() => {
+        const capability = runtimeCapabilitySchema.parse(input.capability);
+        const effective = effectiveRoleSettingsSchema.parse(input.effective);
+        if (capability.session === null || effective.session === null || capability.observedAt === null || effective.observedAt === null ||
+          encode(capability.session) !== encode(effective.session) || capability.observedAt !== effective.observedAt)
+          throw new StoreAuthorityError("Runtime capability and effective settings require one exact observed native session sample");
+        const identity = capability.session;
+        const key = `${identity.employeeId}/${identity.generation}`;
+        const runtime = read("runtimeBinding", key, runtimeBindingSchema);
+        if (identity.ownerId !== owner.id || identity.ownerEpoch !== epoch || runtime === null || runtime.state !== "ready" ||
+          runtime.launchId !== identity.launchId || runtime.nativeSession !== identity.nativeSession ||
+          runtime.settings.requested.harness !== capability.harness || capability.harness !== effective.harness)
+          throw new StoreFenceError("Effective settings observation does not match the current owner, launch generation, harness and native session");
+        const priorCapability = read("runtimeCapability", runtime.launchId, runtimeCapabilitySchema);
+        const priorEffective = read("effectiveRoleSettings", runtime.launchId, effectiveRoleSettingsSchema);
+        const priorAt = Math.max(priorCapability?.observedAt ?? 0, priorEffective?.observedAt ?? 0);
+        if (capability.observedAt < priorAt || effective.observedAt < priorAt)
+          throw new StoreFenceError("Effective settings observation is older than the saved session readback");
+        put("runtimeCapability", runtime.launchId, capability);
+        put("effectiveRoleSettings", runtime.launchId, effective);
+        return { capability, effective };
+      });
+    },
+    runtimeCapability(employeeId: string, generation: number): RuntimeCapability | null {
+      const runtime = read("runtimeBinding", `${idSchema.parse(employeeId)}/${timeSchema.parse(generation)}`, runtimeBindingSchema);
+      return runtime === null ? null : read("runtimeCapability", runtime.launchId, runtimeCapabilitySchema);
+    },
+    effectiveRoleSettings(employeeId: string, generation: number): EffectiveRoleSettings | null {
+      const runtime = read("runtimeBinding", `${idSchema.parse(employeeId)}/${timeSchema.parse(generation)}`, runtimeBindingSchema);
+      return runtime === null ? null : read("effectiveRoleSettings", runtime.launchId, effectiveRoleSettingsSchema);
     },
     employeeRuntime(employeeId: string, minimumGeneration: number): RuntimeBinding | null {
       return selected("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.generation')>=? ORDER BY json_extract(payload,'$.generation') DESC LIMIT 1", [employeeId, minimumGeneration], runtimeBindingSchema)[0] ?? null;

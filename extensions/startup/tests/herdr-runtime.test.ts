@@ -24,10 +24,10 @@ function serverFixture(patch: Readonly<Record<string, unknown>>): ProcessResult 
     compatible: true, endpoint_compatible: true, socket: "/test/herdr.sock", session: null,
     restart_needed: false, server_binary_stale: false, ...patch });
 }
-function runtimeHarness(kind: "omp" | "claude", results: readonly ProcessResult[]) {
+function runtimeHarness(results: readonly ProcessResult[]) {
   const calls: (readonly string[])[] = [];
   const pending: ProcessResult[] = results.slice();
-  const runtime = createHerdrRuntime({ session: "startup-test", workspaceId: "w1", binary: "/bin/herdr", agent: kind, run: async (argv) => {
+  const runtime = createHerdrRuntime({ session: "startup-test", workspaceId: "w1", binary: "/bin/herdr", run: async (argv) => {
     calls.push(argv);
     const next = pending.shift();
     if (!next) throw new Error("Unexpected connector command");
@@ -36,7 +36,7 @@ function runtimeHarness(kind: "omp" | "claude", results: readonly ProcessResult[
   return { runtime, calls };
 }
 function harness(results: readonly ProcessResult[]) {
-  return runtimeHarness("omp", results);
+  return runtimeHarness(results);
 }
 test("checks actual status envelope and bundled schema in the named session", async () => {
   const h = harness([serverFixture({}), schemaFixture(22, 1)]);
@@ -69,7 +69,7 @@ test("creates crew layout without focus and preserves explicit per-employee envi
 });
 test("launches standalone OMP with literal argv and actual lifecycle normalization", async () => {
   const h = harness([response({ type: "agent_started", agent: agent(), argv: ["omp"] })]);
-  expect(await h.runtime.launch({ paneId: "w1:p3", name: "crew-dev", args: ["--extension", "/a b/bootstrap.ts"] })).toEqual({ name: "crew-dev", workspaceId: "w1", tabId: "w1:t2", paneId: "w1:p3", terminalId: "term-3", nativeSession: "/sessions/dev.jsonl", state: "done", stateSequence: 42, interactiveReady: true });
+  expect(await h.runtime.launch({ harness: "omp", paneId: "w1:p3", name: "crew-dev", args: ["--extension", "/a b/bootstrap.ts"] })).toEqual({ harness: "omp", name: "crew-dev", workspaceId: "w1", tabId: "w1:t2", paneId: "w1:p3", terminalId: "term-3", nativeSession: "/sessions/dev.jsonl", state: "done", stateSequence: 42, interactiveReady: true });
   expect(h.calls).toEqual([["/bin/herdr", "--session", "startup-test", "agent", "start", "crew-dev", "--kind", "omp", "--pane", "w1:p3", "--", "--extension", "/a b/bootstrap.ts"]]);
 });
 test("observes selected workspace OMP roots and retains missing session evidence", async () => {
@@ -121,14 +121,14 @@ test("native session reporting before interactive readiness remains explicit pen
 test("rejects cross-workspace layout and unexpected launched identity", async () => {
   await expect(harness([response({ type: "tab_created", tab: { tab_id: "w2:t2", workspace_id: "w2" }, root_pane: { ...agent(), workspace_id: "w2" } })]).runtime.createCrew({ label: "x", cwd: "/repo", env: {} })).rejects.toThrow("binding_mismatch");
   for (const patch of [{ pane_id: "w1:p9" }, { name: "wrong" }, { agent: "codex" }, { interactive_ready: false }]) {
-    await expect(harness([response({ type: "agent_started", agent: { ...agent(), ...patch }, argv: ["omp"] })]).runtime.launch({ paneId: "w1:p3", name: "crew-dev", args: [] })).rejects.toBeInstanceOf(HerdrRuntimeError);
+    await expect(harness([response({ type: "agent_started", agent: { ...agent(), ...patch }, argv: ["omp"] })]).runtime.launch({ harness: "omp", paneId: "w1:p3", name: "crew-dev", args: [] })).rejects.toBeInstanceOf(HerdrRuntimeError);
   }
 });
 test("ambiguous writes are not retried and preserve status and response body", async () => {
   const failure = { exitCode: 1, stdout: "", stderr: '{"id":"start","error":{"code":"timeout","message":"readiness timed out"}}' };
   const h = harness([failure]);
   try {
-    await h.runtime.launch({ paneId: "w1:p3", name: "crew-dev", args: [] });
+    await h.runtime.launch({ harness: "omp", paneId: "w1:p3", name: "crew-dev", args: [] });
     throw new Error("Expected failed launch");
   } catch (error: unknown) {
     expect(error).toBeInstanceOf(HerdrRuntimeError);
@@ -142,7 +142,7 @@ test("ambiguous writes are not retried and preserve status and response body", a
 test("invalid environment and command inputs fail before subprocess admission", async () => {
   const h = harness([]);
   await expect(h.runtime.split({ paneId: "w1:p3", cwd: "/repo", env: { "BAD=NAME": "x" } })).rejects.toThrow();
-  await expect(h.runtime.launch({ paneId: "w1:p3", name: "UPPER", args: [] })).rejects.toThrow();
+  await expect(h.runtime.launch({ harness: "omp", paneId: "w1:p3", name: "UPPER", args: [] })).rejects.toThrow();
   expect(h.calls).toHaveLength(0);
 });
 test("real subprocess passes shell metacharacters literally and captures both streams", async () => {
@@ -161,7 +161,7 @@ test("preserves each supported lifecycle and native ID session without conflatin
 test("spawn failure and invalid argv retain actionable command context", async () => {
   await expect(runHerdrCommand([])).rejects.toThrow("invalid_request");
   await expect(runHerdrCommand(["/missing/startup-herdr-test-binary"])).rejects.toThrow("spawn_failed");
-  const runtime = createHerdrRuntime({ session: "named", workspaceId: "w1", binary: "/herdr", agent: "omp", run: async () => { throw new Error("transport lost"); } });
+  const runtime = createHerdrRuntime({ session: "named", workspaceId: "w1", binary: "/herdr", run: async () => { throw new Error("transport lost"); } });
   await expect(runtime.split({ paneId: "w1:p1", cwd: "/repo", env: {} })).rejects.toThrow("transport lost");
 });
 test("renames a finished crew tab in the selected session without changing focus", async () => {
@@ -257,11 +257,11 @@ function claudeAgent() {
     agent_session: { source: "herdr:claude", agent: "claude", kind: "id", value: "11111111-2222-4333-8444-555555555555" } };
 }
 test("launches Claude through the claude agent kind with literal argv and its session id", async () => {
-  const h = runtimeHarness("claude", [response({ type: "agent_started", agent: claudeAgent(), argv: ["claude"] })]);
-  expect(await h.runtime.launch({ paneId: "w1:p3", name: "s-claude", args: ["--session-id", "11111111-2222-4333-8444-555555555555", "--settings", "/a b/settings.json"] })).toEqual({ name: "s-claude", workspaceId: "w1", tabId: "w1:t2", paneId: "w1:p3", terminalId: "term-3", nativeSession: "11111111-2222-4333-8444-555555555555", state: "done", stateSequence: 42, interactiveReady: true });
+  const h = runtimeHarness([response({ type: "agent_started", agent: claudeAgent(), argv: ["claude"] })]);
+  expect(await h.runtime.launch({ harness: "claude", paneId: "w1:p3", name: "s-claude", args: ["--session-id", "11111111-2222-4333-8444-555555555555", "--settings", "/a b/settings.json"] })).toEqual({ harness: "claude", name: "s-claude", workspaceId: "w1", tabId: "w1:t2", paneId: "w1:p3", terminalId: "term-3", nativeSession: "11111111-2222-4333-8444-555555555555", state: "done", stateSequence: 42, interactiveReady: true });
   expect(h.calls).toEqual([["/bin/herdr", "--session", "startup-test", "agent", "start", "s-claude", "--kind", "claude", "--pane", "w1:p3", "--", "--session-id", "11111111-2222-4333-8444-555555555555", "--settings", "/a b/settings.json"]]);
-  const pending = runtimeHarness("claude", [response({ type: "agent_started", agent: { ...claudeAgent(), agent_session: null }, argv: ["claude"] })]);
-  expect(await pending.runtime.launch({ paneId: "w1:p3", name: "s-claude", args: [] })).toMatchObject({ nativeSession: null });
+  const pending = runtimeHarness([response({ type: "agent_started", agent: { ...claudeAgent(), agent_session: null }, argv: ["claude"] })]);
+  expect(await pending.runtime.launch({ harness: "claude", paneId: "w1:p3", name: "s-claude", args: [] })).toMatchObject({ nativeSession: null });
 });
 test.each([
   ["OMP agent", { agent: "omp" }],
@@ -270,24 +270,27 @@ test.each([
   ["not interactive", { interactive_ready: false }],
   ["launch pending", { launch_pending: true }],
 ])("Claude launch rejects %s", async (_label, patch) => {
-  const h = runtimeHarness("claude", [response({ type: "agent_started", agent: { ...claudeAgent(), ...patch }, argv: ["claude"] })]);
-  await expect(h.runtime.launch({ paneId: "w1:p3", name: "s-claude", args: [] })).rejects.toThrow("binding_mismatch");
+  const h = runtimeHarness([response({ type: "agent_started", agent: { ...claudeAgent(), ...patch }, argv: ["claude"] })]);
+  await expect(h.runtime.launch({ harness: "claude", paneId: "w1:p3", name: "s-claude", args: [] })).rejects.toThrow("binding_mismatch");
   expect(h.calls).toHaveLength(1);
 });
-test("Claude observation keeps only claude roots and pending launches in the workspace", async () => {
-  const h = runtimeHarness("claude", [response({ type: "agent_list", agents: [claudeAgent(), agent(), { ...claudeAgent(), workspace_id: "w2" }, {
+test("observation preserves each supported harness and pending launch in the workspace", async () => {
+  const h = runtimeHarness([response({ type: "agent_list", agents: [claudeAgent(), agent(), { ...claudeAgent(), workspace_id: "w2" }, {
     workspace_id: "w1", tab_id: "w1:t3", pane_id: "w1:p4", terminal_id: "term-4", name: "s-pending", launch_pending: true, agent_status: "unknown", state_change_seq: 0,
   }] })]);
   expect(await h.runtime.observe()).toEqual([
-    expect.objectContaining({ name: "s-claude", nativeSession: "11111111-2222-4333-8444-555555555555" }),
-    expect.objectContaining({ name: "s-pending", nativeSession: null }),
+    expect.objectContaining({ harness: "claude", name: "s-claude", nativeSession: "11111111-2222-4333-8444-555555555555" }),
+    expect.objectContaining({ harness: "omp", name: "crew-dev", nativeSession: "/sessions/dev.jsonl" }),
+    expect.objectContaining({ harness: null, name: "s-pending", nativeSession: null }),
   ]);
   const omp = harness([response({ type: "agent_list", agents: [claudeAgent()] })]);
-  expect(await omp.runtime.observe()).toEqual([]);
+  expect(await omp.runtime.observe()).toEqual([
+    expect.objectContaining({ harness: "claude", name: "s-claude", nativeSession: "11111111-2222-4333-8444-555555555555" }),
+  ]);
 });
 test.each([
   ["foreign session owner", { agent_session: { source: "herdr:omp", agent: "omp", kind: "id", value: "x" } }],
   ["path session", { agent_session: { source: "herdr:claude", agent: "claude", kind: "path", value: "/x.jsonl" } }],
 ])("Claude observation rejects a %s", async (_label, patch) => {
-  await expect(runtimeHarness("claude", [response({ type: "agent_list", agents: [{ ...claudeAgent(), ...patch }] })]).runtime.observe()).rejects.toThrow("binding_mismatch");
+  await expect(runtimeHarness([response({ type: "agent_list", agents: [{ ...claudeAgent(), ...patch }] })]).runtime.observe()).rejects.toThrow("binding_mismatch");
 });
