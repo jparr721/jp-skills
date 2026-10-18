@@ -3,7 +3,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSyn
 import { join } from "node:path";
 import { z } from "zod";
 import { assertStartupPath, ensureStartupRoot, StartupBootError } from "./boot";
-import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, sourceSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, ClaimSettlementError, type Binding, type Employee, type HostReceipt, type HostStatus, type Json, type Source } from "./contracts";
+import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, sourceSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, ClaimSettlementError, type Binding, type Employee, type HostReceipt, type HostStatus, ownerControlRequestSchema, type OwnerControlRequest, type OwnerControlReceipt, type Json, type Source } from "./contracts";
 import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
 import { itemActionSchema, terminalItemStatuses } from "./items";
@@ -69,6 +69,8 @@ export type Coordinator = Readonly<{
   poll: (connection: string, settingsReport?: OmpSessionSettingsReport, sampleSequence?: number) => Promise<Poll>;
   tick: () => Promise<void>;
   launching: () => Promise<void>;
+  hostControl: (request: OwnerControlRequest) => Promise<OwnerControlReceipt>;
+  hostSettings: (query: Readonly<{ after: string | null; limit: number }>) => Json;
   hostStatus: (query: unknown) => HostStatus;
   hostAdmit: (request: unknown) => Promise<HostReceipt>;
   hostCancel: (request: unknown) => Promise<HostReceipt>;
@@ -692,6 +694,16 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   });
   return {
     start,
+    hostSettings: (query) => {
+      const limit = z.number().int().min(1).max(100).parse(query.limit);
+      const rows = currentRuntimes().toSorted((a, b) => a.launchId.localeCompare(b.launchId)).filter((bound) => query.after === null || bound.launchId.localeCompare(query.after) > 0);
+      return json({ saved: store.allRoleSettings(), active: rows.slice(0, limit).map((bound) => ({ employeeId: bound.employeeId, launchId: bound.launchId, effective: effectiveSettings(bound), capability: runtimeCapabilityFor(bound) })), nextCursor: rows.length > limit ? rows[limit - 1]?.launchId ?? null : null });
+    },
+    hostControl(request): Promise<OwnerControlReceipt> {
+      const operation = serial.then(() => store.hostControl(request));
+      serial = operation.then(() => undefined, () => undefined);
+      return operation;
+    },
     revoke, admit, poll, launchFailure,
     health: () => {
       const manager = store.employeeRuntime("manager", employee("manager").generation);
@@ -768,6 +780,11 @@ export function serveCoordinator(input: Readonly<{ coordinator: Coordinator; soc
           ...(readParam("inputCursor") === undefined ? {} : { inputCursor: readParam("inputCursor") }),
         }));
       }
+      if (request.method === "GET" && path === "/host/settings") {
+        const params = new URL(request.url).searchParams;
+        return Response.json(input.coordinator.hostSettings({ after: params.get("after"), limit: Number(params.get("limit") ?? "100") }));
+      }
+      if (request.method === "POST" && path === "/host/control") return Response.json(await input.coordinator.hostControl(ownerControlRequestSchema.parse(await request.json())));
       if (request.method === "POST" && path === "/host/admit") return Response.json(await input.coordinator.hostAdmit(await request.json()));
       if (request.method === "POST" && path === "/host/cancel") return Response.json(await input.coordinator.hostCancel(await request.json()));
       if (request.method === "GET" && path.startsWith("/host/receipt/")) {

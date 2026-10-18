@@ -561,7 +561,7 @@ test("runtime serves admission before launching roots and owns separate V7 state
     const database = new Database(join(stateDirectory, "staff.sqlite"), { readonly: true });
     try {
       const scope = z.object({ payload: z.string() }).parse(database.query("SELECT payload FROM records WHERE kind='meta' AND id='scope'").get());
-      expect(z.object({ host: z.string() }).parse(JSON.parse(scope.payload)).host).toBe(`${hostname()}:startup-v7`);
+      expect(z.object({ host: z.string() }).parse(JSON.parse(scope.payload)).host).toBe(hostname());
     } finally { database.close(); }
   } finally { await runtime.close(); }
 });

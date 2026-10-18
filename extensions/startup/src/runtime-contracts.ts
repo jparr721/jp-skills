@@ -23,7 +23,7 @@ export const requestedRoleSettingsSchema = z.strictObject({
 export type RequestedRoleSettings = z.infer<typeof requestedRoleSettingsSchema>;
 
 export const roleSettingsProvenanceSchema = z.strictObject({
-  kind: z.enum(["startup_default", "manager_request"]),
+  kind: z.enum(["startup_default", "manager_request", "host_request"]),
   actor: idSchema,
   generation: timeSchema.nullable(),
   updatedAt: timeSchema,

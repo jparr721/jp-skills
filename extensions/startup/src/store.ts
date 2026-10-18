@@ -10,6 +10,7 @@ import {
   openSync,
   closeSync,
   fsyncSync,
+  unlinkSync,
 } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
@@ -17,6 +18,7 @@ import { runtimeConnectionSchema, runtimeIdentitySchema, type RuntimeIdentity, e
 import { assertStartupPath, ensureStartupRoot } from "./boot";
 import { validateRoleSettings } from "./profiles";
 import {
+  ownerControlRequestSchema, ownerControlReceiptSchema, type OwnerControlRequest, type OwnerControlReceipt,
   authoritySchema,
   bindingSchema,
   bindSchema,
@@ -470,6 +472,7 @@ export function openStore(args: {
           throw new StoreAuthorityError(
             "Database belongs to a different host, Startup, bound root or manager session",
           );
+        if (read("controlArchive", "startup", jsonSchema) !== null) throw new StoreAuthorityError("Startup is archived; history is retained and launch is refused");
         const previous: unknown = db
           .query(
             "SELECT token,epoch,generation,expires FROM lease WHERE singleton=1",
@@ -1330,6 +1333,9 @@ export function openStore(args: {
         put("roleSettings", requested.role, saved);
         return saved;
       });
+    },
+    hostControl(request: OwnerControlRequest): OwnerControlReceipt {
+      return tx(() => applyOwnerControl(db, scope, request, now(), epoch));
     },
     recoverManager(input: { readonly evidence: Json }): Employee {
       return tx((): Employee => {
@@ -3435,3 +3441,92 @@ export function openStore(args: {
   };
 }
 export type StartupStore = ReturnType<typeof openStore>;
+
+
+function controlDatabase(scope: Scope, readonly: boolean): Database {
+  const parsed = scopeSchema.parse(scope);
+  if (realpathSync(parsed.startupRoot) !== parsed.startupRoot) throw new StoreAuthorityError("Control root must be canonical");
+  const path = join(parsed.startupRoot, "staff.sqlite");
+  for (const candidate of [path, `${path}-wal`, `${path}-shm`]) assertStartupPath(parsed.startupRoot, candidate, "file");
+  return new Database(path, { readonly, strict: true });
+}
+function controlRead<T>(db: Database, kind: string, id: string, schema: z.ZodType<T>): T | null {
+  const row = z.object({ payload: z.string() }).nullable().parse(db.query("SELECT payload FROM records WHERE kind=? AND id=?").get(kind, id));
+  return row === null ? null : schema.parse(JSON.parse(row.payload));
+}
+function controlRevision(db: Database): number {
+  return z.object({ n: timeSchema }).parse(db.query("SELECT COALESCE(MAX(sequence),0) AS n FROM audit").get()).n;
+}
+function controlPut(db: Database, kind: string, id: string, payload: unknown): void {
+  const body = encode(payload);
+  db.query("INSERT INTO records(kind,id,payload) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload").run(kind, id, body);
+  db.query("INSERT INTO audit(kind,id,payload) VALUES(?,?,?)").run(kind, id, body);
+}
+function controlScope(db: Database, scope: Scope): void {
+  if (encode(controlRead(db, "meta", "scope", scopeSchema)) !== encode(scope)) throw new StoreAuthorityError("Control request scope does not match the selected Startup");
+}
+export function readOwnerControl(scope: Scope): Readonly<{ ownerEpoch: number; revision: number; leaseExpires: number; archived: boolean; settings: readonly SavedRoleSettings[] }> {
+  const db = controlDatabase(scope, true);
+  try { return db.transaction(() => {
+    controlScope(db, scope);
+    const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+    const settings = roleSchema.options.flatMap((role) => { const saved = controlRead(db, "roleSettings", role, savedRoleSettingsSchema); return saved === null ? [] : [saved]; });
+    return { ownerEpoch: lease.epoch, revision: controlRevision(db), leaseExpires: lease.expires, archived: controlRead(db, "controlArchive", "startup", jsonSchema) !== null, settings };
+  }).deferred(); } finally { db.close(); }
+}
+export function readOwnerControlReceipt(scope: Scope, requestId: string): OwnerControlReceipt | null {
+  const db = controlDatabase(scope, true);
+  try { controlScope(db, scope); return controlRead(db, "ownerControlReceipt", idSchema.parse(requestId), ownerControlReceiptSchema); } finally { db.close(); }
+}
+function applyOwnerControl(db: Database, scope: Scope, input: OwnerControlRequest, at: number, epoch: number): OwnerControlReceipt {
+  const request = ownerControlRequestSchema.parse(input);
+  if (encode(scope) !== encode(request.scope)) throw new StoreAuthorityError("Control request crosses Startup roots");
+  controlScope(db, scope);
+  const digest = createHash("sha256").update(encode(request)).digest("hex");
+  const prior = controlRead(db, "ownerControlReceipt", request.requestId, ownerControlReceiptSchema);
+  if (prior !== null) { if (prior.digest !== digest) throw new StoreConflictError("Control idempotency key has a different payload"); return prior; }
+  if (epoch !== request.expectedOwnerEpoch || controlRevision(db) !== request.expectedRevision) throw new StoreFenceError("Control owner epoch or snapshot revision changed");
+  if (controlRead(db, "controlArchive", "startup", jsonSchema) !== null) throw new StoreAuthorityError("Startup is archived");
+  let result: Json;
+  if (request.kind === "settings_apply") {
+    const current = controlRead(db, "roleSettings", request.role, savedRoleSettingsSchema);
+    if (current === null || current.revision !== request.baseSettingsRevision) throw new StoreConflictError("Role settings base revision changed");
+    const validated = validateRoleSettings({ role: request.role, harness: request.harness, model: request.model, effort: request.effort });
+    if (validated.status !== "accepted") throw new StoreAuthorityError(validated.reason);
+    const saved = savedRoleSettingsSchema.parse({ role: request.role, requested: validated.requested, scope: "future_launch", revision: current.revision + 1, provenance: { kind: "host_request", actor: "host-control", generation: null, updatedAt: at } });
+    controlPut(db, "roleSettings", request.role, saved);
+    result = jsonSchema.parse(saved);
+  } else {
+    const unsafe = z.object({ n: timeSchema }).parse(db.query(`SELECT COUNT(*) AS n FROM records WHERE
+      (kind='message' AND json_extract(payload,'$.status')!='acknowledged') OR
+      (kind='receivedInput' AND json_extract(payload,'$.disposition') IS NULL AND json_extract(payload,'$.hold.kind') IS NOT 'cancelled') OR
+      (kind='claim' AND json_extract(payload,'$.status')!='settled') OR
+      (kind='grant' AND json_extract(payload,'$.state')!='released') OR
+      (kind='assignment' AND json_extract(payload,'$.state')!='complete') OR
+      (kind='intent' AND json_extract(payload,'$.state')='pending') OR
+      (kind='runtimeBinding' AND json_extract(payload,'$.state') NOT IN ('abandoned','failed'))`).get()).n;
+    const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+    if (unsafe > 0 || lease.expires > at) throw new StoreAuthorityError("Archive requires no live lease, active launches, pending input/messages, claims, grants, assignments or uncertain writes");
+    result = { archivedAt: at, history: "preserved" };
+    controlPut(db, "controlArchive", "startup", result);
+  }
+  const receipt = ownerControlReceiptSchema.parse({ requestId: request.requestId, digest, scope, kind: request.kind, state: "committed", ownerEpoch: epoch, revision: controlRevision(db) + 1, sideEffects: request.kind === "settings_apply" ? "future_launch_settings" : "history_archived", result });
+  controlPut(db, "ownerControlReceipt", request.requestId, receipt);
+  return receipt;
+}
+export function applyOfflineOwnerControl(input: OwnerControlRequest, at: number): OwnerControlReceipt {
+  const request = ownerControlRequestSchema.parse(input);
+  const lockPath = join(request.scope.startupRoot, "runtime-launch.lock");
+  assertStartupPath(request.scope.startupRoot, lockPath, "file");
+  const lock = request.kind === "archive" ? openSync(lockPath, "wx", 0o600) : null;
+  try {
+  if (request.kind === "archive" && existsSync(join(request.scope.startupRoot, "runtime-launch.json"))) throw new StoreAuthorityError("Archive refuses a saved runtime launch intent; reconcile it explicitly first");
+  const db = controlDatabase(request.scope, false);
+  try { return db.transaction(() => {
+    controlScope(db, request.scope);
+    const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+    if (lease.expires > at) throw new StoreFenceError("A live owner must handle this control request through its socket");
+    return applyOwnerControl(db, request.scope, request, at, lease.epoch);
+  }).immediate(); } finally { db.close(); }
+  } finally { if (lock !== null) { closeSync(lock); unlinkSync(lockPath); } }
+}

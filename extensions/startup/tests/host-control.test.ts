@@ -1,0 +1,108 @@
+import { afterEach, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { hostname, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { executeHostControl, type HostControlRuntime } from "../host-control";
+import { ownerControlReceiptSchema, type Scope } from "../src/contracts";
+import { launchRuntimeHost, type RuntimeHostConfig } from "../src/v7-launch";
+import { openStore, readOwnerControl } from "../src/store";
+
+const roots: string[] = [];
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+function fixture() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "startup-control-")));
+  roots.push(root);
+  const skillsHome = join(root, "skills-home");
+  const boundRoot = join(root, "repo");
+  mkdirSync(skillsHome); mkdirSync(boundRoot);
+  const configHome = join(root, "config");
+  const scope: Scope = { skillsHome, boundRoot, startupRoot: join(configHome, "ronin", "startups", "alpha"), name: "alpha", host: hostname(), managerSession: "native-manager" };
+  const runtime: HostControlRuntime = { now: () => 1000, observeManager: async () => false, resume: async () => { throw new Error("No runtime launch authorized in fixture"); } };
+  const create = { kind: "create", requestId: "create-alpha", scope, skillsRoot: resolve(import.meta.dir, "../../.."), executionLimit: 8, harness: "omp", expectedOwnerEpoch: 0, expectedRevision: 0 };
+  return { root, configHome, scope, runtime, create };
+}
+test("cold create and list need no running owner and select is read-only", async () => {
+  const f = fixture();
+  expect(await executeHostControl({ kind: "list", configHome: f.configHome, after: null, limit: 10 }, f.runtime)).toEqual({ rows: [], nextCursor: null });
+  const created = ownerControlReceiptSchema.parse(await executeHostControl(f.create, f.runtime));
+  expect(created).toMatchObject({ state: "committed", kind: "create", sideEffects: "root_initialized" });
+  expect(await executeHostControl(f.create, f.runtime)).toEqual(created);
+  const before = readOwnerControl(f.scope);
+  expect(before.leaseExpires).toBe(0);
+  expect(await executeHostControl({ kind: "select", scope: f.scope }, f.runtime)).toMatchObject({ sideEffects: "none", settings: expect.any(Array) });
+  expect(readOwnerControl(f.scope)).toEqual(before);
+  expect(await executeHostControl({ kind: "list", configHome: f.configHome, after: null, limit: 10 }, f.runtime)).toMatchObject({ rows: [{ scope: f.scope }], nextCursor: null });
+  await expect(executeHostControl({ ...f.create, requestId: "another-create" }, f.runtime)).rejects.toThrow("already has a binding");
+  await expect(executeHostControl({ ...f.create, harness: "claude" }, f.runtime)).rejects.toThrow("payload conflict");
+});
+test("offline settings preserve future-launch scope, revision fencing and exact receipts", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  const before = readOwnerControl(f.scope);
+  const apply = { kind: "settings_apply", requestId: "settings-1", scope: f.scope, expectedOwnerEpoch: before.ownerEpoch, expectedRevision: before.revision, role: "dev", harness: "claude", model: "sonnet", effort: "high", baseSettingsRevision: 0 };
+  await expect(executeHostControl({ ...apply, requestId: f.create.requestId }, f.runtime)).rejects.toThrow("payload conflict");
+  const receipt = await executeHostControl(apply, f.runtime);
+  expect(receipt).toMatchObject({ state: "committed", sideEffects: "future_launch_settings", result: { requested: { harness: "claude" }, scope: "future_launch", revision: 1, provenance: { kind: "host_request" } } });
+  const after = readOwnerControl(f.scope);
+  expect(await executeHostControl(apply, f.runtime)).toEqual(receipt);
+  expect(await executeHostControl({ kind: "receipt", scope: f.scope, requestId: "settings-1" }, f.runtime)).toEqual(receipt);
+  expect(readOwnerControl(f.scope)).toEqual(after);
+  await expect(executeHostControl({ ...apply, model: "opus" }, f.runtime)).rejects.toThrow("payload conflict");
+  await expect(executeHostControl({ ...apply, requestId: "settings-2" }, f.runtime)).rejects.toThrow("revision changed");
+  await expect(executeHostControl({ ...apply, requestId: "settings-3", expectedRevision: after.revision }, f.runtime)).rejects.toThrow("base revision");
+  expect(await executeHostControl({ kind: "settings", scope: f.scope }, f.runtime)).toMatchObject({ state: "offline", effective: { status: "unavailable" } });
+});
+test("archive preserves cold history, refuses a live lease and permanently prevents reopening", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  const store = openStore({ path: join(f.scope.startupRoot, "staff.sqlite"), scope: f.scope, owner: { id: "active", managerGeneration: 1, leaseMs: 60000 }, now: f.runtime.now });
+  const live = readOwnerControl(f.scope);
+  const archive = { kind: "archive" as const, requestId: "archive-1", scope: f.scope, expectedOwnerEpoch: live.ownerEpoch, expectedRevision: live.revision };
+  expect(() => store.hostControl(archive)).toThrow("live lease");
+  store.close();
+  expect(await executeHostControl(archive, f.runtime)).toMatchObject({ state: "committed", result: { history: "preserved" } });
+  expect(readOwnerControl(f.scope).archived).toBe(true);
+  expect(() => openStore({ path: join(f.scope.startupRoot, "staff.sqlite"), scope: f.scope, owner: { id: "new", managerGeneration: 1, leaseMs: 60000 }, now: f.runtime.now })).toThrow("archived");
+});
+test("cold resume cannot create a replacement manager and cross-root requests fail", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  const before = readOwnerControl(f.scope);
+  expect(await executeHostControl({ kind: "resume", scope: f.scope, requestId: "resume-1", expectedOwnerEpoch: before.ownerEpoch, expectedRevision: before.revision }, f.runtime)).toMatchObject({ state: "missing_session", sideEffects: "none" });
+  expect(readOwnerControl(f.scope)).toEqual(before);
+  await expect(executeHostControl({ kind: "select", scope: { ...f.scope, managerSession: "different" } }, f.runtime)).rejects.toThrow("binding differs");
+});
+
+function runtimeConfig(f: ReturnType<typeof fixture>): RuntimeHostConfig {
+  return { name: f.scope.name, skillsHome: f.scope.skillsHome, startupRoot: f.scope.startupRoot, stateDirectory: f.scope.startupRoot, boundRoot: f.scope.boundRoot, skillsRoot: f.create.skillsRoot, socketPath: join(f.scope.startupRoot, "runtime.sock"), profile: "default", managerSession: f.scope.managerSession, managerFile: join(f.scope.startupRoot, "manager.jsonl"), managerPaneId: "w1:p1", managerCredential: "private-fixture", herdrSession: "fixture", workspaceId: "w1", herdrBinary: "herdr", herdrIntegration: "/fixture/herdr-agent-state.sh", ownerGeneration: 1, policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 4 } };
+}
+test("uncertain resume is looked up without replay and concurrent creates cannot duplicate initialization", async () => {
+  const f = fixture();
+  const [first, replay] = await Promise.all([executeHostControl(f.create, f.runtime), executeHostControl(f.create, f.runtime)]);
+  expect(first).toEqual(replay);
+  const config = runtimeConfig(f);
+  writeFileSync(join(f.scope.startupRoot, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  const snapshot = readOwnerControl(f.scope);
+  const request = { kind: "resume", scope: f.scope, requestId: "uncertain-resume", expectedOwnerEpoch: snapshot.ownerEpoch, expectedRevision: snapshot.revision };
+  let dispatches = 0;
+  const runtime: HostControlRuntime = { now: f.runtime.now, observeManager: async () => true, resume: async () => { dispatches++; throw new Error("lost response after dispatch"); } };
+  await expect(executeHostControl(request, runtime)).rejects.toThrow("lost response");
+  expect(await executeHostControl(request, runtime)).toMatchObject({ state: "uncertain", sideEffects: "owner_resumed" });
+  expect(await executeHostControl({ kind: "receipt", scope: f.scope, requestId: request.requestId }, runtime)).toMatchObject({ state: "uncertain" });
+  expect(dispatches).toBe(1);
+});
+test("archive and launch share the same exclusion lock and archived roots never spawn", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  const snapshot = readOwnerControl(f.scope);
+  const request = { kind: "archive", scope: f.scope, requestId: "archive-locked", expectedOwnerEpoch: snapshot.ownerEpoch, expectedRevision: snapshot.revision };
+  const lock = join(f.scope.startupRoot, "runtime-launch.lock");
+  writeFileSync(lock, "fixture launch in progress", { mode: 0o600 });
+  await expect(executeHostControl(request, f.runtime)).rejects.toThrow("exist");
+  expect(readOwnerControl(f.scope).archived).toBe(false);
+  rmSync(lock);
+  await executeHostControl(request, f.runtime);
+  await expect(launchRuntimeHost(runtimeConfig(f))).rejects.toThrow("Archived Startup");
+  expect(existsSync(join(f.scope.startupRoot, "runtime-launch.json"))).toBe(false);
+  expect(existsSync(join(f.scope.startupRoot, "runtime.log"))).toBe(false);
+});

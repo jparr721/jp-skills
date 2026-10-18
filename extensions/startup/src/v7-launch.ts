@@ -3,6 +3,8 @@ import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, re
 import { realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
+import { hostname } from "node:os";
+import { readOwnerControl } from "./store";
 import { runtimePolicySchema } from "./runtime-contracts";
 import { assertStartupPath, ensureStartupRoot } from "./boot";
 
@@ -101,7 +103,7 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
     void savedCredential; void proposedCredential;
     if (JSON.stringify(saved) !== JSON.stringify(requested))
       throw new RuntimeLaunchError("Saved runtime configuration belongs to another manager, profile, source root or Herdr target; explicit recovery required");
-  } else writeFileSync(configPath, JSON.stringify(config), { flag: "wx", mode: 0o600 });
+  }
   const intentPath: string = join(config.stateDirectory, "runtime-launch.json");
   const lockPath: string = join(config.stateDirectory, "runtime-launch.lock");
   assertRuntimeFile(config, intentPath);
@@ -116,6 +118,9 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
   }
   writeFileSync(lock, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
   try {
+    if (existsSync(join(config.startupRoot, "staff.sqlite")) && readOwnerControl({ skillsHome: config.skillsHome, startupRoot: config.startupRoot, host: hostname(), name: config.name, boundRoot: config.boundRoot, managerSession: config.managerSession }).archived)
+      throw new RuntimeLaunchError("Archived Startup cannot launch an owner");
+    if (!existsSync(configPath)) writeFileSync(configPath, JSON.stringify(config), { flag: "wx", mode: 0o600 });
     if (existsSync(intentPath)) {
       const intent = intentSchema.parse(readPrivateJson(intentPath));
       if (intent.state === "prepared")

@@ -1376,3 +1376,19 @@ test("cancelled admission during native observation cannot install authority or 
   await expect(pending).rejects.toThrow("disconnected before commit");
   expect(f.store.runtimeBindings().findLast((entry) => entry.employeeId === pa)).toEqual(saved);
 });
+
+test("host settings pages expose all launches without mutating owner observations", async () => {
+  const f = fixture(8);
+  await f.ready();
+  const before = f.coordinator.hostStatus({ limit: 1 });
+  const page = z.object({ active: z.array(z.object({ launchId: z.string(), effective: z.object({ status: z.string() }) })), nextCursor: z.string().nullable() });
+  const first = page.parse(f.coordinator.hostSettings({ after: null, limit: 1 }));
+  expect(first.active).toHaveLength(1);
+  expect(first.nextCursor).not.toBeNull();
+  const second = page.parse(f.coordinator.hostSettings({ after: first.nextCursor, limit: 1 }));
+  expect(second.active).toHaveLength(1);
+  expect(second.active[0]?.launchId).not.toBe(first.active[0]?.launchId);
+  expect(second.nextCursor).toBeNull();
+  expect(f.coordinator.hostStatus({ limit: 1 })).toEqual(before);
+  expect(() => f.coordinator.hostSettings({ after: null, limit: 101 })).toThrow();
+});

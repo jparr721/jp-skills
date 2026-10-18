@@ -525,3 +525,18 @@ export function encode(value: unknown): string {
   }
   return JSON.stringify(sorted(parsed));
 }
+
+export const ownerControlRequestSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("settings_apply"), requestId: idSchema, scope: scopeSchema, expectedOwnerEpoch: timeSchema, expectedRevision: timeSchema, role: roleSchema, harness: z.enum(["omp", "claude"]), model: z.string().nullable(), effort: z.string().nullable(), baseSettingsRevision: timeSchema }),
+  z.strictObject({ kind: z.literal("archive"), requestId: idSchema, scope: scopeSchema, expectedOwnerEpoch: timeSchema, expectedRevision: timeSchema }),
+]);
+export type OwnerControlRequest = z.infer<typeof ownerControlRequestSchema>;
+export const ownerControlReceiptSchema = z.strictObject({
+  requestId: idSchema, digest: idSchema, scope: scopeSchema,
+  kind: z.enum(["create", "settings_apply", "archive", "resume"]),
+  state: z.enum(["committed", "uncertain", "missing_session"]),
+  ownerEpoch: timeSchema, revision: timeSchema,
+  sideEffects: z.enum(["root_initialized", "future_launch_settings", "history_archived", "owner_resumed", "none"]),
+  result: jsonSchema,
+});
+export type OwnerControlReceipt = z.infer<typeof ownerControlReceiptSchema>;
