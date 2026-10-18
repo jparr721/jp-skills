@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openStore, type StartupStore } from "../src/store";
@@ -13,14 +13,16 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "startup-runtime-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "startup-runtime-")));
   roots.push(root);
-  const home = join(root, "home");
+  const skillsHome = join(root, "jp-skills");
+  const startupRoot = join(root, "startup-state");
   const boundRoot = join(root, "repo");
+  mkdirSync(skillsHome);
   mkdirSync(boundRoot);
-  const scope = { home, boundRoot, host: "fixture", name: "test", managerSession: "manager-session" };
+  const scope = { skillsHome, startupRoot, boundRoot, host: "fixture", name: "test", managerSession: "manager-session" };
   const owner = { id: "coordinator", managerGeneration: 1, leaseMs: 10000 };
-  const path = join(home, "startup", "test", "staff.sqlite");
+  const path = join(startupRoot, "staff.sqlite");
   let clock = 100;
   const store = openStore({ path, scope, owner, now: () => clock });
   stores.push(store);

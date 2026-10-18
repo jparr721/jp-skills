@@ -1,14 +1,16 @@
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { realpathSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { runtimePolicySchema } from "./runtime-contracts";
+import { assertStartupPath, ensureStartupRoot } from "./boot";
 
 const ompConfigSchema = z.strictObject({
   name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
-  home: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
+  skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
   boundRoot: z.string().startsWith("/"), skillsRoot: z.string().startsWith("/"),
-  socketPath: z.string().startsWith("/"), profile: z.string().min(1),
+  socketPath: z.string().startsWith("/"), profile: z.literal("default"),
   managerSession: z.string().min(1), managerFile: z.string().startsWith("/"),
   managerPaneId: z.string().min(1), managerCredential: z.string().min(1),
   herdrSession: z.string().min(1), workspaceId: z.string().min(1),
@@ -27,6 +29,25 @@ const intentSchema = z.discriminatedUnion("state", [
 ]);
 export class RuntimeLaunchError extends Error {}
 class RuntimeStartupError extends RuntimeLaunchError {}
+function contains(parent: string, child: string): boolean {
+  const path: string = relative(parent, child);
+  return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+}
+function validateRuntimePaths(config: RuntimeHostConfig): string {
+  const root: string = ensureStartupRoot(config.startupRoot);
+  if (root !== config.startupRoot || config.stateDirectory !== root || resolve(config.socketPath) !== config.socketPath || !contains(root, config.socketPath))
+    throw new RuntimeLaunchError("Runtime state and coordinator socket must stay inside the canonical Startup root");
+  if (!isAbsolute(config.skillsHome) || resolve(config.skillsHome) !== config.skillsHome || realpathSync(config.skillsHome) !== config.skillsHome ||
+      !isAbsolute(config.boundRoot) || resolve(config.boundRoot) !== config.boundRoot || realpathSync(config.boundRoot) !== config.boundRoot)
+    throw new RuntimeLaunchError("JP_SKILLS_HOME and bound repository must be canonical directories");
+  if (contains(root, config.skillsHome) || contains(config.skillsHome, root) || contains(root, config.boundRoot) || contains(config.boundRoot, root))
+    throw new RuntimeLaunchError("Startup root, JP_SKILLS_HOME and bound repository must remain separate trees");
+  assertStartupPath(root, config.socketPath, "socket");
+  return root;
+}
+function assertRuntimeFile(config: RuntimeHostConfig, path: string): void {
+  assertStartupPath(config.startupRoot, path, "file");
+}
 export function readPrivateJson(path: string): unknown {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0)
@@ -68,8 +89,10 @@ async function health(socketPath: string): Promise<void> {
 }
 export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<RuntimeHostConfig> {
   const proposed: RuntimeHostConfig = parseRuntimeHostConfig(input);
-  mkdirSync(proposed.stateDirectory, { recursive: true, mode: 0o700 });
+  validateRuntimePaths(proposed);
+  mkdirSync(proposed.startupRoot, { recursive: true, mode: 0o700 });
   const configPath: string = join(proposed.stateDirectory, "runtime-config.json");
+  assertRuntimeFile(proposed, configPath);
   let config: RuntimeHostConfig = proposed;
   if (existsSync(configPath)) {
     config = parseRuntimeHostConfig(readPrivateJson(configPath));
@@ -81,6 +104,8 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
   } else writeFileSync(configPath, JSON.stringify(config), { flag: "wx", mode: 0o600 });
   const intentPath: string = join(config.stateDirectory, "runtime-launch.json");
   const lockPath: string = join(config.stateDirectory, "runtime-launch.lock");
+  assertRuntimeFile(config, intentPath);
+  assertRuntimeFile(config, lockPath);
   let lock: number;
   try { lock = openSync(lockPath, "wx", 0o600); }
   catch (error: unknown) {
@@ -99,6 +124,7 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
     }
     const startedAt: number = Date.now();
     const temporary: string = `${intentPath}.${process.pid}.tmp`;
+    assertRuntimeFile(config, temporary);
     if (existsSync(temporary))
       throw new RuntimeLaunchError("Interrupted coordinator launch intent needs explicit reconciliation");
     writeFileSync(temporary, JSON.stringify({ state: "prepared", startedAt }), { flag: "wx", mode: 0o600 });
@@ -110,11 +136,21 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
     const bun: string | null = Bun.which("bun");
     if (bun === null) throw new RuntimeLaunchError("A Bun executable is required to launch Startup runtime-host.ts");
     const logPath: string = join(config.stateDirectory, "runtime.log");
+    assertRuntimeFile(config, logPath);
     if (existsSync(logPath)) readPrivateLog(logPath);
     const log: number = openSync(logPath, "a", 0o600);
     try {
       const child = spawn(bun, [join(import.meta.dir, "../runtime-host.ts"), configPath], {
-        detached: true, stdio: ["ignore", log, log], env: { ...process.env, OMPCODE: "" },
+        detached: true, stdio: ["ignore", log, log], env: {
+          ...process.env,
+          JP_SKILLS_HOME: config.skillsHome,
+          STARTUP_ROOT: config.startupRoot,
+          PI_CODING_AGENT_DIR: config.startupRoot,
+          OMP_PROFILE: "default",
+          PI_PROFILE: "default",
+          OMPCODE: "",
+          ...("harness" in config ? { CLAUDE_CONFIG_DIR: config.startupRoot } : {}),
+        },
       });
       const pid: number = await new Promise<number>((resolve, reject) => {
         child.once("error", reject);

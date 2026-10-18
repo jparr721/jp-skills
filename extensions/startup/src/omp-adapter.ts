@@ -123,7 +123,8 @@ export type NativeContext = Readonly<{
 export type AdapterConfig = Readonly<{
   boundRoot: string;
   name: string;
-  home: string;
+  skillsHome: string;
+  startupRoot: string;
   skillsRoot: string;
   employeeLimit: number | null;
   executionLimit: number | null;
@@ -385,9 +386,10 @@ export function createAdapter(
     generation: root.createdAt,
   });
   const store: StartupStore = openStore({
-    path: join(config.home, "startup", config.name, "staff.sqlite"),
+    path: join(config.startupRoot, "staff.sqlite"),
     scope: {
-      home: config.home,
+      skillsHome: config.skillsHome,
+      startupRoot: config.startupRoot,
       host: hostname(),
       name: config.name,
       boundRoot: realpathSync(config.boundRoot),
@@ -1439,7 +1441,7 @@ export function createAdapter(
         throw new StoreAuthorityError(
           "Canonical role source differs from the hire reservation",
         );
-      writeProfile({ root: rootDirectory, profile });
+      writeProfile({ root: config.startupRoot, profile });
       prepared.push(profile);
       tasks.push({
         name: `${employee.id}-${generation}`,
@@ -2022,7 +2024,7 @@ export function createAdapter(
         const file: Json = jsonSchema.parse(
           JSON.parse(
             readFileSync(
-              join(config.home, "startup", config.name, "queue.json"),
+              join(config.startupRoot, "queue.json"),
               "utf8",
             ),
           ),

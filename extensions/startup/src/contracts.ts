@@ -44,10 +44,11 @@ export const observedRuntimeSchema = z.enum([
 ]);
 export const scopeSchema = z
   .strictObject({
-    home: idSchema,
+    skillsHome: z.string().startsWith("/"),
+    startupRoot: z.string().startsWith("/"),
     host: idSchema,
     name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
-    boundRoot: idSchema,
+    boundRoot: z.string().startsWith("/"),
     managerSession: idSchema,
   })
   .readonly();

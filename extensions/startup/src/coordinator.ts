@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { assertStartupPath, ensureStartupRoot, StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, sourceSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, ClaimSettlementError, type Binding, type Employee, type HostReceipt, type HostStatus, type Json, type Source } from "./contracts";
 import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
@@ -13,12 +14,12 @@ import type { HerdrObservation, HerdrRuntime } from "./herdr-runtime";
 import { claudeEmployeeArgs, writeClaudeFiles } from "./claude-launch";
 
 export type OmpCoordinatorConfig = Readonly<{
-  name: string; stateDirectory: string; boundRoot: string; skillsRoot: string;
+  name: string; stateDirectory: string; startupRoot: string; skillsHome: string; boundRoot: string; skillsRoot: string;
   socketPath: string; profile: string; herdrIntegration: string;
   managerSession: string; managerFile: string; managerPaneId: string;
   managerCredential: string; policy: RuntimePolicy;
 }>;
-export type ClaudeCoordinatorConfig = OmpCoordinatorConfig & Readonly<{ harness: "claude"; home: string }>;
+export type ClaudeCoordinatorConfig = OmpCoordinatorConfig & Readonly<{ harness: "claude" }>;
 export type CoordinatorConfig = OmpCoordinatorConfig | ClaudeCoordinatorConfig;
 export function isClaudeConfig(config: CoordinatorConfig): config is ClaudeCoordinatorConfig {
   return "harness" in config && config.harness === "claude";
@@ -78,6 +79,10 @@ function json(value: unknown): Json { return jsonSchema.parse(JSON.parse(JSON.st
 
 export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: HerdrRuntime; config: CoordinatorConfig; now: () => number }>): Coordinator {
   const { store, herdr, config, now } = input;
+  const root: string = ensureStartupRoot(config.startupRoot);
+  if (root !== config.startupRoot || config.stateDirectory !== root || config.profile !== "default")
+    throw new StartupBootError("Coordinator requires the canonical Startup root and stock OMP default profile");
+  assertStartupPath(root, config.socketPath, "socket");
   const claude: ClaudeCoordinatorConfig | null = isClaudeConfig(config) ? config : null;
   let claudeFiles: Readonly<{ settingsFile: string; mcpFile: string }> | null = null;
   const policy = runtimePolicySchema.parse(config.policy);
@@ -89,10 +94,12 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   const openedAt = now();
   let supervision: CoordinatorHealth["supervision"] = { lastStartedAt: null, lastCompletedAt: null, lastSuccessAt: null, errors: [] };
   let observerAvailable: boolean = true;
-  const launchDirectory = join(config.stateDirectory, "launches");
-  if (existsSync(launchDirectory) && lstatSync(launchDirectory).isSymbolicLink())
-    throw new StoreAuthorityError("Launch directory cannot be a symlink");
+  const launchDirectory = join(root, "launches");
+  assertStartupPath(root, launchDirectory, "directory");
+  if (existsSync(launchDirectory) && (lstatSync(launchDirectory).isSymbolicLink() || !lstatSync(launchDirectory).isDirectory() || (lstatSync(launchDirectory).mode & 0o077) !== 0))
+    throw new StoreAuthorityError("Launch directory must be a private Startup-owned directory");
   mkdirSync(launchDirectory, { recursive: true, mode: 0o700 });
+  assertStartupPath(root, launchDirectory, "directory");
   function employee(id: string): Employee {
     return store.getEmployee(id);
   }
@@ -110,12 +117,14 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   }
   function launchFiles(current: RuntimeBinding, credential: string): void {
     const path = join(launchDirectory, `${current.launchId}.json`);
-    const manifest = encode({ socketPath: config.socketPath, credential, source: current.source, employeeId: current.employeeId, generation: current.generation, profile: config.profile, skillsRoot: config.skillsRoot });
+    assertStartupPath(root, path, "file");
+    const manifest = encode({ socketPath: config.socketPath, credential, source: current.source, employeeId: current.employeeId, generation: current.generation, profile: config.profile, harness: claude === null ? "omp" : "claude", skillsHome: config.skillsHome, startupRoot: config.startupRoot, skillsRoot: config.skillsRoot });
     if (existsSync(path)) {
       if (lstatSync(path).isSymbolicLink() || readFileSync(path, "utf8") !== manifest)
         throw new StoreConflictError("Launch manifest ownership conflicts with its reserved generation");
     } else writeFileSync(path, manifest, { mode: 0o600, flag: "wx" });
     const bootstrap = launchArtifact(current.launchId);
+    assertStartupPath(root, bootstrap, "file");
     const content = claude !== null ? profileText(profile(employee(current.employeeId), current.generation)) : `import { installLaunchedEmployee } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/src/employee-entry.ts"))};\nimport type { HostAPI } from ${JSON.stringify(join(config.skillsRoot, "extensions/startup/index.ts"))};\nexport default (host: HostAPI): void => installLaunchedEmployee(host, ${JSON.stringify(path)});\n`;
     if (existsSync(bootstrap)) {
       if (lstatSync(bootstrap).isSymbolicLink() || readFileSync(bootstrap, "utf8") !== content)
@@ -247,7 +256,11 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   }
   function paneEnvironment(launchId: string): Readonly<Record<string, string>> {
     const manifest = join(launchDirectory, `${launchId}.json`);
-    return claude === null ? { OMPCODE: "", OMP_PROFILE: config.profile, STARTUP_V7_MANIFEST: manifest } : { STARTUP_V7_MANIFEST: manifest };
+    assertStartupPath(root, manifest, "file");
+    const base: Readonly<Record<string, string>> = { JP_SKILLS_HOME: config.skillsHome, STARTUP_ROOT: config.startupRoot, STARTUP_V7_MANIFEST: manifest };
+    return claude === null
+      ? { ...base, OMPCODE: "", OMP_PROFILE: "default", PI_PROFILE: "default", PI_CODING_AGENT_DIR: config.startupRoot, STARTUP_HERDR_OMP_EXTENSION: config.herdrIntegration }
+      : { ...base, CLAUDE_CONFIG_DIR: config.startupRoot };
   }
   async function createEmployeeTab(id: string, label: string): Promise<Readonly<{ tabId: string; paneId: string }>> {
     const saved = runtime(id);
@@ -261,7 +274,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const observations = await herdr.observe();
     const root = observations.find((o) => o.paneId === config.managerPaneId && o.nativeSession === (claude === null ? config.managerFile : config.managerSession));
     if (!root) throw new StoreAuthorityError(claude === null ? "Manager pane does not report the actual native manager transcript" : "Manager pane does not report the actual native Claude manager session");
-    if (claude !== null) claudeFiles = writeClaudeFiles({ home: claude.home, skillsRoot: config.skillsRoot, bun: process.execPath });
+    if (claude !== null) claudeFiles = writeClaudeFiles({ startupRoot: config.startupRoot, skillsRoot: config.skillsRoot, bun: process.execPath });
     store.compactRuntimeObservations();
     const currentManager = prepare("manager", config.managerCredential);
     if (currentManager.state === "prepared") store.updateRuntime({ ...currentManager, paneId: root.paneId, tabId: root.tabId, terminalId: root.terminalId, nativeSession: root.nativeSession, state: "starting" });

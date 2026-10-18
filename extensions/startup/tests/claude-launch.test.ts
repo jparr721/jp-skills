@@ -53,15 +53,15 @@ test("employee and manager argv are exact and fit the canonical line limit", () 
 
 test("shared Claude files are private, created once and compared byte for byte", () => {
   const home = temporary();
-  const written = writeClaudeFiles({ home, skillsRoot, bun });
+  const written = writeClaudeFiles({ startupRoot: home, skillsRoot, bun });
   const directory = join(home, "startup", "claude");
   expect(written).toEqual({ settingsFile: join(directory, "settings.json"), mcpFile: join(directory, "mcp.json") });
   expect(statSync(directory).mode & 0o777).toBe(0o700);
   for (const path of [written.settingsFile, written.mcpFile]) expect(statSync(path).mode & 0o777).toBe(0o600);
   expect(readFileSync(written.settingsFile, "utf8")).toBe(JSON.stringify(claudeSettings({ bun, skillsRoot })));
   expect(readFileSync(written.mcpFile, "utf8")).toBe(JSON.stringify(claudeMcpConfig({ bun, skillsRoot })));
-  expect(writeClaudeFiles({ home, skillsRoot, bun })).toEqual(written);
-  expect(() => writeClaudeFiles({ home, skillsRoot: "/other/root", bun })).toThrow(StartupBootError);
+  expect(writeClaudeFiles({ startupRoot: home, skillsRoot, bun })).toEqual(written);
+  expect(() => writeClaudeFiles({ startupRoot: home, skillsRoot: "/other/root", bun })).toThrow(StartupBootError);
   expect(readFileSync(written.mcpFile, "utf8")).toBe(JSON.stringify(claudeMcpConfig({ bun, skillsRoot })));
 });
 
@@ -70,16 +70,16 @@ test("shared Claude files refuse symlinked and group-readable owners", () => {
   mkdirSync(join(linked, "startup", "claude"), { recursive: true });
   writeFileSync(join(linked, "target.json"), JSON.stringify(claudeMcpConfig({ bun, skillsRoot })));
   symlinkSync(join(linked, "target.json"), join(linked, "startup", "claude", "mcp.json"));
-  expect(() => writeClaudeFiles({ home: linked, skillsRoot, bun })).toThrow(StartupBootError);
+  expect(() => writeClaudeFiles({ startupRoot: linked, skillsRoot, bun })).toThrow(StartupBootError);
   const open = temporary();
-  writeClaudeFiles({ home: open, skillsRoot, bun });
+  writeClaudeFiles({ startupRoot: open, skillsRoot, bun });
   chmodSync(join(open, "startup", "claude", "settings.json"), 0o644);
-  expect(() => writeClaudeFiles({ home: open, skillsRoot, bun })).toThrow(StartupBootError);
+  expect(() => writeClaudeFiles({ startupRoot: open, skillsRoot, bun })).toThrow(StartupBootError);
   const redirected = temporary();
   mkdirSync(join(redirected, "startup"));
   mkdirSync(join(redirected, "elsewhere"));
   symlinkSync(join(redirected, "elsewhere"), join(redirected, "startup", "claude"));
-  expect(() => writeClaudeFiles({ home: redirected, skillsRoot, bun })).toThrow(StartupBootError);
+  expect(() => writeClaudeFiles({ startupRoot: redirected, skillsRoot, bun })).toThrow(StartupBootError);
   expect(lstatSync(join(redirected, "startup", "claude")).isSymbolicLink()).toBe(true);
 });
 
@@ -88,8 +88,10 @@ function integrationFixture(header: string, registered: boolean): Readonly<{ env
   mkdirSync(join(directory, "hooks"));
   const hook = join(directory, "hooks", "herdr-agent-state.sh");
   writeFileSync(hook, `#!/bin/sh\n${header}\nset -eu\n`);
+  chmodSync(hook, 0o600);
   const command = registered ? `bash '${hook}' session` : "bash '/elsewhere/other.sh' session";
   writeFileSync(join(directory, "settings.json"), JSON.stringify({ hooks: { SessionStart: [{ matcher: "^(startup|resume|clear|compact|fork)$", hooks: [{ type: "command", command, timeout: 10 }] }] } }));
+  chmodSync(join(directory, "settings.json"), 0o600);
   return { environment: { CLAUDE_CONFIG_DIR: directory }, hook };
 }
 test("Claude Herdr integration requires its managed headers and SessionStart registration", () => {
@@ -113,10 +115,12 @@ test.each([
   expect(() => claudeIntegrationPath(f.environment)).toThrow(StartupBootError);
 });
 
-function trustFixture(projects: Readonly<Record<string, Readonly<{ hasTrustDialogAccepted: boolean }>>>): string {
-  const path = join(temporary(), ".claude.json");
+function trustFixture(projects: Readonly<Record<string, Readonly<{ hasTrustDialogAccepted: boolean }>>>): Readonly<{ startupRoot: string; claudeJson: string }> {
+  const startupRoot = temporary();
+  const path = join(startupRoot, ".claude.json");
   writeFileSync(path, JSON.stringify({ numStartups: 3, projects }));
-  return path;
+  chmodSync(path, 0o600);
+  return { startupRoot, claudeJson: path };
 }
 test.each([
   ["exact root", "/work/repo", true],
@@ -126,14 +130,15 @@ test.each([
   ["unrelated sibling", "/work/other", true],
   ["descendant only", "/work/repo/sub", true],
 ])("Claude trust preflight for %s", (_label, project, accepted) => {
-  const claudeJson = trustFixture({ [project]: { hasTrustDialogAccepted: accepted } });
+  const trust = trustFixture({ [project]: { hasTrustDialogAccepted: accepted } });
   const trusted = accepted && "/work/repo".startsWith(project) && project !== "/work/repo/sub";
-  if (trusted) expect(requireClaudeTrust({ boundRoot: "/work/repo", claudeJson })).toBeUndefined();
-  else expect(() => requireClaudeTrust({ boundRoot: "/work/repo", claudeJson })).toThrow(StartupBootError);
+  if (trusted) expect(requireClaudeTrust({ boundRoot: "/work/repo", ...trust })).toBeUndefined();
+  else expect(() => requireClaudeTrust({ boundRoot: "/work/repo", ...trust })).toThrow(StartupBootError);
 });
 test("Claude trust preflight rejects a missing or malformed Claude state file", () => {
   const directory = temporary();
-  expect(() => requireClaudeTrust({ boundRoot: "/work/repo", claudeJson: join(directory, "missing.json") })).toThrow(StartupBootError);
+  expect(() => requireClaudeTrust({ boundRoot: "/work/repo", startupRoot: directory, claudeJson: join(directory, "missing.json") })).toThrow(StartupBootError);
   writeFileSync(join(directory, "bad.json"), "{");
-  expect(() => requireClaudeTrust({ boundRoot: "/work/repo", claudeJson: join(directory, "bad.json") })).toThrow(StartupBootError);
+  chmodSync(join(directory, "bad.json"), 0o600);
+  expect(() => requireClaudeTrust({ boundRoot: "/work/repo", startupRoot: directory, claudeJson: join(directory, "bad.json") })).toThrow(StartupBootError);
 });

@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
-  mkdirSync,
+  lstatSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -11,9 +11,10 @@ import {
   closeSync,
   fsyncSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { runtimeAbandonmentSchema, runtimeBindingSchema, type RuntimeAbandonment, type RuntimeBinding } from "./runtime-contracts";
+import { assertStartupPath, ensureStartupRoot } from "./boot";
 import {
   authoritySchema,
   bindingSchema,
@@ -281,38 +282,40 @@ export function openStore(args: {
 }) {
   const scope: Scope = scopeSchema.parse(args.scope);
   const owner: Owner = ownerSchema.parse(args.owner);
-  const expected: string = join(
-    resolve(scope.home),
-    "startup",
-    scope.name,
-    "staff.sqlite",
-  );
+  const startupRoot: string = ensureStartupRoot(scope.startupRoot);
+  const stateDirectory: string = startupRoot;
+  const expected: string = join(startupRoot, "staff.sqlite");
+  const skillsHome: string = resolve(scope.skillsHome);
+  const boundRootPath: string = resolve(scope.boundRoot);
   if (
-    !isAbsolute(scope.home) ||
+    !isAbsolute(scope.skillsHome) ||
+    skillsHome !== scope.skillsHome ||
     !isAbsolute(scope.boundRoot) ||
+    boundRootPath !== scope.boundRoot ||
     resolve(args.path) !== expected
   )
     throw new StoreAuthorityError(
-      "Store path must be <absolute home>/startup/<name>/staff.sqlite",
+      "Store path must be <startupRoot>/staff.sqlite with canonical scope roots",
     );
-  mkdirSync(dirname(expected), { recursive: true, mode: 0o700 });
-  const stateDirectory: string = realpathSync(dirname(expected));
-  const boundRoot: string = realpathSync(scope.boundRoot);
-  const withinRoot: string = relative(boundRoot, stateDirectory);
-  if (
-    withinRoot === "" ||
-    (!withinRoot.startsWith("..") && !isAbsolute(withinRoot))
-  )
+  if (realpathSync(scope.skillsHome) !== scope.skillsHome || realpathSync(scope.boundRoot) !== scope.boundRoot)
+    throw new StoreAuthorityError("Startup scope roots must be canonical directories");
+  const contains = (parent: string, child: string): boolean => {
+    const path: string = relative(parent, child);
+    return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+  };
+  const overlaps = (first: string, second: string): boolean => contains(first, second) || contains(second, first);
+  if (overlaps(startupRoot, skillsHome) || overlaps(startupRoot, boundRootPath))
     throw new StoreAuthorityError(
-      "Startup state must be outside the bound repository",
+      "Startup state, JP_SKILLS_HOME and bound repository must be separate trees",
     );
-  if (
-    existsSync(expected) &&
-    realpathSync(expected) !== join(stateDirectory, "staff.sqlite")
-  )
-    throw new StoreAuthorityError(
-      "Store file may not redirect through a symlink",
-    );
+  for (const path of [expected, `${expected}-wal`, `${expected}-shm`, `${expected}-journal`]) {
+    assertStartupPath(startupRoot, path, "file");
+    if (existsSync(path)) {
+      const stat = lstatSync(path);
+      if (!stat.isFile() || stat.isSymbolicLink())
+        throw new StoreAuthorityError(`SQLite file may not be foreign or symlinked: ${path}`);
+    }
+  }
   const db: Database = new Database(expected, { create: true, strict: true });
   db.exec(
     "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS lease(singleton INTEGER PRIMARY KEY CHECK(singleton=1), token TEXT NOT NULL, epoch INTEGER NOT NULL, generation INTEGER NOT NULL, expires INTEGER NOT NULL);",
@@ -1108,7 +1111,7 @@ export function openStore(args: {
         itemsTruncated: entry.items.length > query.limit,
       }));
       return {
-        binding: { name: scope.name, boundRoot: scope.boundRoot, home: scope.home, host: scope.host },
+        binding: { name: scope.name, boundRoot: scope.boundRoot, home: scope.skillsHome, host: scope.host },
         storeRevision, ownerEpoch: epoch, leaseExpires: lease.expires, observedAt, duties,
         pendingIntentCount: pending.length,
         queue,

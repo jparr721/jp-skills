@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { assertStartupPath, ensureStartupRoot } from "./boot";
 import {
   encode,
   type Employee,
@@ -93,16 +94,25 @@ export function profileText(profile: Profile): string {
 export function writeProfile(
   input: Readonly<{ root: string; profile: Profile }>,
 ): string {
-  const directory: string = join(input.root, ".omp", "agents");
-  for (const candidate of [join(input.root, ".omp"), directory])
-    if (existsSync(candidate) && lstatSync(candidate).isSymbolicLink())
-      throw new ProfileSourceError(`Generated profile directory ownership conflict: ${candidate}`);
+  const root: string = ensureStartupRoot(input.root);
+  const directory: string = join(root, ".omp", "agents");
+  for (const candidate of [join(root, ".omp"), directory]) {
+    assertStartupPath(root, candidate, "directory");
+    if (existsSync(candidate)) {
+      const stat = lstatSync(candidate);
+      if (stat.isSymbolicLink() || !stat.isDirectory() || (stat.mode & 0o077) !== 0)
+        throw new ProfileSourceError(`Generated profile directory ownership conflict: ${candidate}`);
+    }
+  }
   mkdirSync(directory, { recursive: true, mode: 0o700 });
+  assertStartupPath(root, directory, "directory");
   const path: string = join(directory, `${input.profile.name}.md`);
+  assertStartupPath(root, path, "file");
   const spawns: string = input.profile.roleName === "pa" ? "" : "spawns: [task]\n";
   const content = `---\nname: ${input.profile.name}\ndescription: Canonical Startup employee context\n${spawns}blocking: false\nread-summarize: false\n---\n${profileText(input.profile)}\n`;
   if (existsSync(path)) {
-    if (lstatSync(path).isSymbolicLink() || !lstatSync(path).isFile() || readFileSync(path, "utf8") !== content)
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isFile() || (stat.mode & 0o077) !== 0 || readFileSync(path, "utf8") !== content)
       throw new ProfileSourceError(`Generated profile ownership conflict: ${path}`);
   } else writeFileSync(path, content, { mode: 0o600, flag: "wx" });
   return path;

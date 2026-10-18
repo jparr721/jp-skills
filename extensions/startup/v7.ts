@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
+import { hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { cfgTaskMaxConcurrency } from "@oh-my-pi/pi-coding-agent/task/settings";
 import type { HostAPI } from "./index";
-import { bootSelection, parseBootCommand, StartupBootError, writeBootGuidance, writeClaudeGuidance, type BootCommand, type Selection } from "./src/boot";
+import { bootSelection, parseBootCommand, persistBinding, StartupBootError, type BootCommand, type Selection } from "./src/boot";
 import { encode } from "./src/contracts";
 import { attach, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
 import type { NativeContext } from "./src/omp-adapter";
@@ -14,7 +15,9 @@ import { launchRuntimeHost, readPrivateJson, parseRuntimeHostConfig, type Runtim
 
 export { installLaunchedEmployee } from "./src/employee-entry";
 export type EntryConfig = Readonly<{
-  home: string;
+  skillsHome: string;
+  startupRoot: string | null;
+  configHome: string;
   skillsRoot: string;
   environment: Environment;
   launch: (config: RuntimeHostConfig) => Promise<RuntimeHostConfig>;
@@ -55,7 +58,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   async function initialize(ctx: NativeContext, command: BootCommand | null): Promise<void> {
     const nativeFile: string = (await input.root(host, ctx)).file;
     const location = await paneEnvironment(input.environment);
-    const next: Selection | null = bootSelection({ cwd: ctx.cwd, home: input.home, skillsRoot: input.skillsRoot, command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
+    const next: Selection | null = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, configHome: input.configHome, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
     if (next === null) return;
     if (admitted !== null) {
       if (!sameRoot(admitted, ctx) || next.name !== selection?.name || next.boundRoot !== selection.boundRoot)
@@ -67,9 +70,9 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       failureTurnPending = false;
       return;
     }
-    const savedPath: string = join(next.home, "startup", next.name, "runtime-config.json");
+    const savedPath: string = join(next.startupRoot, "runtime-config.json");
     const saved: RuntimeHostConfig | null = existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null;
-    if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.name !== next.name || saved.home !== next.home || saved.stateDirectory !== join(next.home, "startup", next.name) ||
+    if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.name !== next.name || saved.skillsHome !== next.skillsHome || saved.startupRoot !== next.startupRoot || saved.stateDirectory !== next.startupRoot ||
       saved.boundRoot !== next.boundRoot || saved.skillsRoot !== next.skillsRoot || saved.managerSession !== ctx.sessionManager.getSessionId() ||
       (input.harness === "omp" && realpathSync(saved.managerFile) !== realpathSync(nativeFile)) || saved.managerPaneId !== location.paneId || saved.profile !== location.profile ||
       saved.workspaceId !== location.workspaceId || saved.herdrSession !== location.session))
@@ -78,20 +81,19 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     if (executionLimit < 3) throw new StartupBootError("Startup V7 requires at least three root slots for manager, PA and employee work");
     const profile = loadProfile({ skillsRoot: next.skillsRoot, role: "manager", employeeId: "manager", generation: 1 });
     verifyProfile(profile);
-    if (saved === null) writeBootGuidance(next);
-    if (saved === null && input.harness === "claude") writeClaudeGuidance(next);
-    const stateDirectory: string = join(next.home, "startup", next.name);
+    persistBinding(next);
+    const stateDirectory: string = next.startupRoot;
     const fresh: RuntimeHostConfig = {
       name: next.name, stateDirectory, boundRoot: next.boundRoot, skillsRoot: next.skillsRoot,
       socketPath: join(stateDirectory, "runtime.sock"), profile: location.profile,
       managerSession: ctx.sessionManager.getSessionId(), managerFile: nativeFile, managerPaneId: location.paneId,
       managerCredential: randomUUID(), policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit },
-      home: next.home, herdrSession: location.session, workspaceId: location.workspaceId,
+      skillsHome: next.skillsHome, startupRoot: next.startupRoot, herdrSession: location.session, workspaceId: location.workspaceId,
       herdrBinary: input.environment.HERDR_BIN_PATH ?? "herdr", herdrIntegration: input.integration(input.environment), ownerGeneration: 1,
     };
     const config: RuntimeHostConfig = await input.launch(saved ?? (input.harness === "claude" ? { ...fresh, harness: "claude" } : fresh));
     runtimeConfig = config;
-    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, skillsRoot: next.skillsRoot }, input.environment, input.root);
+    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, harness: input.harness, skillsHome: next.skillsHome, startupRoot: next.startupRoot, skillsRoot: next.skillsRoot }, input.environment, input.root);
     if (stopped) { connected.close(); return; }
     admitted = connected;
     selection = next;
@@ -125,8 +127,8 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   host.on("session_start", async (_event, ctx) => {
     if (ctx.agent.kind !== "main" || stopped) return;
     try {
-      const next = bootSelection({ cwd: ctx.cwd, home: input.home, skillsRoot: input.skillsRoot, command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
-      if (next === null || !existsSync(join(next.home, "startup", next.name, "runtime-config.json"))) return;
+      const next = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, configHome: input.configHome, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
+      if (next === null || !existsSync(join(next.startupRoot, "runtime-config.json"))) return;
       await retry(ctx);
     } catch (error: unknown) { attempted = true; report(error, ctx); ctx.abort?.(); }
   });
@@ -161,7 +163,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     handler: async (args, ctx) => {
       try {
         const command: BootCommand = parseBootCommand(args);
-        await boot(ctx, command);
+        if (commandReceipt?.args !== args) await boot(ctx, command);
         if (admitted === null) throw new StartupBootError("No Startup selected");
         if (command.work !== null && (commandReceipt?.args !== args || !commandReceipt.work))
           throw new StartupBootError("Startup work requires its original interactive/RPC input receipt");
@@ -182,7 +184,9 @@ export default function startupV7(host: HostAPI): void {
   const manifest: string | undefined = process.env.STARTUP_V7_MANIFEST;
   if (manifest !== undefined) { installLaunchedEmployee(host, manifest); return; }
   installStartupV7(host, {
-    home: resolve(process.env.JP_SKILLS_HOME ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "jp-skills")),
+    skillsHome: resolve(process.env.JP_SKILLS_HOME ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "jp-skills")),
+    startupRoot: process.env.STARTUP_ROOT ?? null,
+    configHome: resolve(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config")),
     skillsRoot: resolve(process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")),
     environment: process.env, launch: launchRuntimeHost,
     harness: "omp", root: nativeRoot, integration: integrationPath,

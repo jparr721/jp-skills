@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { z } from "zod";
 import type { HostAPI } from "../index";
-import { ompProfileSchema } from "../install";
 import { StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, roleSchema, sourceSchema, type Json } from "./contracts";
 import { connectEmployee, EmployeeCommandError, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
@@ -15,8 +14,8 @@ import { readPrivateJson } from "./v7-launch";
 
 const manifestSchema = z.strictObject({
   socketPath: z.string().startsWith("/"), credential: z.string().min(1), source: sourceSchema,
-  employeeId: idSchema, generation: z.number().int().nonnegative().safe(),
-  profile: ompProfileSchema, skillsRoot: z.string().startsWith("/"),
+  employeeId: idSchema, generation: z.number().int().nonnegative().safe(), skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"),
+  profile: z.literal("default"), harness: z.enum(["omp", "claude"]), skillsRoot: z.string().startsWith("/"),
 });
 export type LaunchManifest = z.infer<typeof manifestSchema>;
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -49,16 +48,16 @@ export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<Nat
   });
   return { nativeSession: file, file, lastAssistant: lastAssistant === undefined ? undefined : assistant.parse(lastAssistant).message };
 }
-export async function paneEnvironment(environment: Environment): Promise<Readonly<{ paneId: string; workspaceId: string; session: string; profile: string }>> {
+export async function paneEnvironment(environment: Environment): Promise<Readonly<{ paneId: string; workspaceId: string; session: string; profile: "default" }>> {
   const session = environment.STARTUP_HERDR_SESSION?.trim() || environment.HERDR_SESSION?.trim() || null;
   const paneId = environment.HERDR_PANE_ID?.trim();
   const workspaceId = environment.HERDR_WORKSPACE_ID?.trim();
   const location = paneId && workspaceId && session ? { paneId, workspaceId, session } :
     await herdrContext({ binary: environment.HERDR_BIN_PATH?.trim() || "herdr", session });
-  const profile = ompProfileSchema.safeParse(environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim() || "default");
-  if (!profile.success) throw new StartupBootError("Invalid OMP_PROFILE/PI_PROFILE; use the active OMP profile name and retry Startup");
+  const requestedProfile: string = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim() || "default";
+  if (requestedProfile !== "default") throw new StartupBootError("Startup requires the stock OMP default profile; named profiles are unsupported");
   return {
-    ...location, profile: profile.data,
+    ...location, profile: "default",
   };
 }
 function verifyManifest(manifest: LaunchManifest): Profile {
@@ -75,6 +74,12 @@ export function sameRoot(admission: Admission, ctx: NativeContext): boolean {
 }
 export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment, nativeRootOf: NativeRootFn): Promise<Admission> {
   const profile: Profile = verifyManifest(manifest);
+  if (environment.STARTUP_ROOT !== manifest.startupRoot || environment.JP_SKILLS_HOME !== manifest.skillsHome ||
+      (manifest.harness === "omp" && environment.PI_CODING_AGENT_DIR !== manifest.startupRoot) ||
+      (manifest.harness === "claude" && environment.CLAUDE_CONFIG_DIR !== manifest.startupRoot))
+    throw new StartupBootError("Employee process roots do not match the Startup launch manifest");
+  if (manifest.harness === "omp" && (environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim() || "default") !== "default")
+    throw new StartupBootError("Startup requires the stock OMP default profile; named profiles are unsupported");
   const root: NativeRoot = await nativeRootOf(host, ctx);
   const nativeSession: string = root.nativeSession;
   const actualProfile = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim();

@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -37,13 +37,19 @@ function coordinatorFixture() {
   const root: string = realpathSync(mkdtempSync(join(tmpdir(), "claude-host-")));
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const skillsRoot: string = join(root, "skills-repo");
+  const skillsHome: string = join(root, "jp-skills");
+  const startupRoot: string = join(root, "startup-state");
+  const configHome: string = join(root, "xdg");
+  mkdirSync(skillsHome, { mode: 0o700 });
+  mkdirSync(startupRoot, { mode: 0o700 });
+  mkdirSync(configHome, { mode: 0o700 });
   for (const role of ["manager", "dev", "pa"]) {
     mkdirSync(join(skillsRoot, "skills", `startup-role-${role}`), { recursive: true });
     writeFileSync(join(skillsRoot, "skills", `startup-role-${role}`, "SKILL.md"), `Complete canonical ${role} persona`);
   }
   mkdirSync(join(skillsRoot, "skills", "startup-loop"));
   writeFileSync(join(skillsRoot, "skills", "startup-loop", "SKILL.md"), "Complete canonical shared loop");
-  const socketPath: string = join(root, "coordinator.sock");
+  const socketPath: string = join(startupRoot, "coordinator.sock");
   const commands: Json[] = [];
   const admissions: Json[] = [];
   const responses = new Map<string, Response>();
@@ -61,7 +67,7 @@ function coordinatorFixture() {
   } });
   cleanup.push(() => { server.stop(true); });
   return {
-    root, skillsRoot, socketPath, commands, admissions,
+    root, skillsRoot, skillsHome, startupRoot, configHome, socketPath, commands, admissions,
     kinds: (): readonly string[] => commands.map((command) => z.object({ kind: z.string() }).parse(command).kind),
     setPoll(value: Partial<typeof poll>): void { poll = { ...poll, ...value }; },
     respond(kind: string, response: Response): void { responses.set(kind, response); },
@@ -72,10 +78,10 @@ async function employeeFixture(options: Readonly<{ instructions: string | null; 
   const profile = loadProfile({ skillsRoot: f.skillsRoot, role: "dev", employeeId: "dev-1", generation: 1 });
   const text: string = profileText(profile);
   f.setPoll({ projection: `${text}\nLIVE STATE A` });
-  mkdirSync(join(f.root, "launches"), { mode: 0o700 });
-  const manifest: string = join(f.root, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", skillsRoot: f.skillsRoot }), { mode: 0o600 });
-  useEnvironment({ HERDR_PANE_ID: "w1:p2" });
+  mkdirSync(join(f.startupRoot, "launches"), { mode: 0o700 });
+  const manifest: string = join(f.startupRoot, "launches", `${sessionId}.json`);
+  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
+  useEnvironment({ HERDR_PANE_ID: "w1:p2", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot });
   const transcript: string = join(f.root, `${sessionId}.jsonl`);
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd: f.root, instructions: options.instructions === null ? text : options.instructions, transcript: () => transcript, formatGuardMs: options.formatGuardMs });
   cleanup.push(() => shim.shutdown());
@@ -225,10 +231,10 @@ test("a cue raised before any waiter is armed fires when the first waiter arrive
   f.setPoll({ pendingMessageIds: ["m1"] });
   const profile = loadProfile({ skillsRoot: f.skillsRoot, role: "dev", employeeId: "dev-1", generation: 1 });
   f.setPoll({ projection: `${profileText(profile)}\nLIVE STATE A` });
-  mkdirSync(join(f.root, "launches"), { mode: 0o700 });
-  const manifest: string = join(f.root, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", skillsRoot: f.skillsRoot }), { mode: 0o600 });
-  useEnvironment({ HERDR_PANE_ID: "w1:p2" });
+  mkdirSync(join(f.startupRoot, "launches"), { mode: 0o700 });
+  const manifest: string = join(f.startupRoot, "launches", `${sessionId}.json`);
+  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
+  useEnvironment({ HERDR_PANE_ID: "w1:p2", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot });
   const transcript: string = join(f.root, `${sessionId}.jsonl`);
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd: f.root, instructions: profileText(profile), transcript: () => transcript, formatGuardMs: 10000 });
   cleanup.push(() => shim.shutdown());
@@ -403,14 +409,13 @@ test("manager /startup new boots inside UserPromptSubmit through the unchanged V
   const f = coordinatorFixture();
   const cwd: string = join(f.root, "repo");
   mkdirSync(cwd);
-  const home: string = join(f.root, "home");
   const transcript: string = join(f.root, "manager.jsonl");
-  const environment: Readonly<Record<string, string>> = { HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", STARTUP_EXECUTION_LIMIT: "4" };
+  const environment: Readonly<Record<string, string>> = { HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", STARTUP_EXECUTION_LIMIT: "4", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot };
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd, instructions: null, transcript: () => transcript, formatGuardMs: 10000 });
   cleanup.push(() => shim.shutdown());
   const launched: RuntimeHostConfig[] = [];
   installStartupV7(shim.host, {
-    home, skillsRoot: f.skillsRoot, environment, harness: "claude", root: claudeRoot({ sessionId, transcript: () => transcript }),
+    skillsHome: f.skillsHome, startupRoot: null, configHome: f.configHome, skillsRoot: f.skillsRoot, environment, harness: "claude", root: claudeRoot({ sessionId, transcript: () => transcript }),
     integration: () => "/fixture/claude/hooks/herdr-agent-state.sh",
     nativeLimit: () => { throw new Error("Claude has no native limit"); },
     launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; },
@@ -425,7 +430,8 @@ test("manager /startup new boots inside UserPromptSubmit through the unchanged V
   expect(f.kinds()).toEqual(["receive", "route", "staff", "begin_turn", "begin_turn"]);
   expect(f.commands[0]).toMatchObject({ source: "interactive", raw: { text: "/startup new claudeco", images: [] } });
   expect(reply.systemMessage).toBe(JSON.stringify({ accepted: true }));
-  expect(readFileSync(join(realpathSync(cwd), "CLAUDE.md"), "utf8")).toContain("@AGENTS.md");
+  expect(existsSync(join(realpathSync(cwd), "CLAUDE.md"))).toBe(false);
+  expect(existsSync(join(f.startupRoot, "binding.json"))).toBe(true);
   await shim.ledger({ kind: "human", id: "row-1", promptId: "p1", text: "/startup new claudeco", images: [] });
   expect(f.kinds().filter((kind) => kind === "receive")).toHaveLength(1);
   await shim.ledger({ kind: "end", marker: "turn_duration" });

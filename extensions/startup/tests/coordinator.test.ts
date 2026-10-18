@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
@@ -25,16 +25,18 @@ function fixture(executionLimit: number) {
   return harnessFixture(executionLimit, "omp");
 }
 function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
-  const root = mkdtempSync(join(tmpdir(), "sv7-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "sv7-")));
   roots.push(root);
   const home = join(root, "home");
+  mkdirSync(home);
   const boundRoot = join(root, "repo");
   mkdirSync(boundRoot);
-  const stateDirectory = join(home, "startup", "test");
+  const startupRoot = join(root, "config", "ronin", "startups", "test");
+  const stateDirectory = startupRoot;
   const managerFile = join(root, "manager.jsonl");
   writeFileSync(managerFile, JSON.stringify({ type: "session", id: "manager-session" }) + "\n");
   let now = 1000;
-  const store = openStore({ path: join(stateDirectory, "staff.sqlite"), scope: { home, boundRoot, host: "host", name: "test", managerSession: "manager-session" }, owner: { id: "coordinator", managerGeneration: 1, leaseMs: 60000 }, now: () => now });
+  const store = openStore({ path: join(stateDirectory, "staff.sqlite"), scope: { skillsHome: home, startupRoot, boundRoot, host: "host", name: "test", managerSession: "manager-session" }, owner: { id: "coordinator", managerGeneration: 1, leaseMs: 60000 }, now: () => now });
   stores.push(store);
   const managerNative = harness === "claude" ? "manager-session" : managerFile;
   const observations: HerdrObservation[] = [{ name: "manager", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1", terminalId: "term1", nativeSession: managerNative, state: "idle", stateSequence: 1, interactiveReady: true }];
@@ -67,7 +69,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     },
     observe: async () => { if (observationBarrier) await observationBarrier; if (observationFailure) throw observationFailure; return observations; },
   };
-  const config = { name: "test", stateDirectory, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(root, "c.sock"), profile: "test", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness, home } : {}) };
+  const config = { name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
   const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => now });
   async function admit(employeeId: string): Promise<string> {
     const runtime = store.runtimeBindings().findLast((r) => r.employeeId === employeeId);
@@ -93,7 +95,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     if (!team) throw new Error("Missing team");
     return team;
   }
-  return { coordinator, store, config, observations, launches, layouts, root, ready, admit, delegate, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
+  return { coordinator, store, config, observations, launches, layouts, root, home, ready, admit, delegate, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
 }
 
 test("admission preserves observation progress committed while its Herdr read is pending", async () => {
@@ -108,6 +110,25 @@ test("admission preserves observation progress committed while its Herdr read is
   barrier.resolve();
   await expect(admitting).resolves.toBeString();
   expect(f.store.runtimeBindings().find((r) => r.employeeId === pa)).toMatchObject({ stateSequence: 10, observedState: "done" });
+});
+
+test("OMP launches use only the Startup root and the stock default profile", async () => {
+  const f = fixture(8);
+  await f.ready();
+  const saved = f.store.runtimeBindings().find((entry) => entry.employeeId !== "manager");
+  if (!saved) throw new Error("Missing PA launch");
+  expect(f.layouts[0]).toEqual({
+    JP_SKILLS_HOME: f.config.skillsHome,
+    STARTUP_ROOT: f.config.startupRoot,
+    STARTUP_V7_MANIFEST: join(f.config.startupRoot, "launches", `${saved.launchId}.json`),
+    OMPCODE: "",
+    OMP_PROFILE: "default",
+    PI_PROFILE: "default",
+    PI_CODING_AGENT_DIR: f.config.startupRoot,
+    STARTUP_HERDR_OMP_EXTENSION: f.config.herdrIntegration,
+  });
+  expect(existsSync(join(f.config.startupRoot, "staff.sqlite"))).toBe(true);
+  expect(existsSync(join(f.config.skillsHome, "startup", f.config.name))).toBe(false);
 });
 
 test("a failed unadmitted boot immediately persists a redacted manager alert and can later admit", async () => {
@@ -887,7 +908,7 @@ test("host status is read-only and distinguishes startup states", async () => {
   const database = join(f.config.stateDirectory, "staff.sqlite");
   const missing = hostStatusSchema.parse(await (await fetch("http://localhost/status", { unix: f.config.socketPath })).json());
   expect(missing.state).toBe("missing");
-  expect(missing.binding).toEqual({ name: "test", boundRoot: f.config.boundRoot, home: resolve(f.config.stateDirectory, "../.."), host: "host" });
+  expect(missing.binding).toEqual({ name: "test", boundRoot: f.config.boundRoot, home: f.home, host: "host" });
   expect(missing.reasons).toContain("manager-runtime-absent");
   const { manager, pa, paConnection } = await f.ready();
   await f.coordinator.command(manager, { kind: "receive", id: "native-history", source: "interactive", raw: { text: "keep this", images: [] } });
@@ -1011,10 +1032,10 @@ test("Claude employees launch with an assigned session, prompt suffix and shared
   if (!saved?.paneId) throw new Error("Missing PA launch");
   const launches = join(f.config.stateDirectory, "launches");
   const promptFile = join(launches, `${saved.launchId}.prompt.md`);
-  const shared = join(f.root, "home", "startup", "claude");
+  const shared = join(f.config.startupRoot, "startup", "claude");
   const name = `s-${saved.launchId.replaceAll("-", "").slice(0, 28)}`;
   expect(f.launches).toEqual([{ paneId: saved.paneId, name, args: ["--session-id", saved.launchId, "--append-system-prompt-file", promptFile, "--settings", join(shared, "settings.json"), "--mcp-config", join(shared, "mcp.json"), "-n", name] }]);
-  expect(f.layouts).toEqual([{ STARTUP_V7_MANIFEST: join(launches, `${saved.launchId}.json`) }]);
+  expect(f.layouts).toEqual([{ JP_SKILLS_HOME: f.config.skillsHome, STARTUP_ROOT: f.config.startupRoot, STARTUP_V7_MANIFEST: join(launches, `${saved.launchId}.json`), CLAUDE_CONFIG_DIR: f.config.startupRoot }]);
   expect(readFileSync(promptFile, "utf8")).toBe(profileText(loadProfile({ skillsRoot: f.config.skillsRoot, role: "pa", employeeId: pa, generation: saved.generation })));
   expect(statSync(promptFile).mode & 0o777).toBe(0o600);
   expect(existsSync(join(launches, `${saved.launchId}.ts`))).toBe(false);
@@ -1032,7 +1053,7 @@ test("Claude crew panes carry only the manifest and admit by assigned session wi
     expect(launched?.nativeSession).toBe(launched?.launchId);
     await f.admit(id);
   }
-  expect(f.layouts.slice(1).every((env) => Object.keys(env).join() === "STARTUP_V7_MANIFEST")).toBe(true);
+  expect(f.layouts.slice(1).every((env) => env.STARTUP_ROOT === f.config.startupRoot && env.CLAUDE_CONFIG_DIR === f.config.startupRoot && env.JP_SKILLS_HOME === f.config.skillsHome)).toBe(true);
   expect(f.layouts).toHaveLength(4);
   expect(f.launches.every((launch) => launch.args[0] === "--session-id" && launch.args[1] !== undefined && f.store.runtimeBindings().some((r) => r.launchId === launch.args[1] && r.state === "ready"))).toBe(true);
 });

@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -22,7 +23,7 @@ import type { Employee, Result } from "../src/contracts";
 import type { ItemAction } from "../src/items";
 const directories: string[] = [];
 function sources(): string {
-  const root: string = mkdtempSync(join(tmpdir(), "startup-adapter-"));
+  const root: string = realpathSync(mkdtempSync(join(tmpdir(), "startup-adapter-")));
   directories.push(root);
   for (const name of ["startup-role-devops", "startup-loop"]) {
     mkdirSync(join(root, "skills", name), { recursive: true });
@@ -88,6 +89,7 @@ function configuredFixture(
   ctx: NativeContext;
   refs: Map<string, NativeRef>;
   root: string;
+  startupRoot: string;
   activate: (params: Record<string, unknown>) => Promise<NativeResult>;
   project: (employee: Employee) => Promise<NativeContext>;
 }> {
@@ -103,6 +105,8 @@ function configuredFixture(
   const cwd: string = join(root, "repo");
   mkdirSync(cwd);
   const home: string = join(root, "home");
+  mkdirSync(home);
+  const startupRoot: string = join(root, "config", "ronin", "startups", "fixture");
   const sessionFile: string = join(root, "root.jsonl");
   writeFileSync(
     sessionFile,
@@ -203,7 +207,8 @@ function configuredFixture(
     config: {
       boundRoot: ctx.cwd,
       name: "fixture",
-      home,
+      skillsHome: home,
+      startupRoot,
       skillsRoot: root,
       employeeLimit: limits.employeeLimit,
       executionLimit: limits.executionLimit,
@@ -263,6 +268,7 @@ function configuredFixture(
     ctx,
     refs,
     root,
+    startupRoot,
     activate,
     project,
     managerNotifications,
@@ -819,7 +825,8 @@ test("failed manager reopens through current-root reconciliation before source a
     config: {
       boundRoot: f.ctx.cwd,
       name: "fixture",
-      home: join(f.root, "home"),
+      skillsHome: join(f.root, "home"),
+      startupRoot: join(f.root, "config", "ronin", "startups", "fixture"),
       skillsRoot: f.root,
       employeeLimit: null,
       executionLimit: null,
@@ -998,7 +1005,7 @@ test("status/control disposition creates no work and synthetic or child input cr
 test("unrelated held resource cannot excuse undelegated intake", (): void => {
   const f = fixture();
   writeFileSync(
-    join(f.root, "home", "startup", "fixture", "resources.json"),
+    join(f.startupRoot, "resources.json"),
     JSON.stringify({ locks: { unrelated: { "held-by": "old-work" } } }),
   );
   f.adapter.store.importResources({ manager: f.adapter.store.managerBinding });
@@ -1258,7 +1265,7 @@ for (const mutation of [
         break;
       case "lease": {
         const db = new Database(
-          join(a.f.root, "home/startup/fixture/staff.sqlite"),
+          join(a.f.startupRoot, "staff.sqlite"),
         );
         db.query(
           "UPDATE lease SET token='other-owner' WHERE singleton=1",
@@ -2358,7 +2365,7 @@ test("item assignment and role-gated canonical completion preserve revision and 
     .parse(
       JSON.parse(
         readFileSync(
-          join(f.root, "home", "startup", "fixture", "queue.json"),
+          join(f.startupRoot, "queue.json"),
           "utf8",
         ),
       ),
@@ -2642,7 +2649,7 @@ test("item intent recovery replays a canonical replacement once with assignment 
   });
   f.adapter.close();
   const db = new Database(
-    join(f.root, "home", "startup", "fixture", "staff.sqlite"),
+    join(f.startupRoot, "staff.sqlite"),
   );
   const intentRow = z
     .object({ payload: z.string() })
@@ -2712,7 +2719,8 @@ test("item intent recovery replays a canonical replacement once with assignment 
     config: {
       boundRoot: f.ctx.cwd,
       name: "fixture",
-      home: join(f.root, "home"),
+      skillsHome: join(f.root, "home"),
+      startupRoot: join(f.root, "config", "ronin", "startups", "fixture"),
       skillsRoot: f.root,
       employeeLimit: null,
       executionLimit: null,
@@ -3045,8 +3053,8 @@ test("later profile preparation failure leaves all undispatched hires retryable"
   const f = fixture();
   const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "prepare", role: "devops", additional: 2 });
   const profile = loadProfile({ skillsRoot: f.root, role: "devops", employeeId: hire.employees[1]!.id, generation: 1 });
-  const directory = join(f.ctx.cwd, ".omp", "agents");
-  mkdirSync(directory, { recursive: true });
+  const directory = join(f.startupRoot, ".omp", "agents");
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
   const conflict = join(directory, `${profile.name}.md`);
   writeFileSync(conflict, "foreign profile");
   const ids = hire.employees.map((employee) => employee.id);
@@ -3154,7 +3162,7 @@ for (const phase of ["before-rename", "after-rename"]) {
       const f = fixture();
       const { team, contexts } = await capturedTeam(f, "live-journal", ["live-one", "live-two"]);
       const architect = contexts.get(team.architect)!;
-      const state = join(f.root, "home/startup/fixture");
+      const state = f.startupRoot;
       const db = new Database(join(state, "staff.sqlite"));
       const token = z.object({ token: z.string() }).parse(db.query("SELECT token FROM lease").get()).token;
       const pendingPath = join(state, `queue.json.${token}.pending`);
@@ -3201,7 +3209,7 @@ test("failed preparation preserves a legitimate earlier in-flight activation", a
   const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "in-flight", role: "devops", additional: 3 });
   await f.adapter.activate(f.ctx, [hire.employees[0]!.id]);
   const profile = loadProfile({ skillsRoot: f.root, role: "devops", employeeId: hire.employees[2]!.id, generation: 1 });
-  const conflict = join(f.ctx.cwd, ".omp/agents", profile.name + ".md");
+  const conflict = join(f.startupRoot, ".omp/agents", profile.name + ".md");
   writeFileSync(conflict, "Owned fixture conflict");
   const ids = hire.employees.map((employee) => employee.id);
   await expect(f.adapter.activate(f.ctx, ids)).rejects.toThrow("ownership conflict");

@@ -1,12 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { bridgeInstructions, claudeEntryConfig } from "../claude-bridge";
 import { managerLaunch } from "../claude-manager";
-import { StartupBootError } from "../src/boot";
+import { bootSelection, parseBootCommand, persistBinding, StartupBootError } from "../src/boot";
 import { claudeSettings } from "../src/claude-launch";
-import { ClaudeBridgeSocketError, exchangeBridge, startupHome, waiterSocketPath } from "../src/claude-waiter";
+import { ClaudeBridgeSocketError, ClaudeWaiterPathTooLongError, exchangeBridge, startupRoot, waiterSocketPath } from "../src/claude-waiter";
 import { jsonSchema, type Json } from "../src/contracts";
 import { loadProfile, profileText } from "../src/profiles";
 
@@ -52,8 +53,15 @@ async function lines(stream: ReadableStream<Uint8Array>, sink: string[]): Promis
 function bridgeFixture(mode: "employee" | "manager") {
   const root: string = shortRoot();
   const skillsRoot: string = skills(root);
-  const home: string = join(root, "h");
-  const socketPath: string = join(root, "c.sock");
+  const home: string = join(root, "jp-skills");
+  mkdirSync(home, { mode: 0o700 });
+  const startupRootPath: string = join(root, "state");
+  mkdirSync(startupRootPath, { mode: 0o700 });
+  const configHome: string = join(root, "xdg");
+  mkdirSync(configHome, { mode: 0o700 });
+  const repo: string = join(root, "repo");
+  mkdirSync(repo, { mode: 0o700 });
+  const socketPath: string = join(startupRootPath, "runtime.sock");
   const commands: Json[] = [];
   const admissions: Json[] = [];
   let pending: readonly string[] = [];
@@ -69,13 +77,18 @@ function bridgeFixture(mode: "employee" | "manager") {
     return Response.json({ accepted: true });
   } });
   cleanup.push(() => { server.stop(true); });
-  mkdirSync(join(root, "l"), { mode: 0o700 });
-  const manifest: string = join(root, "l", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", skillsRoot }), { mode: 0o600 });
-  writeFileSync(join(root, "l", `${sessionId}.prompt.md`), text, { mode: 0o600 });
-  const environment: Record<string, string> = { ...z.record(z.string(), z.string()).parse(JSON.parse(JSON.stringify(process.env))), CLAUDE_CODE_SESSION_ID: sessionId, JP_SKILLS_HOME: home, HERDR_PANE_ID: "w1:p3", STARTUP_SKILLS_ROOT: skillsRoot, ...(mode === "employee" ? { STARTUP_V7_MANIFEST: manifest } : {}) };
+  mkdirSync(join(startupRootPath, "launches"), { mode: 0o700 });
+  const manifest: string = join(startupRootPath, "launches", `${sessionId}.json`);
+  writeFileSync(manifest, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: home, startupRoot: startupRootPath, skillsRoot }), { mode: 0o600 });
+  writeFileSync(join(startupRootPath, "launches", `${sessionId}.prompt.md`), text, { mode: 0o600 });
+  if (mode === "manager") {
+    const selection = bootSelection({ cwd: repo, skillsHome: home, startupRoot: startupRootPath, configHome, skillsRoot, host: hostname(), managerSession: sessionId, command: parseBootCommand("new acme"), explicitName: null, executionLimit: null });
+    if (selection === null) throw new Error("Missing manager Startup selection");
+    persistBinding(selection);
+  }
+  const environment: Record<string, string> = { ...z.record(z.string(), z.string()).parse(JSON.parse(JSON.stringify(process.env))), CLAUDE_CODE_SESSION_ID: sessionId, JP_SKILLS_HOME: home, STARTUP_ROOT: startupRootPath, CLAUDE_CONFIG_DIR: startupRootPath, STARTUP_NAME: "acme", XDG_CONFIG_HOME: configHome, HERDR_PANE_ID: "w1:p3", STARTUP_SKILLS_ROOT: skillsRoot, ...(mode === "employee" ? { STARTUP_V7_MANIFEST: manifest } : {}) };
   if (mode === "manager") delete environment.STARTUP_V7_MANIFEST;
-  const child = Bun.spawn([process.execPath, bridgePath], { cwd: root, env: environment, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  const child = Bun.spawn([process.execPath, bridgePath], { cwd: repo, env: environment, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   cleanup.push(() => { child.kill(); });
   const output: string[] = [];
   const errors: string[] = [];
@@ -96,7 +109,7 @@ function bridgeFixture(mode: "employee" | "manager") {
     cleanup.push(() => { process.kill(); });
     return process;
   }
-  return { root, home, child, commands, admissions, errors, rpc, spawnHook, transcript: join(root, "t.jsonl"), setPending(value: readonly string[]): void { pending = value; } };
+  return { root, home, startupRoot: startupRootPath, child, commands, admissions, errors, rpc, spawnHook, transcript: join(root, "t.jsonl"), setPending(value: readonly string[]): void { pending = value; } };
 }
 const hookText = (result: Json): Json => jsonSchema.parse(JSON.parse(z.object({ content: z.tuple([z.object({ type: z.literal("text"), text: z.string() })]) }).parse(result).content[0].text));
 
@@ -123,7 +136,7 @@ test("the stdio bridge completes the Claude Code 2.1.302 handshake and serves St
   expect(hookText(await f.rpc({ id: 5, method: "tools/call", params: { name: "hook", arguments: { event: "PreToolUse", tool: "mcp__startup__startup_claim", query: "", agentId: "a61c2e8981c9b0f07" } } }))).toEqual({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "Native helper has no Startup employee authority" } });
   f.child.stdin.end();
   expect(await f.child.exited).toBe(0);
-  expect(existsSync(waiterSocketPath({ home: f.home, sessionId }))).toBe(false);
+  expect(existsSync(waiterSocketPath({ startupRoot: f.startupRoot, sessionId }))).toBe(false);
 });
 
 test("waiters supersede older waiters, fire the cue after the transcript ends the turn and StopFailure reaches the bridge", async () => {
@@ -133,7 +146,7 @@ test("waiters supersede older waiters, fire the cue after the transcript ends th
   const first = f.spawnHook(waiterPath, hookInput);
   await until(() => f.errors.filter((line) => line.includes("waiter-armed")).length === 1, 10000);
   expect(f.admissions).toHaveLength(1);
-  expect(statSync(waiterSocketPath({ home: f.home, sessionId })).mode & 0o777).toBe(0o600);
+  expect(statSync(waiterSocketPath({ startupRoot: f.startupRoot, sessionId })).mode & 0o777).toBe(0o600);
   await f.rpc({ id: 1, method: "tools/call", params: { name: "hook", arguments: { event: "UserPromptSubmit", prompt: "go", promptId: "p1", transcript: f.transcript } } });
   const second = f.spawnHook(waiterPath, hookInput);
   expect(await first.exited).toBe(0);
@@ -162,19 +175,20 @@ test("the PreToolUse command hook takes its decision from the bridge and the bri
   const search = f.spawnHook(pretoolPath, { session_id: sessionId, hook_event_name: "PreToolUse", tool_name: "ToolSearch", tool_input: { query: "select:mcp__startup__startup_claim", max_results: 1 } });
   expect(await search.exited).toBe(0);
   expect(JSON.parse(await new Response(search.stdout).text())).toEqual({});
-  const stranger = await exchangeBridge({ path: waiterSocketPath({ home: f.home, sessionId }), request: { sessionId: "7a1e04b8-6a0c-4bd1-9a64-2c3d2b1f0e11", event: "StopFailure", error: "x" }, connectDeadlineMs: 0 });
+  const stranger = await exchangeBridge({ path: waiterSocketPath({ startupRoot: f.startupRoot, sessionId }), request: { sessionId: "7a1e04b8-6a0c-4bd1-9a64-2c3d2b1f0e11", event: "StopFailure", error: "x" }, connectDeadlineMs: 0 });
   expect(stranger).toEqual({ error: `Claude hook session 7a1e04b8-6a0c-4bd1-9a64-2c3d2b1f0e11 does not belong to bridge session ${sessionId}` });
 });
 
 function fakeBridge(reply: string | null) {
   const root: string = shortRoot();
-  const home: string = join(root, "h");
-  const path: string = waiterSocketPath({ home, sessionId });
-  mkdirSync(join(home, "startup", "claude", "w"), { recursive: true, mode: 0o700 });
+  const startupRoot: string = join(root, "state");
+  mkdirSync(startupRoot, { mode: 0o700 });
+  const path: string = waiterSocketPath({ startupRoot, sessionId });
+  mkdirSync(join(startupRoot, "startup", "claude", "w"), { recursive: true, mode: 0o700 });
   const listener = Bun.listen<undefined>({ unix: path, socket: { data(socket): void { if (reply === null) socket.end(); else socket.end(reply + "\n"); } } });
   cleanup.push(() => { listener.stop(true); });
   return (script: string, input: Json) => {
-    const child = Bun.spawn([process.execPath, script], { env: { ...process.env, JP_SKILLS_HOME: home }, stdin: new Blob([JSON.stringify(input)]), stdout: "pipe", stderr: "pipe" });
+    const child = Bun.spawn([process.execPath, script], { env: { ...process.env, JP_SKILLS_HOME: "/skills", STARTUP_ROOT: startupRoot, CLAUDE_CONFIG_DIR: startupRoot }, stdin: new Blob([JSON.stringify(input)]), stdout: "pipe", stderr: "pipe" });
     cleanup.push(() => { child.kill(); });
     return child;
   };
@@ -216,17 +230,25 @@ test("the manager bridge loads the unchanged V7 entry outside OMP and waits for 
   expect(await f.child.exited).toBe(0);
 });
 
-test("the waiter socket path is bounded and lives under the Startup home", () => {
-  expect(startupHome({ JP_SKILLS_HOME: "/tmp/x/../home" })).toBe("/tmp/home");
-  expect(startupHome({ XDG_CONFIG_HOME: "/cfg" })).toBe("/cfg/jp-skills");
-  expect(waiterSocketPath({ home: "/h", sessionId })).toBe(`/h/startup/claude/w/${sessionId}.sock`);
-  expect(() => waiterSocketPath({ home: `/${"x".repeat(60)}`, sessionId })).toThrow(ClaudeBridgeSocketError);
-  expect(() => waiterSocketPath({ home: `/${"x".repeat(60)}`, sessionId })).toThrow("exceeds 103 bytes");
+test("the waiter socket path uses the selected root and returns a typed error over 103 bytes", () => {
+  const root = shortRoot();
+  expect(startupRoot({ STARTUP_ROOT: root, CLAUDE_CONFIG_DIR: root, JP_SKILLS_HOME: "/skills" })).toBe(root);
+  expect(() => startupRoot({ JP_SKILLS_HOME: "/tmp/legacy" })).toThrow("requires the selected STARTUP_ROOT");
+  expect(waiterSocketPath({ startupRoot: root, sessionId })).toBe(join(root, "startup", "claude", "w", `${sessionId}.sock`));
+  const longRoot: string = join(root, "x".repeat(48));
+  mkdirSync(longRoot, { mode: 0o700 });
+  let caught: unknown = null;
+  try { waiterSocketPath({ startupRoot: longRoot, sessionId }); } catch (error: unknown) { caught = error; }
+  expect(caught).toBeInstanceOf(ClaudeWaiterPathTooLongError);
+  expect(caught).toBeInstanceOf(ClaudeBridgeSocketError);
+  expect(caught).toMatchObject({ code: "STARTUP_CLAUDE_SOCKET_PATH_TOO_LONG" });
+  expect(caught instanceof Error ? caught.message : "").toContain("exceeds 103 bytes");
 });
 
 test("the Claude entry config refuses an implicit execution limit and names every tool in its load instruction", () => {
-  const config = claudeEntryConfig({ JP_SKILLS_HOME: "/h", STARTUP_SKILLS_ROOT: "/s" }, sessionId, () => null);
-  expect(config).toMatchObject({ home: "/h", skillsRoot: "/s", harness: "claude" });
+  const root = shortRoot();
+  const config = claudeEntryConfig({ JP_SKILLS_HOME: "/h", XDG_CONFIG_HOME: "/cfg", STARTUP_ROOT: root, CLAUDE_CONFIG_DIR: root, STARTUP_SKILLS_ROOT: "/s" }, sessionId, () => null);
+  expect(config).toMatchObject({ skillsHome: "/h", startupRoot: root, configHome: "/cfg", skillsRoot: "/s", harness: "claude" });
   expect(() => config.nativeLimit({ agent: { id: sessionId, kind: "main" }, cwd: "/", sessionManager: { getSessionId: () => sessionId, getSessionFile: () => undefined }, getSystemPrompt: () => [], setInterval: setInterval, clearTimer: clearInterval })).toThrow("STARTUP_EXECUTION_LIMIT");
   expect(bridgeInstructions(["startup_claim", "startup_retire"])).toContain("ToolSearch query \"select:mcp__startup__startup_claim,mcp__startup__startup_retire\"");
 });
@@ -234,36 +256,49 @@ test("the Claude entry config refuses an implicit execution limit and names ever
 function managerFixture() {
   const root: string = shortRoot();
   const skillsRoot: string = skills(root);
-  const home: string = join(root, "h");
+  const home: string = join(root, "jp-skills");
+  mkdirSync(home, { mode: 0o700 });
+  const configHome: string = join(root, "xdg");
+  mkdirSync(configHome, { mode: 0o700 });
+  const startupRoot: string = join(root, "state");
+  mkdirSync(startupRoot, { mode: 0o700 });
   const repo: string = join(root, "repo");
   mkdirSync(repo);
-  const claudeJson: string = join(root, "claude.json");
+  const claudeJson: string = join(startupRoot, ".claude.json");
   writeFileSync(claudeJson, JSON.stringify({ projects: { [root]: { hasTrustDialogAccepted: true } } }));
-  const environment: Record<string, string> = { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p1", STARTUP_NAME: "acme" };
-  mkdirSync(join(home, "startup", "acme"), { recursive: true, mode: 0o700 });
-  writeFileSync(join(home, "startup", "acme", "binding.json"), JSON.stringify({ name: "acme", bound_root: repo }));
+  chmodSync(claudeJson, 0o600);
+  const hookDirectory = join(startupRoot, "hooks");
+  mkdirSync(hookDirectory, { mode: 0o700 });
+  const hook = join(hookDirectory, "herdr-agent-state.sh");
+  writeFileSync(hook, "#!/bin/sh\n# HERDR_INTEGRATION_ID=claude\n# HERDR_INTEGRATION_VERSION=11\nset -eu\n", { mode: 0o600 });
+  const hookSettings = { hooks: { SessionStart: [{ hooks: [{ type: "command", command: hook }] }] } };
+  writeFileSync(join(startupRoot, "settings.json"), JSON.stringify(hookSettings), { mode: 0o600 });
+  const selection = bootSelection({ cwd: repo, skillsHome: home, startupRoot, configHome, skillsRoot, host: hostname(), managerSession: sessionId, command: parseBootCommand("new acme"), explicitName: null, executionLimit: null });
+  if (selection === null) throw new Error("Missing fixture Startup selection");
+  persistBinding(selection);
+  const environment: Record<string, string> = { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p1", STARTUP_NAME: "acme", STARTUP_ROOT: startupRoot, JP_SKILLS_HOME: home, CLAUDE_CONFIG_DIR: startupRoot, XDG_CONFIG_HOME: configHome };
   const config = {
-    name: "acme", home, stateDirectory: join(home, "startup", "acme"), boundRoot: repo, skillsRoot, socketPath: join(root, "r.sock"), profile: "default",
+    name: "acme", skillsHome: home, startupRoot, stateDirectory: startupRoot, boundRoot: repo, skillsRoot, socketPath: join(startupRoot, "runtime.sock"), profile: "default",
     managerSession: sessionId, managerFile: join(root, "manager.jsonl"), managerPaneId: "w1:p1", managerCredential: "private-credential",
     herdrSession: "fixture", workspaceId: "w1", herdrBinary: "herdr", herdrIntegration: "/fixture/herdr-agent-state.sh", ownerGeneration: 1,
     policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 4 },
   };
-  const save = (value: Json): void => { writeFileSync(join(home, "startup", "acme", "runtime-config.json"), JSON.stringify(value), { mode: 0o600 }); };
-  const input = { environment, cwd: repo, home, skillsRoot, bun: "/opt/bun", claudeJson };
-  return { root, home, repo, skillsRoot, claudeJson, config, save, input };
+  const save = (value: Json): void => { writeFileSync(join(startupRoot, "runtime-config.json"), JSON.stringify(value), { mode: 0o600 }); };
+  const input = { environment, cwd: repo, skillsHome: home, configHome, startupRoot, skillsRoot, bun: "/opt/bun" };
+  return { root, home, startupRoot, repo, skillsRoot, claudeJson, config, save, input };
 }
 
 test("startup-claude starts a new manager session with the shared hooks, bridge and manager prompt", () => {
   const f = managerFixture();
   const args: readonly string[] = managerLaunch(f.input);
-  const shared: string = join(f.home, "startup", "claude");
+  const shared: string = join(f.startupRoot, "startup", "claude");
   expect(args[0]).toBe("--session-id");
-  expect(z.string().uuid().safeParse(args[1]).success).toBe(true);
+  expect(args[1]).toBe(sessionId);
   expect(args.slice(2)).toEqual(["--append-system-prompt-file", join(shared, "manager.prompt.md"), "--settings", join(shared, "settings.json"), "--mcp-config", join(shared, "mcp.json"), "-n", "startup-manager"]);
   expect(readFileSync(join(shared, "manager.prompt.md"), "utf8")).toBe(profileText(loadProfile({ skillsRoot: f.skillsRoot, role: "manager", employeeId: "manager", generation: 1 })));
   expect(statSync(join(shared, "manager.prompt.md")).mode & 0o777).toBe(0o600);
   expect(readFileSync(join(shared, "settings.json"), "utf8")).toBe(JSON.stringify(claudeSettings({ bun: "/opt/bun", skillsRoot: f.skillsRoot })));
-  expect(managerLaunch(f.input)[1]).not.toBe(args[1]);
+  expect(managerLaunch(f.input)[1]).toBe(args[1]);
   writeFileSync(join(shared, "manager.prompt.md"), "edited");
   chmodSync(join(shared, "manager.prompt.md"), 0o600);
   expect(() => managerLaunch(f.input)).toThrow("manager prompt differs");
@@ -286,5 +321,5 @@ test.each([
   if (message.includes("trust")) writeFileSync(f.claudeJson, JSON.stringify({ projects: { "/elsewhere": { hasTrustDialogAccepted: true } } }));
   expect(() => managerLaunch({ ...f.input, environment: { ...f.input.environment, ...environment } })).toThrow(StartupBootError);
   expect(() => managerLaunch({ ...f.input, environment: { ...f.input.environment, ...environment } })).toThrow(message);
-  expect(existsSync(join(f.home, "startup", "claude"))).toBe(false);
+  expect(existsSync(join(f.startupRoot, "startup", "claude"))).toBe(false);
 });
