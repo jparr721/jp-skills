@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { HostAPI } from "../index";
 import type { NativeContext, NativeRef } from "../src/omp-adapter";
-import { sourceSchema, type Json } from "../src/contracts";
+import { jsonSchema, sourceSchema, type Json } from "../src/contracts";
 import { bootSelection, parseBootCommand, persistBinding } from "../src/boot";
 import { connectEmployee } from "../src/employee-client";
 import { loadProfile } from "../src/profiles";
@@ -17,6 +17,79 @@ const { nativeRoot } = await import("../src/employee-entry");
 const { installLaunchedEmployeeWith } = await import("../src/employee-entry");
 const omp = { harness: "omp", root: nativeRoot, integration: integrationPath } as const;
 import { launchRuntimeHost, parseRuntimeHostConfig, type RuntimeHostConfig } from "../src/v7-launch";
+
+type TestNativeSchema = ReturnType<HostAPI["zod"]["object"]>;
+const publicToolProperties = {
+  startup_claim: {},
+  startup_settle: { result: {} },
+  startup_send: {
+    id: { type: "string" },
+    recipient: { type: "string" },
+    kind: { type: "string", enum: ["assignment", "report", "question", "answer", "alert", "duty"] },
+    correlation: { type: "string" },
+    payload: {},
+  },
+  startup_item: {},
+  startup_capture: {
+    captureId: { type: "string" },
+    eventId: { type: "string" },
+    rows: { type: "array", items: {} },
+    receipt: {},
+  },
+  startup_staff: {},
+  startup_hire: {
+    requestId: { type: "string" },
+    role: { type: "string", enum: ["architect", "qa", "dev", "devops", "pa"] },
+    additional: { type: "number" },
+  },
+  startup_delegate: { eventId: { type: "string" }, developers: { type: "number" } },
+  startup_activate: { employeeIds: { type: "array", items: { type: "string" } } },
+  startup_replace: { employeeId: { type: "string" }, evidence: {} },
+  startup_intake: {
+    eventId: { type: "string" },
+    input: {},
+    amendItemIds: { type: "array", items: { type: "string" } },
+  },
+  startup_route: {
+    inputId: { type: "string" },
+    disposition: { type: "string", enum: ["work", "status", "control", "conversation", "decision"] },
+    reason: { type: "string" },
+    amendItemIds: { type: "array", items: { type: "string" } },
+  },
+  startup_input: { inputId: { type: "string" }, offset: { type: "number" } },
+  startup_image: { inputId: { type: "string" }, index: { type: "number" } },
+  startup_reconcile: { claimId: { type: "string" }, evidence: {} },
+  startup_resolve: { assignmentId: { type: "string" }, evidence: {} },
+  startup_finish_team: { teamId: { type: "string" }, evidence: {} },
+  startup_refresh: { employeeId: { type: "string" }, evidence: {} },
+  startup_block: { key: { type: "string" }, evidence: {} },
+  startup_retire: { employeeIds: { type: "array", items: { type: "string" } }, evidence: {} },
+} satisfies Readonly<Record<string, Readonly<Record<string, Json>>>>;
+
+function nativeSchemaJson(value: unknown): Json {
+  if (typeof value !== "object" || value === null || !("toJsonSchema" in value) || typeof value.toJsonSchema !== "function")
+    throw new Error("Test OMP tool schema does not expose toJsonSchema");
+  return jsonSchema.parse(value.toJsonSchema());
+}
+function testNativeSchema(value: Json): TestNativeSchema {
+  return {
+    or: (other) => {
+      const previous = z.object({ anyOf: z.array(jsonSchema) }).safeParse(value);
+      return testNativeSchema({ anyOf: [...(previous.success ? previous.data.anyOf : [value]), nativeSchemaJson(other)] });
+    },
+    and: (other) => testNativeSchema({ allOf: [value, nativeSchemaJson(other)] }),
+    toJsonSchema: () => value,
+  };
+}
+const testSchemaBuilder: HostAPI["zod"] = {
+  object: (shape) => testNativeSchema({ type: "object", properties: Object.fromEntries(Object.entries(shape).map(([key, value]) => [key, nativeSchemaJson(value)])), required: Object.keys(shape), additionalProperties: false }),
+  string: () => testNativeSchema({ type: "string" }),
+  number: () => testNativeSchema({ type: "number" }),
+  unknown: () => testNativeSchema({}),
+  array: (schema) => testNativeSchema({ type: "array", items: nativeSchemaJson(schema) }),
+  literal: (value) => testNativeSchema({ type: "string", const: value }),
+  enum: (values) => testNativeSchema({ type: "string", enum: [...values] }),
+};
 
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); });
@@ -60,11 +133,10 @@ function fixture() {
     id: "Main", kind: "main", status: "idle", createdAt: 1, sessionFile: file,
     session: { sessionManager: ctx.sessionManager, settings: {}, model: { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }, thinkingLevel: "high", configuredThinkingLevel: () => "auto", getAvailableModels: () => [{ provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }], getAvailableThinkingLevels: () => ["low", "high"], getPlanModeState: () => undefined, getToolByName: () => undefined },
   };
-  const schema: ReturnType<HostAPI["zod"]["object"]> = { or: () => schema, and: () => schema, toJsonSchema: () => ({}) };
   const host: HostAPI = {
     pi: { VERSION: "18.8.9", settings: {}, AgentRegistry: { global: () => ({ get: (id) => id === "Main" ? ref : undefined, list: () => [ref], onChange: () => () => {} }) } },
-    zod: { object: () => schema, string: () => ({}), number: () => ({}), unknown: () => ({}), array: () => ({}), literal: () => ({}), enum: () => ({}) },
-    arktype: () => schema,
+    zod: testSchemaBuilder,
+    arktype: () => testNativeSchema({}),
     events: { on: () => () => {} },
     on(name, handler) { const list = handlers.get(name) ?? []; list.push(handler); handlers.set(name, list); },
     registerTool(tool) { tools.set(tool.name, tool); },
@@ -255,7 +327,19 @@ test("launched root verifies source and transcript before admission, exposes ded
   expect(f.admissions).toHaveLength(1);
   expect(f.admissions[0]).toMatchObject({ nativeSession: f.file, paneId: "w1:p1", credential: "private-credential" });
   expect(f.tools.has("task")).toBe(false);
-  for (const name of ["startup_claim", "startup_hire", "startup_delegate", "startup_activate", "startup_replace", "startup_capture", "startup_item"]) expect(f.tools.has(name)).toBe(true);
+  expect([...f.tools.keys()]).toEqual(Object.keys(publicToolProperties));
+  for (const [name, properties] of Object.entries(publicToolProperties)) {
+    const tool = f.tools.get(name);
+    if (tool === undefined) throw new Error(`Missing public Startup tool ${name}`);
+    const schema: Json = nativeSchemaJson(tool.parameters);
+    if (name === "startup_item") {
+      const union = z.object({ anyOf: z.array(jsonSchema) }).parse(schema);
+      expect(union.anyOf).toHaveLength(6);
+      expect(union.anyOf.map((action) => z.object({ properties: z.object({ action: z.object({ const: z.string() }) }) }).parse(action).properties.action.const)).toEqual(["assign", "review", "qa_assign", "qa", "gate", "decide"]);
+      continue;
+    }
+    expect(schema).toEqual({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+  }
   const claim = f.tools.get("startup_claim");
   if (!claim) throw new Error("Missing own inbox tool");
   await claim.execute("claim", {}, undefined, undefined, f.ctx);
@@ -564,6 +648,38 @@ test("runtime serves admission before launching roots and owns separate V7 state
       expect(z.object({ host: z.string() }).parse(JSON.parse(scope.payload)).host).toBe(hostname());
     } finally { database.close(); }
   } finally { await runtime.close(); }
+});
+
+test("manager and assigned PA retain manager-only Startup command authority", async () => {
+  const f = fixture(); f.useEnvironment();
+  const { config } = runtimeFixture(f);
+  const runtime = await startRuntimeHost(config);
+  let manager: Awaited<ReturnType<typeof connectEmployee>> | null = null;
+  let pa: Awaited<ReturnType<typeof connectEmployee>> | null = null;
+  try {
+    const managerSource = loadProfile({ skillsRoot: f.skillsRoot, role: "manager", employeeId: "manager", generation: 1 }).source;
+    manager = await connectEmployee({ socketPath: config.socketPath, credential: config.managerCredential, nativeSession: config.managerFile, paneId: config.managerPaneId, source: managerSource });
+    const managerStaff = await manager.request({ kind: "staff" });
+    expect(z.object({ manager: z.object({ id: z.literal("manager") }) }).parse(managerStaff).manager.id).toBe("manager");
+
+    await runtime.coordinator.tick();
+    const database = new Database(join(config.stateDirectory, "staff.sqlite"), { readonly: true });
+    let savedPayload: string;
+    try {
+      savedPayload = z.object({ payload: z.string() }).parse(database.query("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId') != 'manager'").get()).payload;
+    } finally { database.close(); }
+    const binding = z.object({ employeeId: z.string(), launchId: z.string() }).parse(JSON.parse(savedPayload));
+    const manifest = z.object({ credential: z.string(), source: sourceSchema }).parse(JSON.parse(readFileSync(join(config.stateDirectory, "launches", `${binding.launchId}.json`), "utf8")));
+    const herdrState = z.object({ agents: z.array(z.object({ name: z.string(), pane_id: z.string(), agent_session: z.object({ value: z.string() }) })) }).parse(JSON.parse(readFileSync(join(f.root, "fake-herdr-state.json"), "utf8")));
+    const paAgent = herdrState.agents.find((agent) => agent.agent_session.value !== config.managerFile);
+    if (paAgent === undefined) throw new Error(`Missing assigned PA observation for ${binding.employeeId}`);
+    pa = await connectEmployee({ socketPath: config.socketPath, credential: manifest.credential, nativeSession: paAgent.agent_session.value, paneId: paAgent.pane_id, source: manifest.source });
+    await expect(pa.request({ kind: "staff" })).rejects.toThrow("Only the manager may perform this operation");
+  } finally {
+    manager?.close();
+    pa?.close();
+    await runtime.close();
+  }
 });
 
 

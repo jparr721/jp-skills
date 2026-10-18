@@ -65,6 +65,7 @@ function bridgeFixture(mode: "employee" | "manager") {
   const commands: Json[] = [];
   const admissions: Json[] = [];
   let pending: readonly string[] = [];
+  const commandResponses = new Map<string, Response>();
   const profile = loadProfile({ skillsRoot, role: "dev", employeeId: "dev-1", generation: 1 });
   const text: string = profileText(profile);
   const server = Bun.serve({ unix: socketPath, websocket: { message(socket, message): void { admissions.push(z.json().parse(JSON.parse(String(message)))); socket.send(JSON.stringify({ connection: "private-connection" })); } }, async fetch(request: Request, server): Promise<Response | undefined> {
@@ -75,7 +76,8 @@ function bridgeFixture(mode: "employee" | "manager") {
     const command: Json = z.json().parse(await request.json());
     commands.push(command);
     if (z.object({ kind: z.literal("image") }).safeParse(command).success) return Response.json({ type: "image", data: "aW1hZ2U=", mimeType: "image/png" });
-    return Response.json({ accepted: true });
+    const kind: string = z.object({ kind: z.string() }).parse(command).kind;
+    return commandResponses.get(kind)?.clone() ?? Response.json({ accepted: true });
   } });
   cleanup.push(() => { server.stop(true); });
   mkdirSync(join(startupRootPath, "launches"), { mode: 0o700 });
@@ -110,9 +112,55 @@ function bridgeFixture(mode: "employee" | "manager") {
     cleanup.push(() => { process.kill(); });
     return process;
   }
-  return { root, home, startupRoot: startupRootPath, child, commands, admissions, errors, rpc, spawnHook, transcript: join(root, "t.jsonl"), setPending(value: readonly string[]): void { pending = value; } };
+  return { root, home, startupRoot: startupRootPath, child, commands, admissions, errors, rpc, spawnHook, transcript: join(root, "t.jsonl"), setPending(value: readonly string[]): void { pending = value; }, respond(kind: string, response: Response): void { commandResponses.set(kind, response); } };
 }
 const hookText = (result: Json): Json => jsonSchema.parse(JSON.parse(z.object({ content: z.tuple([z.object({ type: z.literal("text"), text: z.string() })]) }).parse(result).content[0].text));
+const publicToolProperties = {
+  startup_claim: {},
+  startup_settle: { result: {} },
+  startup_send: {
+    id: { type: "string" },
+    recipient: { type: "string" },
+    kind: { type: "string", enum: ["assignment", "report", "question", "answer", "alert", "duty"] },
+    correlation: { type: "string" },
+    payload: {},
+  },
+  startup_item: {},
+  startup_capture: {
+    captureId: { type: "string" },
+    eventId: { type: "string" },
+    rows: { type: "array", items: {} },
+    receipt: {},
+  },
+  startup_staff: {},
+  startup_hire: {
+    requestId: { type: "string" },
+    role: { type: "string", enum: ["architect", "qa", "dev", "devops", "pa"] },
+    additional: { type: "number" },
+  },
+  startup_delegate: { eventId: { type: "string" }, developers: { type: "number" } },
+  startup_activate: { employeeIds: { type: "array", items: { type: "string" } } },
+  startup_replace: { employeeId: { type: "string" }, evidence: {} },
+  startup_intake: {
+    eventId: { type: "string" },
+    input: {},
+    amendItemIds: { type: "array", items: { type: "string" } },
+  },
+  startup_route: {
+    inputId: { type: "string" },
+    disposition: { type: "string", enum: ["work", "status", "control", "conversation", "decision"] },
+    reason: { type: "string" },
+    amendItemIds: { type: "array", items: { type: "string" } },
+  },
+  startup_input: { inputId: { type: "string" }, offset: { type: "number" } },
+  startup_image: { inputId: { type: "string" }, index: { type: "number" } },
+  startup_reconcile: { claimId: { type: "string" }, evidence: {} },
+  startup_resolve: { assignmentId: { type: "string" }, evidence: {} },
+  startup_finish_team: { teamId: { type: "string" }, evidence: {} },
+  startup_refresh: { employeeId: { type: "string" }, evidence: {} },
+  startup_block: { key: { type: "string" }, evidence: {} },
+  startup_retire: { employeeIds: { type: "array", items: { type: "string" } }, evidence: {} },
+} satisfies Readonly<Record<string, Readonly<Record<string, Json>>>>;
 
 test("the stdio bridge completes the Claude Code 2.1.302 handshake and serves Startup tools and hooks", async () => {
   const f = bridgeFixture("employee");
@@ -124,9 +172,18 @@ test("the stdio bridge completes the Claude Code 2.1.302 handshake and serves St
   expect(initialized.instructions).toContain("select:mcp__startup__startup_claim,mcp__startup__startup_settle");
   f.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const listed = z.object({ tools: z.array(z.object({ name: z.string(), description: z.string(), inputSchema: z.record(z.string(), jsonSchema) })) }).parse(await f.rpc({ id: 1, method: "tools/list", params: {} }));
-  expect(listed.tools.map((tool) => tool.name)).toEqual(["startup_claim", "startup_settle", "startup_send", "startup_item", "startup_capture", "startup_staff", "startup_hire", "startup_delegate", "startup_activate", "startup_replace", "startup_intake", "startup_route", "startup_input", "startup_image", "startup_reconcile", "startup_resolve", "startup_finish_team", "startup_refresh", "startup_block", "startup_retire"]);
-  for (const tool of listed.tools) expect(tool.inputSchema.type).toBe("object");
-  expect(z.array(jsonSchema).length(6).safeParse(listed.tools.find((tool) => tool.name === "startup_item")?.inputSchema.anyOf).success).toBe(true);
+  expect(listed.tools.map((tool) => tool.name)).toEqual(Object.keys(publicToolProperties));
+  for (const [name, properties] of Object.entries(publicToolProperties)) {
+    const tool = listed.tools.find((entry) => entry.name === name);
+    if (tool === undefined) throw new Error(`Missing Claude Startup tool ${name}`);
+    if (name === "startup_item") {
+      const union = z.object({ type: z.literal("object"), anyOf: z.array(jsonSchema) }).parse(tool.inputSchema);
+      expect(union.anyOf).toHaveLength(6);
+      expect(union.anyOf.map((action) => z.object({ properties: z.object({ action: z.object({ const: z.string() }) }) }).parse(action).properties.action.const)).toEqual(["assign", "review", "qa_assign", "qa", "gate", "decide"]);
+      continue;
+    }
+    expect(tool.inputSchema).toEqual({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+  }
   expect(listed.tools.find((tool) => tool.name === "startup_image")?.inputSchema).toEqual({ type: "object", properties: { inputId: { type: "string" }, index: { type: "number" } }, required: ["inputId", "index"], additionalProperties: false });
   const prompt = await f.rpc({ id: 2, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "UserPromptSubmit", prompt: "inspect the screenshot", promptId: "p1", transcript: f.transcript } } });
   expect(f.admissions).toEqual([expect.objectContaining({ nativeSession: sessionId, paneId: "w1:p3" })]);
@@ -134,6 +191,9 @@ test("the stdio bridge completes the Claude Code 2.1.302 handshake and serves St
   expect(await f.rpc({ id: 3, method: "tools/call", params: { name: "startup_image", arguments: { inputId: "input-1", index: 0 } } })).toEqual({ content: [{ type: "image", data: "aW1hZ2U=", mimeType: "image/png" }], isError: false });
   const wrong = z.object({ isError: z.literal(true), content: z.tuple([z.object({ text: z.string() })]) }).parse(await f.rpc({ id: 4, method: "tools/call", params: { name: "startup_image", arguments: { inputId: "input-1" } } }));
   expect(wrong.content[0].text).toContain("index");
+  f.respond("staff", Response.json({ error: "Only the manager may perform this operation" }, { status: 403 }));
+  const refused = z.object({ content: z.tuple([z.object({ type: z.literal("text"), text: z.string() })]), isError: z.literal(true) }).parse(await f.rpc({ id: 6, method: "tools/call", params: { name: "startup_staff", arguments: {} } }));
+  expect(refused.content[0].text).toContain("Only the manager may perform this operation");
   expect(hookText(await f.rpc({ id: 5, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "PreToolUse", tool: "mcp__startup__startup_claim", query: "", agentId: "a61c2e8981c9b0f07" } } }))).toEqual({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "Native helper has no Startup employee authority" } });
   f.child.stdin.end();
   expect(await f.child.exited).toBe(0);

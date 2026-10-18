@@ -2,6 +2,19 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.3.0] - 2026-10-18
+
+### Added
+
+- Each of the six Startup roles can select OMP or interactive Claude Code with separately saved model/effort requests. The selected Ronin Startup root is independent of `JP_SKILLS_HOME`; typed requested, saved and effective values preserve unavailable readback instead of inferring runtime state.
+- A typed owner host-control entrypoint supports list, create, select, resume, safe archive, bounded status/staff/progress/alerts, settings draft/apply/readback and receipt lookup without direct database access or employee impersonation.
+- The OMP extension and Claude Code MCP bridge publish the verified 20-tool `startup_*` employee catalog. The reference documents their published schemas, owner validation, results, errors and role gates separately from host lifecycle control.
+- Employee authority and settings observations are bound to the current native connection epoch. Re-admission, disconnect, shutdown, session change, retirement and owner replacement revoke old authority; uncertain writes are not replayed.
+
+### Verification
+
+- Scoped Startup typecheck, registration/catalog tests and role-refusal tests are recorded in the SYT-9095 Slice D runrecord. Full merge-gate verification remains CI-only; interactive OMP/Claude and installed-runtime acceptance are not claimed by the local test lane.
+
 ## [7.2.0] - 2026-10-16
 
 ### Added

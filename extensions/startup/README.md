@@ -103,25 +103,42 @@ The hierarchy is manager -> owning architect -> dev/QA. PA and shared DevOps rep
 
 Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md), assigned role and [shared loop](../../skills/startup-loop/SKILL.md). Native `task` remains OMP's bounded-helper tool. It is not overridden with Startup staffing modes. Helpers receive no employee admission and their factories install the employee-tool denial guard before attachment.
 
-| Public tool | Purpose and boundary |
-| --- | --- |
-| `startup_hire {requestId,role,additional}` | Manager reserves additional architect/QA/dev/DevOps identities; stable retries add zero. The single permanent PA is automatic. |
-| `startup_delegate {eventId,developers}` | Manager admits a complete crew for persisted intake; retries retain its original membership. Returns once the crew is durably reserved; pane launches continue serially in the coordinator and report through `startup_staff` runtime state and `layout-uncertain`/`launch-uncertain`/`launch-interrupted` alerts. Non-architect `crew-ready` notices carry no work and settle complete for every result kind. |
-| `startup_activate {employeeIds}` | Manager starts existing prepared identities; uncertain starts require reconciliation. Returns once the launch is queued; the same launch progress and alerts as delegate apply, and a retry while still launching is refused. |
-| `startup_replace {employeeId,evidence}` | Manager replacement after explicit failure/identity evidence and unresolved-work reconciliation. |
-| `startup_route {inputId,disposition,reason,amendItemIds}` | Manager classifies a saved native receipt as work/status/control/conversation/decision. |
-| `startup_intake {eventId,input,amendItemIds}` | Manager saves externally supplied work before delegation. |
-| `startup_claim {}` | Claims only the admitted employee's own ready inbox. |
-| `startup_settle {result}` | Atomically settles the authenticated employee's current claim, result/checkpoint, acknowledgement and outgoing cues. |
-| `startup_send {id,recipient,kind,correlation,payload}` | Persists a role-authorized hierarchical cue. |
-| `startup_input {inputId,offset}` / `startup_image {inputId,index}` | Scoped 4096-character input pages and actual native image blocks; a preview is not the complete input. |
-| `startup_capture {captureId,eventId,rows,receipt}` | Assigned architect captures canonical queue rows/revisions for its event. |
-| `startup_item` | Typed flat item action with `requestId`, `itemId`, `expectedRevision` and action-specific fields. |
-| `startup_staff {}` | Manager roster, crew hierarchy, runtime health, pending intake and unresolved recovery metadata. |
-| `startup_reconcile {claimId,evidence}` / `startup_resolve {assignmentId,evidence}` | Manager evidence-based resolution of uncertain claims/assignments. |
-| `startup_refresh {employeeId,evidence}` | Manager idle canonical-source refresh requiring fresh admission. |
-| `startup_block {key,evidence}` | Manager records supported concrete capacity/dependency evidence. |
-| `startup_finish_team {teamId,evidence}` / `startup_retire {employeeIds,evidence}` | Manager completion/eligible retirement after unresolved work, mail and grants are resolved. |
+### Public employee tools
+
+The V7 OMP extension registers these tools through `HostAPI.registerTool`. Claude Code runs `claude-bridge.ts` as the MCP server `startup`; its `tools/list` publishes the same names, and Claude Code exposes them as `mcp__startup__startup_*` tools loaded with `ToolSearch` and a `select:` query. Both hosts use the shared employee registration and call the same owner commands. Tool visibility does not grant authority: calls require the admitted main/root session, and the coordinator checks role, employee identity, generation, assignment, claim, receipt, approval and review gates again.
+
+This employee catalog is separate from the typed owner host-control lifecycle interface in [Owner host control and connection lifetime](#owner-host-control-and-connection-lifetime). Host lifecycle commands are not employee tools and cannot claim, settle, approve or impersonate an employee.
+
+Every listed argument is required; zero-argument tools take `{}`. `string` and `number` show the published host schema. `JSON` is an unconstrained JSON value in the published schema. The owner applies stricter command validation before dispatch, including non-empty identifiers, positive safe counts, non-negative safe offsets/indexes, and action-specific result/capture validation. The Claude MCP schema builder reports JSON and native number fields coarsely, so callers must follow these owner constraints and inspect refusals. `startup_item` is the six-branch action union shown below.
+
+| Public tool | Published input properties | Authority and result |
+| --- | --- | --- |
+| `startup_claim` | `{}` | Any admitted employee, including manager, claims only its own ready inbox. Returns the claim and message, or the owner's empty-inbox result. |
+| `startup_settle` | `{result: {id, kind, output, checkpoint, outgoing}}`; `kind` is `completed`, `question` or `uncertain`; each outgoing cue is `{id, recipient, kind, correlation, payload}`. | Settles the caller's current claim with its receipt and cues. PA settlement requires a report cue to manager. |
+| `startup_send` | `{id: string, recipient: string, kind: string, correlation: string, payload: JSON}`; `kind` is one of assignment, report, question, answer, alert or duty. | Persists a role-authorized hierarchical cue and returns its saved message record. |
+| `startup_item` | One action: `assign` adds `employeeId,evidence`; `review` adds `resultId,evidence`; `qa_assign` adds `evidence`; `qa` adds `resultId,verdict,proof`; `gate` adds `verdict,evidence`; `decide` adds `status,evidence`. All variants include `requestId,itemId,expectedRevision,action`. `verdict` is `APPROVE` or `REDO`; `status` is one of `BLOCKED`, `NEEDS_DECISION`, `QUEUED`, `REJECTED`, `MERGED` or `DONE`. | Manager and assigned crew roles can make only their allowed action on the assigned item at the expected revision. Returns the durable item transition/result; architect review and manager landing gates remain required. |
+| `startup_capture` | `{captureId: string, eventId: string, rows: JSON[], receipt: JSON}` | The assigned architect records canonical queue rows and revisions for its event. Returns the capture receipt. Owner validation requires each row to include `id`, nullable `expectedRevision` and `fields`. |
+| `startup_staff` | `{}` | Manager only. Returns roster, team hierarchy, runtime/capability state, role settings and unresolved recovery metadata. |
+| `startup_hire` | `{requestId: string, role: string, additional: number}`; `role` is one of architect, qa, dev, devops or pa. | Manager only. Reserves identities and returns the durable hire receipt; the single permanent PA is created automatically. |
+| `startup_delegate` | `{eventId: string, developers: number}` | Manager only, with the required PA supervision gate. Delegates persisted intake and returns the reserved team. Launches continue serially; progress and uncertain launch alerts appear through `startup_staff`. |
+| `startup_activate` | `{employeeIds: string[]}` | Manager only. Queues prepared launches and returns `{activated: employeeIds}`. Uncertain starts require reconciliation; a retry while launching is refused. |
+| `startup_replace` | `{employeeId: string, evidence: JSON}` | Manager only. Reserves a replacement after explicit failure/identity evidence and unresolved-work reconciliation; returns the next generation. |
+| `startup_intake` | `{eventId: string, input: JSON, amendItemIds: string[]}` | Manager only. Saves external work before delegation and returns the intake record. |
+| `startup_route` | `{inputId: string, disposition: string, reason: string, amendItemIds: string[]}`; `disposition` is one of work, status, control, conversation or decision. | Manager only. Classifies a saved native input and returns the routed record. |
+| `startup_input` | `{inputId: string, offset: number}` | Manager or assigned active crew with input scope. Returns a 4096-character page and continuation metadata. |
+| `startup_image` | `{inputId: string, index: number}` | Manager or assigned active crew with input scope. Returns the actual saved image block. |
+| `startup_reconcile` | `{claimId: string, evidence: JSON}` | Manager only. Resolves an uncertain claim and returns `{reconciled: claimId}`. |
+| `startup_resolve` | `{assignmentId: string, evidence: JSON}` | Manager only. Resolves an uncertain assignment and returns `{resolved: assignmentId}`. |
+| `startup_finish_team` | `{teamId: string, evidence: JSON}` | Manager only. Finishes an eligible team and returns the durable team result. |
+| `startup_refresh` | `{employeeId: string, evidence: JSON}` | Manager only. Refreshes an idle employee's canonical role source and returns the new generation. |
+| `startup_block` | `{key: string, evidence: JSON}` | Manager only. Records a supported capacity/dependency blocker and returns its alert record. |
+| `startup_retire` | `{employeeIds: string[], evidence: JSON}` | Manager only. Retires eligible employees after unresolved work, mail and grants are resolved; returns the retirement receipt. |
+
+`startup_item` variants are strict action objects. `startup_settle.result` is strictly `{id, kind, output, checkpoint, outgoing}`; `output`, `checkpoint` and cue payloads are JSON. `startup_capture.rows` is published as an array of JSON values but owner validation requires each row to be `{id, expectedRevision, fields}` with a nullable revision.
+
+OMP success uses its native tool result: canonical JSON appears in `details` and as JSON text in `content`; `startup_image` uses a native image content block. OMP execution errors are thrown to the host. Claude `tools/call` returns `{content, isError:false}` on success: text results contain the command JSON, while image results use MCP image content. A schema, admission, role, generation, receipt, stale-operation or approval refusal becomes `{content:[{type:"text",text:<error>}], isError:true}`. Rejected or uncertain commands are not silently replayed after reconnect.
+
+OMP reports supported live model/effort and cached catalog through the authenticated native-session heartbeat. Claude Code remains an interactive Claude Code process; its model/effort and catalog readback are typed unavailable when the CLI does not report them. Saved selections describe future launches and are not presented as effective live values.
 
 Item assignment delivers its `evidence` verbatim as the current `directive`, separately from the original intake `snapshot`, and identifies the owning architect as `reportTo`. Put executable rework scope and acceptance in that directive. Dev assignment settlement atomically creates a linked `item-result` report to that architect even with `outgoing: []`; receipt replay cannot duplicate it. The dev still submits `startup_item review` with its saved completed result. Own-poll state supplies `STARTUP_ITEM_REVIEW` with the result ID/current revision and a continuation until review or explicit block. Questions and uncertainty retain their existing reconciliation procedures. Automatic reporting changes no approval authority.
 
