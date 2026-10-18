@@ -14,6 +14,7 @@ import { loadProfile, projectEmployee, verifyProfile } from "../src/profiles";
 import {
   createAdapter,
   readOmpSessionSettings,
+  createOmpSettingsSampler,
   type NativeContext,
   type NativeRef,
   type NativeResult,
@@ -3254,4 +3255,34 @@ test("legacy native manager wake, projection and wait guard share deferred inbox
   expect(f.adapter.waitGuard()).toBeNull();
   expect(await f.adapter.projection(f.ctx)).toContain("STARTUP_CUE=null");
   expect(f.adapter.store.snapshot().messages.find((m) => m.id === "deferred-manager-observation")?.status).toBe("pending");
+});
+
+
+test("OMP sampling caches unchanged catalogs and invalidates on model and native identity changes", () => {
+  let at = 1000;
+  let calls = 0;
+  let identity = "session";
+  let model = { provider: "provider", id: "one", name: "One" };
+  const session: NativeSession = {
+    sessionManager: { getSessionId: () => identity, getSessionFile: () => "/session.jsonl" },
+    settings: {}, get model() { return model; }, thinkingLevel: "high", configuredThinkingLevel: () => "high",
+    getAvailableModels: () => { calls += 1; return [model]; }, getAvailableThinkingLevels: () => ["low", "high"],
+    getPlanModeState: () => undefined, getToolByName: () => undefined,
+  };
+  const sample = createOmpSettingsSampler({ read: () => session, nativeSession: "/session.jsonl", agentSessionId: "session", now: () => at, refreshMs: 30000 });
+  const first = sample();
+  for (let index = 0; index < 20; index += 1) { at += 1000; sample(); }
+  expect(calls).toBe(1);
+  const next = sample();
+  if (first.status !== "available" || next.status !== "available") throw new Error("Expected supported native sample");
+  expect(next.availableModels).toBe(first.availableModels);
+  model = { provider: "provider", id: "two", name: "Two" };
+  expect(sample()).toMatchObject({ model: { id: "two" } });
+  expect(calls).toBe(2);
+  at += 30000;
+  sample();
+  expect(calls).toBe(3);
+  identity = "replacement";
+  expect(sample()).toMatchObject({ status: "unavailable" });
+  expect(calls).toBe(3);
 });

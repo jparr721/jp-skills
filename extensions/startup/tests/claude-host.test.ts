@@ -54,7 +54,8 @@ function coordinatorFixture() {
   const admissions: Json[] = [];
   const responses = new Map<string, Response>();
   let poll: Readonly<{ projection: string; pendingMessageIds: readonly string[]; toolBlockReason: string | null; waitReason: string | null }> = { projection: "LIVE STATE A", pendingMessageIds: [], toolBlockReason: null, waitReason: null };
-  const server = Bun.serve({ unix: socketPath, async fetch(request: Request): Promise<Response> {
+  const server = Bun.serve({ unix: socketPath, websocket: { message(socket, message): void { admissions.push(z.json().parse(JSON.parse(String(message)))); socket.send(JSON.stringify({ connection: "private-connection" })); } }, async fetch(request: Request, server): Promise<Response | undefined> {
+    if (new URL(request.url).pathname === "/admit" && server.upgrade(request)) return;
     const path: string = new URL(request.url).pathname;
     if (path === "/admit") { admissions.push(z.json().parse(await request.json())); return Response.json({ connection: "private-connection" }); }
     if (path === "/poll") return Response.json(poll);
@@ -297,17 +298,17 @@ test("a queued prompt that starts before the previous end marker is read is stil
   expect(f.shim.context().isIdle?.()).toBe(true);
 });
 
-test("a ledger failure releases the open turn and refuses later turns", async () => {
+test("a ledger failure revokes adapter authority and refuses later turns", async () => {
   const f = await employeeFixture(defaults);
   await f.shim.hook(ups("go", "p1"));
   const before: number = f.commands.length;
   f.shim.fail(new Error("Unknown Claude transcript queue operation: rewind"));
-  await until(() => f.kinds().slice(before).includes("end_turn"), 2000);
+  await Bun.sleep(10);
   expect(f.shim.context().isIdle?.()).toBe(true);
   const next: ClaudeHookReply = await f.shim.hook(ups("again", "p2"));
   expect(next).toMatchObject({ decision: "block" });
   expect(String(next.reason)).toContain("Unknown Claude transcript queue operation: rewind");
-  expect(f.kinds().slice(before)).toEqual(["end_turn"]);
+  expect(f.kinds().slice(before)).toEqual([]);
   expect(f.shim.context().isIdle?.()).toBe(true);
 });
 

@@ -56,8 +56,11 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   });
   registerTools(host, () => failure === null ? admitted : null);
   async function initialize(ctx: NativeContext, command: BootCommand | null): Promise<void> {
+    const nativeSession = ctx.sessionManager.getSessionId();
     const nativeFile: string = (await input.root(host, ctx)).file;
+    const contextFile = ctx.sessionManager.getSessionFile();
     const location = await paneEnvironment(input.environment);
+    if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager native identity changed during startup discovery");
     const next: Selection | null = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, configHome: input.configHome, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
     if (next === null) return;
     if (admitted !== null) {
@@ -93,6 +96,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     };
     const config: RuntimeHostConfig = await input.launch(saved ?? (input.harness === "claude" ? { ...fresh, harness: "claude" } : fresh));
     runtimeConfig = config;
+    if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager identity changed during owner launch; preserve launch evidence and reconcile before retry");
     const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, harness: input.harness, skillsHome: next.skillsHome, startupRoot: next.startupRoot, skillsRoot: next.skillsRoot }, input.environment, input.root);
     if (stopped) { connected.close(); return; }
     admitted = connected;
@@ -126,6 +130,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   }
   host.on("session_start", async (_event, ctx) => {
     if (ctx.agent.kind !== "main" || stopped) return;
+    if (admitted !== null && !sameRoot(admitted, ctx)) { admitted.close(); stopped = true; report(new StartupBootError("Manager native session changed; explicit re-admission required"), ctx); ctx.abort?.(); return; }
     try {
       const next = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, configHome: input.configHome, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
       if (next === null || !existsSync(join(next.startupRoot, "runtime-config.json"))) return;

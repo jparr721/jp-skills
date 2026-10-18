@@ -111,6 +111,22 @@ export function readOmpSessionSettings(input: Readonly<{
     availableEfforts: session.getAvailableThinkingLevels(),
   });
 }
+export function createOmpSettingsSampler(input: Readonly<{ read: () => NativeSession | null; nativeSession: string; agentSessionId: string; now: () => number; refreshMs: number }>): () => OmpSessionSettingsReport {
+  let cached: OmpSessionSettingsReport | null = null;
+  let sampledSession: NativeSession | null = null;
+  let refreshedAt: number = 0;
+  return (): OmpSessionSettingsReport => {
+    const session = input.read();
+    const at = input.now();
+    if (cached === null || session !== sampledSession || (cached.status === "available" && (cached.model?.id !== session?.model?.id || cached.model?.provider !== session?.model?.provider)) || at - refreshedAt >= input.refreshMs || session?.sessionManager.getSessionId() !== input.agentSessionId) {
+      cached = readOmpSessionSettings({ session, nativeSession: input.nativeSession, agentSessionId: input.agentSessionId, observedAt: at });
+      sampledSession = session;
+      refreshedAt = at;
+    }
+    if (cached.status === "unavailable" || session === null) return { ...cached, observedAt: at };
+    return { ...cached, observedAt: at, model: session.model === undefined ? null : { provider: session.model.provider, id: session.model.id, name: session.model.name }, configuredEffort: session.configuredThinkingLevel?.() ?? null, effectiveEffort: session.thinkingLevel ?? null };
+  };
+}
 export type NativeRef = Readonly<{
   id: string;
   kind: string;

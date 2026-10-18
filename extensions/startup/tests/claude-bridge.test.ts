@@ -67,7 +67,8 @@ function bridgeFixture(mode: "employee" | "manager") {
   let pending: readonly string[] = [];
   const profile = loadProfile({ skillsRoot, role: "dev", employeeId: "dev-1", generation: 1 });
   const text: string = profileText(profile);
-  const server = Bun.serve({ unix: socketPath, async fetch(request: Request): Promise<Response> {
+  const server = Bun.serve({ unix: socketPath, websocket: { message(socket, message): void { admissions.push(z.json().parse(JSON.parse(String(message)))); socket.send(JSON.stringify({ connection: "private-connection" })); } }, async fetch(request: Request, server): Promise<Response | undefined> {
+    if (new URL(request.url).pathname === "/admit" && server.upgrade(request)) return;
     const path: string = new URL(request.url).pathname;
     if (path === "/admit") { admissions.push(z.json().parse(await request.json())); return Response.json({ connection: "private-connection" }); }
     if (path === "/poll") return Response.json({ projection: `${text}\nBRIDGE STATE`, pendingMessageIds: pending, toolBlockReason: null, waitReason: null });
@@ -127,13 +128,13 @@ test("the stdio bridge completes the Claude Code 2.1.302 handshake and serves St
   for (const tool of listed.tools) expect(tool.inputSchema.type).toBe("object");
   expect(z.array(jsonSchema).length(6).safeParse(listed.tools.find((tool) => tool.name === "startup_item")?.inputSchema.anyOf).success).toBe(true);
   expect(listed.tools.find((tool) => tool.name === "startup_image")?.inputSchema).toEqual({ type: "object", properties: { inputId: { type: "string" }, index: { type: "number" } }, required: ["inputId", "index"], additionalProperties: false });
-  const prompt = await f.rpc({ id: 2, method: "tools/call", params: { name: "hook", arguments: { event: "UserPromptSubmit", prompt: "inspect the screenshot", promptId: "p1", transcript: f.transcript } } });
+  const prompt = await f.rpc({ id: 2, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "UserPromptSubmit", prompt: "inspect the screenshot", promptId: "p1", transcript: f.transcript } } });
   expect(f.admissions).toEqual([expect.objectContaining({ nativeSession: sessionId, paneId: "w1:p3" })]);
   expect(hookText(prompt)).toEqual({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: "BRIDGE STATE" } });
   expect(await f.rpc({ id: 3, method: "tools/call", params: { name: "startup_image", arguments: { inputId: "input-1", index: 0 } } })).toEqual({ content: [{ type: "image", data: "aW1hZ2U=", mimeType: "image/png" }], isError: false });
   const wrong = z.object({ isError: z.literal(true), content: z.tuple([z.object({ text: z.string() })]) }).parse(await f.rpc({ id: 4, method: "tools/call", params: { name: "startup_image", arguments: { inputId: "input-1" } } }));
   expect(wrong.content[0].text).toContain("index");
-  expect(hookText(await f.rpc({ id: 5, method: "tools/call", params: { name: "hook", arguments: { event: "PreToolUse", tool: "mcp__startup__startup_claim", query: "", agentId: "a61c2e8981c9b0f07" } } }))).toEqual({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "Native helper has no Startup employee authority" } });
+  expect(hookText(await f.rpc({ id: 5, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "PreToolUse", tool: "mcp__startup__startup_claim", query: "", agentId: "a61c2e8981c9b0f07" } } }))).toEqual({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "Native helper has no Startup employee authority" } });
   f.child.stdin.end();
   expect(await f.child.exited).toBe(0);
   expect(existsSync(waiterSocketPath({ startupRoot: f.startupRoot, sessionId }))).toBe(false);
@@ -147,7 +148,7 @@ test("waiters supersede older waiters, fire the cue after the transcript ends th
   await until(() => f.errors.filter((line) => line.includes("waiter-armed")).length === 1, 10000);
   expect(f.admissions).toHaveLength(1);
   expect(statSync(waiterSocketPath({ startupRoot: f.startupRoot, sessionId })).mode & 0o777).toBe(0o600);
-  await f.rpc({ id: 1, method: "tools/call", params: { name: "hook", arguments: { event: "UserPromptSubmit", prompt: "go", promptId: "p1", transcript: f.transcript } } });
+  await f.rpc({ id: 1, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "UserPromptSubmit", prompt: "go", promptId: "p1", transcript: f.transcript } } });
   const second = f.spawnHook(waiterPath, hookInput);
   expect(await first.exited).toBe(0);
   f.setPending(["m1"]);
@@ -159,7 +160,7 @@ test("waiters supersede older waiters, fire the cue after the transcript ends th
   expect(f.commands).toContainEqual(expect.objectContaining({ kind: "receive", source: "interactive", raw: { text: "go", images: [] } }));
   const event = f.spawnHook(eventPath, { session_id: sessionId, hook_event_name: "StopFailure", error: "rate_limit" });
   expect(await event.exited).toBe(0);
-  const paused = hookText(await f.rpc({ id: 2, method: "tools/call", params: { name: "hook", arguments: { event: "UserPromptSubmit", prompt: "<task-notification>\n<summary>Stop hook feedback</summary>\n</task-notification>", promptId: "p2", transcript: f.transcript } } }));
+  const paused = hookText(await f.rpc({ id: 2, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "UserPromptSubmit", prompt: "<task-notification>\n<summary>Stop hook feedback</summary>\n</task-notification>", promptId: "p2", transcript: f.transcript } } }));
   expect(JSON.stringify(paused)).toContain("Startup inference paused after a provider error");
   const stray = f.spawnHook(eventPath, { session_id: "7a1e04b8-6a0c-4bd1-9a64-2c3d2b1f0e11", error: "x" });
   expect(await stray.exited).toBe(1);
@@ -168,7 +169,7 @@ test("waiters supersede older waiters, fire the cue after the transcript ends th
 test("the PreToolUse command hook takes its decision from the bridge and the bridge answers rejected requests with an error", async () => {
   const f = bridgeFixture("employee");
   await f.rpc({ id: 0, method: "initialize", params: { protocolVersion: "2025-11-25" } });
-  await f.rpc({ id: 1, method: "tools/call", params: { name: "hook", arguments: { event: "UserPromptSubmit", prompt: "go", promptId: "p1", transcript: f.transcript } } });
+  await f.rpc({ id: 1, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "UserPromptSubmit", prompt: "go", promptId: "p1", transcript: f.transcript } } });
   const helper = f.spawnHook(pretoolPath, { session_id: sessionId, hook_event_name: "PreToolUse", tool_name: "mcp__startup__startup_claim", tool_input: {}, agent_id: "a61c2e8981c9b0f07", agent_type: "general-purpose" });
   expect(await helper.exited).toBe(0);
   expect(JSON.parse(await new Response(helper.stdout).text())).toEqual({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "Native helper has no Startup employee authority" } });
@@ -211,7 +212,7 @@ test("an unreadable existing transcript keeps the bridge failed with its real ca
   writeFileSync(f.transcript, "{not json\n");
   await f.rpc({ id: 0, method: "initialize", params: { protocolVersion: "2025-11-25" } });
   for (const id of [1, 2]) {
-    const reply = hookText(await f.rpc({ id, method: "tools/call", params: { name: "hook", arguments: { event: "UserPromptSubmit", prompt: "go", promptId: `p${id}`, transcript: f.transcript } } }));
+    const reply = hookText(await f.rpc({ id, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "UserPromptSubmit", prompt: "go", promptId: `p${id}`, transcript: f.transcript } } }));
     expect(reply).toMatchObject({ decision: "block" });
     expect(JSON.stringify(reply)).toContain(`Claude transcript line is not JSON in ${f.transcript}`);
   }
@@ -223,7 +224,7 @@ test("the manager bridge loads the unchanged V7 entry outside OMP and waits for 
   const f = bridgeFixture("manager");
   const listed = z.object({ tools: z.array(z.object({ name: z.string() })) }).parse(await f.rpc({ id: 1, method: "tools/list", params: {} }));
   expect(listed.tools).toHaveLength(20);
-  const prompt = hookText(await f.rpc({ id: 2, method: "tools/call", params: { name: "hook", arguments: { event: "UserPromptSubmit", prompt: "hello", promptId: "p1", transcript: f.transcript } } }));
+  const prompt = hookText(await f.rpc({ id: 2, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "UserPromptSubmit", prompt: "hello", promptId: "p1", transcript: f.transcript } } }));
   expect(prompt).toEqual({});
   expect(f.admissions).toEqual([]);
   f.child.stdin.end();
@@ -322,4 +323,24 @@ test.each([
   expect(() => managerLaunch({ ...f.input, environment: { ...f.input.environment, ...environment } })).toThrow(StartupBootError);
   expect(() => managerLaunch({ ...f.input, environment: { ...f.input.environment, ...environment } })).toThrow(message);
   expect(existsSync(join(f.startupRoot, "startup", "claude"))).toBe(false);
+});
+
+for (const hookSession of [null, "7a1e04b8-6a0c-4bd1-9a64-2c3d2b1f0e11"]) {
+  test(`MCP hook rejects missing or changed native session identity ${hookSession}`, async () => {
+    const f = bridgeFixture("employee");
+    const argumentsValue: Json = { event: "UserPromptSubmit", prompt: "go", promptId: "identity-test", transcript: f.transcript, ...(hookSession === null ? {} : { sessionId: hookSession }) };
+    await expect(f.rpc({ id: 1, method: "tools/call", params: { name: "hook", arguments: argumentsValue } })).rejects.toThrow();
+    expect(f.admissions).toHaveLength(0);
+  });
+}
+
+test("native clear identity revokes an already admitted MCP bridge", async () => {
+  const f = bridgeFixture("employee");
+  await f.rpc({ id: 1, method: "tools/call", params: { name: "hook", arguments: { sessionId, event: "UserPromptSubmit", prompt: "go", promptId: "p1", transcript: f.transcript } } });
+  expect(f.admissions).toHaveLength(1);
+  await expect(f.rpc({ id: 2, method: "tools/call", params: { name: "hook", arguments: { sessionId: "7a1e04b8-6a0c-4bd1-9a64-2c3d2b1f0e11", event: "SessionStart", transcript: f.transcript } } })).rejects.toThrow();
+  const count = f.commands.length;
+  expect(await f.rpc({ id: 3, method: "tools/call", params: { name: "startup_claim", arguments: { itemId: "q" } } })).toMatchObject({ isError: true });
+  expect(f.commands).toHaveLength(count);
+  expect(f.admissions).toHaveLength(1);
 });

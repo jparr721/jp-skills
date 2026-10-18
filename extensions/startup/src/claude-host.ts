@@ -212,6 +212,7 @@ export function createClaudeHost(input: Readonly<{
     log({ level: "error", state: "transcript-ledger-failed", error: error.message });
     if (formatFailure !== null) return;
     formatFailure = error.message;
+    void emit("session_shutdown", {}, root).catch((cause: unknown) => log({ level: "error", state: "authority-revocation-failed", error: String(cause) }));
     outbox.push({ content: `Startup transcript ledger failed; tools are blocked until this pane is relaunched: ${error.message}`, display: true });
     // Without a ledger no end marker can arrive, so the held execution slot is released now.
     void end(false);
@@ -399,9 +400,11 @@ export function createClaudeHost(input: Readonly<{
       });
     },
     async callTool(name: string, args: Json): Promise<McpCallResult> {
+      if (stopped || formatFailure !== null) throw new ClaudeHostError(formatFailure ?? "Claude adapter is stopped");
       const tool: Tool | undefined = tools.get(name);
       if (tool === undefined) throw new ClaudeHostError(`Unknown Startup tool ${name}`);
       const result: NativeResult = await tool.execute(randomUUID(), args, undefined, undefined, root);
+      if (stopped || formatFailure !== null) throw new ClaudeHostError("Claude lifecycle changed during tool invocation; outcome requires reconciliation");
       return { content: result.content.map((block) => jsonSchema.parse(block)), isError: result.isError ?? false };
     },
   };

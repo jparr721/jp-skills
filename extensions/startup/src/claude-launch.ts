@@ -14,12 +14,13 @@ function shim(input: BridgeInput, file: string): string {
   return `${shellQuote(input.bun)} ${shellQuote(join(input.skillsRoot, "extensions/startup/src", file))}`;
 }
 function hook(input: Readonly<Record<string, string>>, timeout: number): Json {
-  return { type: "mcp_tool", server: "startup", tool: "hook", timeout, input };
+  return { type: "mcp_tool", server: "startup", tool: "hook", timeout, input: { sessionId: "${session_id}", ...input } };
 }
 export function claudeSettings(input: BridgeInput): Json {
   const rewake: Json = { type: "command", command: shim(input, "claude-waiter.ts"), async: true, asyncRewake: true, timeout: 2000000 };
   return { hooks: {
-    SessionStart: [{ hooks: [rewake] }],
+    SessionStart: [{ hooks: [hook({ event: "SessionStart", transcript: "${transcript_path}" }, 30), rewake] }],
+    SessionEnd: [{ hooks: [hook({ event: "SessionEnd" }, 30)] }],
     UserPromptSubmit: [{ hooks: [hook({ event: "UserPromptSubmit", prompt: "${prompt}", promptId: "${prompt_id}", transcript: "${transcript_path}" }, 120), rewake] }],
     // Claude 2.1.302 honors onFailure "block" only on command and http hooks, so tool gating runs as a command.
     PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: shim(input, "claude-pretool.ts"), timeout: 30, onFailure: "block" }] }],

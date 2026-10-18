@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
-import { effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
+import { runtimeConnectionSchema, runtimeIdentitySchema, type RuntimeIdentity, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
 import { assertStartupPath, ensureStartupRoot } from "./boot";
 import { validateRoleSettings } from "./profiles";
 import {
@@ -3276,6 +3276,33 @@ export function openStore(args: {
     runtimeBindings(): readonly RuntimeBinding[] {
       return all("runtimeBinding", runtimeBindingSchema);
     },
+    assertRuntimeConnection(launchId: string, connectionEpoch: string): void {
+      if (closed) throw new StoreFenceError("Owner connection is closed");
+      const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+      if (lease.token !== token || lease.epoch !== epoch || lease.expires <= now()) throw new StoreFenceError("Connection owner lease is stale");
+      const current = read("runtimeConnection", launchId, runtimeConnectionSchema);
+      if (!current?.connected || current.identity.connectionEpoch !== connectionEpoch) throw new StoreFenceError("Connection epoch is revoked");
+    },
+    admitRuntimeConnection(value: RuntimeIdentity): void {
+      tx(() => {
+        const identity = runtimeIdentitySchema.parse(value);
+        const runtime = read("runtimeBinding", `${identity.employeeId}/${identity.generation}`, runtimeBindingSchema);
+        if (identity.startupRoot !== scope.startupRoot || identity.harness !== runtime?.settings.requested.harness || identity.ownerId !== owner.id || identity.ownerEpoch !== epoch || runtime?.launchId !== identity.launchId || runtime.nativeSession !== identity.nativeSession || runtime.state !== "ready") throw new StoreFenceError("Connection does not match current runtime");
+        put("runtimeConnection", identity.launchId, { identity, connected: true });
+      });
+    },
+    revokeRuntimeConnection(launchId: string, connectionEpoch: string): void {
+      if (closed) return;
+      tx(() => {
+        const current = read("runtimeConnection", launchId, runtimeConnectionSchema);
+        if (current?.connected && current.identity.connectionEpoch === connectionEpoch) {
+          put("runtimeConnection", current.identity.launchId, { ...current, connected: false });
+          const key = `${current.identity.employeeId}/${current.identity.generation}`;
+          const runtime = read("runtimeBinding", key, runtimeBindingSchema);
+          if (runtime?.launchId === launchId) put("runtimeBinding", key, { ...runtime, lastPoll: 0 });
+        }
+      });
+    },
     recordRuntimeSettings(input: Readonly<{ capability: RuntimeCapability; effective: EffectiveRoleSettings }>): Readonly<{ capability: RuntimeCapability; effective: EffectiveRoleSettings }> {
       return tx(() => {
         const capability = runtimeCapabilitySchema.parse(input.capability);
@@ -3286,16 +3313,17 @@ export function openStore(args: {
         const identity = capability.session;
         const key = `${identity.employeeId}/${identity.generation}`;
         const runtime = read("runtimeBinding", key, runtimeBindingSchema);
-        if (identity.ownerId !== owner.id || identity.ownerEpoch !== epoch || runtime === null || runtime.state !== "ready" ||
+        if (identity.startupRoot !== scope.startupRoot || identity.harness !== capability.harness || identity.ownerId !== owner.id || identity.ownerEpoch !== epoch || runtime === null || runtime.state !== "ready" ||
           runtime.launchId !== identity.launchId || runtime.nativeSession !== identity.nativeSession ||
           runtime.settings.requested.harness !== capability.harness || capability.harness !== effective.harness)
           throw new StoreFenceError("Effective settings observation does not match the current owner, launch generation, harness and native session");
+        const connection = read("runtimeConnection", identity.launchId, runtimeConnectionSchema);
+        if (!connection?.connected || encode(connection.identity) !== encode(identity)) throw new StoreFenceError("Settings report connection is no longer current");
         const priorCapability = read("runtimeCapability", runtime.launchId, runtimeCapabilitySchema);
         const priorEffective = read("effectiveRoleSettings", runtime.launchId, effectiveRoleSettingsSchema);
-        const priorAt = Math.max(priorCapability?.observedAt ?? 0, priorEffective?.observedAt ?? 0);
-        if (capability.observedAt < priorAt || effective.observedAt < priorAt)
-          throw new StoreFenceError("Effective settings observation is older than the saved session readback");
-        put("runtimeCapability", runtime.launchId, capability);
+        if (capability.sampleSequence === null || capability.sampleSequence !== effective.sampleSequence) throw new StoreFenceError("Settings sample sequence is required");
+        if (priorEffective?.session?.connectionEpoch === identity.connectionEpoch && capability.sampleSequence <= (priorEffective.sampleSequence ?? 0)) throw new StoreFenceError("Settings sample sequence is not newer than the saved session readback");
+        if (encode(priorCapability) !== encode(capability)) put("runtimeCapability", runtime.launchId, capability);
         put("effectiveRoleSettings", runtime.launchId, effective);
         return { capability, effective };
       });

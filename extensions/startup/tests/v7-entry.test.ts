@@ -81,7 +81,8 @@ function fixture() {
   let projection: string = "Complete canonical dev persona\nComplete canonical shared loop";
   let available: boolean = true;
   let commandResponse: Response | null = null;
-  const server = Bun.serve({ unix: socketPath, async fetch(request: Request): Promise<Response> {
+  const server = Bun.serve({ unix: socketPath, websocket: { message(socket, message): void { admissions.push(z.json().parse(JSON.parse(String(message)))); socket.send(JSON.stringify({ connection: "private-token" })); } }, async fetch(request: Request, server): Promise<Response | undefined> {
+    if (new URL(request.url).pathname === "/admit" && server.upgrade(request)) return;
     const path: string = new URL(request.url).pathname;
     if (path === "/health") return Response.json({ status: "running" });
     if (path === "/admit") { admissions.push(z.json().parse(await request.json())); return Response.json({ connection: "private-token" }); }
@@ -191,7 +192,7 @@ test("employee reattachment restores a provider pause even after a gated turn wa
   installLaunchedEmployee(f.host, f.manifest("dev"));
   await f.emit("session_start", {}, f.ctx);
   expect(f.admissions).toHaveLength(1);
-  expect(f.pollReports[0]).toMatchObject({ status: "available", nativeSession: f.file, agentSessionId: "native-root", model: { id: "gpt-5.2" }, configuredEffort: "auto", effectiveEffort: "high", availableModels: [{ provider: "openai", id: "gpt-5.2" }], availableEfforts: ["low", "high"] });
+  expect(z.object({ report: z.unknown() }).parse(f.pollReports[0]).report).toMatchObject({ status: "available", nativeSession: f.file, agentSessionId: "native-root", model: { id: "gpt-5.2" }, configuredEffort: "auto", effectiveEffort: "high", availableModels: [{ provider: "openai", id: "gpt-5.2" }], availableEfforts: ["low", "high"] });
   expect(f.messages.join("\n")).toContain("inference paused");
   await f.emit("context", { messages: [] }, f.ctx);
   expect(f.getAborts()).toBeGreaterThan(0);
@@ -411,7 +412,7 @@ test("manager boot preserves native command work and binds independent runtime c
   expect(existsSync(join(launched[0]!.startupRoot, "binding.json"))).toBe(true);
   expect(f.requests[0]).toMatchObject({ kind: "receive", raw: { text: "/startup new alpha --  fix exact work  ", images: [] } });
   expect(f.requests[1]).toMatchObject({ kind: "route", disposition: "work" });
-  expect(f.pollReports[0]).toMatchObject({ status: "available", nativeSession: f.file, agentSessionId: "native-root", model: { id: "gpt-5.2" }, configuredEffort: "auto", effectiveEffort: "high" });
+  expect(z.object({ report: z.unknown() }).parse(f.pollReports[0]).report).toMatchObject({ status: "available", nativeSession: f.file, agentSessionId: "native-root", model: { id: "gpt-5.2" }, configuredEffort: "auto", effectiveEffort: "high" });
   const command = f.commands.get("startup");
   if (!command) throw new Error("Missing Startup command");
   await command.handler("new alpha --  fix exact work  ", f.ctx);
@@ -560,7 +561,7 @@ test("runtime serves admission before launching roots and owns separate V7 state
     const database = new Database(join(stateDirectory, "staff.sqlite"), { readonly: true });
     try {
       const scope = z.object({ payload: z.string() }).parse(database.query("SELECT payload FROM records WHERE kind='meta' AND id='scope'").get());
-      expect(z.object({ host: z.string() }).parse(JSON.parse(scope.payload)).host).toBe(hostname() + ":startup-v7");
+      expect(z.object({ host: z.string() }).parse(JSON.parse(scope.payload)).host).toBe(`${hostname()}:startup-v7`);
     } finally { database.close(); }
   } finally { await runtime.close(); }
 });

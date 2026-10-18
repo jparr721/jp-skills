@@ -38,6 +38,9 @@ export const savedRoleSettingsSchema = z.strictObject({
 export type SavedRoleSettings = z.infer<typeof savedRoleSettingsSchema>;
 
 export const runtimeIdentitySchema = z.strictObject({
+  startupRoot: z.string().startsWith("/"),
+  harness: runtimeHarnessSchema,
+  connectionEpoch: idSchema,
   ownerId: idSchema,
   ownerEpoch: timeSchema,
   employeeId: idSchema,
@@ -46,6 +49,7 @@ export const runtimeIdentitySchema = z.strictObject({
   nativeSession: idSchema,
   agentSessionId: idSchema.nullable(),
 }).readonly();
+export const runtimeConnectionSchema = z.strictObject({ identity: runtimeIdentitySchema, connected: z.boolean() }).readonly();
 export type RuntimeIdentity = z.infer<typeof runtimeIdentitySchema>;
 
 export const runtimeModelSchema = z.strictObject({
@@ -69,6 +73,7 @@ export const ompSessionSettingsReportSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("available"), ...ompSessionSettingsIdentityShape, ...ompSessionSettingsValuesShape }).readonly(),
   z.strictObject({ status: z.literal("unavailable"), reason: z.literal("omp_session_api_unavailable"), ...ompSessionSettingsIdentityShape }).readonly(),
 ]);
+export const settingsSampleSchema = z.strictObject({ sequence: z.number().int().positive().safe(), report: ompSessionSettingsReportSchema });
 export type OmpSessionSettingsReport = z.infer<typeof ompSessionSettingsReportSchema>;
 
 export const runtimeCapabilitySchema = z.discriminatedUnion("status", [
@@ -79,6 +84,7 @@ export const runtimeCapabilitySchema = z.discriminatedUnion("status", [
     availableModels: z.array(runtimeModelSchema).readonly(),
     availableEfforts: z.array(z.string()).readonly(),
     observedAt: timeSchema,
+    sampleSequence: timeSchema,
   }).readonly(),
   z.strictObject({
     status: z.literal("unavailable"),
@@ -90,6 +96,7 @@ export const runtimeCapabilitySchema = z.discriminatedUnion("status", [
     ]),
     session: runtimeIdentitySchema.nullable(),
     observedAt: timeSchema.nullable(),
+    sampleSequence: timeSchema.nullable(),
   }).readonly(),
 ]);
 export type RuntimeCapability = z.infer<typeof runtimeCapabilitySchema>;
@@ -103,6 +110,7 @@ export const effectiveRoleSettingsSchema = z.discriminatedUnion("status", [
     configuredEffort: z.string().nullable(),
     effectiveEffort: z.string().nullable(),
     observedAt: timeSchema,
+    sampleSequence: timeSchema,
   }).readonly(),
   z.strictObject({
     status: z.literal("unavailable"),
@@ -114,6 +122,7 @@ export const effectiveRoleSettingsSchema = z.discriminatedUnion("status", [
     ]),
     session: runtimeIdentitySchema.nullable(),
     observedAt: timeSchema.nullable(),
+    sampleSequence: timeSchema.nullable(),
   }).readonly(),
 ]);
 export type EffectiveRoleSettings = z.infer<typeof effectiveRoleSettingsSchema>;

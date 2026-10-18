@@ -78,7 +78,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(stateDirectory, "launches", `${runtime.launchId}.json`), "utf8")));
     const observation = observations.find((o) => o.paneId === runtime.paneId);
     if (!observation?.nativeSession) throw new Error("Missing observation");
-    return (await coordinator.admit({ credential: manifest.credential, nativeSession: observation.nativeSession, ...(runtime.settings.requested.harness === "omp" ? { agentSessionId: `agent-${runtime.launchId}` } : {}), paneId: observation.paneId, source: manifest.source })).connection;
+    return (await coordinator.admit({ credential: manifest.credential, nativeSession: observation.nativeSession, ...(runtime.settings.requested.harness === "omp" ? { agentSessionId: z.object({ id: z.string() }).parse(JSON.parse(readFileSync(observation.nativeSession, "utf8").split("\n")[0]!)).id } : {}), paneId: observation.paneId, source: manifest.source })).connection;
   }
   async function ready() {
     await coordinator.start();
@@ -183,14 +183,15 @@ test("OMP session reports persist actual catalog and state only for the authenti
   if (!runtime?.nativeSession || runtime.paneId === null) throw new Error("Missing admitted OMP native session");
   const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${runtime.launchId}.json`), "utf8")));
   servers.push(serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }));
-  const client = await connectEmployee({ socketPath: f.config.socketPath, credential: manifest.credential, nativeSession: runtime.nativeSession, agentSessionId: `agent-${runtime.launchId}`, paneId: runtime.paneId, source: manifest.source });
-  const report = { status: "available" as const, nativeSession: runtime.nativeSession, agentSessionId: `agent-${runtime.launchId}`, observedAt: 2000, model: { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }, availableModels: [{ provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }], configuredEffort: "high", effectiveEffort: "high", availableEfforts: ["low", "high"] };
+  const client = await connectEmployee({ socketPath: f.config.socketPath, credential: manifest.credential, nativeSession: runtime.nativeSession, agentSessionId: `s-${runtime.launchId.replaceAll("-", "").slice(0, 28)}`, paneId: runtime.paneId, source: manifest.source });
+  const report = { status: "available" as const, nativeSession: runtime.nativeSession, agentSessionId: `s-${runtime.launchId.replaceAll("-", "").slice(0, 28)}`, observedAt: 2000, model: { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }, availableModels: [{ provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }], configuredEffort: "high", effectiveEffort: "high", availableEfforts: ["low", "high"] };
   await client.poll(report);
   expect(f.store.runtimeCapability(pa, runtime.generation)).toMatchObject({ status: "available", availableModels: [{ id: "gpt-5.2" }], availableEfforts: ["low", "high"] });
-  expect(f.store.effectiveRoleSettings(pa, runtime.generation)).toMatchObject({ status: "available", model: { id: "gpt-5.2" }, configuredEffort: "high", effectiveEffort: "high", session: { ownerId: "coordinator", employeeId: pa, generation: runtime.generation, launchId: runtime.launchId, nativeSession: runtime.nativeSession, agentSessionId: `agent-${runtime.launchId}` } });
+  expect(f.store.effectiveRoleSettings(pa, runtime.generation)).toMatchObject({ status: "available", model: { id: "gpt-5.2" }, configuredEffort: "high", effectiveEffort: "high", session: { ownerId: "coordinator", employeeId: pa, generation: runtime.generation, launchId: runtime.launchId, nativeSession: runtime.nativeSession, agentSessionId: `s-${runtime.launchId.replaceAll("-", "").slice(0, 28)}` } });
   await expect(client.poll({ ...report, agentSessionId: "another-omp-session", observedAt: 2001 })).rejects.toThrow("authenticated native session");
-  await expect(client.poll({ ...report, observedAt: 1999 })).rejects.toThrow("older than the saved session readback");
-  const unavailable = { status: "unavailable" as const, reason: "omp_session_api_unavailable" as const, nativeSession: runtime.nativeSession, agentSessionId: `agent-${runtime.launchId}`, observedAt: 2002 };
+  await client.poll({ ...report, observedAt: 1999 });
+  expect(f.store.effectiveRoleSettings(pa, runtime.generation)?.observedAt).toBe(1000);
+  const unavailable = { status: "unavailable" as const, reason: "omp_session_api_unavailable" as const, nativeSession: runtime.nativeSession, agentSessionId: `s-${runtime.launchId.replaceAll("-", "").slice(0, 28)}`, observedAt: 2002 };
   await client.poll(unavailable);
   expect(f.store.runtimeCapability(pa, runtime.generation)).toMatchObject({ status: "unavailable", reason: "omp_session_api_unavailable" });
   expect(f.store.effectiveRoleSettings(pa, runtime.generation)).toMatchObject({ status: "unavailable", reason: "omp_session_api_unavailable" });
@@ -514,8 +515,9 @@ test("manager input retains exact raw evidence and worker pane input cannot chan
 
 test("a disconnected PA is unhealthy even when its old terminal observation is still idle", async () => {
   const f = fixture(8);
-  const { manager, pa } = await f.ready();
+  let { manager, pa } = await f.ready();
   f.advance(2100);
+  manager = await f.admit("manager");
   await f.coordinator.poll(manager);
   await f.coordinator.tick();
   expect(JSON.stringify(await f.coordinator.command(manager, { kind: "staff" }))).toContain("pa-offline");
@@ -659,7 +661,7 @@ test("explicit intake retains complete paged text and native attachments for its
 
 test("manager recovery fences a stranded unadmitted crew generation and admits a fresh root", async () => {
   const f = fixture(8);
-  const { manager } = await f.ready();
+  let { manager } = await f.ready();
   const team = await f.delegate(manager, "stranded-event");
   const id = team.devs[0];
   if (!id) throw new Error("Missing dev");
@@ -672,6 +674,7 @@ test("manager recovery fences a stranded unadmitted crew generation and admits a
   if (!oldObservation?.nativeSession) throw new Error("Missing original root evidence");
   await expect(f.coordinator.command(manager, { kind: "replace", employeeId: id, evidence: "Stopped original launch and verified absence" })).rejects.toThrow("recent");
   f.advance(2500);
+  manager = await f.admit("manager");
   expect(await f.coordinator.command(manager, { kind: "replace", employeeId: id, evidence: "Stopped original launch and verified absence" })).toEqual({ generation: 2 });
   const next = f.store.runtimeBindings().findLast((r) => r.employeeId === id);
   expect(next).toMatchObject({ generation: 2, state: "prepared", paneId: null, nativeSession: null });
@@ -691,7 +694,7 @@ test("manager recovery fences a stranded unadmitted crew generation and admits a
 
 test("prepared recovery checks live launch alias and rejects the abandoned credential before successor preparation", async () => {
   const f = fixture(8);
-  const { manager } = await f.ready();
+  let { manager } = await f.ready();
   const hire = z.object({ employees: z.array(z.object({ id: z.string() })) }).parse(await f.coordinator.command(manager, { kind: "hire", requestId: "prepared-recovery", role: "dev", additional: 1 }));
   const id = hire.employees[0]?.id;
   if (!id) throw new Error("Missing hired dev");
@@ -699,6 +702,7 @@ test("prepared recovery checks live launch alias and rejects the abandoned crede
   if (!old) throw new Error("Missing prepared launch");
   const oldManifest = manifestSchema.parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${old.launchId}.json`), "utf8")));
   f.advance(2500);
+  manager = await f.admit("manager");
   f.observations.push({ harness: "omp", name: `s-${old.launchId.replaceAll("-", "").slice(0, 28)}`, workspaceId: "w1", tabId: "w1:t99", paneId: "w1:p99", terminalId: "term99", nativeSession: "/stranded.jsonl", state: "working", stateSequence: 1, interactiveReady: false });
   await expect(f.coordinator.command(manager, { kind: "replace", employeeId: id, evidence: "Verified unknown shell stopped" })).rejects.toThrow("live");
   f.observations.pop();
@@ -930,14 +934,17 @@ test("120 routine PA reports preserve supervision history without manager infere
 
 test("a recovered manager disconnect creates a fresh alert episode without a Herdr state change", async () => {
   const f = fixture(8);
-  const { manager, paConnection } = await f.ready();
+  let { manager, pa, paConnection } = await f.ready();
   f.advance(2200);
+  paConnection = await f.admit(pa);
   await f.coordinator.poll(paConnection);
   await f.coordinator.tick();
   f.advance(2300);
+  manager = await f.admit("manager");
   await f.coordinator.poll(manager);
   expect(f.store.employeeView("manager").messages.some((message) => JSON.stringify(message.payload).includes('"kind":"manager-offline"'))).toBe(false);
   f.advance(3500);
+  paConnection = await f.admit(pa);
   await f.coordinator.poll(paConnection);
   await f.coordinator.tick();
   const episodes = f.store.snapshot().messages.filter((message) => message.recipient === "manager" && JSON.stringify(message.payload).includes('"kind":"manager-offline"'));
@@ -994,7 +1001,7 @@ test("host status is read-only and distinguishes startup states", async () => {
   expect(missing.state).toBe("missing");
   expect(missing.binding).toEqual({ name: "test", boundRoot: f.config.boundRoot, home: f.home, host: "host" });
   expect(missing.reasons).toContain("manager-runtime-absent");
-  const { manager, pa, paConnection } = await f.ready();
+  let { manager, pa, paConnection } = await f.ready();
   await f.coordinator.command(manager, { kind: "receive", id: "native-history", source: "interactive", raw: { text: "keep this", images: [] } });
   const before = storeProof(database);
   const live = hostStatusSchema.parse(await (await fetch("http://localhost/status", { unix: f.config.socketPath })).json());
@@ -1011,12 +1018,16 @@ test("host status is read-only and distinguishes startup states", async () => {
   const offline = hostStatusSchema.parse(f.coordinator.hostStatus({}));
   expect(offline.state).toBe("offline");
   expect(offline.reasons).toContain("manager-poll");
+  manager = await f.admit("manager");
+  paConnection = await f.admit(pa);
   await f.coordinator.poll(manager);
   await f.coordinator.poll(paConnection);
   await f.coordinator.tick();
   const paClaim = await f.coordinator.command(paConnection, { kind: "claim" });
   if (paClaim !== null) await f.coordinator.command(paConnection, { kind: "settle", result: { id: "pa-fresh", kind: "completed", output: "checked", checkpoint: null, outgoing: [{ id: "pa-fresh-report", recipient: "manager", kind: "report", correlation: "manager-supervision", payload: { ok: true } }] } });
   f.advance(4000);
+  manager = await f.admit("manager");
+  paConnection = await f.admit(pa);
   await f.coordinator.poll(manager);
   await f.coordinator.poll(paConnection);
   const stale = hostStatusSchema.parse(f.coordinator.hostStatus({}));
@@ -1273,4 +1284,95 @@ test("a background crew launch failure is saved as manager alerts and leaves unl
   const interrupted = alerts.find((payload) => payload.includes('"kind":"launch-interrupted"'));
   expect(interrupted).toContain(team.qa);
   expect(interrupted).toContain("ambiguous create response");
+});
+
+test("re-admission revokes the prior launch connection before another command or report", async () => {
+  const f = fixture(8);
+  const { pa, paConnection } = await f.ready();
+  const next = await f.admit(pa);
+  await expect(f.coordinator.poll(next)).resolves.toHaveProperty("projection");
+  await expect(f.coordinator.command(paConnection, { kind: "claim" })).rejects.toThrow("connection");
+  const runtime = f.store.runtimeBindings().findLast((entry) => entry.employeeId === pa)!;
+  await expect(f.coordinator.poll(paConnection, { status: "unavailable", reason: "omp_session_api_unavailable", nativeSession: runtime.nativeSession!, agentSessionId: `s-${runtime.launchId.replaceAll("-", "").slice(0, 28)}`, observedAt: 900000 })).rejects.toThrow("connection");
+});
+
+test("an older delayed admission cannot supersede a newer admission", async () => {
+  const f = fixture(8);
+  const { pa } = await f.ready();
+  const barrier = Promise.withResolvers<void>();
+  f.delayObservation(barrier.promise);
+  const old = f.admit(pa);
+  f.delayObservation(Promise.resolve());
+  const latest = await f.admit(pa);
+  barrier.resolve();
+  await expect(old).rejects.toThrow("admission");
+  await expect(f.coordinator.poll(latest)).resolves.toHaveProperty("projection");
+});
+
+test("a replaced connection cannot commit delegation after an awaited observation", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  await f.coordinator.command(manager, { kind: "intake", eventId: "stale-delegate", input: "work", amendItemIds: [] });
+  const barrier = Promise.withResolvers<void>();
+  f.delayObservation(barrier.promise);
+  const pending = f.coordinator.command(manager, { kind: "delegate", eventId: "stale-delegate", developers: 1 });
+  await Bun.sleep(1);
+  f.delayObservation(Promise.resolve());
+  await f.admit("manager");
+  barrier.resolve();
+  await expect(pending).rejects.toThrow("connection");
+  expect(f.store.snapshot().teams).toHaveLength(0);
+});
+
+test("closing the admission HTTP channel revokes the bearer and current settings", async () => {
+  const f = fixture(8);
+  const { manager, pa } = await f.ready();
+  const saved = f.store.runtimeBindings().findLast((r) => r.employeeId === pa)!;
+  const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(f.config.startupRoot, "launches", `${saved.launchId}.json`), "utf8")));
+  servers.push(serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }));
+  const channel = new WebSocket(`ws+unix://${f.config.socketPath}:/admit`);
+  const receipt = await new Promise<{ connection: string }>((resolve) => {
+    channel.onopen = (): void => { channel.send(JSON.stringify({ credential: manifest.credential, nativeSession: saved.nativeSession, paneId: saved.paneId, source: manifest.source, agentSessionId: `s-${saved.launchId.replaceAll("-", "").slice(0, 28)}` })); };
+    channel.onmessage = (event): void => { resolve(z.object({ connection: z.string() }).parse(JSON.parse(String(event.data)))); };
+  });
+  await f.coordinator.poll(receipt.connection, { status: "unavailable", reason: "omp_session_api_unavailable", nativeSession: saved.nativeSession!, agentSessionId: `s-${saved.launchId.replaceAll("-", "").slice(0, 28)}`, observedAt: 1000 }, 1);
+  channel.close();
+  await Bun.sleep(30);
+  await expect(f.coordinator.command(receipt.connection, { kind: "claim" })).rejects.toThrow("connection");
+  const staff = z.object({ runtime: z.array(z.object({ employeeId: z.string(), effectiveSettings: z.object({ reason: z.string() }) })) }).parse(await f.coordinator.command(manager, { kind: "staff" }));
+  expect(staff.runtime.find((entry) => entry.employeeId === pa)?.effectiveSettings.reason).toBe("session_not_observed");
+});
+
+test("settings sequences fence conflicts and old epochs regardless of future client clocks", async () => {
+  const f = fixture(8);
+  const { manager, pa, paConnection } = await f.ready();
+  const saved = f.store.runtimeBindings().findLast((entry) => entry.employeeId === pa)!;
+  const report = { status: "available" as const, nativeSession: saved.nativeSession!, agentSessionId: `s-${saved.launchId.replaceAll("-", "").slice(0, 28)}`, observedAt: 999999999, model: { provider: "p", id: "m", name: "M" }, availableModels: [{ provider: "p", id: "m", name: "M" }], configuredEffort: "high", effectiveEffort: "high", availableEfforts: ["high"] };
+  await f.coordinator.poll(paConnection, report, 1);
+  expect(f.store.effectiveRoleSettings(pa, saved.generation)?.observedAt).toBe(1000);
+  await expect(f.coordinator.poll(paConnection, { ...report, effectiveEffort: "low" }, 1)).rejects.toThrow("sequence");
+  const latest = await f.admit(pa);
+  const status = await f.coordinator.command(manager, { kind: "staff" });
+  const rows = z.object({ runtime: z.array(z.object({ employeeId: z.string(), effectiveSettings: z.object({ status: z.string() }) })) }).parse(status).runtime;
+  expect(rows.find((entry) => entry.employeeId === pa)?.effectiveSettings.status).toBe("unavailable");
+  await expect(f.coordinator.poll(paConnection, report, 999)).rejects.toThrow("connection");
+  await f.coordinator.poll(latest, { ...report, observedAt: 1 }, 1);
+  expect(f.store.effectiveRoleSettings(pa, saved.generation)).toMatchObject({ status: "available", sampleSequence: 1, observedAt: 1000 });
+  f.coordinator.revoke(latest);
+  await expect(f.coordinator.poll(latest, report, 2)).rejects.toThrow("connection");
+});
+
+test("cancelled admission during native observation cannot install authority or refresh presence", async () => {
+  const f = fixture(8);
+  const { pa } = await f.ready();
+  const saved = f.store.runtimeBindings().findLast((entry) => entry.employeeId === pa)!;
+  const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(f.config.startupRoot, "launches", `${saved.launchId}.json`), "utf8")));
+  const barrier = Promise.withResolvers<void>();
+  f.delayObservation(barrier.promise);
+  const abort = new AbortController();
+  const pending = f.coordinator.admit({ credential: manifest.credential, nativeSession: saved.nativeSession!, paneId: saved.paneId!, source: manifest.source }, abort.signal);
+  abort.abort();
+  barrier.resolve();
+  await expect(pending).rejects.toThrow("disconnected before commit");
+  expect(f.store.runtimeBindings().findLast((entry) => entry.employeeId === pa)).toEqual(saved);
 });

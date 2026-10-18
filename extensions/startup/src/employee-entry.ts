@@ -8,7 +8,7 @@ import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, r
 import { connectEmployee, EmployeeCommandError, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
 import { itemActionSchema } from "./items";
 import { herdrContext } from "./herdr-runtime";
-import { readOmpSessionSettings, type NativeContext, type NativeResult } from "./omp-adapter";
+import { createOmpSettingsSampler, type NativeContext, type NativeResult } from "./omp-adapter";
 import { loadProfile, profileText, verifyProfile, type Profile } from "./profiles";
 import { readPrivateJson } from "./v7-launch";
 
@@ -19,7 +19,7 @@ const manifestSchema = z.strictObject({
 });
 export type LaunchManifest = z.infer<typeof manifestSchema>;
 export type Environment = Readonly<Record<string, string | undefined>>;
-export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext; close: () => void }>;
+export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext; sessionId: string; sessionFile: string | undefined; close: () => void }>;
 export const inputSchema = z.object({ id: idSchema.optional(), text: z.string(), source: z.enum(["interactive", "rpc", "extension"]), images: z.array(jsonSchema).optional() });
 export type NativeRoot = Readonly<{ nativeSession: string; file: string; lastAssistant: unknown }>;
 export type NativeRootFn = (host: HostAPI, ctx: NativeContext) => Promise<NativeRoot>;
@@ -70,9 +70,10 @@ function verifyManifest(manifest: LaunchManifest): Profile {
 }
 export function sameRoot(admission: Admission, ctx: NativeContext): boolean {
   return ctx.agent.kind === "main" && ctx.agent.id === admission.context.agent.id &&
-    ctx.sessionManager.getSessionId() === admission.context.sessionManager.getSessionId();
+    ctx.sessionManager.getSessionId() === admission.sessionId && ctx.sessionManager.getSessionFile() === admission.sessionFile;
 }
 export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment, nativeRootOf: NativeRootFn): Promise<Admission> {
+  const sessionId = ctx.sessionManager.getSessionId();
   const profile: Profile = verifyManifest(manifest);
   if (environment.STARTUP_ROOT !== manifest.startupRoot || environment.JP_SKILLS_HOME !== manifest.skillsHome ||
       (manifest.harness === "omp" && environment.PI_CODING_AGENT_DIR !== manifest.startupRoot) ||
@@ -81,22 +82,25 @@ export async function attach(host: HostAPI, ctx: NativeContext, manifest: Launch
   if (manifest.harness === "omp" && (environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim() || "default") !== "default")
     throw new StartupBootError("Startup requires the stock OMP default profile; named profiles are unsupported");
   const root: NativeRoot = await nativeRootOf(host, ctx);
+  const sessionFile = ctx.sessionManager.getSessionFile();
+  if (ctx.sessionManager.getSessionId() !== sessionId) throw new StartupBootError("Native session changed while resolving admission identity");
   const nativeSession: string = root.nativeSession;
   const actualProfile = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim();
   if (actualProfile && actualProfile !== manifest.profile) throw new StartupBootError("Actual named OMP profile differs from the launch manifest");
   const paneId: string = environment.HERDR_PANE_ID?.trim() || (await paneEnvironment(environment)).paneId;
   const agentSessionId: string | null = manifest.harness === "omp" ? ctx.sessionManager.getSessionId() : null;
   const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId, ...(agentSessionId === null ? {} : { agentSessionId }) });
-  const settingsReport = manifest.harness === "omp" ? (): ReturnType<typeof readOmpSessionSettings> => {
+  if (ctx.sessionManager.getSessionId() !== sessionId || ctx.sessionManager.getSessionFile() !== sessionFile) { client.close(); throw new StartupBootError("Native session changed during admission"); }
+  const settingsReport = manifest.harness === "omp" && agentSessionId !== null ? createOmpSettingsSampler({ nativeSession, agentSessionId, now: Date.now, refreshMs: 30000, read: () => {
       const current = host.pi.AgentRegistry.global().get(ctx.agent.id);
       if (agentSessionId === null || current?.kind !== "main" || current.parentId !== undefined || current.session === null || current.session.sessionManager.getSessionId() !== agentSessionId || current.session.sessionManager.getSessionFile() !== root.nativeSession)
-        throw new StartupBootError("OMP settings observation no longer matches the admitted native root session");
-      return readOmpSessionSettings({ session: current.session, nativeSession: root.nativeSession, agentSessionId, observedAt: Date.now() });
-    } : undefined;
+        { client.close(); throw new StartupBootError("OMP settings observation no longer matches the admitted native root session"); }
+      return current.session;
+    } }) : undefined;
   const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000, instructions: profileText(profile), lastAssistant: root.lastAssistant, ...(settingsReport === undefined ? {} : { settingsReport }) });
   try { await bridge.poll(); }
   catch (error: unknown) { bridge.close(); throw error; }
-  return { client, context: ctx, close: bridge.close };
+  return { client, context: ctx, sessionId, sessionFile, close: bridge.close };
 }
 function nativeResult(value: Json): NativeResult {
   const image = z.object({ type: z.literal("image"), data: z.string(), mimeType: z.string().startsWith("image/") }).passthrough().safeParse(value);
@@ -113,7 +117,11 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
   const strings: Field = { native: b.array(b.string()), schema: z.array(idSchema) };
   async function execute(current: Admission, ctx: NativeContext, command: Json): Promise<NativeResult> {
     const stopped: boolean = current.client.settlementBlock() !== null;
-    try { return nativeResult(await current.client.request(command)); }
+    try {
+      const result = await current.client.request(command);
+      if (!sameRoot(current, ctx)) { current.close(); throw new StartupBootError("Native session changed during command; outcome must be reconciled, never replayed"); }
+      return nativeResult(result);
+    }
     catch (error: unknown) {
       if ((error instanceof EmployeeSettlementError || error instanceof EmployeeCommandError) && error.repeated) {
         ctx.abort?.();
@@ -240,6 +248,7 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
   host.on("session_start", async (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
     if (admitted !== null) {
+      admitted.close();
       failure = "Launched employee is already bound; root switching requires explicit relaunch";
       host.sendMessage({ customType: "startup-boot-error", content: failure, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
       ctx.abort?.();

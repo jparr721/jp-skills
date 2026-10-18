@@ -23,14 +23,15 @@ const pretool = `'/opt/bun it'\\''s/bin/bun' '/src/jp-skills/extensions/startup/
 test("Claude settings register the bridge hooks, waiter and StopFailure shim exactly", () => {
   const rewake = { type: "command", command: waiter, async: true, asyncRewake: true, timeout: 2000000 };
   expect(claudeSettings({ bun, skillsRoot })).toEqual({ hooks: {
-    SessionStart: [{ hooks: [rewake] }],
+    SessionStart: [{ hooks: [{ type: "mcp_tool", server: "startup", tool: "hook", timeout: 30, input: { sessionId: "${session_id}", event: "SessionStart", transcript: "${transcript_path}" } }, rewake] }],
+    SessionEnd: [{ hooks: [{ type: "mcp_tool", server: "startup", tool: "hook", timeout: 30, input: { sessionId: "${session_id}", event: "SessionEnd" } }] }],
     UserPromptSubmit: [{ hooks: [
-      { type: "mcp_tool", server: "startup", tool: "hook", timeout: 120, input: { event: "UserPromptSubmit", prompt: "${prompt}", promptId: "${prompt_id}", transcript: "${transcript_path}" } },
+      { type: "mcp_tool", server: "startup", tool: "hook", timeout: 120, input: { sessionId: "${session_id}", event: "UserPromptSubmit", prompt: "${prompt}", promptId: "${prompt_id}", transcript: "${transcript_path}" } },
       rewake,
     ] }],
     PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: pretool, timeout: 30, onFailure: "block" }] }],
-    PostToolUse: [{ matcher: "*", hooks: [{ type: "mcp_tool", server: "startup", tool: "hook", timeout: 30, input: { event: "PostToolUse", tool: "${tool_name}", agentId: "${agent_id}" } }] }],
-    Stop: [{ hooks: [{ type: "mcp_tool", server: "startup", tool: "hook", timeout: 30, input: { event: "Stop", active: "${stop_hook_active}" } }] }],
+    PostToolUse: [{ matcher: "*", hooks: [{ type: "mcp_tool", server: "startup", tool: "hook", timeout: 30, input: { sessionId: "${session_id}", event: "PostToolUse", tool: "${tool_name}", agentId: "${agent_id}" } }] }],
+    Stop: [{ hooks: [{ type: "mcp_tool", server: "startup", tool: "hook", timeout: 30, input: { sessionId: "${session_id}", event: "Stop", active: "${stop_hook_active}" } }] }],
     StopFailure: [{ hooks: [{ type: "command", command: event, timeout: 10 }] }],
   } });
 });

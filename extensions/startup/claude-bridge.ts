@@ -45,7 +45,7 @@ function log(record: Readonly<Record<string, Json>>): void {
 function write(message: Json): void {
   process.stdout.write(JSON.stringify(message) + "\n");
 }
-async function answer(shim: ClaudeHost, version: string, attach: (transcript: string) => Promise<void>, line: string): Promise<void> {
+async function answer(shim: ClaudeHost, sessionId: string, version: string, attach: (transcript: string) => Promise<void>, line: string): Promise<void> {
   let id: string | number | null = null;
   try {
     const request = requestSchema.parse(JSON.parse(line));
@@ -62,7 +62,22 @@ async function answer(shim: ClaudeHost, version: string, attach: (transcript: st
     const call = callSchema.parse(request.params);
     const args: Json = call.arguments ?? {};
     if (call.name === "hook") {
-      const input = claudeHookInputSchema.parse(args);
+      const identity = z.looseObject({ sessionId: z.literal(sessionId) }).safeParse(args);
+      if (!identity.success) {
+        const error = new StartupBootError("Claude hook is missing the current native session identity; admission revoked");
+        shim.fail(error);
+        await shim.shutdown();
+        throw error;
+      }
+      const { sessionId: _sessionId, ...payload } = identity.data;
+      const lifecycle = z.strictObject({ event: z.literal("SessionStart"), transcript: z.string().min(1) }).safeParse(payload);
+      if (lifecycle.success) { await attach(lifecycle.data.transcript); write({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: "{}" }] } }); return; }
+      if (z.strictObject({ event: z.literal("SessionEnd") }).safeParse(payload).success) {
+        await shim.shutdown();
+        write({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: "{}" }] } });
+        return;
+      }
+      const input = claudeHookInputSchema.parse(payload);
       if (input.event === "UserPromptSubmit") await attach(input.transcript);
       write({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(await shim.hook(input)) }] } });
       return;
@@ -129,7 +144,7 @@ async function serve(): Promise<void> {
   }
   function attach(path: string): Promise<void> {
     if (transcript !== null) {
-      if (transcript !== path) shim.fail(new Error(`Claude transcript path changed from ${transcript} to ${path}; the Startup bridge serves one session`));
+      if (transcript !== path) { shim.fail(new Error(`Claude transcript path changed from ${transcript} to ${path}; the Startup bridge serves one session`)); return shim.shutdown(); }
       return started ?? Promise.resolve();
     }
     transcript = path;
@@ -150,7 +165,7 @@ async function serve(): Promise<void> {
   }
   async function received(socket: Bun.Socket<SocketState>, line: string): Promise<void> {
     const request = bridgeRequestSchema.parse(JSON.parse(line));
-    if (request.sessionId !== sessionId) throw new StartupBootError(`Claude hook session ${request.sessionId} does not belong to bridge session ${sessionId}`);
+    if (request.sessionId !== sessionId) { const error = new StartupBootError(`Claude hook session ${request.sessionId} does not belong to bridge session ${sessionId}`); shim.fail(error); await shim.shutdown(); throw error; }
     if ("event" in request) {
       await shim.hook({ event: "StopFailure", error: request.error });
       socket.end(JSON.stringify({ received: true }) + "\n");
@@ -210,7 +225,7 @@ async function serve(): Promise<void> {
     buffer = rest;
     for (const line of lines) {
       if (line.trim() === "") continue;
-      void answer(shim, version, attach, line);
+      void answer(shim, sessionId, version, attach, line);
     }
   }
   await shutdown();
