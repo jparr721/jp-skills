@@ -694,7 +694,7 @@ test("explicit manager select recovers a stopped coordinator in the same native 
   if (!initial) throw new Error("Missing initial launch config");
   expect(launched[1]).toEqual({ ...initial, socketPath: f.socketPath });
   expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
-  expect(f.admissions).toHaveLength(1);
+  expect(f.admissions).toHaveLength(2);
 });
 
 
@@ -860,4 +860,17 @@ test("Claude runtime launches the PA with the claude kind and admits it by its a
     clients.push(await connectEmployee({ socketPath: config.socketPath, credential: config.managerCredential, nativeSession: "native-root", paneId: "w1:p1", source: loadProfile({ skillsRoot: f.skillsRoot, role: "manager", employeeId: "manager", generation: 1 }).source }));
     expect((await clients[1]!.poll()).projection).toContain("Complete canonical manager persona");
   } finally { for (const client of clients) client.close(); await runtime.close(); }
+});
+
+test("explicit manager retry replaces the prior admitted channel without replaying work", async () => {
+  const f = fixture();
+  installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+  await f.emit("input", { text: "/startup new alpha", source: "interactive" }, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+  const requests = f.requests.length;
+  const retry = f.commands.get("startup-retry");
+  if (!retry) throw new Error("Missing retry command");
+  await retry.handler("", f.ctx);
+  expect(f.admissions).toHaveLength(2);
+  expect(f.requests).toHaveLength(requests);
 });

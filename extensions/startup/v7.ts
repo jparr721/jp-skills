@@ -67,14 +67,11 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       if (!sameRoot(admitted, ctx) || next.name !== selection?.name || next.boundRoot !== selection.boundRoot)
         throw new StartupBootError("Startup already belongs to another selected manager root");
       if (runtimeConfig === null) throw new StartupBootError("Admitted manager lost its coordinator configuration");
-      runtimeConfig = await input.launch(runtimeConfig);
-      await admitted.client.poll();
-      failure = null;
-      failureTurnPending = false;
-      return;
+      admitted.close();
+      admitted = null;
     }
     const savedPath: string = join(next.startupRoot, "runtime-config.json");
-    const saved: RuntimeHostConfig | null = existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null;
+    const saved: RuntimeHostConfig | null = runtimeConfig ?? (existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null);
     if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.name !== next.name || saved.skillsHome !== next.skillsHome || saved.startupRoot !== next.startupRoot || saved.stateDirectory !== next.startupRoot ||
       saved.boundRoot !== next.boundRoot || saved.skillsRoot !== next.skillsRoot || saved.managerSession !== ctx.sessionManager.getSessionId() ||
       (input.harness === "omp" && realpathSync(saved.managerFile) !== realpathSync(nativeFile)) || saved.managerPaneId !== location.paneId || saved.profile !== location.profile ||
@@ -131,6 +128,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   host.on("session_start", async (_event, ctx) => {
     if (ctx.agent.kind !== "main" || stopped) return;
     if (admitted !== null && !sameRoot(admitted, ctx)) { admitted.close(); stopped = true; report(new StartupBootError("Manager native session changed; explicit re-admission required"), ctx); ctx.abort?.(); return; }
+    if (admitted !== null) return;
     try {
       const next = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, configHome: input.configHome, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
       if (next === null || !existsSync(join(next.startupRoot, "runtime-config.json"))) return;
