@@ -2,6 +2,16 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.5.0] - 2026-10-19
+
+### Added
+
+- `quickfix`: a hand-invoked fix-it-now mode, the ungated sibling of `hotfix`. Each request is edited in place on the checked-out branch beside any dirty files; it asks only when a missing fact blocks the edit (one batched message, each question with a recommended default), fixes at the root with the repo's own helpers, reports sibling defects and pre-existing red for you to call, and leaves edits uncommitted. It is `disable-model-invocation`, so it never competes with `hotfix`; OMP surfaces it as `/skill:quickfix`.
+
+### Verification
+
+- Pressure-tested with subagents in scratch repos under the superpowers session-start rules: a plain agent committed unasked on the feature branch and asked an open-ended brainstorming question; with `quickfix` the same requests produced uncommitted in-place edits and one batched question with defaults, with no brainstorming or worktree skill read. One run per scenario.
+
 ## [7.4.0] - 2026-10-17
 
 ### Added
