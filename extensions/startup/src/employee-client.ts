@@ -163,7 +163,9 @@ export async function connectEmployee(input: Readonly<{
     if (!response.ok) {
       let recovery: SettlementRecovery | null = null;
       try {
-        const parsed = z.object({ recovery: settlementRecoverySchema }).safeParse(JSON.parse(redact(text)));
+        const body: unknown = JSON.parse(redact(text));
+        if (z.object({ admission: z.literal("revoked") }).safeParse(body).success) { closed = true; shutdown.abort(); lifetime?.close(); }
+        const parsed = z.object({ recovery: settlementRecoverySchema }).safeParse(body);
         if (parsed.success) recovery = parsed.data.recovery;
       } catch (error: unknown) { if (!(error instanceof SyntaxError)) throw error; }
       throw new EmployeeHttpError(response.status, `Startup ${method} ${path} HTTP ${response.status}: ${redact(text)}`, recovery);

@@ -79,6 +79,7 @@ export type Coordinator = Readonly<{
   hostReceipt: (id: string) => HostReceipt;
 }>;
 class AdmissionPendingError extends Error {}
+class AdmissionRevokedError extends StoreFenceError {}
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function json(value: unknown): Json { return jsonSchema.parse(JSON.parse(JSON.stringify(value))); }
 
@@ -174,12 +175,13 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   }
   function actor(connection: string): Readonly<{ binding: Binding; employee: Employee; runtime: RuntimeBinding }> {
     const session = connections.get(connection);
-    if (!session || session.epoch !== store.ownerEpoch) throw new StoreAuthorityError("Employee connection is not admitted in this coordinator epoch");
-    store.assertRuntimeConnection(session.launchId, session.connectionEpoch);
+    if (!session || session.epoch !== store.ownerEpoch) throw new AdmissionRevokedError("Employee connection is not admitted in this coordinator epoch");
+    try { store.assertRuntimeConnection(session.launchId, session.connectionEpoch); }
+    catch (error: unknown) { if (error instanceof StoreFenceError) throw new AdmissionRevokedError(error.message); throw error; }
     const current = employee(session.employeeId);
     if (current.employment !== "hired") throw new StoreAuthorityError("Employee is retired; its native root must stop and cannot resume technical work");
     const bound = runtime(current.id);
-    if (now() - bound.lastPoll > policy.connectionDeadlineMs) { revoke(connection); throw new StoreFenceError("Employee connection expired; explicit re-admission required"); }
+    if (now() - bound.lastPoll > policy.connectionDeadlineMs) { revoke(connection); throw new AdmissionRevokedError("Employee connection expired; explicit re-admission required"); }
     if (bound.launchId !== session.launchId || bound.nativeSession !== session.nativeSession || bound.state !== "ready" || bound.generation !== session.generation || current.generation !== session.generation || current.nativeHandle === null)
       throw new StoreFenceError("Employee connection generation is stale or not ready");
     const source = profile(current, current.generation);
@@ -827,7 +829,7 @@ export function serveCoordinator(input: Readonly<{ coordinator: Coordinator; soc
       return Response.json({ error: "unknown_endpoint" }, { status: 404 });
     } catch (error: unknown) {
       const status = error instanceof AdmissionPendingError ? 425 : error instanceof z.ZodError ? 400 : error instanceof StoreAuthorityError ? 403 : error instanceof StoreConflictError || error instanceof StoreFenceError ? 409 : 500;
-      return Response.json({ error: error instanceof Error ? error.constructor.name : "RuntimeError", message: error instanceof Error ? error.message : String(error), ...(error instanceof ClaimSettlementError ? { recovery: error.recovery } : {}) }, { status });
+      return Response.json({ error: error instanceof Error ? error.constructor.name : "RuntimeError", message: error instanceof Error ? error.message : String(error), ...(error instanceof ClaimSettlementError ? { recovery: error.recovery } : {}), ...(error instanceof AdmissionRevokedError ? { admission: "revoked" } : {}) }, { status });
     }
   } });
   chmodSync(input.socketPath, 0o600);

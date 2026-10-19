@@ -767,3 +767,12 @@ test("a submitted Claude prompt clears a provider pause like native root input",
   await bridge.poll();
   expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(1);
 });
+
+test("ordinary command conflicts leave admission open for correction", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  fixture.commandError(Response.json({ error: "StoreConflictError", message: "settings revision changed" }, { status: 409 }));
+  await expect(client.request({ kind: "hire", requestId: "ordinary", role: "dev", additional: 1 })).rejects.toThrow("409");
+  expect(client.isClosed()).toBe(false);
+  expect(fixture.requests.filter((request) => request.path === "/admit")).toHaveLength(1);
+});

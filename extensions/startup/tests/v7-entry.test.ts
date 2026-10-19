@@ -1173,16 +1173,7 @@ for (const lifecycle of ["session_start", "session_shutdown"] as const) test(`pr
 for (const lifecycle of ["session_start", "session_shutdown"] as const) test(`production employee ${lifecycle} fences a pending owner write`, async () => {
   const o = await lifecycleOwnerFixture();
   const { f } = o;
-  const nativeSession = o.pa.nativeSession!;
-  const sessionId = JSON.parse(readFileSync(nativeSession, "utf8").split("\n")[0]!).id;
-  const ctx: NativeContext = { ...f.ctx, sessionManager: { getSessionId: () => sessionId, getSessionFile: () => nativeSession } };
-  const original = f.host.pi.AgentRegistry.global().get("Main")!;
-  const ref: NativeRef = { ...original, session: { ...original.session!, sessionManager: ctx.sessionManager } };
-  const host: HostAPI = { ...f.host, pi: { ...f.host.pi, AgentRegistry: { global: () => ({ get: () => ref, list: () => [ref], onChange: () => () => {} }) } } };
-  f.environment.HERDR_PANE_ID = o.pa.paneId!;
-  f.useEnvironment();
-  installLaunchedEmployee(host, o.manifest);
-  await f.emit("session_start", {}, ctx);
+  const ctx = await installOwnerEmployee(o);
   expect(f.messages.filter((message) => message.includes("boot blocked"))).toEqual([]);
   const barrier = Promise.withResolvers<void>();
   const entered = Promise.withResolvers<void>();
@@ -1258,4 +1249,51 @@ for (const role of ["manager", "employee"] as const) for (const loss of ["close"
   await f.commands.get("startup-retry")!.handler("", f.ctx);
   expect(f.admissions).toHaveLength(2);
   expect(await f.emit("tool_call", { toolName: "bash", input: {} }, f.ctx)).toBeUndefined();
+});
+
+async function installOwnerEmployee(o: Awaited<ReturnType<typeof lifecycleOwnerFixture>>): Promise<NativeContext> {
+  const { f } = o;
+  const nativeSession = o.pa.nativeSession!;
+  const sessionId = JSON.parse(readFileSync(nativeSession, "utf8").split("\n")[0]!).id;
+  const ctx: NativeContext = { ...f.ctx, sessionManager: { getSessionId: () => sessionId, getSessionFile: () => nativeSession } };
+  const original = f.host.pi.AgentRegistry.global().get("Main")!;
+  const ref: NativeRef = { ...original, session: { ...original.session!, sessionManager: ctx.sessionManager } };
+  const host: HostAPI = { ...f.host, pi: { ...f.host.pi, AgentRegistry: { global: () => ({ get: () => ref, list: () => [ref], onChange: () => () => {} }) } } };
+  f.environment.HERDR_PANE_ID = o.pa.paneId!;
+  f.useEnvironment();
+  installLaunchedEmployee(host, o.manifest);
+  await f.emit("session_start", {}, ctx);
+  return ctx;
+}
+
+for (const pendingInput of [false, true]) test(`expired employee explicitly re-admits without replay; pending input ${pendingInput}`, async () => {
+  const o = await lifecycleOwnerFixture();
+  const { f } = o;
+  const ctx = await installOwnerEmployee(o);
+  const connectionEpoch = (): string => {
+    const db = new Database(join(o.config.startupRoot, "staff.sqlite"), { readonly: true });
+    try { return z.object({ epoch: z.string() }).parse(db.query("SELECT json_extract(payload,'$.identity.connectionEpoch') AS epoch FROM records WHERE kind='runtimeConnection' AND id=?").get(o.pa.launchId)).epoch; }
+    finally { db.close(); }
+  };
+  const oldEpoch = connectionEpoch();
+  const inputPath = join(o.config.startupRoot, "input-receipts", createHash("sha256").update(ctx.sessionManager.getSessionId()).digest("hex") + ".json");
+  if (pendingInput) {
+    await f.emit("input", { id: "expiry-input", text: "saved input", source: "interactive" }, ctx);
+    const receipt = JSON.parse(readFileSync(inputPath, "utf8"));
+    writeFileSync(inputPath, encode({ ...receipt, state: "uncertain" }), { mode: 0o600 });
+  }
+  const savedMessages = o.store.snapshot().messages;
+  o.advance(32000);
+  await f.emit("context", { messages: [] }, ctx);
+  expect(await f.emit("tool_call", { toolName: "write", input: {} }, ctx)).toMatchObject({ block: true });
+  await f.commands.get("startup-retry")!.handler("", ctx);
+  expect(connectionEpoch()).not.toBe(oldEpoch);
+  if (pendingInput) expect(JSON.parse(readFileSync(inputPath, "utf8"))).toMatchObject({ id: "expiry-input", state: "committed" });
+  expect(o.store.snapshot().messages).toEqual(savedMessages);
+  expect(await f.emit("tool_call", { toolName: "bash", input: {} }, ctx)).toBeUndefined();
+  const changed: NativeContext = { ...ctx, sessionManager: { ...ctx.sessionManager, getSessionId: () => "changed" } };
+  const epoch = connectionEpoch();
+  await f.commands.get("startup-retry")!.handler("", changed);
+  expect(connectionEpoch()).toBe(epoch);
+  expect(await f.emit("tool_call", { toolName: "bash", input: {} }, changed)).toMatchObject({ block: true });
 });
