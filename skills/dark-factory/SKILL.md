@@ -208,7 +208,7 @@ Every sub-orchestrator must end its turn with **exactly** this block and nothing
 ```
 === SUB-ORCHESTRATOR OUTCOME ===
 ticket:          SYT-xxx
-status:          DONE | BLOCKED | NEEDS_DECISION
+status:          DONE | BLOCKED | NEEDS_DECISION | IN_PROGRESS
 pr:              <ready PR URL | none + reason>
 verify-mode:     <local | ci-only>
 head:            <exact tested PR head SHA | none + reason>
@@ -230,6 +230,11 @@ missing artifact is never an inferred pass. At-cap FIX-THEN-SHIP with an open mu
 stop-and-report, never DONE. Evidence: `sidebar/review-r4-verdict.md`,
 `sidebar/pipeline.md`, and `runrecords/pr189-main-metadata-reconcile.md` in the SYT-9093 run
 record.
+
+`IN_PROGRESS` is a nonterminal outcome, not a reason to re-dispatch. Keep the ledger row at
+`PIPELINE_RUNNING`, preserve the same sub-orchestrator, pipeline owner, worktree and exact pending
+evidence, and wait for or resume that owner. Do not start a second pipeline for the ticket. Keep
+the row out of `PR_OPEN` until its existing completion predicate is satisfied.
 
 Reject and re-dispatch anything that does not conform. You read **only** this block.
 
@@ -279,6 +284,9 @@ For each wave, in dependency order:
   `PR_OPEN` until its outcome shows a real ready PR URL, `checks: PASS` on the exact head,
   `qa: PASS`, a delivered deck path, and verdict APPROVE (at-cap must-fix-open parks as
   stop-and-report, BLOCK parks as BLOCKED).
+- `IN_PROGRESS` -> keep the same ledger row `PIPELINE_RUNNING` with its owner and worktree;
+  preserve the exact head and pending check/QA/review/artifact states, then wait for or resume that
+  owner for the next outcome. Never re-dispatch a second pipeline for the ticket.
 - `BLOCKED` / `NEEDS_DECISION` -> park the ticket, surface the one-liner to the user, continue
   with the rest. Shared questions (expired token, scope calls affecting siblings) are answered
   once and recorded, not re-asked per ticket.

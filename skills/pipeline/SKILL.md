@@ -254,11 +254,33 @@ Parallelize as much as the file graph allows, and not one step further.
 
 After repeated source-fidelity misses by a Luna implementation worker, stop the narrow patch loop
 and escalate the next authoring pass to a stronger available model. Use independent reviewers at
-a capable model tier to assess composition, integration, and fidelity on the resulting pushed
-diff. The stronger authoring pass is a new attempt, not proof that earlier misses are resolved.
-This is a response to the recorded repeated misses, not a general claim about every Luna task.
-Evidence: `sidebar/pipeline.md`, `sidebar/review-r2-verdict.md`, and
+the orchestrator's stronger default model tier when architecture, composition, integration, edge
+cases, or exact visual fidelity need that judgment; do not downgrade review just because the
+implementation used Luna. The stronger authoring pass is a new attempt, not proof that earlier
+misses are resolved. This is a response to the recorded repeated misses, not a general claim about
+every Luna task. Run evidence: SYT-9093 used `gpt-6-luna` at xhigh for implementation and the
+orchestrator's stronger default tier for independent review. Treat this as the recorded run choice,
+not a universal model default. Evidence: `ledger.md`, `sidebar/pipeline.md`,
+`sidebar/review-r2-verdict.md`, and
 `sidebar/review-r3-verdict.md` in the SYT-9093 run record.
+
+Before an executable CLI probe, treat even `--help`, `--version`, and path/config inspection as
+potentially stateful. Prefer direct structured argv with an explicit isolated environment, absolute
+temporary `HOME` and `XDG_CONFIG_HOME`, tool-specific config/profile/session roots, and an isolated
+working directory. Capture the child's exit code and start/end separately from the enclosing shell.
+If a shell is unavoidable, use a single-quoted heredoc and pass data as argv/env/stdin; never place
+backticks or other interpolating text inside a double-quoted shell argument. A command error, old
+file timestamp, or successful outer shell does not prove that no side effect occurred. Evidence:
+`factoryrecords/omp/incident-lessons.md` and `factoryrecords/omp/incident-audit.md` in the
+SYT-9093 run record.
+
+For long or high-uncertainty implementation slices, set a bounded checkpoint and a concrete
+completion signal before dispatch. The supervisor records stage, elapsed time, outputs, and the
+next dependency, then redirects or escalates when a slice churns without reaching its checkpoint;
+do not let a multi-hour worker continue without a meaningful checkpoint. In SYT-9093, vendoring
+S3 ran for about three hours after S2 without a checkpoint, then required a preserved interruption
+and bounded continuation. Evidence: `vendoring/supervisor.md` and
+`vendoring/implementation-interruption.json` in the SYT-9093 run record.
 
 > Ordering hint: schedule slices so shared foundations - schemas, migrations, shared types -
 > land in an early wave alone. Everything that consumes them parallelizes cleanly afterwards.
@@ -406,10 +428,11 @@ dispatching again. Capacity changes scheduling, not reviewer coverage or round c
 Keep the pushed head unchanged until the round finishes. A missing reviewer result is not a
 no-finding result, and a duplicate or incomplete batch does not count as the round's full fight.
 
-1. **Review.** Invoke the `pr-review-toolkit` full fight scoped to the PR: all five angles in
-   parallel, club fight, verdict block required. Pass the ticket acceptance plus the consensus
-   slice table as the task source. Review the **pushed diff**, never a stale local one - each
-   round's review must see the previous round's fixes. The supervisor tracks round state.
+1. **Review.** Invoke the `pr-review-toolkit` full fight scoped to the PR: all five independent
+   angles in capacity-bounded parallel batches as defined by that skill, then the club fight, with
+   a verdict block required. Pass the ticket acceptance plus the consensus slice table as the task
+   source. Review the **pushed diff**, never a stale local one - each round's review must see the
+   previous round's fixes. The supervisor tracks round state.
    A round without a verdict block is not a round - re-dispatch.
 2. **Enforce** the verdict:
    - **BLOCK** - stop. Escalate via the supervisor immediately; line fixes are the wrong tool.
@@ -505,6 +528,14 @@ Then merge using **the repository's own convention** - read it from
 `git log --merges --oneline -10` and the repo's contributing guide rather than assuming.
 Squash-merge repos: `gh pr merge <PR> --squash --delete-branch`.
 Merge-commit repos: `gh pr merge <PR> --merge --delete-branch`.
+
+For a PR under active review, freeze the coherent pushed head for the full round. Do not rebase
+merely because unrelated main commits arrive between reviewer batches or rounds. At the merge
+boundary, inspect the current target and changed-file overlap; reconcile only when required to
+resolve conflict or preserve correctness, then run the chosen gate and require fresh checks on the
+resulting exact head. Record why reconciliation was needed and any reviewed-versus-reconciled delta.
+Evidence: `sidebar/pipeline.md`, `runrecords/pr189-main-metadata-reconcile.md`, and
+`runrecords/pr189-190-reconciliation.md` in the SYT-9093 run record.
 
 **On conflict**, rebase the work branch on the target, re-verify (Step 4b in the chosen mode - in
 local mode the full gate, since the target moved underneath you, which is precisely when a

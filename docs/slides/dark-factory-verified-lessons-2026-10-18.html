@@ -59,7 +59,7 @@
 <body>
   <nav aria-label="Slide navigation">
     <span>SYT-9093 / verified lessons</span>
-    <span><a href="#s1">1</a> / <a href="#s2">2</a> / <a href="#s3">3</a> / <a href="#s4">4</a> / <a href="#s5">5</a> / <a href="#s6">6</a> / <a href="#s7">7</a> / <a href="#s8">8</a></span>
+    <span><a href="#s1">1</a> / <a href="#s2">2</a> / <a href="#s3">3</a> / <a href="#s4">4</a> / <a href="#s5">5</a> / <a href="#s6">6</a> / <a href="#s7">7</a> / <a href="#s8">8</a> / <a href="#s9">9</a></span>
   </nav>
   <main>
     <article id="s1">
@@ -86,13 +86,13 @@
     <article id="s3">
       <div class="eyebrow">Model and review</div>
       <h2>Repeated fidelity misses need escalation</h2>
-      <p>Successive reviews found accepted composition and source-fidelity defects in the Cockpit work. The recorded stronger authoring pass was a new attempt, not a final approval. Round 4 still reported three must-fix findings at the reviewed checkpoint.</p>
+      <p>Bounded implementation workers used Luna xhigh; independent reviewers inherited the orchestrator's stronger default tier for architecture, integration, edge cases, and fidelity. Successive reviews found accepted composition and source-fidelity defects in the Cockpit work. The recorded stronger authoring pass was a new attempt, not a final approval. Round 4 still reported three must-fix findings at the reviewed checkpoint.</p>
       <div class="grid">
         <div class="card"><div class="label">R2 checkpoint</div><p>FIX-THEN-SHIP: three must-fix findings, including persistent focus, source-faithful inspector sections, and source geometry.</p></div>
         <div class="card"><div class="label">R3 checkpoint</div><p>FIX-THEN-SHIP: four accepted findings, including inspector fidelity, collapse motion, identity semantics, and toggle position.</p></div>
         <div class="card"><div class="label">R4 checkpoint</div><p>FIX-THEN-SHIP: three must-fix findings at SHA <code>b2730e7f972772e64a08e3ba9ed60fbcbd8341e3</code>.</p></div>
       </div>
-      <p class="evidence">Sources: <code>sidebar/review-r2-verdict.md</code>, <code>sidebar/review-r3-verdict.md</code>, <code>sidebar/review-r4-verdict.md</code>, and <code>sidebar/pipeline.md</code>.</p>
+      <p class="evidence">Sources: <code>ledger.md</code>, <code>sidebar/review-r2-verdict.md</code>, <code>sidebar/review-r3-verdict.md</code>, <code>sidebar/review-r4-verdict.md</code>, and <code>sidebar/pipeline.md</code>.</p>
     </article>
     <article id="s4">
       <div class="eyebrow">Visual proof</div>
@@ -149,6 +149,16 @@
       <p class="evidence">Sources: <code>composer/completed-cleanup.json</code>, <code>sidebar/cleanup.json</code>, and <code>sidebar/pipeline.md</code>.</p>
       <p><a href="https://linear.app/sythelabs/issue/SYT-9115/record-verified-lessons-from-the-cockpit-factory-run">SYT-9115</a> / <a href="https://github.com/jparr721/jp-skills">jparr721/jp-skills</a></p>
       <footer>This deck documents run evidence. It is not a product UI capture or a declaration that SYT-9093 is complete.</footer>
+    </article>
+    <article id="s9">
+      <div class="eyebrow">Run boundaries</div>
+      <h2>Bound the work and preserve its evidence</h2>
+      <ul>
+        <li>A vendoring S3 worker churned for about three hours after S2 without a checkpoint. Set stage limits and completion signals, preserve the current work, then redirect before unbounded churn.</li>
+        <li>Repeated main updates created rebase and CI churn. Freeze one coherent head through each review round, then inspect overlap and reconcile at the merge boundary when required.</li>
+        <li>A shell-quoted search pattern executed bare OMP. Its non-TTY error did not prove that the child had no side effects; its numeric exit was not captured and effects remain unknown. Isolate CLI probes and record child exits.</li>
+      </ul>
+      <p class="evidence">Sources: <code>vendoring/supervisor.md</code>, <code>vendoring/implementation-interruption.json</code>, <code>sidebar/pipeline.md</code>, <code>runrecords/pr189-main-metadata-reconcile.md</code>, <code>factoryrecords/omp/incident-lessons.md</code>, and <code>factoryrecords/omp/incident-audit.md</code>.</p>
     </article>
   </main>
 </body>
