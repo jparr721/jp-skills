@@ -28,6 +28,7 @@ export type EmployeeClient = Readonly<{
   request: (command: Json) => Promise<Json>;
   poll: (settingsReport?: OmpSessionSettingsReport) => Promise<EmployeePoll>;
   close: () => void;
+  disconnect: () => Promise<void>;
   settlementBlock: () => string | null;
   isClosed: () => boolean;
 }>;
@@ -196,8 +197,8 @@ export async function connectEmployee(input: Readonly<{
     });
     if (closed || socket.readyState !== WebSocket.OPEN) { socket.close(); throw new EmployeeClientError("Admission channel closed before activation"); }
     connection = receipt;
-    socket.onclose = (): void => { closed = true; connection = null; shutdown.abort(); };
-    socket.onerror = (): void => { closed = true; connection = null; shutdown.abort(); socket.close(); };
+    socket.onclose = (): void => { closed = true; shutdown.abort(); };
+    socket.onerror = (): void => { closed = true; shutdown.abort(); socket.close(); };
     rejectedCommands.clear();
     commandBlocked = null;
   }
@@ -277,6 +278,17 @@ export async function connectEmployee(input: Readonly<{
       closed = true;
       shutdown.abort();
       lifetime?.close();
+    },
+    async disconnect(): Promise<void> {
+      const capturedConnection = connection;
+      closed = true;
+      shutdown.abort();
+      try {
+        if (capturedConnection === null) throw new EmployeeClientError("Admission already lost; owner revocation acknowledgement is unavailable");
+        const response = await fetch("http://localhost/disconnect", { unix: admitted.socketPath, method: "POST", headers: { Authorization: `Bearer ${capturedConnection}` }, signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new EmployeeClientError(`Startup disconnect HTTP ${response.status}: ${redact(await response.text())}`);
+        z.strictObject({ revoked: z.literal(true) }).parse(await response.json());
+      } finally { lifetime?.close(); }
     },
   };
 }

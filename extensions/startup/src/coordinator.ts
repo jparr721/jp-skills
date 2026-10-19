@@ -820,6 +820,7 @@ export function serveCoordinator(input: Readonly<{ coordinator: Coordinator; soc
       const authorization = request.headers.get("authorization");
       if (!authorization?.startsWith("Bearer ")) throw new StoreAuthorityError("Employee connection credential is required");
       const connection = authorization.slice(7);
+      if (request.method === "POST" && path === "/disconnect") { input.coordinator.revoke(connection); return Response.json({ revoked: true }); }
       if (request.method === "GET" && path === "/poll") return Response.json(await input.coordinator.poll(connection));
       if (request.method === "POST" && path === "/poll") { const sample = settingsSampleSchema.parse(await request.json()); return Response.json(await input.coordinator.poll(connection, sample.report, sample.sequence)); }
       if (request.method === "POST" && path === "/command") return Response.json(await input.coordinator.command(connection, jsonSchema.parse(await request.json())));

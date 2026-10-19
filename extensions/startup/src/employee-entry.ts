@@ -19,7 +19,7 @@ const manifestSchema = z.strictObject({
 });
 export type LaunchManifest = z.infer<typeof manifestSchema>;
 export type Environment = Readonly<Record<string, string | undefined>>;
-export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext; sessionId: string; sessionFile: string | undefined; inputPath: string; close: () => void }>;
+export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext; sessionId: string; sessionFile: string | undefined; inputPath: string; close: () => Promise<void> }>;
 export const inputSchema = z.object({ id: idSchema.optional(), text: z.string(), source: z.enum(["interactive", "rpc", "extension"]), images: z.array(jsonSchema).optional() });
 export type NativeRoot = Readonly<{ nativeSession: string; file: string; lastAssistant: unknown }>;
 export type NativeRootFn = (host: HostAPI, ctx: NativeContext) => Promise<NativeRoot>;
@@ -111,7 +111,7 @@ export async function attach(host: HostAPI, ctx: NativeContext, manifest: Launch
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const inputPath: string = join(directory, createHash("sha256").update(sessionId).digest("hex") + ".json");
   assertStartupPath(manifest.startupRoot, inputPath, "file");
-  return { client, context: ctx, sessionId, sessionFile, inputPath, close: bridge.close };
+  return { client, context: ctx, sessionId, sessionFile, inputPath, close: async () => { const revocation = client.disconnect(); bridge.close(); await revocation; } };
 }
 function nativeResult(value: Json): NativeResult {
   const image = z.object({ type: z.literal("image"), data: z.string(), mimeType: z.string().startsWith("image/") }).passthrough().safeParse(value);
@@ -130,7 +130,7 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
     const stopped: boolean = current.client.settlementBlock() !== null;
     try {
       const result = await current.client.request(command);
-      if (!sameRoot(current, ctx)) { current.close(); throw new StartupBootError("Native session changed during command; outcome must be reconciled, never replayed"); }
+      if (!sameRoot(current, ctx)) { await current.close(); throw new StartupBootError("Native session changed during command; outcome must be reconciled, never replayed"); }
       return nativeResult(result);
     }
     catch (error: unknown) {
@@ -265,7 +265,7 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
     try {
       manifest = manifestSchema.parse(readPrivateJson(manifestPath));
       const next = await attach(host, ctx, manifest, process.env, root);
-      if (stopped) { next.close(); return; }
+      if (stopped) { await next.close(); return; }
       admitted = next;
       failure = inputBlock(next);
       failureTurnPending = failure !== null;
@@ -293,7 +293,7 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
     if (stopped || ctx.agent.kind !== "main") return;
     if (admitted !== null) {
       if (!sameRoot(admitted, ctx)) {
-        admitted.close(); stopped = true;
+        await admitted.close(); stopped = true;
         failure = "Native session changed; explicit relaunch is required before admission";
         host.sendMessage({ customType: "startup-boot-error", content: failure, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
         ctx.abort?.(); return;
@@ -303,7 +303,7 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
         catch (error: unknown) { failure = error instanceof Error ? error.message : String(error); ctx.abort?.(); }
         return;
       }
-      admitted.close();
+      await admitted.close();
       admitted = null;
     }
     if (pending !== null) return pending;
@@ -326,7 +326,7 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
   host.on("session_start", async (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
     if (admitted !== null) {
-      admitted.close();
+      await admitted.close();
       failure = "Launched employee is already bound; root switching requires explicit relaunch";
       host.sendMessage({ customType: "startup-boot-error", content: failure, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
       ctx.abort?.();
@@ -334,11 +334,11 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
     }
     await retry(ctx);
   });
-  host.on("session_shutdown", (_event, ctx) => {
+  host.on("session_shutdown", async (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
     stopped = true;
     if (retryTimer !== null) { ctx.clearTimer(retryTimer); retryTimer = null; }
-    admitted?.close();
+    await admitted?.close();
   });
   host.on("session_stop", (_event, ctx) => {
     if (failure === null || !failureTurnPending || ctx.agent.kind !== "main") return;

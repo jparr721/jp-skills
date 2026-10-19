@@ -12,6 +12,9 @@ import { bootSelection, parseBootCommand, persistBinding } from "../src/boot";
 import { connectEmployee } from "../src/employee-client";
 import { loadProfile } from "../src/profiles";
 import { startRuntimeHost } from "../runtime-host";
+import { openStore } from "../src/store";
+import { openCoordinator, serveCoordinator } from "../src/coordinator";
+import type { HerdrObservation, HerdrRuntime } from "../src/herdr-runtime";
 const taskSetting = { get: () => 6 };
 mock.module("@oh-my-pi/pi-coding-agent/task/settings", () => ({ cfgTaskBatch: taskSetting, cfgTaskEnableEffort: taskSetting, cfgTaskIsolationEnabled: taskSetting, cfgTaskMaxConcurrency: taskSetting }));
 const { installLaunchedEmployee, installStartupV7, integrationPath } = await import("../v7");
@@ -99,7 +102,7 @@ function fixture() {
   const root: string = realpathSync(mkdtempSync(join(tmpdir(), "v7-entry-")));
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const skillsRoot: string = join(root, "skills-repo");
-  for (const role of ["manager", "dev", "pa"]) {
+  for (const role of ["manager", "architect", "qa", "dev", "devops", "pa"]) {
     mkdirSync(join(skillsRoot, "skills", `startup-role-${role}`), { recursive: true });
     writeFileSync(join(skillsRoot, "skills", `startup-role-${role}`, "SKILL.md"), `Complete canonical ${role} persona`);
   }
@@ -160,6 +163,7 @@ function fixture() {
   const server = Bun.serve({ unix: socketPath, websocket: { message(socket, message): void { channels.push(socket); admissions.push(z.json().parse(JSON.parse(String(message)))); socket.send(JSON.stringify({ connection: "private-token" })); } }, async fetch(request: Request, server): Promise<Response | undefined> {
     if (new URL(request.url).pathname === "/admit" && server.upgrade(request)) return;
     const path: string = new URL(request.url).pathname;
+    if (path === "/disconnect") return Response.json({ revoked: true });
     if (path === "/health") return Response.json({ status: "running" });
     if (path === "/admit") { admissions.push(z.json().parse(await request.json())); return Response.json({ connection: "private-token" }); }
     if (path === "/poll" && !available) return new Response("Owned coordinator stopped", { status: 503 });
@@ -1093,4 +1097,132 @@ test("manager rejects a foreign transcript before launching its owner", async ()
   await f.commands.get("startup")!.handler("new foreign", f.ctx);
   expect(launches).toBe(0);
   expect(f.messages.join("\n")).toContain("Native transcript");
+});
+
+async function lifecycleOwnerFixture() {
+  const f = fixture();
+  const startupRoot = f.environment.STARTUP_ROOT!;
+  let now = 1000;
+  const store = openStore({ path: join(startupRoot, "staff.sqlite"), scope: { skillsHome: f.skillsHome, startupRoot, boundRoot: f.cwd, host: hostname(), name: "lifecycle", managerSession: "native-root" }, owner: { id: "lifecycle-owner", managerGeneration: 1, leaseMs: 60000 }, now: () => now });
+  cleanup.push(() => store.close());
+  const config: RuntimeHostConfig = { name: "lifecycle", skillsHome: f.skillsHome, startupRoot, stateDirectory: startupRoot, boundRoot: f.cwd, skillsRoot: f.skillsRoot, ompConfigRoot: join(f.configHome, "ronin"), socketPath: join(startupRoot, "r.sock"), profile: "default", managerSession: "native-root", managerFile: f.file, managerPaneId: "w1:p1", managerCredential: "owner-manager", herdrSession: "fixture", workspaceId: "w1", herdrBinary: "unused", herdrIntegration: f.environment.STARTUP_HERDR_OMP_EXTENSION!, ownerGeneration: 1, policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 8 } };
+  const observations: HerdrObservation[] = [{ harness: "omp", name: "manager", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1", terminalId: "manager-term", nativeSession: f.file, state: "idle", stateSequence: 1, interactiveReady: true }];
+  let commandBarrier: Readonly<{ entered: () => void; wait: Promise<void> }> | null = null;
+  let commandResultBarrier: Readonly<{ entered: () => void; wait: Promise<void> }> | null = null;
+  let observationBarrier: Readonly<{ entered: () => void; wait: Promise<void> }> | null = null;
+  let layouts = 0;
+  let launches = 0;
+  const herdr: HerdrRuntime = {
+    check: async () => {}, renameCrew: async () => {},
+    createCrew: async () => { layouts++; return { tabId: `w1:t${layouts + 1}`, rootPaneId: `w1:p${layouts + 1}` }; },
+    split: async () => `w1:p${++layouts + 1}`,
+    launch: async (input) => {
+      launches++;
+      const nativeSession = join(config.ompConfigRoot, "sessions", `${input.name}.jsonl`);
+      writeFileSync(nativeSession, JSON.stringify({ type: "session", id: input.name }) + "\n");
+      const observation: HerdrObservation = { harness: "omp", name: input.name, workspaceId: "w1", tabId: "w1:t2", paneId: input.paneId, terminalId: input.name, nativeSession, state: "idle", stateSequence: 1, interactiveReady: true };
+      observations.push(observation);
+      return observation;
+    },
+    observe: async () => { if (observationBarrier !== null) { observationBarrier.entered(); await observationBarrier.wait; } return observations; },
+  };
+  const coordinator = openCoordinator({ store, config, herdr, now: () => now });
+  await coordinator.start();
+  const server = serveCoordinator({ coordinator: { ...coordinator, command: async (connection, command) => {
+    if (commandBarrier !== null) { commandBarrier.entered(); await commandBarrier.wait; }
+    const result = await coordinator.command(connection, command);
+    if (commandResultBarrier !== null) { commandResultBarrier.entered(); await commandResultBarrier.wait; }
+    return result;
+  } }, socketPath: config.socketPath });
+  cleanup.push(() => server.stop(true));
+  const pa = store.runtimeBindings().find((bound) => bound.employeeId !== "manager");
+  const observedPa = observations.find((entry) => entry.paneId === pa?.paneId);
+  if (pa === undefined || pa.paneId === null || !observedPa?.nativeSession) throw new Error("Missing PA launch");
+  const manifest = join(startupRoot, "launches", `${pa.launchId}.json`);
+  const saved = z.object({ credential: z.string(), source: sourceSchema }).parse(JSON.parse(readFileSync(manifest, "utf8")));
+  const client = await connectEmployee({ socketPath: config.socketPath, credential: saved.credential, source: saved.source, nativeSession: observedPa.nativeSession, paneId: pa.paneId, agentSessionId: `s-${pa.launchId.replaceAll("-", "").slice(0, 28)}` });
+  cleanup.push(() => { client.close(); });
+  return { f, store, coordinator, config, client, manifest, pa: store.employeeRuntime(pa.employeeId, pa.generation)!, delayCommand: (entered: () => void, wait: Promise<void>) => { commandBarrier = { entered, wait }; }, delayResult: (entered: () => void, wait: Promise<void>) => { commandResultBarrier = { entered, wait }; }, advance: (value: number) => { now = value; }, counts: () => ({ layouts, launches }), delayObservation: (entered: () => void, wait: Promise<void>) => { observationBarrier = { entered, wait }; } };
+}
+
+for (const lifecycle of ["session_start", "session_shutdown"] as const) test(`production manager ${lifecycle} fences awaiting and queued owner mutations`, async () => {
+  const o = await lifecycleOwnerFixture();
+  const { f } = o;
+  installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async () => o.config });
+  await f.commands.get("startup")!.handler("new lifecycle", f.ctx);
+  await f.tools.get("startup_intake")!.execute("intake", { eventId: "pending-native", input: "work", amendItemIds: [] }, undefined, undefined, f.ctx);
+  const barrier = Promise.withResolvers<void>();
+  const entered = Promise.withResolvers<void>();
+  o.delayObservation(entered.resolve, barrier.promise);
+  const pending = f.tools.get("startup_delegate")!.execute("delegate", { eventId: "pending-native", developers: 1 }, undefined, undefined, f.ctx).then(() => "committed", () => "rejected");
+  await entered.promise;
+  const queued = f.tools.get("startup_intake")!.execute("queued", { eventId: "queued-native", input: "work", amendItemIds: [] }, undefined, undefined, f.ctx).then(() => "committed", () => "rejected");
+  const before = o.counts();
+  const changed: NativeContext = { ...f.ctx, sessionManager: { ...f.ctx.sessionManager, getSessionId: () => "changed-native" } };
+  await f.emit(lifecycle, {}, lifecycle === "session_start" ? changed : f.ctx);
+  barrier.resolve();
+  expect(await pending).toBe("rejected");
+  expect(await queued).toBe("rejected");
+  await o.coordinator.launching();
+  expect(o.store.snapshot().teams).toHaveLength(0);
+  expect(o.store.snapshot().teamRequirements).toHaveLength(0);
+  expect(o.store.snapshot().intakes.map((entry) => entry.request.eventId)).toEqual(["pending-native"]);
+  expect(o.counts()).toEqual(before);
+});
+
+for (const lifecycle of ["session_start", "session_shutdown"] as const) test(`production employee ${lifecycle} fences a pending owner write`, async () => {
+  const o = await lifecycleOwnerFixture();
+  const { f } = o;
+  const nativeSession = o.pa.nativeSession!;
+  const sessionId = JSON.parse(readFileSync(nativeSession, "utf8").split("\n")[0]!).id;
+  const ctx: NativeContext = { ...f.ctx, sessionManager: { getSessionId: () => sessionId, getSessionFile: () => nativeSession } };
+  const original = f.host.pi.AgentRegistry.global().get("Main")!;
+  const ref: NativeRef = { ...original, session: { ...original.session!, sessionManager: ctx.sessionManager } };
+  const host: HostAPI = { ...f.host, pi: { ...f.host.pi, AgentRegistry: { global: () => ({ get: () => ref, list: () => [ref], onChange: () => () => {} }) } } };
+  f.environment.HERDR_PANE_ID = o.pa.paneId!;
+  f.useEnvironment();
+  installLaunchedEmployee(host, o.manifest);
+  await f.emit("session_start", {}, ctx);
+  expect(f.messages.filter((message) => message.includes("boot blocked"))).toEqual([]);
+  const barrier = Promise.withResolvers<void>();
+  const entered = Promise.withResolvers<void>();
+  o.delayCommand(entered.resolve, barrier.promise);
+  const pending = f.tools.get("startup_claim")!.execute("claim", {}, undefined, undefined, ctx).then(() => "committed", () => "rejected");
+  await entered.promise;
+  const changed: NativeContext = { ...ctx, sessionManager: { ...ctx.sessionManager, getSessionId: () => "changed" } };
+  await f.emit(lifecycle, {}, lifecycle === "session_start" ? changed : ctx);
+  barrier.resolve();
+  expect(await pending).toBe("rejected");
+  await Bun.sleep(0);
+  expect(o.store.snapshot().claims).toHaveLength(0);
+});
+
+test("production shutdown after delegation commit retains one durable result for read-only recovery", async () => {
+  const o = await lifecycleOwnerFixture();
+  const { f } = o;
+  installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async () => o.config });
+  await f.commands.get("startup")!.handler("new lifecycle", f.ctx);
+  await f.tools.get("startup_intake")!.execute("intake", { eventId: "committed-native", input: "work", amendItemIds: [] }, undefined, undefined, f.ctx);
+  const barrier = Promise.withResolvers<void>();
+  const committed = Promise.withResolvers<void>();
+  o.delayResult(committed.resolve, barrier.promise);
+  const pending = f.tools.get("startup_delegate")!.execute("delegate", { eventId: "committed-native", developers: 1 }, undefined, undefined, f.ctx).then(() => "delivered", () => "uncertain");
+  await committed.promise;
+  expect(o.store.snapshot().teams).toHaveLength(1);
+  await f.emit("session_shutdown", {}, f.ctx);
+  barrier.resolve();
+  expect(await pending).toBe("uncertain");
+  await o.coordinator.launching();
+  const before = o.store.snapshot();
+  const effects = o.counts();
+  const manager = o.store.employeeRuntime("manager", 1)!;
+  const client = await connectEmployee({ socketPath: o.config.socketPath, credential: o.config.managerCredential, source: manager.source, nativeSession: f.file, paneId: "w1:p1", agentSessionId: "native-root" });
+  try {
+    const recovered = z.object({ manager: z.object({ crews: z.array(z.object({ id: z.string(), eventId: z.string() })) }), intakes: z.array(z.object({ eventId: z.string(), teamId: z.string().nullable() })) }).parse(await client.request({ kind: "staff" }));
+    expect(recovered.manager.crews).toEqual([expect.objectContaining({ id: before.teams[0]!.id, eventId: "committed-native" })]);
+    expect(recovered.intakes).toEqual([{ eventId: "committed-native", teamId: before.teams[0]!.id }]);
+    expect(o.store.snapshot().teamRequirements).toHaveLength(1);
+    expect(o.store.snapshot().teams).toEqual(before.teams);
+    expect(o.counts()).toEqual(effects);
+  } finally { client.close(); }
 });

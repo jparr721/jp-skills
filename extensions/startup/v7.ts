@@ -60,7 +60,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       if (!sameRoot(admitted, ctx) || next.name !== selection?.name || next.boundRoot !== selection.boundRoot)
         throw new StartupBootError("Startup already belongs to another selected manager root");
       if (runtimeConfig === null) throw new StartupBootError("Admitted manager lost its coordinator configuration");
-      admitted.close();
+      await admitted.close();
       admitted = null;
     }
     const ompConfigRoot: string = resolve(input.configHome, "ronin");
@@ -90,7 +90,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     runtimeConfig = config;
     if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager identity changed during owner launch; preserve launch evidence and reconcile before retry");
     const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, harness: input.harness, ompConfigRoot, skillsHome: next.skillsHome, startupRoot: next.startupRoot, skillsRoot: next.skillsRoot }, { ...input.environment, STARTUP_ROOT: next.startupRoot, JP_SKILLS_HOME: next.skillsHome }, input.root);
-    if (stopped) { connected.close(); return; }
+    if (stopped) { await connected.close(); return; }
     admitted = connected;
     await reconcileInput(connected);
     selection = next;
@@ -123,7 +123,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   }
   host.on("session_start", async (_event, ctx) => {
     if (ctx.agent.kind !== "main" || stopped) return;
-    if (admitted !== null && !sameRoot(admitted, ctx)) { admitted.close(); stopped = true; report(new StartupBootError("Manager native session changed; explicit re-admission required"), ctx); ctx.abort?.(); return; }
+    if (admitted !== null && !sameRoot(admitted, ctx)) { await admitted.close(); stopped = true; report(new StartupBootError("Manager native session changed; explicit re-admission required"), ctx); ctx.abort?.(); return; }
     if (admitted !== null) return;
     try {
       const next = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, configHome: input.configHome, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
@@ -131,11 +131,11 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       await retry(ctx);
     } catch (error: unknown) { attempted = true; report(error, ctx); ctx.abort?.(); }
   });
-  host.on("session_shutdown", (_event, ctx) => {
+  host.on("session_shutdown", async (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
     stopped = true;
     if (retryTimer !== null) { ctx.clearTimer(retryTimer); retryTimer = null; }
-    admitted?.close();
+    await admitted?.close();
   });
   host.registerCommand("startup-retry", { description: "Reconnect the saved Startup manager in its existing pane.", handler: async (_args, ctx) => { await retry(ctx); } });
   host.on("input", async (event, ctx) => {
