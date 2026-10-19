@@ -28,7 +28,7 @@ Outcome fields: `ticket/status/pr/verify-mode/rounds/verdict/deck/followups/rema
 
 When blocked, settle question/uncertainty and preserve checkpoint. Follow `../startup-intake/references/queue-records.md` "Paused execution"; an answer cue does not complete the old assignment. Remain logically waiting; manager resolves old work before explicit requeue/new attempt. Never hold a running spin-wait.
 
-Apply inlined repo/role overrides only to their assigned scope. Read canonical sources as bound; `.startup` policy and queue/resource changes remain with their authorized procedures.
+Apply inlined repo/role overrides only to their assigned scope. Read canonical sources as bound; selected Startup policy and queue/resource changes remain with their authorized procedures.
 
 ## Framework tail
 

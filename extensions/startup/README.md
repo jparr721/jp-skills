@@ -13,19 +13,19 @@ The 7.0.2 [recovery proof](../../docs/startup-v7/recovery-acceptance.json) and [
 - Bun 1.3.13 or newer (Unix WebSocket support) and OMP with native root sessions, persistent transcripts, `ctx.abort`, `isIdle()` and `hasPendingMessages()` support.
 - A running Herdr server reporting client/endpoint compatibility, the required layout and agent APIs, and its managed OMP integration.
 - An existing Herdr pane and socket context. Missing pane/workspace/session variables are resolved with `herdr pane current --current` and `herdr status server --json`; the default server reports a null session. No focused-pane discovery from outside Herdr.
-- Canonical role/loop sources available locally. `OMP_PROFILE` or `PI_PROFILE` identifies the active manager profile; absent profile variables mean OMP's default profile. Employees use their saved launch profile when these variables are absent.
+- Canonical role/loop sources available locally. Managed OMP launches clear `OMP_PROFILE`, `PI_PROFILE` and `OMPCODE`, and pass no `--profile` argument. The internal `profile: "default"` is an identity discriminator, not a native profile name.
 
-Use stock OMP and Herdr binaries. Startup does not fork or install either runtime. Select the canonical Startup root with `STARTUP_ROOT` (default: `$XDG_CONFIG_HOME/ronin/startups/<name>`) and keep `JP_SKILLS_HOME` separate. OMP uses its default profile with `PI_CODING_AGENT_DIR` set to that root; named profiles are refused. The managed Herdr integration must be available explicitly, and authentication/configuration stays in the selected root.
+Use stock OMP and Herdr binaries. Startup does not fork or install either runtime. Select the canonical Startup root with `STARTUP_ROOT` (default: `$XDG_CONFIG_HOME/ronin/startups/<name>`) and keep `JP_SKILLS_HOME` separate. OMP uses its default profile with `PI_CODING_AGENT_DIR` set to the execution user's canonical Ronin config root (`${XDG_CONFIG_HOME:-~/.config}/ronin`). Owner config and launch manifests carry this separate `ompConfigRoot`; all Startups for that user share its native `mcp.json`. Named profiles are refused. Startup authority remains under `STARTUP_ROOT`, separately from shared native configuration.
 
 Repository development can load the extension directly after root provisioning:
 
 ```sh
 bun install --cwd extensions/startup --frozen-lockfile
-export PI_CODING_AGENT_DIR="$STARTUP_ROOT"
-OMP_PROFILE=default omp --extension "$STARTUP_HERDR_OMP_EXTENSION" --extension "$PWD/extensions/startup/v7.ts"
+export PI_CODING_AGENT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ronin"
+OMP_PROFILE= PI_PROFILE= OMPCODE= omp --extension "$STARTUP_HERDR_OMP_EXTENSION" --extension "$PWD/extensions/startup/v7.ts"
 ```
 
-The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and a positive numeric `HERDR_INTEGRATION_VERSION` header. The revision identifies the managed file; it is not pinned to v10. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. Without it, entry uses `PI_CODING_AGENT_DIR/extensions/herdr-omp-agent-state.ts`, or `~/.omp/agent/extensions/herdr-omp-agent-state.ts`. Custom configuration locations should supply the explicit path. Worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle.
+The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and a positive numeric `HERDR_INTEGRATION_VERSION` header. The revision identifies the managed file; it is not pinned to v10. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. It is required for either manager harness, because any role may launch an OMP employee. The Claude hook path is validated separately and is never passed to OMP as an extension. Worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle.
 
 The older named-profile installer is historical tooling and is not invoked by host control. Root provisioning and installed runtime changes require their own explicit operation.
 
@@ -228,7 +228,7 @@ Inspect the artifact's actual status/checks and source hashes before treating it
 
 ## Owner host control and connection lifetime
 
-`bun extensions/startup/host-control.ts` reads one JSON command from stdin (64 KiB maximum) and exits. It is a per-request owner entrypoint, not another daemon. `hostControlCommandSchema` is the authoritative request union. Every selected-root request includes the full canonical `scope` (`skillsHome`, `startupRoot`, `host`, `name`, `boundRoot`, `managerSession`). Ronin invokes this entrypoint and never opens SQLite itself.
+`bun extensions/startup/host-control.ts` reads one JSON command from stdin (64 KiB maximum) and exits. It is a per-request owner entrypoint, not another daemon. `hostControlCommandSchema` is the authoritative request union. Every successful response is `{operation, result}`, validated by exported `hostControlResponseSchema` and typed as `HostControlResponse`. Receipt lookup returns a typed `found` receipt or `missing` request ID; mutation receipts validate their operation, state, effects and concrete result together. Every selected-root request includes the full canonical `scope` (`skillsHome`, `startupRoot`, `host`, `name`, `boundRoot`, `managerSession`). Ronin invokes this entrypoint and never opens SQLite itself.
 
 - `list`: configHome, after cursor and limit (1-100); works with zero owners.
 - `create`: scope, requestId, skillsRoot, executionLimit, harness, expectedOwnerEpoch=0 and expectedRevision=0. Initializes a cold root; it does not manufacture a manager process.
@@ -247,3 +247,19 @@ OMP samples cheap model/effort state every heartbeat, caches catalog enumeration
 Claude MCP hooks carry actual `session_id`; a missing or mismatched identity revokes admission. The command waiter supplies initial SessionStart identity because Claude skips MCP hooks before its server context exists. Later SessionStart (clear/compaction) validates identity and transcript; SessionEnd closes authority. Normal Stop/UserPromptSubmit waiter turnover does not revoke the MCP channel. Native hooks and transcript validation do not imply supported model/catalog readback; Claude readback remains explicitly unavailable. See [Claude hook lifecycle](https://code.claude.com/docs/en/hooks#mcp-tool-hook-fields) and [Bun Unix WebSockets](https://bun.com/blog/bun-v1.3.13).
 
 Private root files and 0600 sockets establish the existing same-OS-user boundary. Launch credentials bootstrap admission and are not continuing authority; this does not isolate against a malicious process that can read every private owner file. Host control cannot impersonate manager claim/approval/settlement. Resource invocation delivery and remote endpoint transport belong to SYT-9106. Local fixture tests are not actual interactive OMP/Claude or remote Linux acceptance.
+
+### New manager launch preparation
+
+After cold create and any settings apply, call owner `prepare_manager` with scope, harness, requestId, expectedOwnerEpoch and expectedRevision before starting a new managed OMP manager. Its committed receipt supplies immutable saved manager settings and model/effort argv. Use those argv with the managed OMP launch; do not read mutable settings again. `prepareManagerLaunch` in `src/v7-launch.ts` is the same owner boundary used by `startup-claude`. Preparation freezes settings in the owner store and `manager-launch.json`, refuses a live owner or saved runtime through host control, and never starts a process. A lost preparation response is retrieved by requestId. Resume retains the existing native settings and never applies new model/effort flags. A directly started OMP process without preparation can only boot the unconfigured default manager selection; configured selections require this prelaunch step.
+
+### Native artifact policy
+
+OMP native sessions are the explicit shared-storage exception: managed default-profile sessions reside under `<ompConfigRoot>/sessions`, with an exact root-session header and current native API identity. This follows stock [OMP 18.11.1 directory resolution](https://github.com/can1357/oh-my-pi/blob/v18.11.1/packages/utils/src/dirs.ts) and [SessionManager](https://github.com/can1357/oh-my-pi/blob/v18.11.1/packages/coding-agent/src/session/session-manager.ts). Startup does not copy native history or equate a transcript path with owner authority.
+
+Claude launches select `CLAUDE_CONFIG_DIR=startupRoot`; transcripts must be under `projects/` there with the exact native session ID as their filename. [Claude's directory documentation](https://code.claude.com/docs/en/claude-directory) specifies this config override and transcript tree. Both harnesses reject foreign trees, noncanonical paths and symlink ancestors/files; resume retains the saved exact native session/file. Hook-provided Claude paths are checked before tailing. These source contracts still require current-version live acceptance.
+
+### Durable input recovery
+
+Each native session keeps an owner-only `input-receipts/<session-hash>.json` under its Startup root. The original event ID and payload are written before dispatch. A lost response leaves `uncertain`; a closed client before dispatch leaves `failed`. Both block further Startup work and preserve the input. `/startup-retry` revalidates native identity and checks the authenticated owner `receive_status` receipt by event ID and payload digest. A matching committed receipt clears the fence without resending. Missing/conflicting receipts remain blocked for explicit reconciliation; never delete the journal and replay an uncertain mutation. This internal read does not add an employee tool or change the 20-tool public catalog.
+
+Repository verification runs frozen dependency installation, owner typecheck, the full extension test suite and Python probe-driver tests in `.github/workflows/startup.yml`. Fixtures are owner-regression evidence, not live native acceptance.
