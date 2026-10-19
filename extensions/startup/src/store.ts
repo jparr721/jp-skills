@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -12,7 +13,7 @@ import {
   fsyncSync,
   unlinkSync,
 } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { runtimeConnectionSchema, runtimeIdentitySchema, type RuntimeIdentity, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
 import { assertStartupPath, ensureStartupRoot } from "./boot";
@@ -1352,7 +1353,7 @@ export function openStore(args: {
       });
     },
     hostControl(request: OwnerControlRequest): OwnerControlReceipt {
-      return tx(() => applyOwnerControl(db, scope, request, now(), epoch));
+      return withOwnerControlRequest(scope, request.requestId, () => tx(() => applyOwnerControl(db, scope, request, now(), epoch)));
     },
     recoverManager(input: { readonly evidence: Json }): Employee {
       return tx((): Employee => {
@@ -3491,6 +3492,30 @@ export function readOwnerControl(scope: Scope): Readonly<{ ownerEpoch: number; r
     return { ownerEpoch: lease.epoch, revision: controlRevision(db), leaseExpires: lease.expires, archived: controlRead(db, "controlArchive", "startup", jsonSchema) !== null, settings };
   }).deferred(); } finally { db.close(); }
 }
+export function ownerControlOperationPath(scope: Scope, requestId: string): string {
+  const directory = join(scope.startupRoot, "control");
+  assertStartupPath(scope.startupRoot, directory, "directory");
+  const path = join(directory, createHash("sha256").update(idSchema.parse(requestId)).digest("hex") + ".json");
+  assertStartupPath(scope.startupRoot, path, "file");
+  return path;
+}
+export function readOwnerControlFile(scope: Scope, requestId: string): OwnerControlReceipt | null {
+  const path = ownerControlOperationPath(scope, requestId);
+  if (!existsSync(path)) return null;
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) throw new StoreAuthorityError("Control operation must be a private regular file");
+  const receipt = ownerControlReceiptSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  if (encode(receipt.scope) !== encode(scope) || receipt.requestId !== requestId) throw new StoreAuthorityError("Saved control operation scope differs");
+  return receipt;
+}
+export function withOwnerControlRequest<T>(scope: Scope, requestId: string, action: () => T): T {
+  const path = ownerControlOperationPath(scope, requestId) + ".lock";
+  assertStartupPath(scope.startupRoot, path, "file");
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const lock = openSync(path, "wx", 0o600);
+  try { return action(); }
+  finally { closeSync(lock); unlinkSync(path); }
+}
 export function readOwnerControlReceipt(scope: Scope, requestId: string): OwnerControlReceipt | null {
   const db = controlDatabase(scope, true);
   try { controlScope(db, scope); return controlRead(db, "ownerControlReceipt", idSchema.parse(requestId), ownerControlReceiptSchema); } finally { db.close(); }
@@ -3500,7 +3525,7 @@ function applyOwnerControl(db: Database, scope: Scope, input: OwnerControlReques
   if (encode(scope) !== encode(request.scope)) throw new StoreAuthorityError("Control request crosses Startup roots");
   controlScope(db, scope);
   const digest = createHash("sha256").update(encode(request)).digest("hex");
-  const prior = controlRead(db, "ownerControlReceipt", request.requestId, ownerControlReceiptSchema);
+  const prior = readOwnerControlFile(scope, request.requestId) ?? controlRead(db, "ownerControlReceipt", request.requestId, ownerControlReceiptSchema);
   if (prior !== null) { if (prior.digest !== digest) throw new StoreConflictError("Control idempotency key has a different payload"); return prior; }
   if (epoch !== request.expectedOwnerEpoch || controlRevision(db) !== request.expectedRevision) throw new StoreFenceError("Control owner epoch or snapshot revision changed");
   if (controlRead(db, "controlArchive", "startup", jsonSchema) !== null) throw new StoreAuthorityError("Startup is archived");
@@ -3539,11 +3564,11 @@ export function applyOfflineOwnerControl(input: OwnerControlRequest, at: number)
   try {
   if (request.kind === "archive" && existsSync(join(request.scope.startupRoot, "runtime-launch.json"))) throw new StoreAuthorityError("Archive refuses a saved runtime launch intent; reconcile it explicitly first");
   const db = controlDatabase(request.scope, false);
-  try { return db.transaction(() => {
+  try { return withOwnerControlRequest(request.scope, request.requestId, () => db.transaction(() => {
     controlScope(db, request.scope);
     const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
     if (lease.expires > at) throw new StoreFenceError("A live owner must handle this control request through its socket");
     return applyOwnerControl(db, request.scope, request, at, lease.epoch);
-  }).immediate(); } finally { db.close(); }
+  }).immediate()); } finally { db.close(); }
   } finally { if (lock !== null) { closeSync(lock); unlinkSync(lockPath); } }
 }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
@@ -5,7 +6,7 @@ import { join, resolve } from "node:path";
 import { executeHostControl as executeTypedHostControl, hostControlResponseSchema, hostControlReceiptSchema, type HostControlRuntime } from "../host-control";
 import { type Scope } from "../src/contracts";
 import { prepareManagerLaunch, launchRuntimeHost, type RuntimeHostConfig } from "../src/v7-launch";
-import { openStore, readOwnerControl } from "../src/store";
+import { openStore, ownerControlOperationPath, readOwnerControl } from "../src/store";
 
 async function executeHostControl(value: unknown, runtime: HostControlRuntime) {
   const response = await executeTypedHostControl(value, runtime);
@@ -178,4 +179,43 @@ test("wrong manager harness cannot freeze selection for a later launch", async (
   const current = readOwnerControl(f.scope);
   await executeHostControl({ kind: "settings_apply", requestId: "correct-harness", scope: f.scope, expectedOwnerEpoch: current.ownerEpoch, expectedRevision: current.revision, role: "manager", harness: "claude", model: "sonnet", effort: "high", baseSettingsRevision: 0 }, f.runtime);
   expect(prepareManagerLaunch({ scope: f.scope, harness: "claude", now: f.runtime.now, expectedControl: null }).requested.harness).toBe("claude");
+});
+
+test("manager preparation cannot reuse or mask an already committed settings request", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  const cold = readOwnerControl(f.scope);
+  const apply = { kind: "settings_apply", requestId: "shared-key", scope: f.scope, expectedOwnerEpoch: cold.ownerEpoch, expectedRevision: cold.revision, role: "manager", harness: "omp", model: "provider/model", effort: "high", baseSettingsRevision: 0 };
+  const original = await executeHostControl(apply, f.runtime);
+  const saved = readOwnerControl(f.scope);
+  const file = join(f.scope.startupRoot, "control", createHash("sha256").update(apply.requestId).digest("hex") + ".json");
+  await expect(executeHostControl({ kind: "prepare_manager", scope: f.scope, requestId: apply.requestId, harness: "omp", expectedOwnerEpoch: saved.ownerEpoch, expectedRevision: saved.revision }, f.runtime)).rejects.toThrow("payload conflict");
+  expect(existsSync(file)).toBe(false);
+  expect(existsSync(join(f.scope.startupRoot, "manager-launch.json"))).toBe(false);
+  expect(readOwnerControl(f.scope)).toEqual(saved);
+  expect(await executeHostControl({ kind: "receipt", scope: f.scope, requestId: apply.requestId }, f.runtime)).toEqual(original);
+  expect(await executeHostControl(apply, f.runtime)).toEqual(original);
+});
+
+test("a concurrent request reservation excludes preparation and direct owner settings commits", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  const store = openStore({ path: join(f.scope.startupRoot, "staff.sqlite"), scope: f.scope, owner: { id: "concurrent-owner", managerGeneration: 1, leaseMs: 60000 }, now: f.runtime.now });
+  const before = readOwnerControl(f.scope);
+  const requestId = "reserved-key";
+  const lockPath = ownerControlOperationPath(f.scope, requestId) + ".lock";
+  const child = Bun.spawn([process.execPath, "-e", 'const fs = require("node:fs"); const fd = fs.openSync(process.argv[1], "wx", 0o600); console.log("locked"); await Bun.stdin.text(); fs.closeSync(fd); fs.unlinkSync(process.argv[1]);', lockPath], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  const reader = child.stdout.getReader();
+  const apply = { kind: "settings_apply" as const, requestId, scope: f.scope, expectedOwnerEpoch: before.ownerEpoch, expectedRevision: before.revision, role: "manager" as const, harness: "omp" as const, model: "provider/model", effort: "high", baseSettingsRevision: 0 };
+  try {
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain("locked");
+    expect(() => store.hostControl(apply)).toThrow("exist");
+    store.close();
+    const offline = readOwnerControl(f.scope);
+    await expect(executeHostControl({ kind: "prepare_manager", requestId, scope: f.scope, harness: "omp", expectedOwnerEpoch: offline.ownerEpoch, expectedRevision: offline.revision }, f.runtime)).rejects.toThrow("exist");
+    expect(existsSync(join(f.scope.startupRoot, "manager-launch.json"))).toBe(false);
+    expect(existsSync(ownerControlOperationPath(f.scope, requestId))).toBe(false);
+    expect(readOwnerControl(f.scope).settings).toEqual(before.settings);
+  } finally { store.close(); reader.releaseLock(); child.stdin.end(); await child.exited; }
+  expect(await executeHostControl(apply, f.runtime)).toMatchObject({ state: "committed", kind: "settings_apply" });
 });

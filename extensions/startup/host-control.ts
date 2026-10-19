@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { encode, hostStatusQuerySchema, hostStatusSchema, idSchema, jsonSchema, 
 import { createHerdrRuntime, runHerdrCommand } from "./src/herdr-runtime";
 import { ompSettingsArgs, validateRoleSettings } from "./src/profiles";
 import { effectiveRoleSettingsSchema, requestedRoleSettingsSchema, runtimeCapabilitySchema, savedRoleSettingsSchema, roleSettingsInputSchema } from "./src/runtime-contracts";
-import { applyOfflineOwnerControl, openStore, readOwnerControl, readOwnerControlReceipt } from "./src/store";
+import { applyOfflineOwnerControl, openStore, ownerControlOperationPath, readOwnerControl, readOwnerControlReceipt, readOwnerControlFile, withOwnerControlRequest } from "./src/store";
 import { prepareManagerLaunch, launchRuntimeHost, parseRuntimeHostConfig, readPrivateJson, type RuntimeHostConfig } from "./src/v7-launch";
 
 export const hostControlCommandSchema = z.discriminatedUnion("kind", [
@@ -74,27 +74,19 @@ function binding(scope: Scope): void {
   const saved = z.object({ scope: scopeSchema }).parse(readPrivateJson(path));
   if (encode(saved.scope) !== encode(scope)) throw new StoreAuthorityError("Selected Startup binding differs from the requested scope");
 }
-function operationPath(scope: Scope, requestId: string): string {
-  const directory = join(scope.startupRoot, "control");
-  assertStartupPath(scope.startupRoot, directory, "directory");
-  const path = join(directory, createHash("sha256").update(requestId).digest("hex") + ".json");
-  assertStartupPath(scope.startupRoot, path, "file");
-  return path;
-}
-function readOperation(scope: Scope, requestId: string): OwnerControlReceipt | null {
-  const path = operationPath(scope, requestId);
-  if (!existsSync(path)) return null;
-  const receipt = ownerControlReceiptSchema.parse(readPrivateJson(path));
-  if (encode(receipt.scope) !== encode(scope) || receipt.requestId !== requestId) throw new StoreAuthorityError("Saved control operation scope differs");
-  return receipt;
-}
-function beginOperation(receipt: OwnerControlReceipt): void {
-  const path = operationPath(receipt.scope, receipt.requestId);
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileSync(path, encode(receipt), { mode: 0o600, flag: "wx" });
+function beginOperation(receipt: OwnerControlReceipt): OwnerControlReceipt | null {
+  return withOwnerControlRequest(receipt.scope, receipt.requestId, () => {
+    const previous = readOwnerControlFile(receipt.scope, receipt.requestId) ?? (existsSync(join(receipt.scope.startupRoot, "staff.sqlite")) ? readOwnerControlReceipt(receipt.scope, receipt.requestId) : null);
+    if (previous !== null) {
+      if (previous.digest !== receipt.digest) throw new StoreConflictError("Control idempotency key payload conflict");
+      return previous;
+    }
+    writeFileSync(ownerControlOperationPath(receipt.scope, receipt.requestId), encode(receipt), { mode: 0o600, flag: "wx" });
+    return null;
+  });
 }
 function finishOperation(receipt: OwnerControlReceipt): void {
-  const path = operationPath(receipt.scope, receipt.requestId);
+  const path = ownerControlOperationPath(receipt.scope, receipt.requestId);
   const temporary = `${path}.${randomUUID()}.tmp`;
   assertStartupPath(receipt.scope.startupRoot, temporary, "file");
   writeFileSync(temporary, encode(receipt), { mode: 0o600, flag: "wx" });
@@ -139,12 +131,13 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
     }
     try {
       writeFileSync(lock, encode({ requestId: request.requestId, digest, pid: process.pid }));
-      const existing = readOperation(scope, request.requestId);
+      const existing = readOwnerControlFile(scope, request.requestId);
       if (existing !== null) { if (existing.digest !== digest) throw new StoreConflictError("Create idempotency key payload conflict"); return jsonSchema.parse(existing); }
       const selection = bootSelection({ cwd: scope.boundRoot, skillsHome: scope.skillsHome, startupRoot: scope.startupRoot, configHome: dirname(dirname(dirname(scope.startupRoot))), skillsRoot: request.skillsRoot, host: scope.host, managerSession: scope.managerSession, command: { kind: "new", name: scope.name, directory: scope.boundRoot, work: null }, explicitName: scope.name, executionLimit: request.executionLimit });
       if (selection === null || encode({ skillsHome: selection.skillsHome, startupRoot: selection.startupRoot, host: selection.host, name: selection.name, boundRoot: selection.boundRoot, managerSession: selection.managerSession }) !== encode(scope)) throw new StoreAuthorityError("Create selection differs from requested canonical scope");
       const intent = ownerControlReceiptSchema.parse({ requestId: request.requestId, digest, scope, kind: "create", state: "uncertain", ownerEpoch: 0, revision: 0, sideEffects: "root_initialized", result: { reason: "Inspect initialized root before any retry" } });
-      beginOperation(intent);
+      const previous = beginOperation(intent);
+      if (previous !== null) return jsonSchema.parse(previous);
       persistBinding(selection);
       const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: randomUUID(), managerGeneration: 1, leaseMs: 60000 }, now: runtime.now });
       try { store.initializeRoleSettings(request.harness); } finally { store.close(); }
@@ -156,13 +149,13 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
   }
   binding(scope);
   if (request.kind === "receipt") {
-    const receipt = readOperation(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
+    const receipt = readOwnerControlFile(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
     return receipt === null ? { state: "missing", requestId: request.requestId } : jsonSchema.parse({ state: "found", receipt });
   }
   const snapshot = readOwnerControl(scope);
   if (request.kind === "prepare_manager") {
     const digest: string = createHash("sha256").update(encode(request)).digest("hex");
-    const existing = readOperation(scope, request.requestId);
+    const existing = readOwnerControlFile(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
     if (existing !== null) {
       if (existing.digest !== digest) throw new StoreConflictError("Manager preparation idempotency key payload conflict");
       return jsonSchema.parse(existing);
@@ -170,7 +163,8 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
     if (snapshot.ownerEpoch !== request.expectedOwnerEpoch || snapshot.revision !== request.expectedRevision || snapshot.archived || snapshot.leaseExpires > runtime.now()) throw new StoreFenceError("Manager preparation snapshot changed, Startup archived or owner live");
     if (existsSync(join(scope.startupRoot, "runtime-config.json"))) throw new StoreConflictError("Saved manager must resume its native identity; preparation cannot replace it");
     const intent = ownerControlReceiptSchema.parse({ requestId: request.requestId, digest, scope, kind: "prepare_manager", state: "uncertain", ownerEpoch: snapshot.ownerEpoch, revision: snapshot.revision, sideEffects: "manager_prepared", result: { reason: "Inspect manager-launch.json before another native launch" } });
-    beginOperation(intent);
+    const previous = beginOperation(intent);
+    if (previous !== null) return jsonSchema.parse(previous);
     const settings = prepareManagerLaunch({ scope, harness: request.harness, now: runtime.now, expectedControl: { ownerEpoch: request.expectedOwnerEpoch, revision: request.expectedRevision } });
     const argv: readonly string[] = settings.requested.harness === "omp" ? ompSettingsArgs(settings) : [
       ...(settings.requested.model.value === null ? [] : ["--model", settings.requested.model.value]),
@@ -184,7 +178,7 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
   if (request.kind === "select") return jsonSchema.parse({ scope, ...snapshot, sideEffects: "none" });
   if (request.kind === "settings_draft") return jsonSchema.parse({ draft: validateRoleSettings(request.selection), scope: "future_launch", sideEffects: "none" });
   if (request.kind === "settings_apply" || request.kind === "archive") {
-    const receipt = readOperation(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
+    const receipt = readOwnerControlFile(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
     if (receipt !== null) {
       if (receipt.digest !== createHash("sha256").update(encode(request)).digest("hex")) throw new StoreConflictError("Control idempotency key payload conflict");
       return jsonSchema.parse(receipt);
@@ -194,25 +188,26 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
   }
   if (request.kind === "resume") {
     const digest = createHash("sha256").update(encode(request)).digest("hex");
-    const existing = readOperation(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
+    const existing = readOwnerControlFile(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
     if (existing !== null) { if (existing.digest !== digest) throw new StoreConflictError("Resume idempotency key payload conflict"); return jsonSchema.parse(existing); }
     if (snapshot.ownerEpoch !== request.expectedOwnerEpoch || snapshot.revision !== request.expectedRevision || snapshot.archived) throw new StoreFenceError("Resume snapshot changed or Startup archived");
     const base = { requestId: request.requestId, digest, scope, kind: "resume" as const, ownerEpoch: snapshot.ownerEpoch, revision: snapshot.revision };
     const configPath = join(scope.startupRoot, "runtime-config.json");
     if (!existsSync(configPath)) {
       const receipt = ownerControlReceiptSchema.parse({ ...base, state: "missing_session", sideEffects: "none", result: { reason: "No saved manager runtime; create a real native manager session first" } });
-      beginOperation(receipt); return jsonSchema.parse(receipt);
+      return jsonSchema.parse(beginOperation(receipt) ?? receipt);
     }
     const config = parseRuntimeHostConfig(readPrivateJson(configPath));
     if (config.skillsHome !== scope.skillsHome || config.startupRoot !== scope.startupRoot || config.name !== scope.name || config.managerSession !== scope.managerSession || config.boundRoot !== scope.boundRoot) throw new StoreAuthorityError("Resume cannot replace saved manager identity");
     if (!(await runtime.observeManager(config))) {
       const receipt = ownerControlReceiptSchema.parse({ ...base, state: "missing_session", sideEffects: "none", result: { reason: "Saved manager native session is absent" } });
-      beginOperation(receipt); return jsonSchema.parse(receipt);
+      return jsonSchema.parse(beginOperation(receipt) ?? receipt);
     }
     const fresh = readOwnerControl(scope);
     if (fresh.ownerEpoch !== snapshot.ownerEpoch || fresh.revision !== snapshot.revision || fresh.archived) throw new StoreFenceError("Resume authority changed during native observation");
     const intent = ownerControlReceiptSchema.parse({ ...base, state: "uncertain", sideEffects: "owner_resumed", result: { reason: "Owner resume outcome requires receipt/health reconciliation" } });
-    beginOperation(intent);
+    const previous = beginOperation(intent);
+    if (previous !== null) return jsonSchema.parse(previous);
     await runtime.resume(config);
     const observed = readOwnerControl(scope);
     const receipt = ownerControlReceiptSchema.parse({ ...intent, state: "committed", ownerEpoch: observed.ownerEpoch, revision: observed.revision, result: { managerSession: scope.managerSession } });
