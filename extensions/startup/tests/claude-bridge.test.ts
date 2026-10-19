@@ -440,3 +440,23 @@ test.each([undefined, "", "relative-config"])("native entry uses execution-user 
   expect(entry.configHome).toBe(join(homedir(), ".config"));
   expect(entry.skillsHome).toBe(join(homedir(), ".config", "jp-skills"));
 });
+
+test.each(["/", "/.", "/unused/.."])("startup-claude wrapper passes the selected canonical root to its child for %s", async (suffix) => {
+  const f = managerFixture();
+  const bin: string = join(f.root, "bin");
+  mkdirSync(bin);
+  const executable: string = join(bin, "claude");
+  writeFileSync(executable, `#!${process.execPath}\nprocess.stdout.write(JSON.stringify({ startupRoot: process.env.STARTUP_ROOT, claudeConfigDir: process.env.CLAUDE_CONFIG_DIR, args: process.argv.slice(2) }));\n`, { mode: 0o700 });
+  const child = Bun.spawn([process.execPath, resolve(import.meta.dir, "../claude-manager.ts")], {
+    cwd: f.repo,
+    env: { ...f.input.environment, STARTUP_ROOT: f.startupRoot + suffix, STARTUP_SKILLS_ROOT: f.skillsRoot, PATH: bin },
+    stdout: "pipe", stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  expect(stderr).toBe("");
+  expect(exitCode).toBe(0);
+  const launched = z.object({ startupRoot: z.string(), claudeConfigDir: z.string(), args: z.array(z.string()) }).parse(JSON.parse(stdout));
+  expect(launched.startupRoot).toBe(f.startupRoot);
+  expect(launched.claudeConfigDir).toBe(f.startupRoot);
+  expect(launched.args.slice(0, 2)).toEqual(["--session-id", sessionId]);
+});

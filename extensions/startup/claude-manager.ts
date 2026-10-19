@@ -72,7 +72,7 @@ async function launch(): Promise<void> {
     environment, cwd: process.cwd(), skillsHome, configHome, startupRoot: environment.STARTUP_ROOT ?? null,
     bun: process.execPath, skillsRoot,
   });
-  const startupRoot: string = canonicalStartupRoot(environment.STARTUP_ROOT ?? resolve(configHome, "ronin", "startups", z.string().parse(environment.STARTUP_NAME)), false);
+  const startupRoot: string = canonicalStartupRoot(resolve(environment.STARTUP_ROOT ?? join(configHome, "ronin", "startups", z.string().parse(environment.STARTUP_NAME))), false);
   const child = Bun.spawn(["claude", ...args], {
     stdio: ["inherit", "inherit", "inherit"],
     env: { ...process.env, JP_SKILLS_HOME: skillsHome, STARTUP_ROOT: startupRoot, CLAUDE_CONFIG_DIR: startupRoot },
