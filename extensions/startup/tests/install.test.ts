@@ -207,11 +207,11 @@ function claudeFixture(version: string) {
   const source = realpathSync(resolve(import.meta.dir, ".."));
   const skillsRoot = realpathSync(resolve(source, "../.."));
   const claudeDir = join(root, ".claude");
-  mkdirSync(join(claudeDir, "hooks"), { recursive: true });
+  mkdirSync(join(claudeDir, "hooks"), { recursive: true, mode: 0o700 });
   mkdirSync(join(claudeDir, "skills"));
   const hook = join(claudeDir, "hooks", "herdr-agent-state.sh");
-  writeFileSync(hook, "#!/bin/bash\n# HERDR_INTEGRATION_ID=claude\n# HERDR_INTEGRATION_VERSION=11\n");
-  writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({ hooks: { SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: `bash '${hook}' session`, timeout: 10 }] }] } }));
+  writeFileSync(hook, "#!/bin/bash\n# HERDR_INTEGRATION_ID=claude\n# HERDR_INTEGRATION_VERSION=11\n", { mode: 0o700 });
+  writeFileSync(join(claudeDir, "settings.json"), JSON.stringify({ hooks: { SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: `bash '${hook}' session`, timeout: 10 }] }] } }), { mode: 0o600 });
   const names = readdirSync(join(skillsRoot, "skills")).filter((name) => name === "startup" || name === "hire" || name.startsWith("startup-"));
   for (const name of names) symlinkSync(join(skillsRoot, "skills", name), join(claudeDir, "skills", name));
   const claude = join(root, "claude-fixture");
