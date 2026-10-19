@@ -72,6 +72,7 @@ function bridgeFixture(mode: "employee" | "manager") {
   const server = Bun.serve({ unix: socketPath, websocket: { message(socket, message): void { admissions.push(z.json().parse(JSON.parse(String(message)))); socket.send(JSON.stringify({ connection: "private-connection" })); } }, async fetch(request: Request, server): Promise<Response | undefined> {
     if (new URL(request.url).pathname === "/admit" && server.upgrade(request)) return;
     const path: string = new URL(request.url).pathname;
+    if (path === "/disconnect") return Response.json({ revoked: true });
     if (path === "/admit") { admissions.push(z.json().parse(await request.json())); return Response.json({ connection: "private-connection" }); }
     if (path === "/poll") return Response.json({ projection: `${text}\nBRIDGE STATE`, pendingMessageIds: pending, toolBlockReason: null, waitReason: null });
     const command: Json = z.json().parse(await request.json());

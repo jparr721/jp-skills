@@ -278,7 +278,7 @@ export function createClaudeHost(input: Readonly<{
     const results: readonly unknown[] = (await outcomes("tool_call", { toolName: normalize(tool, query), input: {} }, ctx))
       .map((outcome) => "value" in outcome ? outcome.value : { block: true, reason: `Startup tool_call handler failed: ${outcome.error}` });
     const blocked = results.map((result) => z.object({ block: z.literal(true), reason: z.string() }).safeParse(result)).find((result) => result.success)?.data;
-    const reason: string | null = blocked?.reason ?? (formatFailure === null ? null : `Startup transcript ledger failed: ${formatFailure}`);
+    const reason: string | null = formatFailure === null ? blocked?.reason ?? null : `Startup transcript ledger failed: ${formatFailure}`;
     const stop: boolean = agentId === "" && abortPending;
     if (stop) abortPending = false;
     return {
