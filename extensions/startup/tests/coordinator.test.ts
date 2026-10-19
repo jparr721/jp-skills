@@ -1448,3 +1448,31 @@ test("manager admission retains the prelaunch selection after a later settings a
   await f.coordinator.start();
   expect(f.store.runtimeBindings().find((row) => row.employeeId === "manager")?.settings).toEqual(settings);
 });
+
+for (const initialHarness of ["omp", "claude"] as const) for (const change of ["harness", "model-effort"] as const) test(`${initialHarness} crew reuse excludes changed ${change} selections without rewriting native provenance`, async () => {
+  const f = harnessFixture(8, initialHarness);
+  const { manager } = await f.ready();
+  const first = await f.delegate(manager, "original-settings");
+  const connections = new Map<string, string>();
+  for (const id of [first.architect, first.qa, ...first.devs]) connections.set(id, await f.admit(id));
+  for (const [id, connection] of connections) {
+    const claimed = z.object({ claim: z.object({ id: z.string() }) }).parse(await f.coordinator.command(connection, { kind: "claim" }));
+    if (id === first.architect) await f.coordinator.command(connection, { kind: "capture", capture: { captureId: "empty-settings", eventId: "original-settings", rows: [], receipt: "no tasks" } });
+    await f.coordinator.command(connection, { kind: "settle", claimId: claimed.claim.id, result: { id: `finished-${id}`, kind: "completed", output: "done", checkpoint: null, outgoing: [] } });
+  }
+  await f.coordinator.command(manager, { kind: "finish", teamId: first.id, evidence: "all work resolved" });
+  const prior = f.store.runtimeBindings().filter((entry) => [first.architect, first.qa, ...first.devs].includes(entry.employeeId));
+  const harness = change === "harness" ? initialHarness === "omp" ? "claude" : "omp" : initialHarness;
+  f.setRoleSettings("dev", harness, harness === "claude" ? "sonnet" : "openai/gpt-5.2", "high");
+  const launched = f.launches.length;
+  const second = await f.delegate(manager, "changed-settings");
+  expect(second.architect).not.toBe(first.architect);
+  expect(second.devs[0]).not.toBe(first.devs[0]);
+  expect(f.launches).toHaveLength(launched + 3);
+  for (const saved of prior) expect(f.store.runtimeBindings().find((entry) => entry.launchId === saved.launchId)).toEqual(saved);
+  const fresh = f.store.runtimeBindings().find((entry) => entry.employeeId === second.devs[0]);
+  expect(fresh?.settings).toEqual(f.store.roleSettings("dev"));
+  expect(prior.some((entry) => entry.nativeSession === fresh?.nativeSession && entry.nativeSession !== null)).toBe(false);
+  for (const id of [second.architect, second.qa, ...second.devs]) await f.admit(id);
+  expect(f.store.snapshot().teams.find((team) => team.id === second.id)?.state).toBe("ready");
+});
