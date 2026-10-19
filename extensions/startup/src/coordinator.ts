@@ -331,7 +331,10 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const pa = receipt.employees[0];
     if (!pa) throw new StoreConflictError("Mandatory PA reservation is missing");
     const saved = store.runtimeBindings().findLast((r) => r.employeeId === pa.id);
-    if (saved) return;
+    if (saved) {
+      if (saved.state === "prepared") await launch(pa.id, await createEmployeeTab(pa.id, `${config.name} manager PA`));
+      return;
+    }
     prepare(pa.id, randomBytes(32).toString("hex"));
     await launch(pa.id, await createEmployeeTab(pa.id, `${config.name} manager PA`));
   }

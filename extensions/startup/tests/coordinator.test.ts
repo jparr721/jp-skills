@@ -107,8 +107,46 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     if (validated.status !== "accepted") throw new Error(validated.reason);
     store.saveRoleSettings({ manager: store.managerBinding, requested: validated.requested, expectedRevision: saved.revision });
   }
-  return { advancingClock: () => { clockStep = 1; }, coordinator, store, config, observations, launches, layouts, root, home, ready, admit, delegate, setRoleSettings, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
+  return { advancingClock: () => { clockStep = 1; }, coordinator, herdr, store, config, observations, launches, layouts, root, home, ready, admit, delegate, setRoleSettings, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
 }
+
+test("cold coordinator restart launches the same PA after its saved preflight becomes available", async () => {
+  const f = fixture(8);
+  f.setRoleSettings("pa", "claude", null, null);
+  writeFileSync(join(f.config.startupRoot, ".claude.json"), JSON.stringify({ projects: {} }), { mode: 0o600 });
+  await expect(f.coordinator.start()).rejects.toThrow("workspace trust");
+  const paEmployee = f.store.snapshot().employees.find((employee) => employee.role === "pa");
+  if (!paEmployee) throw new Error("Missing prepared PA employee");
+  const pa = f.store.runtimeBindings().findLast((runtime) => runtime.employeeId === paEmployee.id);
+  if (!pa) throw new Error("Missing prepared PA runtime");
+  expect(pa).toMatchObject({ state: "prepared", paneId: null, nativeSession: null });
+
+  f.store.close();
+  const store = openStore({
+    path: join(f.config.stateDirectory, "staff.sqlite"),
+    scope: { skillsHome: f.config.skillsHome, startupRoot: f.config.startupRoot, boundRoot: f.config.boundRoot, host: "host", name: f.config.name, managerSession: f.config.managerSession },
+    owner: { id: "coordinator-restarted", managerGeneration: 1, leaseMs: 60000 },
+    now: () => 2000,
+  });
+  stores.push(store);
+  const restarted = openCoordinator({ store, herdr: f.herdr, config: f.config, now: () => 2000 });
+  const managerObservation = f.observations.splice(0, 1)[0];
+  if (!managerObservation) throw new Error("Missing manager observation");
+  await expect(restarted.start()).rejects.toThrow("Manager pane");
+  expect(store.runtimeBindings().findLast((runtime) => runtime.employeeId === paEmployee.id)?.state).toBe("prepared");
+  expect(f.layoutCalls()).toBe(0);
+  expect(f.launches).toHaveLength(0);
+
+  f.observations.push(managerObservation);
+  writeFileSync(join(f.config.startupRoot, ".claude.json"), JSON.stringify({ projects: { [f.config.boundRoot]: { hasTrustDialogAccepted: true } } }), { mode: 0o600 });
+  await restarted.start();
+
+  const resumedPa = store.runtimeBindings().findLast((runtime) => runtime.employeeId === paEmployee.id);
+  expect(resumedPa?.launchId).toBe(pa.launchId);
+  expect(resumedPa?.state).toBe("starting");
+  expect(f.layoutCalls()).toBe(1);
+  expect(f.launches).toHaveLength(1);
+});
 
 test("admission preserves observation progress committed while its Herdr read is pending", async () => {
   const f = fixture(8);
@@ -401,6 +439,8 @@ test("boot requires a source-bound PA and reserves one permanent PA on retries",
   await f.coordinator.start();
   await f.coordinator.start();
   expect(f.store.snapshot().employees.filter((e) => e.role === "pa")).toHaveLength(1);
+  expect(f.layoutCalls()).toBe(1);
+  expect(f.launches).toHaveLength(1);
   const manager = await f.admit("manager");
   await f.coordinator.command(manager, { kind: "intake", eventId: "event", input: "work", amendItemIds: [] });
   await expect(f.coordinator.command(manager, { kind: "delegate", eventId: "event", developers: 1 })).rejects.toThrow("PA");
