@@ -3502,6 +3502,7 @@ export function ownerControlOperationPath(scope: Scope, requestId: string): stri
 export function readOwnerControlFile(scope: Scope, requestId: string): OwnerControlReceipt | null {
   const path = ownerControlOperationPath(scope, requestId);
   if (!existsSync(path)) return null;
+  if ((lstatSync(dirname(path)).mode & 0o077) !== 0) throw new StoreAuthorityError("Control operation directory must be private");
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) throw new StoreAuthorityError("Control operation must be a private regular file");
   const receipt = ownerControlReceiptSchema.parse(JSON.parse(readFileSync(path, "utf8")));

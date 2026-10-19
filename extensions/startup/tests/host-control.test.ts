@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync, statSync, chmodSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { executeHostControl as executeTypedHostControl, hostControlResponseSchema, hostControlReceiptSchema, type HostControlRuntime } from "../host-control";
@@ -218,4 +218,42 @@ test("a concurrent request reservation excludes preparation and direct owner set
     expect(readOwnerControl(f.scope).settings).toEqual(before.settings);
   } finally { store.close(); reader.releaseLock(); child.stdin.end(); await child.exited; }
   expect(await executeHostControl(apply, f.runtime)).toMatchObject({ state: "committed", kind: "settings_apply" });
+});
+
+test("interrupted create intent is readable without binding, initialization, unlocking or replay", async () => {
+  const f = fixture();
+  const bootPath = resolve(import.meta.dir, "../src/boot.ts");
+  const hostPath = resolve(import.meta.dir, "../host-control.ts");
+  const script = `import { mock } from "bun:test";
+const boot = await import(${JSON.stringify(bootPath)});
+mock.module(${JSON.stringify(bootPath)}, () => ({ ...boot, persistBinding: () => process.exit(73) }));
+const { executeHostControl } = await import(${JSON.stringify(hostPath)});
+await executeHostControl(JSON.parse(process.argv[1]), { now: () => 1000, executionHost: () => ${JSON.stringify(f.scope.host)}, observeManager: async () => false, resume: async () => { throw new Error("Forbidden replay"); } });`;
+  const child = Bun.spawn([process.execPath, "-e", script, JSON.stringify(f.create)], { stdout: "pipe", stderr: "pipe" });
+  expect(await child.exited).toBe(73);
+  expect(existsSync(join(f.scope.startupRoot, "binding.json"))).toBe(false);
+  expect(existsSync(join(f.scope.startupRoot, "staff.sqlite"))).toBe(false);
+  expect(existsSync(join(f.scope.startupRoot, "create.lock"))).toBe(true);
+  const tree = () => readdirSync(f.scope.startupRoot, { recursive: true }).map(String).sort().map((name) => {
+    const path = join(f.scope.startupRoot, name);
+    const stat = statSync(path);
+    return { name, mode: stat.mode, content: stat.isFile() ? readFileSync(path, "utf8") : null };
+  });
+  const before = tree();
+  expect(await executeTypedHostControl({ kind: "receipt", scope: f.scope, requestId: f.create.requestId }, f.runtime)).toMatchObject({ operation: "receipt", result: { state: "found", receipt: { state: "uncertain", kind: "create", requestId: f.create.requestId, scope: f.scope } } });
+  expect(tree()).toEqual(before);
+  for (const scope of [{ ...f.scope, managerSession: "foreign" }, { ...f.scope, name: "foreign" }, { ...f.scope, host: "foreign-host" }]) await expect(executeHostControl({ kind: "receipt", scope, requestId: f.create.requestId }, f.runtime)).rejects.toThrow();
+  expect(tree()).toEqual(before);
+  writeFileSync(join(f.scope.startupRoot, "binding.json"), JSON.stringify({ scope: { ...f.scope, managerSession: "foreign" }, executionLimit: 8 }), { mode: 0o600 });
+  await expect(executeHostControl({ kind: "receipt", scope: f.scope, requestId: f.create.requestId }, f.runtime)).rejects.toThrow("binding differs");
+  rmSync(join(f.scope.startupRoot, "binding.json"));
+  const path = ownerControlOperationPath(f.scope, f.create.requestId);
+  chmodSync(path, 0o644);
+  await expect(executeHostControl({ kind: "receipt", scope: f.scope, requestId: f.create.requestId }, f.runtime)).rejects.toThrow();
+  chmodSync(path, 0o600);
+  const intent = JSON.parse(readFileSync(path, "utf8"));
+  writeFileSync(path, JSON.stringify({ ...intent, kind: "resume", sideEffects: "owner_resumed" }), { mode: 0o600 });
+  await expect(executeHostControl({ kind: "receipt", scope: f.scope, requestId: f.create.requestId }, f.runtime)).rejects.toThrow();
+  expect(existsSync(join(f.scope.startupRoot, "staff.sqlite"))).toBe(false);
+  expect(existsSync(join(f.scope.startupRoot, "create.lock"))).toBe(true);
 });

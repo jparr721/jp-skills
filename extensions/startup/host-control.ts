@@ -3,7 +3,7 @@ import { closeSync, existsSync, openSync, readdirSync, renameSync, unlinkSync, w
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { assertStartupPath, bootSelection, ensureStartupRoot, persistBinding } from "./src/boot";
+import { assertStartupPath, bootSelection, canonicalStartupRoot, ensureStartupRoot, persistBinding } from "./src/boot";
 import { encode, hostStatusQuerySchema, hostStatusSchema, idSchema, jsonSchema, ownerControlReceiptSchema, ownerControlRequestSchema, scopeSchema, timeSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, type Json, type OwnerControlReceipt, type Scope } from "./src/contracts";
 import { createHerdrRuntime, runHerdrCommand } from "./src/herdr-runtime";
 import { ompSettingsArgs, validateRoleSettings } from "./src/profiles";
@@ -146,6 +146,16 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
       finishOperation(receipt);
       return jsonSchema.parse(receipt);
     } finally { closeSync(lock); unlinkSync(lockPath); }
+  }
+  if (request.kind === "receipt") {
+    canonicalStartupRoot(scope.startupRoot, false);
+    const bindingPath = join(scope.startupRoot, "binding.json");
+    assertStartupPath(scope.startupRoot, bindingPath, "file");
+    if (!existsSync(bindingPath)) {
+      const receipt = readOwnerControlFile(scope, request.requestId);
+      if (receipt?.kind !== "create" || receipt.state !== "uncertain" || receipt.ownerEpoch !== 0 || receipt.revision !== 0 || receipt.sideEffects !== "root_initialized") throw new StoreAuthorityError("Missing binding permits only an exact-scope interrupted create intent lookup");
+      return jsonSchema.parse({ state: "found", receipt });
+    }
   }
   binding(scope);
   if (request.kind === "receipt") {
