@@ -65,6 +65,17 @@ export const hostControlResponseSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("progress"), result: z.union([offlineSchema, projectionSchema.extend({ queue: picture.queue, teams: picture.teams })]) }),
   z.strictObject({ operation: z.literal("alerts"), result: z.union([offlineSchema, projectionSchema.extend({ state: z.enum(["unsupported", "recovery-required", "missing", "offline", "stale", "live"]), reasons: picture.reasons, supervision: picture.supervision })]) }),
 ]);
+export const hostControlUncertaintySchema = z.strictObject({
+  state: z.literal("uncertain"), kind: z.literal("settings_apply"), requestId: idSchema, scope: scopeSchema,
+  replay: z.literal("forbidden"), recovery: z.strictObject({ kind: z.literal("receipt"), requestId: idSchema, scope: scopeSchema }),
+});
+export class HostControlUncertainError extends Error {
+  readonly outcome: z.infer<typeof hostControlUncertaintySchema>;
+  constructor(request: Readonly<{ requestId: string; scope: Scope }>, cause: unknown) {
+    super(`Settings write outcome is uncertain; requestId=${request.requestId}; startupRoot=${request.scope.startupRoot}; use read-only receipt lookup and never replay. Cause: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    this.outcome = hostControlUncertaintySchema.parse({ state: "uncertain", kind: "settings_apply", requestId: request.requestId, scope: request.scope, replay: "forbidden", recovery: { kind: "receipt", requestId: request.requestId, scope: request.scope } });
+  }
+}
 export type HostControlResponse = z.infer<typeof hostControlResponseSchema>;
 export type HostControlCommand = z.infer<typeof hostControlCommandSchema>;
 export type HostControlRuntime = Readonly<{ now: () => number; executionHost: () => string; observeManager: (config: RuntimeHostConfig) => Promise<boolean>; resume: (config: RuntimeHostConfig) => Promise<RuntimeHostConfig> }>;
@@ -95,10 +106,23 @@ function finishOperation(receipt: OwnerControlReceipt): void {
 async function ownerRequest(scope: Scope, path: string, body: Json | null): Promise<Json> {
   const config = parseRuntimeHostConfig(readPrivateJson(join(scope.startupRoot, "runtime-config.json")));
   if (config.skillsHome !== scope.skillsHome || config.startupRoot !== scope.startupRoot || config.name !== scope.name || config.managerSession !== scope.managerSession || config.boundRoot !== scope.boundRoot) throw new StoreAuthorityError("Owner endpoint config does not match selected Startup");
-  const response = await fetch(`http://localhost${path}`, { unix: config.socketPath, method: body === null ? "GET" : "POST", ...(body === null ? {} : { headers: { "Content-Type": "application/json" }, body: encode(body) }), signal: AbortSignal.timeout(10000) });
-  const text = await response.text();
+  const mutation = body === null ? null : ownerControlRequestSchema.parse(body);
+  const encodedBody = body === null ? null : encode(body);
+  let response: Response;
+  let text: string;
+  try {
+    response = await fetch(`http://localhost${path}`, { unix: config.socketPath, method: encodedBody === null ? "GET" : "POST", ...(encodedBody === null ? {} : { headers: { "Content-Type": "application/json" }, body: encodedBody }), signal: AbortSignal.timeout(10000) });
+    text = await response.text();
+  } catch (error: unknown) {
+    if (mutation?.kind === "settings_apply") throw new HostControlUncertainError(mutation, error);
+    throw error;
+  }
   if (!response.ok) throw new StoreConflictError(`Owner control ${path} HTTP ${response.status}: ${text.slice(0, 2048)}; mutation outcomes must be looked up by requestId, never automatically replayed`);
-  return jsonSchema.parse(JSON.parse(text));
+  try { return jsonSchema.parse(JSON.parse(text)); }
+  catch (error: unknown) {
+    if (mutation?.kind === "settings_apply") throw new HostControlUncertainError(mutation, error);
+    throw error;
+  }
 }
 async function dispatchHostControl(request: HostControlCommand, runtime: HostControlRuntime): Promise<Json> {
   if (request.kind === "list") {
@@ -259,7 +283,7 @@ if (import.meta.main) {
     } });
     process.stdout.write(encode(result) + "\n");
   } catch (error: unknown) {
-    process.stderr.write(encode({ error: error instanceof Error ? error.constructor.name : "HostControlError", message: (error instanceof Error ? error.message : String(error)).slice(0, 2048) }) + "\n");
+    process.stderr.write(encode({ error: error instanceof Error ? error.constructor.name : "HostControlError", message: (error instanceof Error ? error.message : String(error)).slice(0, 2048), ...(error instanceof HostControlUncertainError ? { outcome: error.outcome } : {}) }) + "\n");
     process.exitCode = 1;
   }
 }

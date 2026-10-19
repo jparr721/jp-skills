@@ -230,6 +230,8 @@ Inspect the artifact's actual status/checks and source hashes before treating it
 
 `bun extensions/startup/host-control.ts` reads one JSON command from stdin (64 KiB maximum) and exits. It is a per-request owner entrypoint, not another daemon. `hostControlCommandSchema` is the authoritative request union. Every successful response is `{operation, result}`, validated by exported `hostControlResponseSchema` and typed as `HostControlResponse`. Receipt lookup returns a typed `found` receipt or `missing` request ID; mutation receipts validate their operation, state, effects and concrete result together. Every selected-root request includes the full canonical `scope` (`skillsHome`, `startupRoot`, `host`, `name`, `boundRoot`, `managerSession`). Ronin invokes this entrypoint and never opens SQLite itself.
 
+A live `settings_apply` whose response is lost throws `HostControlUncertainError`. The CLI exits 1 and includes `outcome`, validated by `hostControlUncertaintySchema`: `{state:"uncertain", kind:"settings_apply", requestId, scope, replay:"forbidden", recovery:{kind:"receipt", requestId, scope}}`. Execute only that read-only recovery command. The uncertainty is not a committed receipt; lookup returns the owner's saved result when available. Pre-dispatch validation and read-only transport failures keep their original error types.
+
 - `list`: configHome, after cursor and limit (1-100); works with zero owners.
 - `create`: scope, requestId, skillsRoot, executionLimit, harness, expectedOwnerEpoch=0 and expectedRevision=0. Initializes a cold root; it does not manufacture a manager process.
 - `select`: validates the binding and reads it without a lease or process start.

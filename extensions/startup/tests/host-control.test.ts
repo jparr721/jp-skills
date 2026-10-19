@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, test, spyOn } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync, statSync, chmodSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { executeHostControl as executeTypedHostControl, hostControlResponseSchema, hostControlReceiptSchema, type HostControlRuntime } from "../host-control";
+import { executeHostControl as executeTypedHostControl, hostControlResponseSchema, hostControlReceiptSchema, HostControlUncertainError, type HostControlRuntime } from "../host-control";
 import { type Scope } from "../src/contracts";
 import { prepareManagerLaunch, launchRuntimeHost, type RuntimeHostConfig } from "../src/v7-launch";
+import { openCoordinator, serveCoordinator } from "../src/coordinator";
 import { openStore, ownerControlOperationPath, readOwnerControl } from "../src/store";
 
 async function executeHostControl(value: unknown, runtime: HostControlRuntime) {
@@ -256,4 +257,85 @@ await executeHostControl(JSON.parse(process.argv[1]), { now: () => 1000, executi
   await expect(executeHostControl({ kind: "receipt", scope: f.scope, requestId: f.create.requestId }, f.runtime)).rejects.toThrow();
   expect(existsSync(join(f.scope.startupRoot, "staff.sqlite"))).toBe(false);
   expect(existsSync(join(f.scope.startupRoot, "create.lock"))).toBe(true);
+});
+
+for (const loss of ["fetch", "body"] as const) test(`live settings ${loss} loss exposes typed uncertainty and recovers one committed receipt without replay`, async () => {
+  const base = fixture();
+  const scope = { ...base.scope, startupRoot: join(base.root, "s") };
+  const f = { ...base, scope };
+  await executeHostControl({ ...f.create, scope }, f.runtime);
+  const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: "live-writer", managerGeneration: 1, leaseMs: 60000 }, now: f.runtime.now });
+  const config = runtimeConfig(f);
+  const coordinator = openCoordinator({ store, config, now: f.runtime.now, herdr: { check: async () => { throw new Error("No native probes"); }, observe: async () => [], renameCrew: async () => {}, createCrew: async () => { throw new Error("No native layout"); }, split: async () => { throw new Error("No native layout"); }, launch: async () => { throw new Error("No native launch"); } } });
+  const server = serveCoordinator({ coordinator, socketPath: config.socketPath });
+  writeFileSync(join(scope.startupRoot, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  const snapshot = readOwnerControl(scope);
+  const request = { kind: "settings_apply", requestId: `lost-${loss}`, scope, expectedOwnerEpoch: snapshot.ownerEpoch, expectedRevision: snapshot.revision, role: "dev", harness: "omp", model: "provider/model", effort: "high", baseSettingsRevision: 0 };
+  const nativeFetch = globalThis.fetch;
+  let writes = 0;
+  const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(Object.assign(async (url: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]): Promise<Response> => {
+    const response = await nativeFetch(url, init);
+    if (String(url).includes("/host/control")) {
+      writes++;
+      if (loss === "fetch") throw new Error("response lost after commit");
+      return new Response(new ReadableStream({ start(controller) { controller.error(new Error("response body lost after commit")); } }));
+    }
+    return response;
+  }, { preconnect: nativeFetch.preconnect }));
+  try {
+    let failure: unknown;
+    try { await executeTypedHostControl(request, f.runtime); } catch (error: unknown) { failure = error; }
+    expect(failure).toBeInstanceOf(HostControlUncertainError);
+    expect(failure).toMatchObject({ outcome: { state: "uncertain", kind: "settings_apply", requestId: request.requestId, scope, replay: "forbidden", recovery: { kind: "receipt", requestId: request.requestId, scope } } });
+    const recovered = await executeTypedHostControl({ kind: "receipt", requestId: request.requestId, scope }, f.runtime);
+    expect(recovered).toMatchObject({ operation: "receipt", result: { state: "found", receipt: { kind: "settings_apply", state: "committed", requestId: request.requestId, result: { revision: 1 } } } });
+    expect(store.roleSettings("dev").revision).toBe(1);
+    expect(writes).toBe(1);
+  } finally { fetchSpy.mockRestore(); server.stop(true); store.close(); }
+});
+
+test("CLI serializes the original uncertain settings identity after a committed live write", async () => {
+  const base = fixture();
+  const scope = { ...base.scope, startupRoot: join(base.root, "s") };
+  const f = { ...base, scope, runtime: { ...base.runtime, now: Date.now } };
+  await executeHostControl({ ...f.create, scope }, f.runtime);
+  const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: "cli-writer", managerGeneration: 1, leaseMs: 60000 }, now: Date.now });
+  const config = runtimeConfig(f);
+  const coordinator = openCoordinator({ store, config, now: Date.now, herdr: { check: async () => {}, observe: async () => [], renameCrew: async () => {}, createCrew: async () => { throw new Error("No native layout"); }, split: async () => { throw new Error("No native layout"); }, launch: async () => { throw new Error("No native launch"); } } });
+  let writes = 0;
+  const server = serveCoordinator({ coordinator: { ...coordinator, hostControl: async (request) => { const result = await coordinator.hostControl(request); writes++; return result; } }, socketPath: config.socketPath });
+  writeFileSync(join(scope.startupRoot, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  const snapshot = readOwnerControl(scope);
+  const request = { kind: "settings_apply", requestId: "cli-lost-write", scope, expectedOwnerEpoch: snapshot.ownerEpoch, expectedRevision: snapshot.revision, role: "dev", harness: "omp", model: "provider/model", effort: "high", baseSettingsRevision: 0 };
+  const preload = join(f.root, "lost-body.ts");
+  writeFileSync(preload, 'const originalFetch = globalThis.fetch; globalThis.fetch = async (url, init) => { await originalFetch(url, init); return new Response(new ReadableStream({ start(controller) { controller.error(new Error("lost body after commit")); } })); };', { mode: 0o600 });
+  try {
+    const child = Bun.spawn([process.execPath, "--preload", preload, resolve(import.meta.dir, "../host-control.ts")], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    child.stdin.write(JSON.stringify(request));
+    child.stdin.end();
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect(code).toBe(1);
+    expect(stdout).toBe("");
+    expect(JSON.parse(stderr)).toMatchObject({ error: "HostControlUncertainError", outcome: { state: "uncertain", kind: "settings_apply", requestId: request.requestId, scope, replay: "forbidden", recovery: { kind: "receipt", requestId: request.requestId, scope } } });
+    expect(await executeTypedHostControl({ kind: "receipt", requestId: request.requestId, scope }, f.runtime)).toMatchObject({ operation: "receipt", result: { state: "found", receipt: { state: "committed", requestId: request.requestId, result: { revision: 1 } } } });
+    expect(writes).toBe(1);
+    expect(store.roleSettings("dev").revision).toBe(1);
+  } finally { server.stop(true); store.close(); }
+});
+
+test("read-only transport loss and pre-dispatch refusal are not typed as uncertain writes", async () => {
+  const base = fixture();
+  const scope = { ...base.scope, startupRoot: join(base.root, "s") };
+  const f = { ...base, scope };
+  await executeHostControl({ ...f.create, scope }, f.runtime);
+  const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: "readonly-owner", managerGeneration: 1, leaseMs: 60000 }, now: f.runtime.now });
+  const config = runtimeConfig(f);
+  writeFileSync(join(scope.startupRoot, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  const transport = new Error("read-only endpoint unavailable");
+  const fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(transport);
+  try {
+    await expect(executeTypedHostControl({ kind: "settings", scope }, f.runtime)).rejects.toBe(transport);
+    await expect(executeTypedHostControl({ kind: "settings_apply", scope, requestId: "invalid-write" }, f.runtime)).rejects.not.toBeInstanceOf(HostControlUncertainError);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  } finally { fetchSpy.mockRestore(); store.close(); }
 });
