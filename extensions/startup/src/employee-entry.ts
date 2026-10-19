@@ -314,12 +314,12 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
   }
   host.on("tool_call", (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
-    if (failure !== null || admitted === null || !sameRoot(admitted, ctx))
+    if (failure !== null || admitted === null || admitted.client.isClosed() || !sameRoot(admitted, ctx))
       return { block: true, reason: `Startup employee blocked: ${failure ?? "native root admission is pending"}` };
     return;
   });
   host.on("before_agent_start", (_event, ctx) => {
-    if (ctx.agent.kind === "main" && (failure !== null || admitted === null || !sameRoot(admitted, ctx))) ctx.abort?.();
+    if (ctx.agent.kind === "main" && (failure !== null || admitted === null || admitted.client.isClosed() || !sameRoot(admitted, ctx))) ctx.abort?.();
   });
   registerTools(host, () => failure === null ? admitted : null);
   host.registerCommand("startup-retry", { description: "Retry Startup employee admission in the existing pane.", handler: async (_args, ctx) => { await retry(ctx); } });

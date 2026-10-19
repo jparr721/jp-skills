@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { afterEach, expect, test, mock } from "bun:test";
+import { afterEach, expect, test, mock, spyOn } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync, statSync, chmodSync, realpathSync, symlinkSync } from "node:fs";
 import { tmpdir, hostname } from "node:os";
 import { Database } from "bun:sqlite";
@@ -212,7 +212,7 @@ function fixture() {
     useEnvironment();
     return path;
   }
-  return { disconnect: () => { for (const channel of channels) channel.close(); }, root, skillsRoot, skillsHome, configHome, cwd, file, ctx, host, tools, commands, messages, requests, admissions, pollReports, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; }, setAvailable(value: boolean) { available = value; }, setCommandResponse(value: Response) { commandResponse = value; } };
+  return { handlers, disconnect: () => { for (const channel of channels) channel.close(); }, root, skillsRoot, skillsHome, configHome, cwd, file, ctx, host, tools, commands, messages, requests, admissions, pollReports, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; }, setAvailable(value: boolean) { available = value; }, setCommandResponse(value: Response) { commandResponse = value; } };
 }
 function entryRoots(f: ReturnType<typeof fixture>, startupRoot: string | null = f.environment.STARTUP_ROOT ?? null) {
   if (startupRoot !== null) {
@@ -1225,4 +1225,37 @@ test("production shutdown after delegation commit retains one durable result for
     expect(o.store.snapshot().teams).toEqual(before.teams);
     expect(o.counts()).toEqual(effects);
   } finally { client.close(); }
+});
+
+for (const role of ["manager", "employee"] as const) for (const loss of ["close", "error", "bridge"] as const) test(`${role} native tools block immediately after delivered ${loss} before heartbeat`, async () => {
+  const f = fixture();
+  const send = WebSocket.prototype.send;
+  const sockets: WebSocket[] = [];
+  const socketSpy = spyOn(WebSocket.prototype, "send").mockImplementation(function(this: WebSocket, data) {
+    if (!sockets.includes(this)) sockets.push(this);
+    return send.call(this, data);
+  });
+  cleanup.push(() => socketSpy.mockRestore());
+  if (role === "employee") {
+    installLaunchedEmployee(f.host, f.manifest("dev"));
+    await f.emit("session_start", {}, f.ctx);
+  } else {
+    installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+    await f.commands.get("startup")!.handler("new closure", f.ctx);
+  }
+  expect(f.admissions).toHaveLength(1);
+  const polls = f.pollReports.length;
+  if (loss === "bridge") {
+    const shutdown = f.handlers.get("session_shutdown")!.at(-1)!;
+    await shutdown({}, f.ctx);
+  } else {
+    const socket = sockets[0]!;
+    if (loss === "error") socket.onerror?.(new Event("error"));
+    else socket.onclose?.(new CloseEvent("close"));
+  }
+  for (const toolName of ["bash", "write"]) expect(await f.emit("tool_call", { toolName, input: {} }, f.ctx)).toMatchObject({ block: true });
+  expect(f.pollReports).toHaveLength(polls);
+  await f.commands.get("startup-retry")!.handler("", f.ctx);
+  expect(f.admissions).toHaveLength(2);
+  expect(await f.emit("tool_call", { toolName: "bash", input: {} }, f.ctx)).toBeUndefined();
 });

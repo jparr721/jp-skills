@@ -40,12 +40,12 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   let commandReceipt: Readonly<{ args: string; inputId: string; work: boolean }> | null = null;
   host.on("tool_call", (_event, ctx) => {
     if (!attempted || ctx.agent.kind !== "main") return;
-    if (failure !== null || admitted === null || initializing !== null || !sameRoot(admitted, ctx) || inputBlock(admitted) !== null)
+    if (failure !== null || admitted === null || admitted.client.isClosed() || initializing !== null || !sameRoot(admitted, ctx) || inputBlock(admitted) !== null)
       return { block: true, reason: `Startup V7 blocked: ${failure ?? "manager root admission is pending"}` };
     return;
   });
   host.on("before_agent_start", (_event, ctx) => {
-    if (attempted && ctx.agent.kind === "main" && (failure !== null || admitted === null)) ctx.abort?.();
+    if (attempted && ctx.agent.kind === "main" && (failure !== null || admitted === null || admitted.client.isClosed())) ctx.abort?.();
   });
   registerTools(host, () => failure === null ? admitted : null);
   async function initialize(ctx: NativeContext, command: BootCommand | null): Promise<void> {
