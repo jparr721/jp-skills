@@ -1083,3 +1083,14 @@ test("manager admission resolves an omitted Startup root independently of toolin
   await f.commands.get("startup")!.handler("new defaultroot", f.ctx);
   expect(f.admissions).toHaveLength(1);
 });
+
+test("manager rejects a foreign transcript before launching its owner", async () => {
+  const f = fixture();
+  const foreign = join(f.root, "foreign-manager.jsonl");
+  writeFileSync(foreign, JSON.stringify({ type: "session", id: "native-root" }) + "\n");
+  let launches = 0;
+  installStartupV7(f.host, { ...omp, ...entryRoots(f, null), environment: f.environment, root: async () => ({ nativeSession: foreign, file: foreign, lastAssistant: undefined }), launch: async (config) => { launches++; return { ...config, socketPath: f.socketPath }; }, nativeLimit: () => 6 });
+  await f.commands.get("startup")!.handler("new foreign", f.ctx);
+  expect(launches).toBe(0);
+  expect(f.messages.join("\n")).toContain("Native transcript");
+});

@@ -7,7 +7,7 @@ import { cfgTaskMaxConcurrency } from "@oh-my-pi/pi-coding-agent/task/settings";
 import type { HostAPI } from "./index";
 import { executionConfigHome, bootSelection, parseBootCommand, persistBinding, StartupBootError, type BootCommand, type Selection } from "./src/boot";
 import { encode } from "./src/contracts";
-import { attach, inputBlock, reconcileInput, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
+import { assertNativeTranscript, attach, inputBlock, reconcileInput, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
 import type { NativeContext } from "./src/omp-adapter";
 import { loadProfile, verifyProfile } from "./src/profiles";
 import { integrationPath, launchRuntimeHost, readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
@@ -64,6 +64,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       admitted = null;
     }
     const ompConfigRoot: string = resolve(input.configHome, "ronin");
+    assertNativeTranscript({ harness: input.harness, startupRoot: next.startupRoot, ompConfigRoot, sessionId: nativeSession, file: nativeFile });
     const savedPath: string = join(next.startupRoot, "runtime-config.json");
     const saved: RuntimeHostConfig | null = runtimeConfig ?? (existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null);
     if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.ompConfigRoot !== ompConfigRoot || saved.name !== next.name || saved.skillsHome !== next.skillsHome || saved.startupRoot !== next.startupRoot || saved.stateDirectory !== next.startupRoot ||
