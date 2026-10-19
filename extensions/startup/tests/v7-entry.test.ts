@@ -1114,6 +1114,8 @@ async function lifecycleOwnerFixture() {
   cleanup.push(() => store.close());
   const config: RuntimeHostConfig = { name: "lifecycle", skillsHome: f.skillsHome, startupRoot, stateDirectory: startupRoot, boundRoot: f.cwd, skillsRoot: f.skillsRoot, ompConfigRoot: join(f.configHome, "ronin"), socketPath: join(startupRoot, "r.sock"), profile: "default", managerSession: "native-root", managerFile: f.file, managerPaneId: "w1:p1", managerCredential: "owner-manager", herdrSession: "fixture", workspaceId: "w1", herdrBinary: "unused", herdrIntegration: f.environment.STARTUP_HERDR_OMP_EXTENSION!, ownerGeneration: 1, policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 8 } };
   const observations: HerdrObservation[] = [{ harness: "omp", name: "manager", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1", terminalId: "manager-term", nativeSession: f.file, state: "idle", stateSequence: 1, interactiveReady: true }];
+  let commandAccepted: (() => void) | null = null;
+  let lastConnection: string | null = null;
   let commandBarrier: Readonly<{ entered: () => void; wait: Promise<void> }> | null = null;
   let commandResultBarrier: Readonly<{ entered: () => void; wait: Promise<void> }> | null = null;
   let observationBarrier: Readonly<{ entered: () => void; wait: Promise<void> }> | null = null;
@@ -1136,8 +1138,11 @@ async function lifecycleOwnerFixture() {
   const coordinator = openCoordinator({ store, config, herdr, now: () => now });
   await coordinator.start();
   const server = serveCoordinator({ coordinator: { ...coordinator, command: async (connection, command) => {
+    lastConnection = connection;
     if (commandBarrier !== null) { commandBarrier.entered(); await commandBarrier.wait; }
-    const result = await coordinator.command(connection, command);
+    const pending = coordinator.command(connection, command);
+    commandAccepted?.();
+    const result = await pending;
     if (commandResultBarrier !== null) { commandResultBarrier.entered(); await commandResultBarrier.wait; }
     return result;
   } }, socketPath: config.socketPath });
@@ -1149,7 +1154,7 @@ async function lifecycleOwnerFixture() {
   const saved = z.object({ credential: z.string(), source: sourceSchema }).parse(JSON.parse(readFileSync(manifest, "utf8")));
   const client = await connectEmployee({ socketPath: config.socketPath, credential: saved.credential, source: saved.source, nativeSession: observedPa.nativeSession, paneId: pa.paneId, agentSessionId: `s-${pa.launchId.replaceAll("-", "").slice(0, 28)}` });
   cleanup.push(() => { client.close(); });
-  return { f, store, coordinator, config, client, manifest, pa: store.employeeRuntime(pa.employeeId, pa.generation)!, delayCommand: (entered: () => void, wait: Promise<void>) => { commandBarrier = { entered, wait }; }, delayResult: (entered: () => void, wait: Promise<void>) => { commandResultBarrier = { entered, wait }; }, advance: (value: number) => { now = value; }, counts: () => ({ layouts, launches }), delayObservation: (entered: () => void, wait: Promise<void>) => { observationBarrier = { entered, wait }; } };
+  return { f, store, coordinator, config, client, manifest, connection: () => lastConnection, onCommandAccepted: (callback: () => void) => { commandAccepted = callback; }, pa: store.employeeRuntime(pa.employeeId, pa.generation)!, delayCommand: (entered: () => void, wait: Promise<void>) => { commandBarrier = { entered, wait }; }, delayResult: (entered: () => void, wait: Promise<void>) => { commandResultBarrier = { entered, wait }; }, advance: (value: number) => { now = value; }, counts: () => ({ layouts, launches }), delayObservation: (entered: () => void, wait: Promise<void>) => { observationBarrier = { entered, wait }; } };
 }
 
 for (const lifecycle of ["session_start", "session_shutdown"] as const) test(`production manager ${lifecycle} fences awaiting and queued owner mutations`, async () => {
@@ -1163,10 +1168,14 @@ for (const lifecycle of ["session_start", "session_shutdown"] as const) test(`pr
   o.delayObservation(entered.resolve, barrier.promise);
   const pending = f.tools.get("startup_delegate")!.execute("delegate", { eventId: "pending-native", developers: 1 }, undefined, undefined, f.ctx).then(() => "committed", () => "rejected");
   await entered.promise;
+  const accepted = Promise.withResolvers<void>();
+  o.onCommandAccepted(accepted.resolve);
   const queued = f.tools.get("startup_intake")!.execute("queued", { eventId: "queued-native", input: "work", amendItemIds: [] }, undefined, undefined, f.ctx).then(() => "committed", () => "rejected");
+  await accepted.promise;
   const before = o.counts();
   const changed: NativeContext = { ...f.ctx, sessionManager: { ...f.ctx.sessionManager, getSessionId: () => "changed-native" } };
   await f.emit(lifecycle, {}, lifecycle === "session_start" ? changed : f.ctx);
+  await expect(o.coordinator.poll(o.connection()!)).rejects.toThrow("connection");
   barrier.resolve();
   expect(await pending).toBe("rejected");
   expect(await queued).toBe("rejected");
@@ -1189,6 +1198,7 @@ for (const lifecycle of ["session_start", "session_shutdown"] as const) test(`pr
   await entered.promise;
   const changed: NativeContext = { ...ctx, sessionManager: { ...ctx.sessionManager, getSessionId: () => "changed" } };
   await f.emit(lifecycle, {}, lifecycle === "session_start" ? changed : ctx);
+  await expect(o.coordinator.poll(o.connection()!)).rejects.toThrow("connection");
   barrier.resolve();
   expect(await pending).toBe("rejected");
   await Bun.sleep(0);
@@ -1261,7 +1271,7 @@ for (const role of ["manager", "employee"] as const) for (const loss of ["close"
 async function installOwnerEmployee(o: Awaited<ReturnType<typeof lifecycleOwnerFixture>>): Promise<NativeContext> {
   const { f } = o;
   const nativeSession = o.pa.nativeSession!;
-  const sessionId = JSON.parse(readFileSync(nativeSession, "utf8").split("\n")[0]!).id;
+  const sessionId = z.object({ id: z.string() }).parse(JSON.parse(readFileSync(nativeSession, "utf8").split("\n")[0]!)).id;
   const ctx: NativeContext = { ...f.ctx, sessionManager: { getSessionId: () => sessionId, getSessionFile: () => nativeSession } };
   const original = f.host.pi.AgentRegistry.global().get("Main")!;
   const ref: NativeRef = { ...original, session: { ...original.session!, sessionManager: ctx.sessionManager } };
@@ -1286,7 +1296,7 @@ for (const pendingInput of [false, true]) test(`expired employee explicitly re-a
   const inputPath = join(o.config.startupRoot, "input-receipts", createHash("sha256").update(ctx.sessionManager.getSessionId()).digest("hex") + ".json");
   if (pendingInput) {
     await f.emit("input", { id: "expiry-input", text: "saved input", source: "interactive" }, ctx);
-    const receipt = JSON.parse(readFileSync(inputPath, "utf8"));
+    const receipt = z.record(z.string(), jsonSchema).parse(JSON.parse(readFileSync(inputPath, "utf8")));
     writeFileSync(inputPath, encode({ ...receipt, state: "uncertain" }), { mode: 0o600 });
   }
   const savedMessages = o.store.snapshot().messages;
