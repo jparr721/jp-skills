@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verified Dark Factory Lessons - SYT-9093</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #10151d;
+      color: #e8edf5;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    nav {
+      position: fixed;
+      z-index: 2;
+      top: 0;
+      right: 0;
+      left: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: .75rem 1.5rem;
+      border-bottom: 1px solid #344150;
+      background: #10151df2;
+      font-size: .85rem;
+    }
+    nav a { color: #9cc7ff; text-decoration: none; }
+    main { scroll-snap-type: y mandatory; }
+    article {
+      min-height: 100vh;
+      display: grid;
+      align-content: center;
+      gap: 1.25rem;
+      padding: 6rem clamp(1.5rem, 8vw, 8rem) 3rem;
+      border-bottom: 1px solid #344150;
+      scroll-snap-align: start;
+    }
+    article > * { max-width: 74rem; }
+    .eyebrow { color: #94abc5; font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(2.5rem, 6vw, 5rem); line-height: 1.04; }
+    h2 { margin: 0; font-size: clamp(1.9rem, 4vw, 3.25rem); line-height: 1.1; }
+    p, li { color: #ced7e4; font-size: clamp(1rem, 1.5vw, 1.25rem); line-height: 1.5; }
+    ul { margin: 0; padding-left: 1.25rem; }
+    li + li { margin-top: .65rem; }
+    .card { padding: 1rem 1.25rem; border: 1px solid #435469; background: #18212d; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+    .label { color: #9cc7ff; font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; }
+    code { color: #d5dff0; overflow-wrap: anywhere; font-size: .9rem; }
+    .evidence { color: #aebbd0; font-size: .9rem; }
+    a { color: #9cc7ff; }
+    footer { color: #94abc5; font-size: .8rem; }
+    @media (max-width: 640px) { nav { padding: .65rem .9rem; } article { padding-right: 1rem; padding-left: 1rem; } }
+  </style>
+</head>
+<body>
+  <nav aria-label="Slide navigation">
+    <span>SYT-9093 / verified lessons</span>
+    <span><a href="#s1">1</a> / <a href="#s2">2</a> / <a href="#s3">3</a> / <a href="#s4">4</a> / <a href="#s5">5</a> / <a href="#s6">6</a> / <a href="#s7">7</a> / <a href="#s8">8</a></span>
+  </nav>
+  <main>
+    <article id="s1">
+      <div class="eyebrow">Evidence deck / 2026-10-18 local snapshot</div>
+      <h1>Verified Dark Factory Lessons</h1>
+      <p>SYT-9115 records reusable operating lessons from the SYT-9093 Cockpit factory run. This deck cites run records and live issue and pull request metadata. It makes no UI screenshot or whole-run completion claim.</p>
+      <div class="card">
+        <div class="label">Run status at snapshot</div>
+        <p>Linear still showed active and backlog children. SYT-9114 and SYT-9123 were Done; SYT-9094, SYT-9095, SYT-9096, SYT-9097, and SYT-9098 remained In Progress. The factory run was not complete.</p>
+      </div>
+      <p class="evidence">Sources: <code>ledger.md</code>, <code>runrecords/children-phase-refresh.json</code>, and the live Linear child list for SYT-9093.</p>
+      <footer>Evidence paths are relative to <code>/Users/jarredparr/.config/jp-skills/records/dark-factory/syt-9093-2026-10-18/</code>.</footer>
+    </article>
+    <article id="s2">
+      <div class="eyebrow">Scheduling</div>
+      <h2>Agent capacity is live state</h2>
+      <ul>
+        <li>The run hit a three-agent cap with one supervisor and two active workers. Retrying against the same full snapshot did not create capacity.</li>
+        <li>The supervisor yielded, waited for worker completion, then resumed. Worker notices stayed bounded so the supervisor could continue without retaining an idle slot.</li>
+        <li>Reviewer batching can fit available slots, but every required independent angle and round still needs a result.</li>
+      </ul>
+      <p class="evidence">Sources: <code>runrecords/feasibility.md</code> (CI queue and capacity checkpoint), <code>sidebar/pipeline.md</code> (capacity recovery and review record).</p>
+    </article>
+    <article id="s3">
+      <div class="eyebrow">Model and review</div>
+      <h2>Repeated fidelity misses need escalation</h2>
+      <p>Successive reviews found accepted composition and source-fidelity defects in the Cockpit work. The recorded stronger authoring pass was a new attempt, not a final approval. Round 4 still reported three must-fix findings at the reviewed checkpoint.</p>
+      <div class="grid">
+        <div class="card"><div class="label">R2 checkpoint</div><p>FIX-THEN-SHIP: three must-fix findings, including persistent focus, source-faithful inspector sections, and source geometry.</p></div>
+        <div class="card"><div class="label">R3 checkpoint</div><p>FIX-THEN-SHIP: four accepted findings, including inspector fidelity, collapse motion, identity semantics, and toggle position.</p></div>
+        <div class="card"><div class="label">R4 checkpoint</div><p>FIX-THEN-SHIP: three must-fix findings at SHA <code>b2730e7f972772e64a08e3ba9ed60fbcbd8341e3</code>.</p></div>
+      </div>
+      <p class="evidence">Sources: <code>sidebar/review-r2-verdict.md</code>, <code>sidebar/review-r3-verdict.md</code>, <code>sidebar/review-r4-verdict.md</code>, and <code>sidebar/pipeline.md</code>.</p>
+    </article>
+    <article id="s4">
+      <div class="eyebrow">Visual proof</div>
+      <h2>A reference fixture must stay independent</h2>
+      <ul>
+        <li>The R3 reference generator copied implementation tones into expected root and queue colors.</li>
+        <li>It also set source alert and system-lamp animation and glow to none. Matching that reference could not prove the original semantics.</li>
+        <li>Expected identity, status, warning, attention, and motion must come from the source contract. Shared neutral fixture data is safe; deriving expected output from the implementation is not.</li>
+        <li>Compare actual changed Storybook components with the source during authoring and after fixes, at matching data, theme, and viewport. Inspect the paired captures and normal, calm, and reduced-motion behavior.</li>
+      </ul>
+      <p class="evidence">Sources: <code>sidebar/review-r4-proof.md</code>, <code>sidebar/review-r4-verdict.md</code>, and <code>sidebar/qa/integration-independent/result.md</code>.</p>
+    </article>
+    <article id="s5">
+      <div class="eyebrow">Exact-head verification</div>
+      <h2>Checks belong to one commit</h2>
+      <div class="grid">
+        <div class="card"><div class="label">Historical drift</div><p>A version-only advance on main left PR #189 dirty at the recorded head, with four shared version files overlapping and no check runs in that snapshot. Prior-head results could not establish the new head.</p></div>
+        <div class="card"><div class="label">Live PR snapshot</div><p>PR <a href="https://github.com/sythelabs/ronin/pull/189">#189</a> is merged. PR <a href="https://github.com/sythelabs/ronin/pull/190">#190</a> is open at <code>400fa4b4d27e8ef2b6bd03e471e76f8a60e23f6e</code>, with no review decision and no checks attached at the final refresh. An earlier head <code>7b0acfa4a57afc316b966a291a30ee4abcfd0371</code> showed six successful checks; those results do not cover the newer head.</p></div>
+      </div>
+      <p>Missing checks, queued checks, running checks, and old-head checks are pending or stale. Even a successful current check set does not stand in for review, QA, or merge state.</p>
+      <p class="evidence">Sources: <code>runrecords/pr189-main-metadata-reconcile.md</code>, <code>runrecords/pr189-190-reconciliation.md</code>, and live GitHub PR metadata read on 2026-10-18 local.</p>
+    </article>
+    <article id="s6">
+      <div class="eyebrow">Linear and requirements</div>
+      <h2>Verify before writing or declaring a gap</h2>
+      <ul>
+        <li>Eight ticket descriptions were prepared as full structured payloads, with individual write receipts and fresh readback verification. A failed bounded payload-preparation pass led to a fresh structured rewrite.</li>
+        <li>An uncertain write must be reconciled by reading; never replay the mutation through a second connector.</li>
+        <li>Trace generated acceptance to the user's handoff. Named OMP profiles appeared in generated ticket text, not the accepted handoff target; the default-profile path through <code>PI_CODING_AGENT_DIR</code> was supported.</li>
+        <li>Probe shipped interfaces before calling an upstream gap. Herdr 0.9.5 exposed <code>herdr server</code>; the lack of a dedicated installer API did not rule out running that server under OS supervision. Ronin-owned artifact packaging was a separate owner contract.</li>
+        <li>Supported plugin context and OMP host tools still did not prove the exact occupant-generation guarantee required by SYT-9106.</li>
+      </ul>
+      <p class="evidence">Sources: <code>runrecords/ownership-lesson.md</code>, <code>runrecords/ownership-payloads.json</code>, <code>runrecords/ownership-write-*.json</code>, <code>runrecords/ownership-verification.json</code>, <code>runrecords/feasibility.md</code>, and <code>runrecords/packaging-owner-check.md</code>.</p>
+    </article>
+    <article id="s7">
+      <div class="eyebrow">Outcome honesty</div>
+      <h2>DONE, BLOCKED, and pending stay distinct</h2>
+      <div class="grid">
+        <div class="card"><div class="label">DONE</div><p>Ready PR, final APPROVE, QA PASS, delivered deck, and required checks completed on the reported head.</p></div>
+        <div class="card"><div class="label">BLOCKED</div><p>State the blocker and preserve missing or failed evidence. An absent PR, QA pass, or deck can be honest when the task is blocked.</p></div>
+        <div class="card"><div class="label">PENDING</div><p>Queued CI, unfinished review, unrun QA, or an unresolved run remains pending. Do not convert it into a success claim.</p></div>
+      </div>
+      <p>At the review cap, open must-fix findings remain a stop-and-report outcome. They do not become DONE or merge authorization.</p>
+      <p class="evidence">Sources: <code>sidebar/review-r4-verdict.md</code>, <code>sidebar/pipeline.md</code>, and PR #190 current state.</p>
+    </article>
+    <article id="s8">
+      <div class="eyebrow">Artifacts and cleanup</div>
+      <h2>Preserve proof; reclaim only owned work</h2>
+      <ul>
+        <li>Verify the durable deck and assets before cleanup. Keep open, blocked, and in-progress worktrees recoverable.</li>
+        <li>One merged-worktree cleanup removed about 1.02 GiB, verified the durable deck, and left unrelated worktrees and processes untouched.</li>
+        <li>Label an expanded source reference as a reference. Storybook captures prove the changed components with their fixture; they do not prove the original native runtime or live callbacks.</li>
+      </ul>
+      <p class="evidence">Sources: <code>composer/completed-cleanup.json</code>, <code>sidebar/cleanup.json</code>, and <code>sidebar/pipeline.md</code>.</p>
+      <p><a href="https://linear.app/sythelabs/issue/SYT-9115/record-verified-lessons-from-the-cockpit-factory-run">SYT-9115</a> / <a href="https://github.com/jparr721/jp-skills">jparr721/jp-skills</a></p>
+      <footer>This deck documents run evidence. It is not a product UI capture or a declaration that SYT-9093 is complete.</footer>
+    </article>
+  </main>
+</body>
+</html>
