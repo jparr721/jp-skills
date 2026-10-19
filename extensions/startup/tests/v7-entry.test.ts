@@ -1304,3 +1304,30 @@ for (const pendingInput of [false, true]) test(`expired employee explicitly re-a
   expect(connectionEpoch()).toBe(epoch);
   expect(await f.emit("tool_call", { toolName: "bash", input: {} }, changed)).toMatchObject({ block: true });
 });
+
+for (const role of ["manager", "employee"] as const) test(`${role} accepts a canonical shared OMP root at mode 0755 without changing it`, async () => {
+  const f = fixture();
+  const sharedRoot = join(f.configHome, "ronin");
+  chmodSync(sharedRoot, 0o755);
+  if (role === "employee") {
+    installLaunchedEmployee(f.host, f.manifest("dev"));
+    await f.emit("session_start", {}, f.ctx);
+  } else {
+    installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+    await f.commands.get("startup")!.handler("new shared", f.ctx);
+  }
+  expect(f.messages.filter((message) => message.includes("boot blocked"))).toEqual([]);
+  expect(f.admissions).toHaveLength(1);
+  expect(statSync(sharedRoot).mode & 0o777).toBe(0o755);
+  expect(await f.emit("tool_call", { toolName: "bash", input: {} }, f.ctx)).toBeUndefined();
+});
+
+test("shared OMP containment does not weaken private Startup root permissions or native header identity", async () => {
+  const f = fixture();
+  chmodSync(join(f.configHome, "ronin"), 0o755);
+  writeFileSync(f.file, JSON.stringify({ type: "session", id: "foreign" }) + "\n");
+  await expect(nativeRoot(f.host, f.ctx)).rejects.toThrow("does not match");
+  const startupRoot = f.environment.STARTUP_ROOT!;
+  chmodSync(startupRoot, 0o755);
+  expect(() => assertNativeTranscript({ harness: "claude", startupRoot, ompConfigRoot: join(f.configHome, "ronin"), sessionId: "native-root", file: join(startupRoot, "projects", "repo", "native-root.jsonl") })).toThrow("owner-only");
+});

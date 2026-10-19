@@ -79,7 +79,14 @@ export function canonicalStartupRoot(path: string, allowMissing: boolean): strin
 }
 
 export function assertStartupPath(startupRoot: string, path: string, kind: PathKind): void {
-  const root: string = canonicalStartupRoot(startupRoot, false);
+  assertContainedPath(canonicalStartupRoot(startupRoot, false), path, kind);
+}
+
+export function assertSharedOmpTranscript(root: string, path: string): void {
+  assertContainedPath(canonicalDirectory(root, "Shared OMP root", false, false), path, "file");
+}
+
+function assertContainedPath(root: string, path: string, kind: PathKind): void {
   if (!isAbsolute(path) || resolve(path) !== path)
     throw new StartupBootError(`Startup artifact path must be absolute and canonical: ${path}`);
   const within: string = relative(root, path);

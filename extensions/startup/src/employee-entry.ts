@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { HostAPI } from "../index";
-import { assertStartupPath, StartupBootError } from "./boot";
+import { assertSharedOmpTranscript, assertStartupPath, StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, roleSchema, sourceSchema, type Json } from "./contracts";
 import { connectEmployee, EmployeeCommandError, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
 import { itemActionSchema } from "./items";
@@ -77,7 +77,8 @@ export function assertNativeTranscript(input: Readonly<{ harness: "omp" | "claud
   const directory: string = input.harness === "omp" ? "sessions" : "projects";
   const path: string = relative(root, input.file);
   if (!path.startsWith(directory + sep) || (input.harness === "claude" && basename(input.file) !== `${input.sessionId}.jsonl`)) throw new StartupBootError("Native transcript must belong to the selected harness session tree");
-  assertStartupPath(root, input.file, "file");
+  if (input.harness === "omp") assertSharedOmpTranscript(root, input.file);
+  else assertStartupPath(root, input.file, "file");
 }
 export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment, nativeRootOf: NativeRootFn): Promise<Admission> {
   const sessionId = ctx.sessionManager.getSessionId();
