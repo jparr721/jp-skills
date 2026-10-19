@@ -339,3 +339,30 @@ test("read-only transport loss and pre-dispatch refusal are not typed as uncerta
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   } finally { fetchSpy.mockRestore(); store.close(); }
 });
+
+for (const field of ["boundRoot", "skillsHome"] as const) test(`live host projections preserve a long ${field} through setup receipts`, async () => {
+  const base = fixture();
+  const longPath: string = join(base.root, ...Array.from({ length: 11 }, () => "directory".repeat(6)));
+  mkdirSync(longPath, { recursive: true });
+  expect(longPath.length).toBeGreaterThan(512);
+  const scope: Scope = { ...base.scope, startupRoot: join(base.root, "s"), [field]: longPath };
+  const f = { ...base, scope };
+  await executeHostControl({ ...f.create, scope }, f.runtime);
+  const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: "long-path-owner", managerGeneration: 1, leaseMs: 60000 }, now: f.runtime.now });
+  const config = runtimeConfig(f);
+  const coordinator = openCoordinator({ store, config, now: f.runtime.now, herdr: { check: async () => { throw new Error("No native probes"); }, observe: async () => [], renameCrew: async () => {}, createCrew: async () => { throw new Error("No native layout"); }, split: async () => { throw new Error("No native layout"); }, launch: async () => { throw new Error("No native launch"); } } });
+  const server = serveCoordinator({ coordinator, socketPath: config.socketPath });
+  writeFileSync(join(scope.startupRoot, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  try {
+    const before = readOwnerControl(scope);
+    const status = await executeTypedHostControl({ kind: "status", scope }, f.runtime);
+    expect(status).toMatchObject({ operation: "status", result: {
+      binding: { boundRoot: scope.boundRoot, home: scope.skillsHome },
+      setup: { receipts: expect.arrayContaining([{ kind: "scope", name: scope.name, host: scope.host, boundRoot: scope.boundRoot, home: scope.skillsHome }]) },
+    } });
+    for (const kind of ["staff", "progress", "alerts"] as const) {
+      expect(await executeTypedHostControl({ kind, scope }, f.runtime)).toMatchObject({ operation: kind, result: { scope } });
+    }
+    expect(readOwnerControl(scope)).toEqual(before);
+  } finally { server.stop(true); store.close(); }
+});

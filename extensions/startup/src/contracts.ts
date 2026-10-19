@@ -324,7 +324,7 @@ const hostRuntimeFields = {
   lastPoll: timeSchema,
 };
 export const setupReceiptSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("scope"), name: idSchema, host: idSchema, boundRoot: idSchema, home: idSchema }).readonly(),
+  z.strictObject({ kind: z.literal("scope"), name: idSchema, host: idSchema, boundRoot: scopeSchema.unwrap().shape.boundRoot, home: scopeSchema.unwrap().shape.skillsHome }).readonly(),
   z.strictObject({ kind: z.literal("manager-runtime"), employeeId: z.literal("manager"), ...hostRuntimeFields }).readonly(),
   z.strictObject({ kind: z.literal("pa-hire"), requestId: idSchema, employeeIds: z.array(idSchema).readonly() }).readonly(),
   z.strictObject({ kind: z.literal("pa-runtime"), employeeId: idSchema, ...hostRuntimeFields }).readonly(),
