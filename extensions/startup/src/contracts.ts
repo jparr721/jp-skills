@@ -461,7 +461,7 @@ export const hostReasonSchema = z.enum([
 export const hostStateSchema = z.enum(["unsupported", "recovery-required", "missing", "offline", "stale", "live"]);
 export const paBlockerSchema = z.enum(["pa-missing", "pa-not-admitted", "pa-offline", "pa-observer-unavailable", "pa-overdue"]);
 const hostPictureSchema = z.strictObject({
-  binding: z.strictObject({ name: idSchema, boundRoot: idSchema, home: idSchema, host: idSchema }).readonly(),
+  binding: z.strictObject({ name: idSchema, boundRoot: scopeSchema.unwrap().shape.boundRoot, home: scopeSchema.unwrap().shape.skillsHome, host: idSchema }).readonly(),
   storeRevision: timeSchema,
   observedAt: timeSchema,
   freshness: z.strictObject({

@@ -36,6 +36,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
   const managerFile = join(root, "manager.jsonl");
   writeFileSync(managerFile, JSON.stringify({ type: "session", id: "manager-session" }) + "\n");
   let now = 1000;
+  let clockStep = 0;
   const store = openStore({ path: join(stateDirectory, "staff.sqlite"), scope: { skillsHome: home, startupRoot, boundRoot, host: "host", name: "test", managerSession: "manager-session" }, owner: { id: "coordinator", managerGeneration: 1, leaseMs: 60000 }, now: () => now });
   stores.push(store);
   store.initializeRoleSettings(harness);
@@ -71,7 +72,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     observe: async () => { if (observationBarrier) await observationBarrier; if (observationFailure) throw observationFailure; return observations; },
   };
   const config = { name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
-  const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => now });
+  const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => { const value = now; now += clockStep; return value; } });
   async function admit(employeeId: string): Promise<string> {
     const runtime = store.runtimeBindings().findLast((r) => r.employeeId === employeeId);
     if (!runtime) throw new Error("Missing runtime");
@@ -102,7 +103,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     if (validated.status !== "accepted") throw new Error(validated.reason);
     store.saveRoleSettings({ manager: store.managerBinding, requested: validated.requested, expectedRevision: saved.revision });
   }
-  return { coordinator, store, config, observations, launches, layouts, root, home, ready, admit, delegate, setRoleSettings, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
+  return { advancingClock: () => { clockStep = 1; }, coordinator, store, config, observations, launches, layouts, root, home, ready, admit, delegate, setRoleSettings, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
 }
 
 test("admission preserves observation progress committed while its Herdr read is pending", async () => {
@@ -1391,4 +1392,26 @@ test("host settings pages expose all launches without mutating owner observation
   expect(second.nextCursor).toBeNull();
   expect(f.coordinator.hostStatus({ limit: 1 })).toEqual(before);
   expect(() => f.coordinator.hostSettings({ after: null, limit: 101 })).toThrow();
+});
+
+for (const status of ["available", "unavailable"] as const) {
+  test(`one receipt timestamp for ${status} settings across a clock boundary`, async () => {
+    const f = fixture(8);
+    const { pa, paConnection } = await f.ready();
+    const saved = f.store.runtimeBindings().findLast((entry) => entry.employeeId === pa)!;
+    const identity = { nativeSession: saved.nativeSession!, agentSessionId: `s-${saved.launchId.replaceAll("-", "").slice(0, 28)}`, observedAt: 1000 };
+    f.advancingClock();
+    const report = status === "available"
+      ? { ...identity, status, model: { provider: "p", id: "m", name: "M" }, availableModels: [{ provider: "p", id: "m", name: "M" }], configuredEffort: "high", effectiveEffort: "high", availableEfforts: ["high"] }
+      : { ...identity, status, reason: "omp_session_api_unavailable" as const };
+    await f.coordinator.poll(paConnection, report, 1);
+    expect(f.store.effectiveRoleSettings(pa, saved.generation)?.observedAt).toBe(f.store.runtimeCapability(pa, saved.generation)?.observedAt);
+  });
+}
+test("host status accepts the same long filesystem paths as scope", async () => {
+  const f = fixture(8);
+  await f.ready();
+  const status = f.coordinator.hostStatus({});
+  const longPath = "/" + "directory/".repeat(70);
+  expect(hostStatusSchema.parse({ ...status, binding: { ...status.binding, boundRoot: longPath, home: longPath } }).binding.boundRoot).toBe(longPath);
 });

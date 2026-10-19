@@ -17,7 +17,7 @@ function fixture() {
   mkdirSync(skillsHome); mkdirSync(boundRoot);
   const configHome = join(root, "config");
   const scope: Scope = { skillsHome, boundRoot, startupRoot: join(configHome, "ronin", "startups", "alpha"), name: "alpha", host: hostname(), managerSession: "native-manager" };
-  const runtime: HostControlRuntime = { now: () => 1000, observeManager: async () => false, resume: async () => { throw new Error("No runtime launch authorized in fixture"); } };
+  const runtime: HostControlRuntime = { now: () => 1000, executionHost: hostname, observeManager: async () => false, resume: async () => { throw new Error("No runtime launch authorized in fixture"); } };
   const create = { kind: "create", requestId: "create-alpha", scope, skillsRoot: resolve(import.meta.dir, "../../.."), executionLimit: 8, harness: "omp", expectedOwnerEpoch: 0, expectedRevision: 0 };
   return { root, configHome, scope, runtime, create };
 }
@@ -85,7 +85,7 @@ test("uncertain resume is looked up without replay and concurrent creates cannot
   const snapshot = readOwnerControl(f.scope);
   const request = { kind: "resume", scope: f.scope, requestId: "uncertain-resume", expectedOwnerEpoch: snapshot.ownerEpoch, expectedRevision: snapshot.revision };
   let dispatches = 0;
-  const runtime: HostControlRuntime = { now: f.runtime.now, observeManager: async () => true, resume: async () => { dispatches++; throw new Error("lost response after dispatch"); } };
+  const runtime: HostControlRuntime = { now: f.runtime.now, executionHost: hostname, observeManager: async () => true, resume: async () => { dispatches++; throw new Error("lost response after dispatch"); } };
   await expect(executeHostControl(request, runtime)).rejects.toThrow("lost response");
   expect(await executeHostControl(request, runtime)).toMatchObject({ state: "uncertain", sideEffects: "owner_resumed" });
   expect(await executeHostControl({ kind: "receipt", scope: f.scope, requestId: request.requestId }, runtime)).toMatchObject({ state: "uncertain" });
@@ -105,4 +105,27 @@ test("archive and launch share the same exclusion lock and archived roots never 
   await expect(launchRuntimeHost(runtimeConfig(f))).rejects.toThrow("Archived Startup");
   expect(existsSync(join(f.scope.startupRoot, "runtime-launch.json"))).toBe(false);
   expect(existsSync(join(f.scope.startupRoot, "runtime.log"))).toBe(false);
+});
+
+test("cold create rejects a foreign execution host before creating the root", async () => {
+  const f = fixture();
+  await expect(executeHostControl({ ...f.create, scope: { ...f.scope, host: "wrong-host" } }, f.runtime)).rejects.toThrow("execution host");
+  expect(existsSync(f.scope.startupRoot)).toBe(false);
+});
+
+test("cold create excludes a distinct request while another process owns initialization", async () => {
+  const f = fixture();
+  mkdirSync(f.scope.startupRoot, { recursive: true, mode: 0o700 });
+  const lock = join(f.scope.startupRoot, "create.lock");
+  const child = Bun.spawn([process.execPath, "-e", 'const fs = require("node:fs"); const fd = fs.openSync(process.argv[1], "wx", 0o600); fs.writeFileSync(fd, "first-request"); console.log("locked"); await Bun.stdin.text(); fs.closeSync(fd); fs.unlinkSync(process.argv[1]);', lock], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  const reader = child.stdout.getReader();
+  try {
+    const ready = await reader.read();
+    expect(new TextDecoder().decode(ready.value)).toContain("locked");
+    await expect(executeHostControl({ ...f.create, requestId: "second-request", harness: "claude" }, f.runtime)).rejects.toThrow("initialization");
+    expect(existsSync(join(f.scope.startupRoot, "binding.json"))).toBe(false);
+  } finally { reader.releaseLock(); child.stdin.end(); await child.exited; }
+  expect(await executeHostControl(f.create, f.runtime)).toMatchObject({ state: "committed" });
+  await expect(executeHostControl({ ...f.create, requestId: "second-request", harness: "claude" }, f.runtime)).rejects.toThrow("already has a binding");
+  expect(readOwnerControl(f.scope).settings.every((entry) => entry.requested.harness === "omp")).toBe(true);
 });

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { assertStartupPath, bootSelection, ensureStartupRoot, persistBinding } from "./src/boot";
@@ -22,7 +23,7 @@ export const hostControlCommandSchema = z.discriminatedUnion("kind", [
   ...ownerControlRequestSchema.options,
 ]);
 export type HostControlCommand = z.infer<typeof hostControlCommandSchema>;
-export type HostControlRuntime = Readonly<{ now: () => number; observeManager: (config: RuntimeHostConfig) => Promise<boolean>; resume: (config: RuntimeHostConfig) => Promise<RuntimeHostConfig> }>;
+export type HostControlRuntime = Readonly<{ now: () => number; executionHost: () => string; observeManager: (config: RuntimeHostConfig) => Promise<boolean>; resume: (config: RuntimeHostConfig) => Promise<RuntimeHostConfig> }>;
 function binding(scope: Scope): void {
   const path = join(scope.startupRoot, "binding.json");
   assertStartupPath(scope.startupRoot, path, "file");
@@ -80,22 +81,35 @@ export async function executeHostControl(value: unknown, runtime: HostControlRun
     return jsonSchema.parse({ rows, nextCursor: names.length > request.limit ? names[request.limit - 1] : null });
   }
   const scope = request.scope;
+  if (scope.host !== runtime.executionHost()) throw new StoreAuthorityError("Requested Startup host differs from the execution host");
   if (request.kind === "create") {
     const digest = createHash("sha256").update(encode(request)).digest("hex");
     ensureStartupRoot(scope.startupRoot);
-    const existing = readOperation(scope, request.requestId);
-    if (existing !== null) { if (existing.digest !== digest) throw new StoreConflictError("Create idempotency key payload conflict"); return jsonSchema.parse(existing); }
-    const selection = bootSelection({ cwd: scope.boundRoot, skillsHome: scope.skillsHome, startupRoot: scope.startupRoot, configHome: dirname(dirname(dirname(scope.startupRoot))), skillsRoot: request.skillsRoot, host: scope.host, managerSession: scope.managerSession, command: { kind: "new", name: scope.name, directory: scope.boundRoot, work: null }, explicitName: scope.name, executionLimit: request.executionLimit });
-    if (selection === null || encode({ skillsHome: selection.skillsHome, startupRoot: selection.startupRoot, host: selection.host, name: selection.name, boundRoot: selection.boundRoot, managerSession: selection.managerSession }) !== encode(scope)) throw new StoreAuthorityError("Create selection differs from requested canonical scope");
-    const intent = ownerControlReceiptSchema.parse({ requestId: request.requestId, digest, scope, kind: "create", state: "uncertain", ownerEpoch: 0, revision: 0, sideEffects: "root_initialized", result: { reason: "Inspect initialized root before any retry" } });
-    beginOperation(intent);
-    persistBinding(selection);
-    const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: randomUUID(), managerGeneration: 1, leaseMs: 60000 }, now: runtime.now });
-    try { store.initializeRoleSettings(request.harness); } finally { store.close(); }
-    const snapshot = readOwnerControl(scope);
-    const receipt = ownerControlReceiptSchema.parse({ ...intent, state: "committed", ownerEpoch: snapshot.ownerEpoch, revision: snapshot.revision, result: { selection: scope, readiness: "manager_session_required" } });
-    finishOperation(receipt);
-    return jsonSchema.parse(receipt);
+    const lockPath: string = join(scope.startupRoot, "create.lock");
+    assertStartupPath(scope.startupRoot, lockPath, "file");
+    let lock: number;
+    try { lock = openSync(lockPath, "wx", 0o600); }
+    catch (error: unknown) {
+      const parsed = z.object({ code: z.string() }).safeParse(error);
+      if (parsed.success && parsed.data.code === "EEXIST") throw new StoreConflictError("Startup initialization is already claimed; preserve create.lock and reconcile its request before retry");
+      throw error;
+    }
+    try {
+      writeFileSync(lock, encode({ requestId: request.requestId, digest, pid: process.pid }));
+      const existing = readOperation(scope, request.requestId);
+      if (existing !== null) { if (existing.digest !== digest) throw new StoreConflictError("Create idempotency key payload conflict"); return jsonSchema.parse(existing); }
+      const selection = bootSelection({ cwd: scope.boundRoot, skillsHome: scope.skillsHome, startupRoot: scope.startupRoot, configHome: dirname(dirname(dirname(scope.startupRoot))), skillsRoot: request.skillsRoot, host: scope.host, managerSession: scope.managerSession, command: { kind: "new", name: scope.name, directory: scope.boundRoot, work: null }, explicitName: scope.name, executionLimit: request.executionLimit });
+      if (selection === null || encode({ skillsHome: selection.skillsHome, startupRoot: selection.startupRoot, host: selection.host, name: selection.name, boundRoot: selection.boundRoot, managerSession: selection.managerSession }) !== encode(scope)) throw new StoreAuthorityError("Create selection differs from requested canonical scope");
+      const intent = ownerControlReceiptSchema.parse({ requestId: request.requestId, digest, scope, kind: "create", state: "uncertain", ownerEpoch: 0, revision: 0, sideEffects: "root_initialized", result: { reason: "Inspect initialized root before any retry" } });
+      beginOperation(intent);
+      persistBinding(selection);
+      const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: randomUUID(), managerGeneration: 1, leaseMs: 60000 }, now: runtime.now });
+      try { store.initializeRoleSettings(request.harness); } finally { store.close(); }
+      const snapshot = readOwnerControl(scope);
+      const receipt = ownerControlReceiptSchema.parse({ ...intent, state: "committed", ownerEpoch: snapshot.ownerEpoch, revision: snapshot.revision, result: { selection: scope, readiness: "manager_session_required" } });
+      finishOperation(receipt);
+      return jsonSchema.parse(receipt);
+    } finally { closeSync(lock); unlinkSync(lockPath); }
   }
   binding(scope);
   if (request.kind === "receipt") return jsonSchema.parse(readOperation(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId));
@@ -161,7 +175,7 @@ if (import.meta.main) {
       chunks.push(chunk);
     }
     const text = Buffer.concat(chunks).toString("utf8");
-    const result = await executeHostControl(JSON.parse(text), { now: Date.now, resume: launchRuntimeHost, observeManager: async (config) => {
+    const result = await executeHostControl(JSON.parse(text), { now: Date.now, executionHost: hostname, resume: launchRuntimeHost, observeManager: async (config) => {
       const herdr = createHerdrRuntime({ session: config.herdrSession, workspaceId: config.workspaceId, binary: config.herdrBinary, run: runHerdrCommand });
       const expectedHarness = "harness" in config ? "claude" : "omp";
       return (await herdr.observe()).some((item) => item.harness === expectedHarness && item.paneId === config.managerPaneId && item.nativeSession === (expectedHarness === "omp" ? config.managerFile : config.managerSession));

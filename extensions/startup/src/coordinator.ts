@@ -586,12 +586,13 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
         report.nativeSession !== current.runtime.nativeSession || report.agentSessionId !== admitted.agentSessionId)
         throw new StoreFenceError("OMP settings report does not match the authenticated native session and reserved launch generation");
       const identity = { startupRoot: root, harness: current.runtime.settings.requested.harness, ownerId: store.ownerId, ownerEpoch: store.ownerEpoch, employeeId: current.employee.id, generation: current.employee.generation, launchId: current.runtime.launchId, nativeSession: current.runtime.nativeSession!, agentSessionId: report.agentSessionId, connectionEpoch: admitted.connectionEpoch };
+      const observedAt: number = now();
       const capability = report.status === "available"
-        ? runtimeCapabilitySchema.parse({ status: "available", harness: "omp", session: identity, availableModels: report.availableModels, availableEfforts: report.availableEfforts, observedAt: now(), sampleSequence: sequence })
-        : runtimeCapabilitySchema.parse({ status: "unavailable", harness: "omp", reason: report.reason, session: identity, observedAt: now(), sampleSequence: sequence });
+        ? runtimeCapabilitySchema.parse({ status: "available", harness: "omp", session: identity, availableModels: report.availableModels, availableEfforts: report.availableEfforts, observedAt, sampleSequence: sequence })
+        : runtimeCapabilitySchema.parse({ status: "unavailable", harness: "omp", reason: report.reason, session: identity, observedAt, sampleSequence: sequence });
       const effective = report.status === "available"
-        ? effectiveRoleSettingsSchema.parse({ status: "available", harness: "omp", session: identity, model: report.model, configuredEffort: report.configuredEffort, effectiveEffort: report.effectiveEffort, observedAt: now(), sampleSequence: sequence })
-        : effectiveRoleSettingsSchema.parse({ status: "unavailable", harness: "omp", reason: report.reason, session: identity, observedAt: now(), sampleSequence: sequence });
+        ? effectiveRoleSettingsSchema.parse({ status: "available", harness: "omp", session: identity, model: report.model, configuredEffort: report.configuredEffort, effectiveEffort: report.effectiveEffort, observedAt, sampleSequence: sequence })
+        : effectiveRoleSettingsSchema.parse({ status: "unavailable", harness: "omp", reason: report.reason, session: identity, observedAt, sampleSequence: sequence });
       store.recordRuntimeSettings({ capability, effective });
     }
     store.updateRuntime({ ...current.runtime, lastPoll: now() });
