@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { bindingSchema, idSchema, jsonSchema, observedRuntimeSchema, roleSchema, runtimeStateSchema, sourceSchema, timeSchema } from "./contracts";
+import { bindingSchema, HOST_PAGE_MAX, scopeSchema, idSchema, jsonSchema, observedRuntimeSchema, roleSchema, runtimeStateSchema, sourceSchema, timeSchema } from "./contracts";
 
 export const runtimeHarnessSchema = z.enum(["omp", "claude"]);
 export const roleSettingsInputSchema = z.strictObject({
@@ -169,3 +169,28 @@ export const runtimePolicySchema = z.strictObject({
   executionLimit: z.number().int().min(3).safe(),
 });
 export type RuntimePolicy = z.infer<typeof runtimePolicySchema>;
+
+export const hostAssociationQuerySchema = z.strictObject({
+  after: idSchema.nullable(),
+  limit: z.number().int().min(1).max(HOST_PAGE_MAX),
+});
+const hostAssociationEmployeeSchema = z.strictObject({ employeeId: idSchema, role: roleSchema, generation: timeSchema });
+export const hostAssociationRowSchema = z.discriminatedUnion("status", [
+  hostAssociationEmployeeSchema.extend({
+    status: z.literal("current"), launchId: idSchema, harness: runtimeHarnessSchema,
+    nativeSession: idSchema, terminalId: idSchema, source: sourceSchema,
+    lastSeen: timeSchema, lastPoll: timeSchema,
+  }),
+  hostAssociationEmployeeSchema.extend({
+    status: z.literal("unavailable"),
+    reason: z.enum(["stale-owner", "retired", "unprepared", "stale-generation", "runtime-not-ready", "runtime-error", "missing-terminal", "unobserved", "stale-connection", "stale-source", "stale-observation", "stale-poll"]),
+  }),
+]);
+export const hostAssociationPageSchema = z.strictObject({
+  state: z.literal("observed"), scope: scopeSchema, ownerId: idSchema, ownerEpoch: timeSchema,
+  revision: timeSchema, observedAt: timeSchema, herdrSession: idSchema,
+  freshness: z.strictObject({ leaseExpiresAt: timeSchema, connectionDeadlineMs: z.number().int().positive().safe() }),
+  total: timeSchema, nextCursor: idSchema.nullable(), rows: z.array(hostAssociationRowSchema).max(HOST_PAGE_MAX),
+});
+export type HostAssociationRow = z.infer<typeof hostAssociationRowSchema>;
+export type HostAssociationPage = z.infer<typeof hostAssociationPageSchema>;

@@ -366,3 +366,41 @@ for (const field of ["boundRoot", "skillsHome"] as const) test(`live host projec
     expect(readOwnerControl(scope)).toEqual(before);
   } finally { server.stop(true); store.close(); }
 });
+
+test("association command reads the owner socket and refuses offline state without lifecycle or settings effects", async () => {
+  const base = fixture();
+  const scope: Scope = { ...base.scope, startupRoot: join(base.root, "s") };
+  const f = { ...base, scope };
+  await executeHostControl({ ...f.create, scope }, f.runtime);
+  const request = { kind: "associations", scope, after: null, limit: 64 };
+  const beforeOffline = readOwnerControl(scope);
+  expect(await executeHostControl(request, f.runtime)).toMatchObject({ state: "offline", effective: { status: "unavailable" } });
+  expect(readOwnerControl(scope)).toEqual(beforeOffline);
+  const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: "association-reader", managerGeneration: 1, leaseMs: 60000 }, now: f.runtime.now });
+  const config = runtimeConfig(f);
+  const forbidden = async (): Promise<never> => { throw new Error("Association read cannot invoke native operations"); };
+  const coordinator = openCoordinator({ store, config, now: f.runtime.now, herdr: { check: forbidden, observe: forbidden, renameCrew: forbidden, createCrew: forbidden, split: forbidden, launch: forbidden } });
+  const server = serveCoordinator({ coordinator, socketPath: config.socketPath });
+  writeFileSync(join(scope.startupRoot, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  try {
+    const before = readOwnerControl(scope);
+    const result = await executeTypedHostControl(request, f.runtime);
+    expect(result).toMatchObject({ operation: "associations", result: { state: "observed", scope, ownerId: "association-reader", herdrSession: "fixture", rows: [{ employeeId: "manager", status: "unavailable", reason: "unprepared" }] } });
+    expect(hostControlResponseSchema.safeParse(result).success).toBe(true);
+    expect(JSON.stringify(result)).not.toMatch(/private-fixture|managerCredential|credentialDigest|bootId/);
+    expect(readOwnerControl(scope)).toEqual(before);
+    const source = { rolePath: "/fixture/startup-role-manager/SKILL.md", roleRevision: "fixture-role", loopPath: "/fixture/startup-loop/SKILL.md", loopRevision: "fixture-loop" };
+    store.prepareRuntime({ employeeId: "manager", generation: 1, launchId: "fixture-launch", credentialDigest: "private-fixture-digest", source, settings: store.roleSettings("manager"), paneId: "actual-fixture-pane", terminalId: "actual-fixture-terminal", tabId: null, nativeSession: config.managerFile, state: "ready", error: null, lastSeen: 1000, lastPoll: 1000, lastProgress: 1000, turnActive: false, stateSequence: null, observedState: null });
+    store.bindEmployee({ manager: store.managerBinding, binding: { ...store.managerBinding, source, assignment: null } });
+    store.admitRuntimeConnection({ startupRoot: scope.startupRoot, harness: "omp", ownerId: store.ownerId, ownerEpoch: store.ownerEpoch, employeeId: "manager", generation: 1, launchId: "fixture-launch", nativeSession: config.managerFile, agentSessionId: null, connectionEpoch: "private-fixture-connection" });
+    const admitted = readOwnerControl(scope);
+    expect(await executeTypedHostControl(request, f.runtime)).toMatchObject({ operation: "associations", result: { rows: [{ status: "current", launchId: "fixture-launch", nativeSession: config.managerFile, terminalId: "actual-fixture-terminal" }] } });
+    expect(readOwnerControl(scope)).toEqual(admitted);
+    await expect(executeTypedHostControl({ ...request, scope: { ...scope, managerSession: "foreign" } }, f.runtime)).rejects.toThrow("binding differs");
+  } finally { server.stop(true); store.close(); }
+  const archived = fixture();
+  await executeHostControl(archived.create, archived.runtime);
+  const snapshot = readOwnerControl(archived.scope);
+  await executeHostControl({ kind: "archive", requestId: "association-archive", scope: archived.scope, expectedOwnerEpoch: snapshot.ownerEpoch, expectedRevision: snapshot.revision }, archived.runtime);
+  expect(await executeHostControl({ ...request, scope: archived.scope }, archived.runtime)).toMatchObject({ state: "archived", effective: { status: "unavailable" } });
+});

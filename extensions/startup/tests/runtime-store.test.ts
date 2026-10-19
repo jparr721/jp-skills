@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openStore, type StartupStore } from "../src/store";
 import type { RuntimeBinding } from "../src/runtime-contracts";
+import * as runtimeContracts from "../src/runtime-contracts";
 
 const roots: string[] = [];
 const stores: StartupStore[] = [];
@@ -249,4 +250,120 @@ test("polling indexes migrate existing records and stay current through message 
   if (!claim) throw new Error("Missing alert claim");
   expect(reopened.employeeView("manager").messages).toHaveLength(0);
   expect(reopened.employeeView("manager").claims).toEqual([claim]);
+});
+
+// Synthetic persisted fixtures exercise the public read contract without native IO.
+function associationFixture() {
+  const f = fixture();
+  f.store.prepareRuntime(f.launch);
+  f.store.bindEmployee({ manager: f.store.managerBinding, binding: { ...f.store.managerBinding, assignment: null, source: f.launch.source } });
+  const identity = { startupRoot: f.scope.startupRoot, harness: "omp" as const, ownerId: f.store.ownerId, ownerEpoch: f.store.ownerEpoch, employeeId: "manager", generation: 1, launchId: "launch-manager", nativeSession: "manager-session", agentSessionId: null, connectionEpoch: "fixture-connection" };
+  f.store.admitRuntimeConnection(identity);
+  const read = () => f.store.hostAssociations({ after: null, limit: 64, herdrSession: "fixture-herdr", connectionDeadlineMs: 1000 });
+  return { ...f, identity, read };
+}
+
+test("association read publishes exact redacted persisted identity without writes or lease renewal", () => {
+  const f = associationFixture();
+  const db = new Database(f.path);
+  try {
+    const before = db.serialize();
+    expect(typeof f.store.hostAssociations).toBe("function");
+    const page = f.read();
+    expect(page).toMatchObject({ scope: f.scope, ownerId: "coordinator", ownerEpoch: 1, herdrSession: "fixture-herdr", observedAt: 100, freshness: { leaseExpiresAt: 10100, connectionDeadlineMs: 1000 }, total: 1, nextCursor: null, rows: [{ employeeId: "manager", generation: 1, status: "current", launchId: "launch-manager", harness: "omp", nativeSession: "manager-session", terminalId: "term1", lastSeen: 100, lastPoll: 100 }] });
+    expect(runtimeContracts.hostAssociationPageSchema.safeParse(page).success).toBe(true);
+    expect(page.revision).toBeGreaterThan(0);
+    expect(JSON.stringify(page)).not.toMatch(/credential|digest|fixture-connection|bootId|manager-secret/);
+    expect(db.serialize()).toEqual(before);
+    expect(runtimeContracts.hostAssociationPageSchema.safeParse({ ...page, bootId: "invented" }).success).toBe(false);
+    expect(runtimeContracts.hostAssociationPageSchema.safeParse({ ...page, rows: [{ ...page.rows[0], credentialDigest: "private" }] }).success).toBe(false);
+    expect(() => f.store.hostAssociations({ after: null, limit: 65, herdrSession: "fixture-herdr", connectionDeadlineMs: 1000 })).toThrow();
+  } finally { db.close(); }
+});
+
+const associationRefusals = [
+  { field: "runtime", patch: { terminalId: null }, reason: "missing-terminal" },
+  { field: "runtime", patch: { launchId: "replacement-launch" }, reason: "stale-connection" },
+  { field: "runtime", patch: { paneId: null }, reason: "unobserved" },
+  { field: "runtime", patch: { nativeSession: null }, reason: "unobserved" },
+  { field: "runtime", patch: { state: "prepared" }, reason: "runtime-not-ready" },
+  { field: "runtime", patch: { state: "uncertain" }, reason: "runtime-not-ready" },
+  { field: "runtime", patch: { state: "abandoned" }, reason: "runtime-not-ready" },
+  { field: "runtime", patch: { observedState: "offline" }, reason: "unobserved" },
+  { field: "runtime", patch: { observedState: "unknown" }, reason: "unobserved" },
+  { field: "runtime", patch: { error: "untrusted secret diagnostic" }, reason: "runtime-error" },
+  { field: "runtime", patch: { lastSeen: 0 }, reason: "stale-observation" },
+  { field: "runtime", patch: { lastSeen: 101 }, reason: "stale-observation" },
+  { field: "runtime", patch: { lastPoll: 0 }, reason: "stale-poll" },
+  { field: "employee", patch: { generation: 2 }, reason: "stale-generation" },
+  { field: "employee", patch: { source: null }, reason: "stale-source" },
+  { field: "employee", patch: { employment: "retired" }, reason: "retired" },
+  { field: "identity", patch: { employeeId: "other-employee" }, reason: "stale-connection" },
+  { field: "identity", patch: { generation: 2 }, reason: "stale-connection" },
+  { field: "identity", patch: { launchId: "another-launch" }, reason: "stale-connection" },
+  { field: "identity", patch: { ownerId: "another-owner" }, reason: "stale-connection" },
+  { field: "identity", patch: { ownerEpoch: 2 }, reason: "stale-connection" },
+  { field: "identity", patch: { startupRoot: "/another-root" }, reason: "stale-connection" },
+  { field: "identity", patch: { nativeSession: "another-native" }, reason: "stale-connection" },
+  { field: "identity", patch: { harness: "claude" }, reason: "stale-connection" },
+] as const;
+for (const entry of associationRefusals) test(`association refuses ${entry.field} ${JSON.stringify(entry.patch)}`, () => {
+  const f = associationFixture();
+  const db = new Database(f.path);
+  try {
+    const kind = entry.field === "runtime" ? "runtimeBinding" : entry.field === "employee" ? "employee" : "runtimeConnection";
+    const id = entry.field === "runtime" ? "manager/1" : entry.field === "employee" ? "manager" : "launch-manager";
+    const payload = entry.field === "runtime" ? { ...f.launch, ...entry.patch } : entry.field === "employee" ? { ...f.store.getEmployee("manager"), ...entry.patch } : { identity: { ...f.identity, ...entry.patch }, connected: true };
+    db.query("UPDATE records SET payload=? WHERE kind=? AND id=?").run(JSON.stringify(payload), kind, id);
+    expect(f.read().rows).toEqual([{ employeeId: "manager", role: "manager", generation: entry.field === "employee" && "generation" in entry.patch ? 2 : 1, status: "unavailable", reason: entry.reason }]);
+  } finally { db.close(); }
+});
+
+test("association refuses absent, disconnected, expired and replaced owners without mutation", () => {
+  const f = associationFixture();
+  f.store.revokeRuntimeConnection("launch-manager", "fixture-connection");
+  expect(f.read().rows[0]).toMatchObject({ status: "unavailable", reason: "stale-connection" });
+  f.advance(20000);
+  expect(f.read().rows[0]).toMatchObject({ status: "unavailable", reason: "stale-owner" });
+  f.store.close();
+  const reopened = openStore({ path: f.path, scope: f.scope, owner: { ...f.owner, id: "replacement" }, now: () => 20001 });
+  stores.push(reopened);
+  expect(reopened.hostAssociations({ after: null, limit: 64, herdrSession: "fixture-herdr", connectionDeadlineMs: 1000 }).rows[0]).toMatchObject({ status: "unavailable" });
+});
+
+test("association refuses never prepared staff and bounds pages without dropping unknown cursors", () => {
+  const f = fixture();
+  const read = (after: string | null) => f.store.hostAssociations({ after, limit: 1, herdrSession: "fixture-herdr", connectionDeadlineMs: 1000 });
+  expect(read(null).rows).toEqual([{ employeeId: "manager", role: "manager", generation: 1, status: "unavailable", reason: "unprepared" }]);
+  f.store.reserveHire({ authority: { kind: "employee", binding: f.store.managerBinding }, request: { requestId: "association-staff", role: "dev", additional: 2, revision: "role-hash" } });
+  const first = read(null);
+  expect(first.total).toBe(3);
+  expect(first.rows).toHaveLength(1);
+  expect(first.nextCursor).toBe(first.rows[0]?.employeeId ?? null);
+  expect(read(first.nextCursor).rows[0]?.employeeId).not.toBe(first.rows[0]?.employeeId);
+  expect(() => read("unknown-employee")).toThrow("cursor");
+});
+
+test("association freshness requires both recent observation and polling under the current owner", () => {
+  const f = associationFixture();
+  f.advance(1100);
+  expect(f.read().rows[0]).toMatchObject({ status: "current" });
+  f.advance(1101);
+  expect(f.read().rows[0]).toMatchObject({ status: "unavailable", reason: "stale-observation" });
+  f.store.updateRuntime({ ...f.launch, lastSeen: 1101 });
+  expect(f.read().rows[0]).toMatchObject({ status: "unavailable", reason: "stale-poll" });
+});
+
+test("association cannot reuse a prior owner's still-connected record or a missing admission", () => {
+  const f = associationFixture();
+  f.store.close();
+  const reopened = openStore({ path: f.path, scope: f.scope, owner: { ...f.owner, id: "new-owner" }, now: () => 101 });
+  stores.push(reopened);
+  const read = () => reopened.hostAssociations({ after: null, limit: 64, herdrSession: "fixture-herdr", connectionDeadlineMs: 1000 });
+  expect(read().ownerEpoch).toBe(2);
+  expect(read().rows[0]).toMatchObject({ status: "unavailable", reason: "stale-connection" });
+  const db = new Database(f.path);
+  try { db.query("DELETE FROM records WHERE kind='runtimeConnection'").run(); }
+  finally { db.close(); }
+  expect(read().rows[0]).toMatchObject({ status: "unavailable", reason: "stale-connection" });
 });

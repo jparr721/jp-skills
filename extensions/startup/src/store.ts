@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
-import { runtimeConnectionSchema, runtimeIdentitySchema, type RuntimeIdentity, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
+import { hostAssociationQuerySchema, hostAssociationPageSchema, type HostAssociationPage, type HostAssociationRow, runtimeConnectionSchema, runtimeIdentitySchema, type RuntimeIdentity, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
 import { assertStartupPath, ensureStartupRoot } from "./boot";
 import { validateRoleSettings } from "./profiles";
 import {
@@ -3296,6 +3296,40 @@ export function openStore(args: {
         put("runtimeBinding", key, runtime);
         return runtime;
       });
+    },
+    hostAssociations(input: Readonly<{ after: string | null; limit: number; herdrSession: string; connectionDeadlineMs: number }>): HostAssociationPage {
+      const query = hostAssociationQuerySchema.parse({ after: input.after, limit: input.limit });
+      const herdrSession = idSchema.parse(input.herdrSession);
+      const deadline = z.number().int().positive().safe().parse(input.connectionDeadlineMs);
+      if (closed) throw new StoreFenceError("Association owner connection is closed");
+      return db.transaction(() => {
+        const observedAt = timeSchema.parse(now());
+        const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+        const employees = all("employee", employeeSchema).toSorted((a, b) => a.id.localeCompare(b.id));
+        const start = query.after === null ? 0 : employees.findIndex((entry) => entry.id === query.after) + 1;
+        if (query.after !== null && start === 0) throw new StoreAuthorityError(`Unknown association cursor ${query.after}`);
+        const rows = employees.slice(start, start + query.limit).map((entry): HostAssociationRow => {
+          const base = { employeeId: entry.id, role: entry.role, generation: entry.generation };
+          const unavailable = (reason: Extract<HostAssociationRow, { status: "unavailable" }>["reason"]): HostAssociationRow => ({ ...base, status: "unavailable", reason });
+          if (lease.token !== token || lease.epoch !== epoch || lease.generation !== owner.managerGeneration || lease.expires <= observedAt) return unavailable("stale-owner");
+          if (entry.employment === "retired") return unavailable("retired");
+          const runtime = latestRuntime(entry.id, 0);
+          if (runtime === null) return unavailable("unprepared");
+          if (runtime.generation !== entry.generation) return unavailable("stale-generation");
+          if (runtime.state !== "ready") return unavailable("runtime-not-ready");
+          if (runtime.error !== null || entry.error !== null) return unavailable("runtime-error");
+          if (runtime.terminalId === null) return unavailable("missing-terminal");
+          if (runtime.nativeSession === null || runtime.paneId === null || runtime.observedState === "offline" || runtime.observedState === "unknown") return unavailable("unobserved");
+          const connection = read("runtimeConnection", runtime.launchId, runtimeConnectionSchema);
+          const identity = connection?.identity;
+          if (!connection?.connected || identity === undefined || identity.ownerId !== owner.id || identity.ownerEpoch !== epoch || identity.startupRoot !== scope.startupRoot || identity.employeeId !== entry.id || identity.generation !== entry.generation || identity.launchId !== runtime.launchId || identity.harness !== runtime.settings.requested.harness || identity.nativeSession !== runtime.nativeSession) return unavailable("stale-connection");
+          if (entry.nativeHandle === null || entry.source === null || encode(entry.source) !== encode(runtime.source)) return unavailable("stale-source");
+          if (runtime.lastSeen === 0 || runtime.lastSeen > observedAt || observedAt - runtime.lastSeen > deadline) return unavailable("stale-observation");
+          if (runtime.lastPoll === 0 || runtime.lastPoll > observedAt || observedAt - runtime.lastPoll > deadline) return unavailable("stale-poll");
+          return { ...base, status: "current", launchId: runtime.launchId, harness: runtime.settings.requested.harness, nativeSession: runtime.nativeSession, terminalId: runtime.terminalId, source: runtime.source, lastSeen: runtime.lastSeen, lastPoll: runtime.lastPoll };
+        });
+        return hostAssociationPageSchema.parse({ state: "observed", scope, ownerId: owner.id, ownerEpoch: epoch, revision: controlRevision(db), observedAt, herdrSession, freshness: { leaseExpiresAt: lease.expires, connectionDeadlineMs: deadline }, total: employees.length, nextCursor: start + query.limit < employees.length ? rows.at(-1)?.employeeId : null, rows });
+      }).deferred();
     },
     runtimeBindings(): readonly RuntimeBinding[] {
       return all("runtimeBinding", runtimeBindingSchema);

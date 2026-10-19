@@ -7,7 +7,7 @@ import { assertStartupPath, bootSelection, canonicalStartupRoot, ensureStartupRo
 import { encode, hostStatusQuerySchema, hostStatusSchema, idSchema, jsonSchema, ownerControlReceiptSchema, ownerControlRequestSchema, scopeSchema, timeSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, type Json, type OwnerControlReceipt, type Scope } from "./src/contracts";
 import { createHerdrRuntime, runHerdrCommand } from "./src/herdr-runtime";
 import { ompSettingsArgs, validateRoleSettings } from "./src/profiles";
-import { effectiveRoleSettingsSchema, requestedRoleSettingsSchema, runtimeCapabilitySchema, savedRoleSettingsSchema, roleSettingsInputSchema } from "./src/runtime-contracts";
+import { hostAssociationQuerySchema, hostAssociationPageSchema, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, runtimeCapabilitySchema, savedRoleSettingsSchema, roleSettingsInputSchema } from "./src/runtime-contracts";
 import { applyOfflineOwnerControl, openStore, ownerControlOperationPath, readOwnerControl, readOwnerControlReceipt, readOwnerControlFile, withOwnerControlRequest } from "./src/store";
 import { prepareManagerLaunch, launchRuntimeHost, parseRuntimeHostConfig, readPrivateJson, type RuntimeHostConfig } from "./src/v7-launch";
 
@@ -16,6 +16,7 @@ export const hostControlCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("create"), requestId: idSchema, scope: scopeSchema, skillsRoot: z.string().startsWith("/"), executionLimit: z.number().int().min(3), harness: z.enum(["omp", "claude"]), expectedOwnerEpoch: z.literal(0), expectedRevision: z.literal(0) }),
   z.strictObject({ kind: z.enum(["select"]), scope: scopeSchema }),
   z.strictObject({ kind: z.enum(["status", "staff", "progress", "alerts"]), scope: scopeSchema, query: hostStatusQuerySchema.optional() }),
+  z.strictObject({ kind: z.literal("associations"), scope: scopeSchema, ...hostAssociationQuerySchema.shape }),
   z.strictObject({ kind: z.literal("settings"), scope: scopeSchema, after: idSchema.optional(), limit: z.number().int().min(1).max(100).optional() }),
   z.strictObject({ kind: z.literal("settings_draft"), scope: scopeSchema, selection: roleSettingsInputSchema }),
   z.strictObject({ kind: z.literal("receipt"), scope: scopeSchema, requestId: idSchema }),
@@ -61,6 +62,7 @@ export const hostControlResponseSchema = z.discriminatedUnion("operation", [
   z.strictObject({ operation: z.literal("settings_draft"), result: z.strictObject({ draft: draftSchema, scope: z.literal("future_launch"), sideEffects: z.literal("none") }) }),
   z.strictObject({ operation: z.literal("settings"), result: z.union([offlineSchema, z.strictObject({ saved: z.array(savedRoleSettingsSchema), active: z.array(z.strictObject({ employeeId: idSchema, launchId: idSchema, effective: effectiveRoleSettingsSchema, capability: runtimeCapabilitySchema })), nextCursor: idSchema.nullable() })]) }),
   z.strictObject({ operation: z.literal("status"), result: z.union([offlineSchema, hostStatusSchema]) }),
+  z.strictObject({ operation: z.literal("associations"), result: z.union([offlineSchema, hostAssociationPageSchema]) }),
   z.strictObject({ operation: z.literal("staff"), result: z.union([offlineSchema, projectionSchema.extend({ staff: picture.staff })]) }),
   z.strictObject({ operation: z.literal("progress"), result: z.union([offlineSchema, projectionSchema.extend({ queue: picture.queue, teams: picture.teams })]) }),
   z.strictObject({ operation: z.literal("alerts"), result: z.union([offlineSchema, projectionSchema.extend({ state: z.enum(["unsupported", "recovery-required", "missing", "offline", "stale", "live"]), reasons: picture.reasons, supervision: picture.supervision })]) }),
@@ -249,6 +251,12 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
     return jsonSchema.parse(receipt);
   }
   if (snapshot.leaseExpires <= runtime.now()) return jsonSchema.parse({ state: snapshot.archived ? "archived" : "offline", scope, ...snapshot, effective: { status: "unavailable", reason: "owner_offline" } });
+  if (request.kind === "associations") {
+    const params = new URLSearchParams({ limit: String(request.limit), ...(request.after === null ? {} : { after: request.after }) });
+    const page = hostAssociationPageSchema.parse(await ownerRequest(scope, `/host/associations?${params}`, null));
+    if (encode(page.scope) !== encode(scope)) throw new StoreAuthorityError("Association owner response differs from the requested scope");
+    return jsonSchema.parse(page);
+  }
   if (request.kind === "settings") {
     const params = new URLSearchParams({ limit: String(request.limit ?? 100), ...(request.after === undefined ? {} : { after: request.after }) });
     return ownerRequest(scope, `/host/settings?${params}`, null);

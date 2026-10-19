@@ -8,7 +8,7 @@ import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
 import { itemActionSchema, terminalItemStatuses } from "./items";
 import { loadProfile, ompSettingsArgs, profileText, verifyProfile, type Profile } from "./profiles";
-import { effectiveRoleSettingsSchema, settingsSampleSchema, ompSessionSettingsReportSchema, runtimeCapabilitySchema, runtimeHarnessSchema, runtimePolicySchema, type SavedRoleSettings, type EffectiveRoleSettings, type OmpSessionSettingsReport, type RuntimeBinding, type RuntimeCapability, type RuntimePolicy } from "./runtime-contracts";
+import { hostAssociationQuerySchema, type HostAssociationPage, effectiveRoleSettingsSchema, settingsSampleSchema, ompSessionSettingsReportSchema, runtimeCapabilitySchema, runtimeHarnessSchema, runtimePolicySchema, type SavedRoleSettings, type EffectiveRoleSettings, type OmpSessionSettingsReport, type RuntimeBinding, type RuntimeCapability, type RuntimePolicy } from "./runtime-contracts";
 import type { StartupStore } from "./store";
 import type { HerdrObservation, HerdrRuntime } from "./herdr-runtime";
 import { readPreparedManagerSettings } from "./v7-launch";
@@ -16,7 +16,7 @@ import { claudeEmployeeArgs, claudeIntegrationPath, requireClaudeTrust, writeCla
 
 export type OmpCoordinatorConfig = Readonly<{
   ompConfigRoot: string; name: string; stateDirectory: string; startupRoot: string; skillsHome: string; boundRoot: string; skillsRoot: string;
-  socketPath: string; profile: string; herdrIntegration: string;
+  socketPath: string; profile: string; herdrIntegration: string; herdrSession: string;
   managerSession: string; managerFile: string; managerPaneId: string;
   managerCredential: string; policy: RuntimePolicy;
 }>;
@@ -74,6 +74,7 @@ export type Coordinator = Readonly<{
   hostControl: (request: OwnerControlRequest) => Promise<OwnerControlReceipt>;
   hostSettings: (query: Readonly<{ after: string | null; limit: number }>) => Json;
   hostStatus: (query: unknown) => HostStatus;
+  hostAssociations: (query: unknown) => HostAssociationPage;
   hostAdmit: (request: unknown) => Promise<HostReceipt>;
   hostCancel: (request: unknown) => Promise<HostReceipt>;
   hostReceipt: (id: string) => HostReceipt;
@@ -721,6 +722,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   });
   return {
     start,
+    hostAssociations: (query) => store.hostAssociations({ ...hostAssociationQuerySchema.parse(query), herdrSession: config.herdrSession, connectionDeadlineMs: policy.connectionDeadlineMs }),
     hostSettings: (query) => {
       const limit = z.number().int().min(1).max(100).parse(query.limit);
       const rows = currentRuntimes().toSorted((a, b) => a.launchId.localeCompare(b.launchId)).filter((bound) => query.after === null || bound.launchId.localeCompare(query.after) > 0);
@@ -806,6 +808,10 @@ export function serveCoordinator(input: Readonly<{ coordinator: Coordinator; soc
           ...(readParam("teamCursor") === undefined ? {} : { teamCursor: readParam("teamCursor") }),
           ...(readParam("inputCursor") === undefined ? {} : { inputCursor: readParam("inputCursor") }),
         }));
+      }
+      if (request.method === "GET" && path === "/host/associations") {
+        const params = new URL(request.url).searchParams;
+        return Response.json(input.coordinator.hostAssociations({ after: params.get("after"), limit: Number(params.get("limit")) }));
       }
       if (request.method === "GET" && path === "/host/settings") {
         const params = new URL(request.url).searchParams;

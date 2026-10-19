@@ -75,7 +75,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     },
     observe: async () => { if (observationBarrier) await observationBarrier; if (observationFailure) throw observationFailure; return observations; },
   };
-  const config = { ompConfigRoot: "/fixture/ronin", name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
+  const config = { ompConfigRoot: "/fixture/ronin", name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), herdrSession: "fixture-herdr", profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
   const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => { const value = now; now += clockStep; return value; } });
   async function admit(employeeId: string): Promise<string> {
     const runtime = store.runtimeBindings().findLast((r) => r.employeeId === employeeId);
@@ -1504,4 +1504,15 @@ test("OMP-only employees remain independent of Claude readiness", async () => {
   const { manager } = await f.ready();
   await f.delegate(manager, "omp-independent");
   expect(f.launches.map((launch) => launch.harness)).toEqual(["omp", "omp", "omp", "omp"]);
+});
+
+for (const harness of ["omp", "claude"] as const) test(`association read preserves admitted ${harness} native identity and redacts credentials`, async () => {
+  const f = harnessFixture(8, harness);
+  await f.ready();
+  const nativeSession = harness === "omp" ? f.config.managerFile : f.config.managerSession;
+  const before = f.store.snapshot();
+  const page = f.coordinator.hostAssociations({ after: null, limit: 64 });
+  expect(page).toMatchObject({ herdrSession: "fixture-herdr", rows: expect.arrayContaining([{ employeeId: "manager", role: "manager", generation: 1, status: "current", launchId: expect.any(String), harness, nativeSession, terminalId: "term1", source: expect.any(Object), lastSeen: 1000, lastPoll: 1000 }]) });
+  expect(f.store.snapshot()).toEqual(before);
+  expect(JSON.stringify(page)).not.toMatch(/manager-secret|credentialDigest|connectionEpoch|bootId/);
 });
