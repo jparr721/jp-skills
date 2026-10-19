@@ -8,11 +8,11 @@ import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
 import { itemActionSchema, terminalItemStatuses } from "./items";
 import { loadProfile, ompSettingsArgs, profileText, verifyProfile, type Profile } from "./profiles";
-import { effectiveRoleSettingsSchema, settingsSampleSchema, ompSessionSettingsReportSchema, runtimeCapabilitySchema, runtimeHarnessSchema, runtimePolicySchema, type EffectiveRoleSettings, type OmpSessionSettingsReport, type RuntimeBinding, type RuntimeCapability, type RuntimePolicy } from "./runtime-contracts";
+import { effectiveRoleSettingsSchema, settingsSampleSchema, ompSessionSettingsReportSchema, runtimeCapabilitySchema, runtimeHarnessSchema, runtimePolicySchema, type SavedRoleSettings, type EffectiveRoleSettings, type OmpSessionSettingsReport, type RuntimeBinding, type RuntimeCapability, type RuntimePolicy } from "./runtime-contracts";
 import type { StartupStore } from "./store";
 import type { HerdrObservation, HerdrRuntime } from "./herdr-runtime";
 import { readPreparedManagerSettings } from "./v7-launch";
-import { claudeEmployeeArgs, writeClaudeFiles } from "./claude-launch";
+import { claudeEmployeeArgs, claudeIntegrationPath, requireClaudeTrust, writeClaudeFiles } from "./claude-launch";
 
 export type OmpCoordinatorConfig = Readonly<{
   ompConfigRoot: string; name: string; stateDirectory: string; startupRoot: string; skillsHome: string; boundRoot: string; skillsRoot: string;
@@ -155,6 +155,11 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     if (claudeFiles === null) claudeFiles = writeClaudeFiles({ startupRoot: config.startupRoot, skillsRoot: config.skillsRoot, bun: process.execPath });
     return claudeFiles;
   }
+  function assertLaunchReadiness(settings: SavedRoleSettings): void {
+    if (settings.requested.harness !== "claude") return;
+    requireClaudeTrust({ startupRoot: config.startupRoot, boundRoot: config.boundRoot, claudeJson: join(config.startupRoot, ".claude.json") });
+    claudeIntegrationPath({ CLAUDE_CONFIG_DIR: config.startupRoot });
+  }
   function prepare(id: string, credential: string): RuntimeBinding {
     const current = employee(id);
     const generation = current.role === "manager" ? current.generation : current.generation + 1;
@@ -234,6 +239,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   async function launch(id: string, location: Readonly<{ tabId: string; paneId: string }>): Promise<void> {
     const saved = runtime(id);
     if (saved.state !== "starting" || saved.paneId !== location.paneId) throw new StoreConflictError("Launch requires the recorded pane allocation intent");
+    assertLaunchReadiness(saved.settings);
     const harness = saved.settings.requested.harness;
     const current = store.updateRuntime({ ...saved, tabId: location.tabId, paneId: location.paneId, state: "starting", ...(harness === "claude" ? { nativeSession: saved.launchId } : {}) });
     const bootstrap = launchArtifact(current);
@@ -259,6 +265,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   async function allocate(id: string, effect: () => Promise<Readonly<{ tabId: string; paneId: string }>>): Promise<Readonly<{ tabId: string; paneId: string }>> {
     const saved = runtime(id);
     if (saved.state !== "prepared") throw new StoreAuthorityError("Existing launch requires identity reconciliation; never blindly create another pane");
+    assertLaunchReadiness(saved.settings);
     store.updateRuntime({ ...saved, state: "starting", lastSeen: now() });
     try {
       const location = await effect();
@@ -278,6 +285,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   // Pane launches wait for native readiness, so they run after the durable receipt returns, one at a time per coordinator.
   function launchInBackground(ids: readonly string[], step: (id: string) => Promise<void>): void {
     assertNotLaunching(ids);
+    for (const id of ids) assertLaunchReadiness(runtime(id).settings);
     for (const id of ids) launchingIds.add(id);
     launches = launches.then(async () => {
       let index = 0;

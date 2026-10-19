@@ -33,6 +33,10 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
   mkdirSync(boundRoot);
   const startupRoot = join(root, "config", "ronin", "startups", "test");
   const stateDirectory = startupRoot;
+  mkdirSync(join(startupRoot, "hooks"), { recursive: true, mode: 0o700 });
+  writeFileSync(join(startupRoot, "hooks", "herdr-agent-state.sh"), "# HERDR_INTEGRATION_ID=claude\n# HERDR_INTEGRATION_VERSION=11\n", { mode: 0o600 });
+  writeFileSync(join(startupRoot, "settings.json"), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: join(startupRoot, "hooks", "herdr-agent-state.sh") }] }] } }), { mode: 0o600 });
+  writeFileSync(join(startupRoot, ".claude.json"), JSON.stringify({ projects: { [boundRoot]: { hasTrustDialogAccepted: true } } }), { mode: 0o600 });
   const managerFile = join(root, "manager.jsonl");
   writeFileSync(managerFile, JSON.stringify({ type: "session", id: "manager-session" }) + "\n");
   let now = 1000;
@@ -1475,4 +1479,29 @@ for (const initialHarness of ["omp", "claude"] as const) for (const change of ["
   expect(prior.some((entry) => entry.nativeSession === fresh?.nativeSession && entry.nativeSession !== null)).toBe(false);
   for (const id of [second.architect, second.qa, ...second.devs]) await f.admit(id);
   expect(f.store.snapshot().teams.find((team) => team.id === second.id)?.state).toBe("ready");
+});
+
+for (const role of ["pa", "dev"] as const) for (const missing of ["trust", "hook", "registration"] as const) test(`Claude ${role} refuses missing ${missing} before any employee layout or start`, async () => {
+  const f = fixture(8);
+  const ready = role === "dev" ? await f.ready() : null;
+  f.setRoleSettings(role, "claude", "sonnet", "high");
+  if (missing === "trust") rmSync(join(f.config.startupRoot, ".claude.json"));
+  else if (missing === "hook") rmSync(join(f.config.startupRoot, "hooks", "herdr-agent-state.sh"));
+  else writeFileSync(join(f.config.startupRoot, "settings.json"), JSON.stringify({ hooks: {} }), { mode: 0o600 });
+  const layouts = f.layouts.length;
+  const launches = f.launches.length;
+  await expect(role === "pa" ? f.ready() : f.delegate(ready!.manager, `missing-${missing}`)).rejects.toThrow(missing === "trust" ? "trust" : "integration");
+  await f.coordinator.launching();
+  expect(f.layouts).toHaveLength(layouts);
+  expect(f.launches).toHaveLength(launches);
+});
+
+test("OMP-only employees remain independent of Claude readiness", async () => {
+  const f = fixture(8);
+  rmSync(join(f.config.startupRoot, ".claude.json"));
+  rmSync(join(f.config.startupRoot, "hooks"), { recursive: true });
+  rmSync(join(f.config.startupRoot, "settings.json"));
+  const { manager } = await f.ready();
+  await f.delegate(manager, "omp-independent");
+  expect(f.launches.map((launch) => launch.harness)).toEqual(["omp", "omp", "omp", "omp"]);
 });

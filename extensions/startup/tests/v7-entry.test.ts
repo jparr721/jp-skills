@@ -561,6 +561,13 @@ function harnessRuntimeFixture(f: ReturnType<typeof fixture>, harness: "omp" | "
   const startupRoot: string = join(f.configHome, "ronin", "startups", "alpha");
   const stateDirectory: string = startupRoot;
   const socketPath: string = join(startupRoot, "runtime.sock");
+  if (harness === "claude") {
+    mkdirSync(join(startupRoot, "hooks"), { recursive: true, mode: 0o700 });
+    const hook = join(startupRoot, "hooks", "herdr-agent-state.sh");
+    writeFileSync(hook, "# HERDR_INTEGRATION_ID=claude\n# HERDR_INTEGRATION_VERSION=11\n", { mode: 0o600 });
+    writeFileSync(join(startupRoot, "settings.json"), JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: hook }] }] } }), { mode: 0o600 });
+    writeFileSync(join(startupRoot, ".claude.json"), JSON.stringify({ projects: { [f.cwd]: { hasTrustDialogAccepted: true } } }), { mode: 0o600 });
+  }
   const stateFile: string = join(f.root, "fake-herdr-state.json");
   const fake: string = join(f.root, "fake-herdr");
   const script: string = `#!${process.execPath}
