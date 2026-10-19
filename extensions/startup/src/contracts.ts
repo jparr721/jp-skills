@@ -533,10 +533,10 @@ export const ownerControlRequestSchema = z.discriminatedUnion("kind", [
 export type OwnerControlRequest = z.infer<typeof ownerControlRequestSchema>;
 export const ownerControlReceiptSchema = z.strictObject({
   requestId: idSchema, digest: idSchema, scope: scopeSchema,
-  kind: z.enum(["create", "settings_apply", "archive", "resume"]),
+  kind: z.enum(["create", "settings_apply", "archive", "resume", "prepare_manager"]),
   state: z.enum(["committed", "uncertain", "missing_session"]),
   ownerEpoch: timeSchema, revision: timeSchema,
-  sideEffects: z.enum(["root_initialized", "future_launch_settings", "history_archived", "owner_resumed", "none"]),
+  sideEffects: z.enum(["root_initialized", "future_launch_settings", "history_archived", "owner_resumed", "manager_prepared", "none"]),
   result: jsonSchema,
 });
 export type OwnerControlReceipt = z.infer<typeof ownerControlReceiptSchema>;

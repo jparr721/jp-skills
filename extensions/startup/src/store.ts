@@ -283,6 +283,7 @@ export function openStore(args: {
   readonly scope: Scope;
   readonly owner: Owner;
   readonly now: () => number;
+  readonly expectedControl?: Readonly<{ ownerEpoch: number; revision: number }>;
 }) {
   const scope: Scope = scopeSchema.parse(args.scope);
   const owner: Owner = ownerSchema.parse(args.owner);
@@ -479,6 +480,7 @@ export function openStore(args: {
           )
           .get();
         const lease = previous === null ? null : leaseSchema.parse(previous);
+        if (args.expectedControl !== undefined && (args.expectedControl.ownerEpoch !== (lease?.epoch ?? 0) || args.expectedControl.revision !== controlRevision(db))) throw new StoreFenceError("Manager preparation snapshot changed before owner acquisition");
         const timestamp: number = now();
         if (lease !== null && lease.expires > timestamp)
           throw new StoreFenceError(
@@ -1242,6 +1244,7 @@ export function openStore(args: {
   }
 
   return {
+    scope,
     ownerEpoch: epoch,
     ownerId: owner.id,
     getEmployee: employee,
@@ -1302,6 +1305,20 @@ export function openStore(args: {
         put("roleSettings", role, saved);
         return saved;
       }));
+    },
+    freezeManagerSettings(harness: "omp" | "claude"): SavedRoleSettings {
+      return tx(() => {
+        const frozen = read("managerLaunchSettings", scope.managerSession, savedRoleSettingsSchema);
+        if (frozen !== null) {
+          if (frozen.requested.harness !== harness) throw new StoreConflictError("Prepared manager harness differs from the requested launch");
+          return frozen;
+        }
+        const selected = read("roleSettings", "manager", savedRoleSettingsSchema);
+        if (selected === null) throw new StoreConflictError("Manager launch requires saved settings");
+        if (selected.requested.harness !== harness) throw new StoreConflictError("Saved manager harness differs from the requested new native launch");
+        put("managerLaunchSettings", scope.managerSession, selected);
+        return selected;
+      });
     },
     roleSettings(role: Employee["role"]): SavedRoleSettings {
       const parsed = roleSchema.parse(role);
@@ -3247,7 +3264,7 @@ export function openStore(args: {
             throw new StoreConflictError("Runtime generation already has a different launch reservation");
           return saved;
         }
-        const selected: SavedRoleSettings | null = read("roleSettings", current.role, savedRoleSettingsSchema);
+        const selected: SavedRoleSettings | null = (current.role === "manager" ? read("managerLaunchSettings", scope.managerSession, savedRoleSettingsSchema) : null) ?? read("roleSettings", current.role, savedRoleSettingsSchema);
         if (selected === null || selected.revision !== runtime.settings.revision || !sameDocument(selected, runtime.settings))
           throw new StoreConflictError("Role settings changed while the launch was being prepared; reserve a new launch with the current revision");
         if (runtime.generation !== (current.role === "manager" ? current.generation : current.generation + 1))

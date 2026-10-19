@@ -48,8 +48,8 @@ test("employee and manager argv are exact and fit the canonical line limit", () 
   expect(employee).toEqual(["--session-id", sessionId, "--append-system-prompt-file", `${state}/launches/${sessionId}.prompt.md`, "--settings", files.settingsFile, "--mcp-config", files.mcpFile, "-n", "s-0f8fad5bd9cb469fa16570867728"]);
   expect(Buffer.byteLength(["herdr", "--session", "default", "agent", "start", "s-0f8fad5bd9cb469fa16570867728", "--kind", "claude", "--pane", "w1:p12", "--", ...employee].join(" "))).toBeLessThanOrEqual(900);
   const promptFile = "/Users/someone/.config/jp-skills/startup/claude/manager.prompt.md";
-  expect(claudeManagerArgs({ session: { kind: "new", id: sessionId }, promptFile, ...files })).toEqual(["--session-id", sessionId, "--append-system-prompt-file", promptFile, "--settings", files.settingsFile, "--mcp-config", files.mcpFile, "-n", "startup-manager"]);
-  expect(claudeManagerArgs({ session: { kind: "resume", id: sessionId }, promptFile, ...files })).toEqual(["--resume", sessionId, "--append-system-prompt-file", promptFile, "--settings", files.settingsFile, "--mcp-config", files.mcpFile, "-n", "startup-manager"]);
+  expect(claudeManagerArgs({ model: null, effort: null, session: { kind: "new", id: sessionId }, promptFile, ...files })).toEqual(["--session-id", sessionId, "--append-system-prompt-file", promptFile, "--settings", files.settingsFile, "--mcp-config", files.mcpFile, "-n", "startup-manager"]);
+  expect(claudeManagerArgs({ model: null, effort: null, session: { kind: "resume", id: sessionId }, promptFile, ...files })).toEqual(["--resume", sessionId, "--append-system-prompt-file", promptFile, "--settings", files.settingsFile, "--mcp-config", files.mcpFile, "-n", "startup-manager"]);
 });
 
 test("Claude employee argv carries only the selected interactive CLI model and effort", () => {

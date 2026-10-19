@@ -71,7 +71,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     },
     observe: async () => { if (observationBarrier) await observationBarrier; if (observationFailure) throw observationFailure; return observations; },
   };
-  const config = { name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
+  const config = { ompConfigRoot: "/fixture/ronin", name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
   const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => { const value = now; now += clockStep; return value; } });
   async function admit(employeeId: string): Promise<string> {
     const runtime = store.runtimeBindings().findLast((r) => r.employeeId === employeeId);
@@ -130,9 +130,9 @@ test("OMP launches use only the Startup root and the stock default profile", asy
     STARTUP_ROOT: f.config.startupRoot,
     STARTUP_V7_MANIFEST: join(f.config.startupRoot, "launches", `${saved.launchId}.json`),
     OMPCODE: "",
-    OMP_PROFILE: "default",
-    PI_PROFILE: "default",
-    PI_CODING_AGENT_DIR: f.config.startupRoot,
+    OMP_PROFILE: "",
+    PI_PROFILE: "",
+    PI_CODING_AGENT_DIR: f.config.ompConfigRoot,
     STARTUP_HERDR_OMP_EXTENSION: f.config.herdrIntegration,
   });
   expect(existsSync(join(f.config.startupRoot, "staff.sqlite"))).toBe(true);
@@ -141,7 +141,6 @@ test("OMP launches use only the Startup root and the stock default profile", asy
 
 test("one Startup freezes six role settings and launches mixed OMP and interactive Claude processes", async () => {
   const f = fixture(10);
-  f.setRoleSettings("manager", "omp", null, null);
   f.setRoleSettings("pa", "claude", "sonnet", "high");
   f.setRoleSettings("architect", "claude", "opus", "max");
   f.setRoleSettings("qa", "omp", "openai/gpt-5.2", "medium");
@@ -166,7 +165,7 @@ test("one Startup freezes six role settings and launches mixed OMP and interacti
   expect(f.launches.map((launch) => launch.harness)).toEqual(["claude", "claude", "omp", "claude", "omp"]);
   expect(f.launches.find((launch) => launch.name === `s-${runtimeByRole.get("qa")?.launchId.replaceAll("-", "").slice(0, 28)}`)?.args.slice(-4)).toEqual(["--model", "openai/gpt-5.2", "--thinking", "medium"]);
   expect(f.launches.find((launch) => launch.name === `s-${runtimeByRole.get("devops")?.launchId.replaceAll("-", "").slice(0, 28)}`)?.args.slice(-4)).toEqual(["--model", "anthropic/claude-sonnet-4-5", "--thinking", "auto"]);
-  expect(f.layouts.filter((env) => env.PI_CODING_AGENT_DIR !== undefined).every((env) => env.PI_CODING_AGENT_DIR === f.config.startupRoot && env.OMP_PROFILE === "default")).toBe(true);
+  expect(f.layouts.filter((env) => env.PI_CODING_AGENT_DIR !== undefined).every((env) => env.PI_CODING_AGENT_DIR === f.config.ompConfigRoot && env.OMP_PROFILE === "")).toBe(true);
   expect(f.layouts.filter((env) => env.CLAUDE_CONFIG_DIR !== undefined).every((env) => env.CLAUDE_CONFIG_DIR === f.config.startupRoot)).toBe(true);
   const architect = idsByRole.get("architect");
   if (architect === undefined) throw new Error("Missing architect employee");
@@ -1414,4 +1413,38 @@ test("host status accepts the same long filesystem paths as scope", async () => 
   const status = f.coordinator.hostStatus({});
   const longPath = "/" + "directory/".repeat(70);
   expect(hostStatusSchema.parse({ ...status, binding: { ...status.binding, boundRoot: longPath, home: longPath } }).binding.boundRoot).toBe(longPath);
+});
+
+test("two Startup owners launch OMP against one config root without sharing owner identity", async () => {
+  const first = fixture(8);
+  const second = fixture(8);
+  await first.ready(); await second.ready();
+  const firstRoot = first.layouts.find((env) => env.PI_CODING_AGENT_DIR !== undefined)!;
+  const secondRoot = second.layouts.find((env) => env.PI_CODING_AGENT_DIR !== undefined)!;
+  expect(firstRoot.PI_CODING_AGENT_DIR).toBe("/fixture/ronin");
+  expect(secondRoot.PI_CODING_AGENT_DIR).toBe(firstRoot.PI_CODING_AGENT_DIR);
+  expect(firstRoot.STARTUP_ROOT).not.toBe(secondRoot.STARTUP_ROOT);
+  expect(firstRoot.STARTUP_V7_MANIFEST).not.toBe(secondRoot.STARTUP_V7_MANIFEST);
+});
+
+test("input reconciliation reads exact owner receipts and refuses other employee input", async () => {
+  const f = fixture(8);
+  const { manager, paConnection } = await f.ready();
+  const raw = { text: "preserve", images: [] };
+  expect(await f.coordinator.command(paConnection, { kind: "receive_status", id: "missing" })).toEqual({ state: "missing", id: "missing" });
+  await f.coordinator.command(paConnection, { kind: "receive", id: "pa-receive", source: "interactive", raw });
+  expect(await f.coordinator.command(paConnection, { kind: "receive_status", id: "pa-receive" })).toMatchObject({ state: "committed", id: "pa-receive", digest: expect.any(String) });
+  expect(await f.coordinator.command(manager, { kind: "receive_status", id: "pa-receive" })).toEqual({ state: "missing", id: "pa-receive" });
+  await f.coordinator.command(manager, { kind: "receive", id: "manager-receive", source: "interactive", raw });
+  expect(await f.coordinator.command(manager, { kind: "receive_status", id: "manager-receive" })).toMatchObject({ state: "committed", id: "manager-receive", digest: expect.any(String) });
+});
+
+test("manager admission retains the prelaunch selection after a later settings apply", async () => {
+  const f = fixture(8);
+  f.setRoleSettings("manager", "omp", "p/first", "high");
+  const settings = f.store.freezeManagerSettings("omp");
+  writeFileSync(join(f.config.startupRoot, "manager-launch.json"), JSON.stringify({ scope: f.store.scope, settings }), { mode: 0o600 });
+  f.setRoleSettings("manager", "omp", "p/later", "low");
+  await f.coordinator.start();
+  expect(f.store.runtimeBindings().find((row) => row.employeeId === "manager")?.settings).toEqual(settings);
 });

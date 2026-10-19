@@ -1,16 +1,15 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { homedir, hostname } from "node:os";
+import { hostname } from "node:os";
 import { z } from "zod";
 import type { EntryConfig } from "./v7";
-import { assertStartupPath, bootSelection, StartupBootError } from "./src/boot";
+import { executionConfigHome, assertStartupPath, bootSelection, StartupBootError } from "./src/boot";
 import { claudeHookInputSchema, claudeRoot, createClaudeHost, type ClaudeHost, type WaiterHandle } from "./src/claude-host";
-import { claudeIntegrationPath } from "./src/claude-launch";
 import { priorEventCount, splitLines, TranscriptTail } from "./src/claude-ledger";
 import { bridgeRequestSchema, startupRoot as selectedStartupRoot, waiterSocketPath } from "./src/claude-waiter";
 import { jsonSchema, type Json } from "./src/contracts";
-import { installLaunchedEmployeeWith, type Environment } from "./src/employee-entry";
-import { launchRuntimeHost, readPrivateJson } from "./src/v7-launch";
+import { assertNativeTranscript, installLaunchedEmployeeWith, type Environment } from "./src/employee-entry";
+import { integrationPath, launchRuntimeHost, readPrivateJson } from "./src/v7-launch";
 
 const requestSchema = z.looseObject({ jsonrpc: z.literal("2.0"), id: z.union([z.string(), z.number()]).optional(), method: z.string(), params: z.unknown().optional() });
 const initializeSchema = z.looseObject({ protocolVersion: z.string().min(1) });
@@ -18,14 +17,14 @@ const callSchema = z.looseObject({ name: z.string().min(1), arguments: z.record(
 type SocketState = { buffer: string; waiter: WaiterHandle | null };
 
 export function claudeEntryConfig(environment: Environment, sessionId: string, transcript: () => string | null): EntryConfig {
-  const configHome: string = resolve(environment.XDG_CONFIG_HOME ?? join(homedir(), ".config"));
+  const configHome: string = executionConfigHome(environment.XDG_CONFIG_HOME);
   return {
     skillsHome: resolve(environment.JP_SKILLS_HOME ?? join(configHome, "jp-skills")),
     startupRoot: environment.STARTUP_ROOT ?? null,
     configHome,
     skillsRoot: resolve(environment.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")),
     environment, launch: launchRuntimeHost,
-    harness: "claude", root: claudeRoot({ sessionId, transcript }), integration: claudeIntegrationPath,
+    harness: "claude", root: claudeRoot({ sessionId, transcript }), integration: integrationPath,
     nativeLimit: () => { throw new StartupBootError("Claude Code has no native root concurrency setting; set STARTUP_EXECUTION_LIMIT explicitly and retry Startup"); },
   };
 }
@@ -98,7 +97,7 @@ async function serve(): Promise<void> {
   const environment: Environment = process.env;
   const sessionId: string = z.string().uuid().parse(environment.CLAUDE_CODE_SESSION_ID);
   const startupRoot: string = selectedStartupRoot(environment);
-  const skillsHome: string = resolve(environment.JP_SKILLS_HOME ?? join(environment.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "jp-skills"));
+  const skillsHome: string = resolve(environment.JP_SKILLS_HOME ?? join(executionConfigHome(environment.XDG_CONFIG_HOME), "jp-skills"));
   const manifest: string | undefined = environment.STARTUP_V7_MANIFEST;
   if (manifest !== undefined && !manifest.endsWith(".json")) throw new StartupBootError(`STARTUP_V7_MANIFEST must name a launch .json manifest: ${manifest}`);
   if (manifest !== undefined) {
@@ -107,7 +106,7 @@ async function serve(): Promise<void> {
     if (saved.skillsHome !== skillsHome || saved.startupRoot !== startupRoot)
       throw new StartupBootError("Claude employee manifest does not match JP_SKILLS_HOME and STARTUP_ROOT");
   } else {
-    const configHome: string = resolve(environment.XDG_CONFIG_HOME ?? join(homedir(), ".config"));
+    const configHome: string = executionConfigHome(environment.XDG_CONFIG_HOME);
     const selection = bootSelection({
       cwd: process.cwd(), skillsHome, startupRoot, configHome,
       skillsRoot: resolve(environment.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")), host: hostname(),
@@ -147,6 +146,7 @@ async function serve(): Promise<void> {
       if (transcript !== path) { shim.fail(new Error(`Claude transcript path changed from ${transcript} to ${path}; the Startup bridge serves one session`)); return shim.shutdown(); }
       return started ?? Promise.resolve();
     }
+    assertNativeTranscript({ harness: "claude", startupRoot, ompConfigRoot: resolve(executionConfigHome(environment.XDG_CONFIG_HOME), "ronin"), sessionId, file: path });
     transcript = path;
     let skip: number;
     try { skip = priorEventCount(path); }

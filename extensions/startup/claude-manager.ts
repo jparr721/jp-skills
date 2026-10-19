@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir, hostname } from "node:os";
+import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
-import { assertStartupPath, bootSelection, canonicalStartupRoot, persistBinding, StartupBootError, type Selection } from "./src/boot";
+import { executionConfigHome, assertStartupPath, bootSelection, canonicalStartupRoot, persistBinding, StartupBootError, type Selection } from "./src/boot";
 import { claudeIntegrationPath, claudeManagerArgs, requireClaudeTrust, writeClaudeFiles } from "./src/claude-launch";
 import type { Environment } from "./src/employee-entry";
 import { scopeSchema } from "./src/contracts";
 import { loadProfile, profileText } from "./src/profiles";
-import { readPrivateJson, parseRuntimeHostConfig } from "./src/v7-launch";
+import { prepareManagerLaunch, readPrivateJson, parseRuntimeHostConfig } from "./src/v7-launch";
 
 const bindingSchema = z.strictObject({ scope: scopeSchema, executionLimit: z.number().int().positive().safe().nullable() });
 export function managerLaunch(input: Readonly<{ environment: Environment; cwd: string; skillsHome: string; configHome: string; startupRoot: string | null; skillsRoot: string; bun: string }>): readonly string[] {
@@ -59,12 +59,13 @@ export function managerLaunch(input: Readonly<{ environment: Environment; cwd: s
   const session: Readonly<{ kind: "new" | "resume"; id: string }> = saved === null
     ? { kind: "new", id: selection.managerSession }
     : { kind: "resume", id: saved.managerSession };
-  return claudeManagerArgs({ session, promptFile, ...files });
+  const settings = saved === null ? prepareManagerLaunch({ scope: { skillsHome: selection.skillsHome, startupRoot: selection.startupRoot, host: selection.host, name: selection.name, boundRoot: selection.boundRoot, managerSession: selection.managerSession }, harness: "claude", now: Date.now, expectedControl: null }) : null;
+  return claudeManagerArgs({ session, model: settings?.requested.model.value ?? null, effort: settings?.requested.effort.value ?? null, promptFile, ...files });
 }
 async function launch(): Promise<void> {
   if (process.argv.length > 2) throw new StartupBootError("startup-claude takes no arguments; set STARTUP_NAME to choose a Startup");
   const environment: Environment = process.env;
-  const configHome: string = resolve(environment.XDG_CONFIG_HOME ?? join(homedir(), ".config"));
+  const configHome: string = executionConfigHome(environment.XDG_CONFIG_HOME);
   const skillsHome: string = resolve(environment.JP_SKILLS_HOME ?? join(configHome, "jp-skills"));
   const skillsRoot: string = resolve(environment.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."));
   const args: readonly string[] = managerLaunch({

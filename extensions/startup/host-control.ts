@@ -6,10 +6,10 @@ import { z } from "zod";
 import { assertStartupPath, bootSelection, ensureStartupRoot, persistBinding } from "./src/boot";
 import { encode, hostStatusQuerySchema, hostStatusSchema, idSchema, jsonSchema, ownerControlReceiptSchema, ownerControlRequestSchema, scopeSchema, timeSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, type Json, type OwnerControlReceipt, type Scope } from "./src/contracts";
 import { createHerdrRuntime, runHerdrCommand } from "./src/herdr-runtime";
-import { validateRoleSettings } from "./src/profiles";
-import { roleSettingsInputSchema } from "./src/runtime-contracts";
+import { ompSettingsArgs, validateRoleSettings } from "./src/profiles";
+import { effectiveRoleSettingsSchema, requestedRoleSettingsSchema, runtimeCapabilitySchema, savedRoleSettingsSchema, roleSettingsInputSchema } from "./src/runtime-contracts";
 import { applyOfflineOwnerControl, openStore, readOwnerControl, readOwnerControlReceipt } from "./src/store";
-import { launchRuntimeHost, parseRuntimeHostConfig, readPrivateJson, type RuntimeHostConfig } from "./src/v7-launch";
+import { prepareManagerLaunch, launchRuntimeHost, parseRuntimeHostConfig, readPrivateJson, type RuntimeHostConfig } from "./src/v7-launch";
 
 export const hostControlCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("list"), configHome: z.string().startsWith("/"), after: z.string().nullable(), limit: z.number().int().min(1).max(100) }),
@@ -20,8 +20,52 @@ export const hostControlCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("settings_draft"), scope: scopeSchema, selection: roleSettingsInputSchema }),
   z.strictObject({ kind: z.literal("receipt"), scope: scopeSchema, requestId: idSchema }),
   z.strictObject({ kind: z.literal("resume"), scope: scopeSchema, requestId: idSchema, expectedOwnerEpoch: timeSchema, expectedRevision: timeSchema }),
+  z.strictObject({ kind: z.literal("prepare_manager"), scope: scopeSchema, requestId: idSchema, harness: z.enum(["omp", "claude"]), expectedOwnerEpoch: timeSchema, expectedRevision: timeSchema }),
   ...ownerControlRequestSchema.options,
 ]);
+const receiptBase = ownerControlReceiptSchema.omit({ kind: true, state: true, sideEffects: true, result: true });
+const reasonResult = z.strictObject({ reason: z.string().min(1) });
+const createReceipt = z.union([
+  receiptBase.extend({ kind: z.literal("create"), state: z.literal("committed"), sideEffects: z.literal("root_initialized"), result: z.strictObject({ selection: scopeSchema, readiness: z.literal("manager_session_required") }) }),
+  receiptBase.extend({ kind: z.literal("create"), state: z.literal("uncertain"), sideEffects: z.literal("root_initialized"), result: reasonResult }),
+]);
+const resumeReceipt = z.union([
+  receiptBase.extend({ kind: z.literal("resume"), state: z.literal("committed"), sideEffects: z.literal("owner_resumed"), result: z.strictObject({ managerSession: idSchema }) }),
+  receiptBase.extend({ kind: z.literal("resume"), state: z.literal("uncertain"), sideEffects: z.literal("owner_resumed"), result: reasonResult }),
+  receiptBase.extend({ kind: z.literal("resume"), state: z.literal("missing_session"), sideEffects: z.literal("none"), result: reasonResult }),
+]);
+const settingsReceipt = receiptBase.extend({ kind: z.literal("settings_apply"), state: z.literal("committed"), sideEffects: z.literal("future_launch_settings"), result: savedRoleSettingsSchema });
+const archiveReceipt = receiptBase.extend({ kind: z.literal("archive"), state: z.literal("committed"), sideEffects: z.literal("history_archived"), result: z.strictObject({ archivedAt: timeSchema, history: z.literal("preserved") }) });
+const managerReceipt = z.union([
+  receiptBase.extend({ kind: z.literal("prepare_manager"), state: z.literal("committed"), sideEffects: z.literal("manager_prepared"), result: z.strictObject({ settings: savedRoleSettingsSchema, argv: z.array(z.string()) }) }),
+  receiptBase.extend({ kind: z.literal("prepare_manager"), state: z.literal("uncertain"), sideEffects: z.literal("manager_prepared"), result: reasonResult }),
+]);
+export const hostControlReceiptSchema = z.union([createReceipt, resumeReceipt, settingsReceipt, archiveReceipt, managerReceipt]);
+const snapshotSchema = z.strictObject({ ownerEpoch: timeSchema, revision: timeSchema, leaseExpires: timeSchema, archived: z.boolean(), settings: z.array(savedRoleSettingsSchema) });
+const offlineSchema = snapshotSchema.extend({ state: z.enum(["offline", "archived"]), scope: scopeSchema, effective: z.strictObject({ status: z.literal("unavailable"), reason: z.literal("owner_offline") }) }).refine((value) => (value.state === "archived") === value.archived, "Offline archive state must match the snapshot");
+const picture = hostStatusSchema.options[0].shape;
+const projectionSchema = z.strictObject({ scope: scopeSchema, observedAt: timeSchema, revision: timeSchema });
+const draftSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("accepted"), requested: requestedRoleSettingsSchema }),
+  z.strictObject({ status: z.literal("unsupported"), requested: roleSettingsInputSchema, reason: z.string().min(1) }),
+]);
+export const hostControlResponseSchema = z.discriminatedUnion("operation", [
+  z.strictObject({ operation: z.literal("create"), result: createReceipt }),
+  z.strictObject({ operation: z.literal("prepare_manager"), result: managerReceipt }),
+  z.strictObject({ operation: z.literal("resume"), result: resumeReceipt }),
+  z.strictObject({ operation: z.literal("settings_apply"), result: settingsReceipt }),
+  z.strictObject({ operation: z.literal("archive"), result: archiveReceipt }),
+  z.strictObject({ operation: z.literal("receipt"), result: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("missing"), requestId: idSchema }), z.strictObject({ state: z.literal("found"), receipt: hostControlReceiptSchema })]) }),
+  z.strictObject({ operation: z.literal("list"), result: z.strictObject({ rows: z.array(z.strictObject({ scope: scopeSchema, state: z.enum(["selected", "archived"]) })), nextCursor: idSchema.nullable() }) }),
+  z.strictObject({ operation: z.literal("select"), result: snapshotSchema.extend({ scope: scopeSchema, sideEffects: z.literal("none") }) }),
+  z.strictObject({ operation: z.literal("settings_draft"), result: z.strictObject({ draft: draftSchema, scope: z.literal("future_launch"), sideEffects: z.literal("none") }) }),
+  z.strictObject({ operation: z.literal("settings"), result: z.union([offlineSchema, z.strictObject({ saved: z.array(savedRoleSettingsSchema), active: z.array(z.strictObject({ employeeId: idSchema, launchId: idSchema, effective: effectiveRoleSettingsSchema, capability: runtimeCapabilitySchema })), nextCursor: idSchema.nullable() })]) }),
+  z.strictObject({ operation: z.literal("status"), result: z.union([offlineSchema, hostStatusSchema]) }),
+  z.strictObject({ operation: z.literal("staff"), result: z.union([offlineSchema, projectionSchema.extend({ staff: picture.staff })]) }),
+  z.strictObject({ operation: z.literal("progress"), result: z.union([offlineSchema, projectionSchema.extend({ queue: picture.queue, teams: picture.teams })]) }),
+  z.strictObject({ operation: z.literal("alerts"), result: z.union([offlineSchema, projectionSchema.extend({ state: z.enum(["unsupported", "recovery-required", "missing", "offline", "stale", "live"]), reasons: picture.reasons, supervision: picture.supervision })]) }),
+]);
+export type HostControlResponse = z.infer<typeof hostControlResponseSchema>;
 export type HostControlCommand = z.infer<typeof hostControlCommandSchema>;
 export type HostControlRuntime = Readonly<{ now: () => number; executionHost: () => string; observeManager: (config: RuntimeHostConfig) => Promise<boolean>; resume: (config: RuntimeHostConfig) => Promise<RuntimeHostConfig> }>;
 function binding(scope: Scope): void {
@@ -64,8 +108,7 @@ async function ownerRequest(scope: Scope, path: string, body: Json | null): Prom
   if (!response.ok) throw new StoreConflictError(`Owner control ${path} HTTP ${response.status}: ${text.slice(0, 2048)}; mutation outcomes must be looked up by requestId, never automatically replayed`);
   return jsonSchema.parse(JSON.parse(text));
 }
-export async function executeHostControl(value: unknown, runtime: HostControlRuntime): Promise<Json> {
-  const request = hostControlCommandSchema.parse(value);
+async function dispatchHostControl(request: HostControlCommand, runtime: HostControlRuntime): Promise<Json> {
   if (request.kind === "list") {
     const directory = join(request.configHome, "ronin", "startups");
     if (!existsSync(directory)) return { rows: [], nextCursor: null };
@@ -112,8 +155,32 @@ export async function executeHostControl(value: unknown, runtime: HostControlRun
     } finally { closeSync(lock); unlinkSync(lockPath); }
   }
   binding(scope);
-  if (request.kind === "receipt") return jsonSchema.parse(readOperation(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId));
+  if (request.kind === "receipt") {
+    const receipt = readOperation(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
+    return receipt === null ? { state: "missing", requestId: request.requestId } : jsonSchema.parse({ state: "found", receipt });
+  }
   const snapshot = readOwnerControl(scope);
+  if (request.kind === "prepare_manager") {
+    const digest: string = createHash("sha256").update(encode(request)).digest("hex");
+    const existing = readOperation(scope, request.requestId);
+    if (existing !== null) {
+      if (existing.digest !== digest) throw new StoreConflictError("Manager preparation idempotency key payload conflict");
+      return jsonSchema.parse(existing);
+    }
+    if (snapshot.ownerEpoch !== request.expectedOwnerEpoch || snapshot.revision !== request.expectedRevision || snapshot.archived || snapshot.leaseExpires > runtime.now()) throw new StoreFenceError("Manager preparation snapshot changed, Startup archived or owner live");
+    if (existsSync(join(scope.startupRoot, "runtime-config.json"))) throw new StoreConflictError("Saved manager must resume its native identity; preparation cannot replace it");
+    const intent = ownerControlReceiptSchema.parse({ requestId: request.requestId, digest, scope, kind: "prepare_manager", state: "uncertain", ownerEpoch: snapshot.ownerEpoch, revision: snapshot.revision, sideEffects: "manager_prepared", result: { reason: "Inspect manager-launch.json before another native launch" } });
+    beginOperation(intent);
+    const settings = prepareManagerLaunch({ scope, harness: request.harness, now: runtime.now, expectedControl: { ownerEpoch: request.expectedOwnerEpoch, revision: request.expectedRevision } });
+    const argv: readonly string[] = settings.requested.harness === "omp" ? ompSettingsArgs(settings) : [
+      ...(settings.requested.model.value === null ? [] : ["--model", settings.requested.model.value]),
+      ...(settings.requested.effort.value === null ? [] : ["--effort", settings.requested.effort.value]),
+    ];
+    const observed = readOwnerControl(scope);
+    const receipt = ownerControlReceiptSchema.parse({ ...intent, state: "committed", ownerEpoch: observed.ownerEpoch, revision: observed.revision, result: { settings, argv } });
+    finishOperation(receipt);
+    return jsonSchema.parse(receipt);
+  }
   if (request.kind === "select") return jsonSchema.parse({ scope, ...snapshot, sideEffects: "none" });
   if (request.kind === "settings_draft") return jsonSchema.parse({ draft: validateRoleSettings(request.selection), scope: "future_launch", sideEffects: "none" });
   if (request.kind === "settings_apply" || request.kind === "archive") {
@@ -164,6 +231,11 @@ export async function executeHostControl(value: unknown, runtime: HostControlRun
   if (request.kind === "progress") return jsonSchema.parse({ scope, observedAt: status.observedAt, revision: status.storeRevision, queue: status.queue, teams: status.teams });
   if (request.kind === "alerts") return jsonSchema.parse({ scope, observedAt: status.observedAt, revision: status.storeRevision, state: status.state, reasons: status.reasons, supervision: status.supervision });
   return jsonSchema.parse(status);
+}
+export async function executeHostControl(value: unknown, runtime: HostControlRuntime): Promise<HostControlResponse> {
+  const request = hostControlCommandSchema.parse(value);
+  const result = await dispatchHostControl(request, runtime);
+  return hostControlResponseSchema.parse({ operation: request.kind, result });
 }
 if (import.meta.main) {
   try {

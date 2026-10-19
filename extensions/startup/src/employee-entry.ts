@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { HostAPI } from "../index";
-import { StartupBootError } from "./boot";
+import { assertStartupPath, StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, roleSchema, sourceSchema, type Json } from "./contracts";
 import { connectEmployee, EmployeeCommandError, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
 import { itemActionSchema } from "./items";
@@ -15,11 +15,11 @@ import { readPrivateJson } from "./v7-launch";
 const manifestSchema = z.strictObject({
   socketPath: z.string().startsWith("/"), credential: z.string().min(1), source: sourceSchema,
   employeeId: idSchema, generation: z.number().int().nonnegative().safe(), skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"),
-  profile: z.literal("default"), harness: z.enum(["omp", "claude"]), skillsRoot: z.string().startsWith("/"),
+  ompConfigRoot: z.string().startsWith("/"), profile: z.literal("default"), harness: z.enum(["omp", "claude"]), skillsRoot: z.string().startsWith("/"),
 });
 export type LaunchManifest = z.infer<typeof manifestSchema>;
 export type Environment = Readonly<Record<string, string | undefined>>;
-export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext; sessionId: string; sessionFile: string | undefined; close: () => void }>;
+export type Admission = Readonly<{ client: EmployeeClient; context: NativeContext; sessionId: string; sessionFile: string | undefined; inputPath: string; close: () => void }>;
 export const inputSchema = z.object({ id: idSchema.optional(), text: z.string(), source: z.enum(["interactive", "rpc", "extension"]), images: z.array(jsonSchema).optional() });
 export type NativeRoot = Readonly<{ nativeSession: string; file: string; lastAssistant: unknown }>;
 export type NativeRootFn = (host: HostAPI, ctx: NativeContext) => Promise<NativeRoot>;
@@ -54,8 +54,8 @@ export async function paneEnvironment(environment: Environment): Promise<Readonl
   const workspaceId = environment.HERDR_WORKSPACE_ID?.trim();
   const location = paneId && workspaceId && session ? { paneId, workspaceId, session } :
     await herdrContext({ binary: environment.HERDR_BIN_PATH?.trim() || "herdr", session });
-  const requestedProfile: string = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim() || "default";
-  if (requestedProfile !== "default") throw new StartupBootError("Startup requires the stock OMP default profile; named profiles are unsupported");
+  const requestedProfile: string = (environment.OMP_PROFILE ?? environment.PI_PROFILE ?? "").trim();
+  if (requestedProfile !== "") throw new StartupBootError("Startup requires the stock OMP default profile; named profiles are unsupported");
   return {
     ...location, profile: "default",
   };
@@ -72,21 +72,27 @@ export function sameRoot(admission: Admission, ctx: NativeContext): boolean {
   return ctx.agent.kind === "main" && ctx.agent.id === admission.context.agent.id &&
     ctx.sessionManager.getSessionId() === admission.sessionId && ctx.sessionManager.getSessionFile() === admission.sessionFile;
 }
+export function assertNativeTranscript(input: Readonly<{ harness: "omp" | "claude"; startupRoot: string; ompConfigRoot: string; sessionId: string; file: string }>): void {
+  const root: string = input.harness === "omp" ? input.ompConfigRoot : input.startupRoot;
+  const directory: string = input.harness === "omp" ? "sessions" : "projects";
+  const path: string = relative(root, input.file);
+  if (!path.startsWith(directory + sep) || (input.harness === "claude" && basename(input.file) !== `${input.sessionId}.jsonl`)) throw new StartupBootError("Native transcript must belong to the selected harness session tree");
+  assertStartupPath(root, input.file, "file");
+}
 export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment, nativeRootOf: NativeRootFn): Promise<Admission> {
   const sessionId = ctx.sessionManager.getSessionId();
   const profile: Profile = verifyManifest(manifest);
-  if (environment.STARTUP_ROOT !== manifest.startupRoot || environment.JP_SKILLS_HOME !== manifest.skillsHome ||
-      (manifest.harness === "omp" && environment.PI_CODING_AGENT_DIR !== manifest.startupRoot) ||
-      (manifest.harness === "claude" && environment.CLAUDE_CONFIG_DIR !== manifest.startupRoot))
+  if ((environment.STARTUP_ROOT === undefined || resolve(environment.STARTUP_ROOT) !== manifest.startupRoot) || (environment.JP_SKILLS_HOME === undefined || resolve(environment.JP_SKILLS_HOME) !== manifest.skillsHome) ||
+      (manifest.harness === "omp" && (environment.PI_CODING_AGENT_DIR === undefined || resolve(environment.PI_CODING_AGENT_DIR) !== manifest.ompConfigRoot)) ||
+      (manifest.harness === "claude" && (environment.CLAUDE_CONFIG_DIR === undefined || resolve(environment.CLAUDE_CONFIG_DIR) !== manifest.startupRoot)))
     throw new StartupBootError("Employee process roots do not match the Startup launch manifest");
-  if (manifest.harness === "omp" && (environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim() || "default") !== "default")
+  if (manifest.harness === "omp" && (environment.OMP_PROFILE ?? environment.PI_PROFILE ?? "").trim() !== "")
     throw new StartupBootError("Startup requires the stock OMP default profile; named profiles are unsupported");
   const root: NativeRoot = await nativeRootOf(host, ctx);
+  assertNativeTranscript({ ...manifest, sessionId, file: root.file });
   const sessionFile = ctx.sessionManager.getSessionFile();
   if (ctx.sessionManager.getSessionId() !== sessionId) throw new StartupBootError("Native session changed while resolving admission identity");
   const nativeSession: string = root.nativeSession;
-  const actualProfile = environment.OMP_PROFILE?.trim() || environment.PI_PROFILE?.trim();
-  if (actualProfile && actualProfile !== manifest.profile) throw new StartupBootError("Actual named OMP profile differs from the launch manifest");
   const paneId: string = environment.HERDR_PANE_ID?.trim() || (await paneEnvironment(environment)).paneId;
   const agentSessionId: string | null = manifest.harness === "omp" ? ctx.sessionManager.getSessionId() : null;
   const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId, ...(agentSessionId === null ? {} : { agentSessionId }) });
@@ -100,7 +106,12 @@ export async function attach(host: HostAPI, ctx: NativeContext, manifest: Launch
   const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000, instructions: profileText(profile), lastAssistant: root.lastAssistant, ...(settingsReport === undefined ? {} : { settingsReport }) });
   try { await bridge.poll(); }
   catch (error: unknown) { bridge.close(); throw error; }
-  return { client, context: ctx, sessionId, sessionFile, close: bridge.close };
+  const directory: string = join(manifest.startupRoot, "input-receipts");
+  assertStartupPath(manifest.startupRoot, directory, "directory");
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const inputPath: string = join(directory, createHash("sha256").update(sessionId).digest("hex") + ".json");
+  assertStartupPath(manifest.startupRoot, inputPath, "file");
+  return { client, context: ctx, sessionId, sessionFile, inputPath, close: bridge.close };
 }
 function nativeResult(value: Json): NativeResult {
   const image = z.object({ type: z.literal("image"), data: z.string(), mimeType: z.string().startsWith("image/") }).passthrough().safeParse(value);
@@ -139,6 +150,8 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
       execute: async (_id, params, _signal, _update, ctx) => {
         const current: Admission | null = admission();
         if (current === null || !sameRoot(current, ctx)) throw new StartupBootError("Startup tool requires the admitted native root session");
+        const blocked = inputBlock(current);
+        if (blocked !== null) throw new StartupBootError(blocked);
         return execute(current, ctx, command(schema.parse(params)));
       },
     });
@@ -162,6 +175,8 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
     execute: async (_id, params, _signal, _update, ctx) => {
       const current = admission();
       if (current === null || !sameRoot(current, ctx)) throw new StartupBootError("Startup item requires the admitted native root session");
+      const blocked = inputBlock(current);
+      if (blocked !== null) throw new StartupBootError(blocked);
       return execute(current, ctx, { kind: "item", request: itemActionSchema.parse(params) });
     },
   });
@@ -182,11 +197,57 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
   register("startup_block", { key: text, evidence: json }, direct("block"));
   register("startup_retire", { employeeIds: strings, evidence: json }, direct("retire"));
 }
+const inputReceiptSchema = z.strictObject({
+  sessionId: idSchema, id: idSchema, digest: idSchema,
+  state: z.enum(["prepared", "failed", "uncertain", "committed"]),
+  source: z.enum(["interactive", "rpc"]), raw: z.strictObject({ text: z.string(), images: z.array(jsonSchema) }),
+});
+type InputReceipt = z.infer<typeof inputReceiptSchema>;
+function readInputReceipt(admission: Admission): InputReceipt | null {
+  if (!existsSync(admission.inputPath)) return null;
+  const receipt = inputReceiptSchema.parse(readPrivateJson(admission.inputPath));
+  if (receipt.sessionId !== admission.sessionId) throw new StartupBootError("Input receipt belongs to another native session");
+  return receipt;
+}
+function saveInputReceipt(admission: Admission, receipt: InputReceipt): void {
+  const temporary: string = `${admission.inputPath}.${randomUUID()}.tmp`;
+  writeFileSync(temporary, encode(receipt), { flag: "wx", mode: 0o600 });
+  renameSync(temporary, admission.inputPath);
+}
+export function inputBlock(admission: Admission): string | null {
+  const receipt = readInputReceipt(admission);
+  return receipt === null || receipt.state === "committed" ? null : `Startup input ${receipt.id} has ${receipt.state} delivery; preserve ${admission.inputPath}. /startup-retry checks the owner receipt without resending input.`;
+}
+export async function reconcileInput(admission: Admission): Promise<void> {
+  const receipt = readInputReceipt(admission);
+  if (receipt === null || receipt.state === "committed") return;
+  const observed = z.discriminatedUnion("state", [z.strictObject({ state: z.literal("committed"), id: idSchema, digest: idSchema }), z.strictObject({ state: z.literal("missing"), id: idSchema })]).parse(await admission.client.request({ kind: "receive_status", id: receipt.id }));
+  if (observed.id !== receipt.id || observed.state !== "committed" || observed.digest !== receipt.digest) throw new StartupBootError(`Input ${receipt.id} receipt is absent or differs; preserve the native input and local receipt for explicit reconciliation. No input was replayed.`);
+  saveInputReceipt(admission, { ...receipt, state: "committed" });
+}
 export async function receive(admission: Admission, event: unknown): Promise<string | null> {
   const parsed = inputSchema.parse(event);
   if (parsed.source === "extension") return null;
   const id: string = parsed.id ?? randomUUID();
-  await admission.client.request({ kind: "receive", id, source: parsed.source, raw: { text: parsed.text, images: parsed.images ?? [] } });
+  const raw = { text: parsed.text, images: parsed.images ?? [] };
+  const digest: string = createHash("sha256").update(encode({ source: parsed.source, raw })).digest("hex");
+  const previous = readInputReceipt(admission);
+  const blocked = inputBlock(admission);
+  if (blocked !== null) throw new StartupBootError(blocked);
+  if (previous?.id === id) {
+    if (previous.digest !== digest) throw new StartupBootError(`Native input ${id} changed its payload`);
+    return id;
+  }
+  const receipt: InputReceipt = { sessionId: admission.sessionId, id, digest, state: "prepared", source: parsed.source, raw };
+  saveInputReceipt(admission, receipt);
+  const beforeDispatch: boolean = admission.client.isClosed();
+  try {
+    await admission.client.request({ kind: "receive", id, source: parsed.source, raw });
+    saveInputReceipt(admission, { ...receipt, state: "committed" });
+  } catch (error: unknown) {
+    saveInputReceipt(admission, { ...receipt, state: beforeDispatch ? "failed" : "uncertain" });
+    throw new StartupBootError(`${inputBlock(admission)} Cause: ${error instanceof Error ? error.message : String(error)}`);
+  }
   return id;
 }
 export function installLaunchedEmployee(host: HostAPI, manifestPath: string): void {
@@ -206,8 +267,8 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
       const next = await attach(host, ctx, manifest, process.env, root);
       if (stopped) { next.close(); return; }
       admitted = next;
-      failure = null;
-      failureTurnPending = false;
+      failure = inputBlock(next);
+      failureTurnPending = failure !== null;
       if (retryTimer !== null) { ctx.clearTimer(retryTimer); retryTimer = null; }
     } catch (error: unknown) {
       const detail: string = error instanceof Error ? error.message : String(error);
@@ -229,10 +290,27 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
     }
   }
   async function retry(ctx: NativeContext): Promise<void> {
-    if (stopped || ctx.agent.kind !== "main" || admitted !== null) return;
+    if (stopped || ctx.agent.kind !== "main") return;
+    if (admitted !== null) {
+      if (!sameRoot(admitted, ctx)) {
+        admitted.close(); stopped = true;
+        failure = "Native session changed; explicit relaunch is required before admission";
+        host.sendMessage({ customType: "startup-boot-error", content: failure, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+        ctx.abort?.(); return;
+      }
+      if (!admitted.client.isClosed()) {
+        try { await reconcileInput(admitted); failure = null; }
+        catch (error: unknown) { failure = error instanceof Error ? error.message : String(error); ctx.abort?.(); }
+        return;
+      }
+      admitted.close();
+      admitted = null;
+    }
     if (pending !== null) return pending;
     pending = initialize(ctx);
-    try { await pending; } finally { pending = null; }
+    try { await pending; if (admitted !== null) { await reconcileInput(admitted); failure = null; } }
+    catch (error: unknown) { failure = error instanceof Error ? error.message : String(error); ctx.abort?.(); }
+    finally { pending = null; }
   }
   host.on("tool_call", (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
@@ -268,7 +346,17 @@ export function installLaunchedEmployeeWith(host: HostAPI, manifestPath: string,
     return { continue: true, additionalContext: `Startup employee blocked: ${failure}` };
   });
   host.on("input", async (event, ctx) => {
-    if (failure === null && admitted !== null && sameRoot(admitted, ctx)) await receive(admitted, event);
+    if (failure === null && admitted !== null && sameRoot(admitted, ctx)) {
+      try { await receive(admitted, event); }
+      catch (error: unknown) {
+        failure = error instanceof Error ? error.message : String(error);
+        failureTurnPending = true;
+        host.sendMessage({ customType: "startup-input-blocked", content: failure, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
+        ctx.abort?.();
+        return { handled: true };
+      }
+    }
+    return;
   });
 }
 

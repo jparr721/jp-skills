@@ -29,6 +29,7 @@ export type EmployeeClient = Readonly<{
   poll: (settingsReport?: OmpSessionSettingsReport) => Promise<EmployeePoll>;
   close: () => void;
   settlementBlock: () => string | null;
+  isClosed: () => boolean;
 }>;
 export type EmployeeBridgeHost = Pick<HostAPI, "on" | "sendMessage">;
 function isEmployeeTool(event: unknown): boolean {
@@ -254,6 +255,7 @@ export async function connectEmployee(input: Readonly<{
         throw failure;
       }
     },
+    isClosed: () => closed,
     settlementBlock: () => settlementBlocked?.message ?? commandBlocked?.message ?? null,
     async poll(settingsReport?: OmpSessionSettingsReport): Promise<EmployeePoll> {
       const unchanged = settingsReport !== undefined && previousReport !== undefined && settingsReport.nativeSession === previousReport.nativeSession && settingsReport.agentSessionId === previousReport.agentSessionId && (

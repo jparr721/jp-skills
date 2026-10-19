@@ -9,9 +9,13 @@ import {
 import type { Stats } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
+import { homedir } from "node:os";
 import { scopeSchema, type Scope } from "./contracts";
 
 export class StartupBootError extends Error {}
+export function executionConfigHome(xdg: string | undefined): string {
+  return xdg !== undefined && isAbsolute(xdg) ? resolve(xdg) : join(homedir(), ".config");
+}
 const nameSchema = z.string().regex(/^[a-zA-Z0-9_-]+$/);
 const limitSchema = z.number().int().positive().safe().nullable();
 const bindingSchema = z.strictObject({ scope: scopeSchema, executionLimit: limitSchema });

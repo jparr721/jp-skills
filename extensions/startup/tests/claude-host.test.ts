@@ -81,9 +81,9 @@ async function employeeFixture(options: Readonly<{ instructions: string | null; 
   f.setPoll({ projection: `${text}\nLIVE STATE A` });
   mkdirSync(join(f.startupRoot, "launches"), { mode: 0o700 });
   const manifest: string = join(f.startupRoot, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
+  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", ompConfigRoot: join(f.configHome, "ronin"), skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
   useEnvironment({ HERDR_PANE_ID: "w1:p2", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot });
-  const transcript: string = join(f.root, `${sessionId}.jsonl`);
+  const transcript: string = join(f.startupRoot, "projects", "fixture", `${sessionId}.jsonl`);
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd: f.root, instructions: options.instructions === null ? text : options.instructions, transcript: () => transcript, formatGuardMs: options.formatGuardMs });
   cleanup.push(() => shim.shutdown());
   installLaunchedEmployeeWith(shim.host, manifest, claudeRoot({ sessionId, transcript: () => transcript }));
@@ -246,9 +246,9 @@ test("a cue raised before any waiter is armed fires when the first waiter arrive
   f.setPoll({ projection: `${profileText(profile)}\nLIVE STATE A` });
   mkdirSync(join(f.startupRoot, "launches"), { mode: 0o700 });
   const manifest: string = join(f.startupRoot, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
+  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", ompConfigRoot: join(f.configHome, "ronin"), skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
   useEnvironment({ HERDR_PANE_ID: "w1:p2", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot });
-  const transcript: string = join(f.root, `${sessionId}.jsonl`);
+  const transcript: string = join(f.startupRoot, "projects", "fixture", `${sessionId}.jsonl`);
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd: f.root, instructions: profileText(profile), transcript: () => transcript, formatGuardMs: 10000 });
   cleanup.push(() => shim.shutdown());
   installLaunchedEmployeeWith(shim.host, manifest, claudeRoot({ sessionId, transcript: () => transcript }));
@@ -422,7 +422,7 @@ test("manager /startup new boots inside UserPromptSubmit through the unchanged V
   const f = coordinatorFixture();
   const cwd: string = join(f.root, "repo");
   mkdirSync(cwd);
-  const transcript: string = join(f.root, "manager.jsonl");
+  const transcript: string = join(f.startupRoot, "projects", "fixture", `${sessionId}.jsonl`);
   const environment: Readonly<Record<string, string>> = { HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", STARTUP_EXECUTION_LIMIT: "4", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot };
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd, instructions: null, transcript: () => transcript, formatGuardMs: 10000 });
   cleanup.push(() => shim.shutdown());
@@ -462,4 +462,16 @@ test("the JSON Schema builder emits strict objects and anyOf unions", () => {
     { type: "object", properties: { action: { type: "string", enum: ["qa", "gate"] }, count: { type: "number" }, evidence: {} }, required: ["action", "count", "evidence"], additionalProperties: false },
   ] });
   expect(() => b.array({ type: "string" })).toThrow("Claude JSON Schema builder");
+});
+
+test("failed durable input remains visible and fences Claude work without replay", async () => {
+  const f = await employeeFixture(defaults);
+  f.respond("receive", new Response("lost response after owner commit", { status: 503 }));
+  await f.shim.ledger({ kind: "human", id: "uncertain-input", promptId: null, text: "important work", images: [] });
+  const blocked = await f.shim.hook(pre("Bash", "", ""));
+  expect(JSON.stringify(blocked)).toContain("uncertain-input");
+  expect(JSON.stringify(blocked)).toContain("deny");
+  const count = f.kinds().filter((kind) => kind === "receive").length;
+  await f.shim.ledger({ kind: "human", id: "uncertain-input", promptId: null, text: "important work", images: [] });
+  expect(f.kinds().filter((kind) => kind === "receive")).toHaveLength(count);
 });

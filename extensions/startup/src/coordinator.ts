@@ -11,10 +11,11 @@ import { loadProfile, ompSettingsArgs, profileText, verifyProfile, type Profile 
 import { effectiveRoleSettingsSchema, settingsSampleSchema, ompSessionSettingsReportSchema, runtimeCapabilitySchema, runtimeHarnessSchema, runtimePolicySchema, type EffectiveRoleSettings, type OmpSessionSettingsReport, type RuntimeBinding, type RuntimeCapability, type RuntimePolicy } from "./runtime-contracts";
 import type { StartupStore } from "./store";
 import type { HerdrObservation, HerdrRuntime } from "./herdr-runtime";
+import { readPreparedManagerSettings } from "./v7-launch";
 import { claudeEmployeeArgs, writeClaudeFiles } from "./claude-launch";
 
 export type OmpCoordinatorConfig = Readonly<{
-  name: string; stateDirectory: string; startupRoot: string; skillsHome: string; boundRoot: string; skillsRoot: string;
+  ompConfigRoot: string; name: string; stateDirectory: string; startupRoot: string; skillsHome: string; boundRoot: string; skillsRoot: string;
   socketPath: string; profile: string; herdrIntegration: string;
   managerSession: string; managerFile: string; managerPaneId: string;
   managerCredential: string; policy: RuntimePolicy;
@@ -39,6 +40,7 @@ const commandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("replace"), employeeId: idSchema, evidence: jsonSchema }),
   z.strictObject({ kind: z.literal("intake"), eventId: idSchema, input: jsonSchema, amendItemIds: z.array(idSchema) }),
   z.strictObject({ kind: z.literal("route"), inputId: idSchema, disposition: z.enum(["work", "status", "control", "conversation", "decision"]), reason: z.string().min(1), amendItemIds: z.array(idSchema) }),
+  z.strictObject({ kind: z.literal("receive_status"), id: idSchema }),
   z.strictObject({ kind: z.literal("receive"), id: idSchema, source: z.enum(["interactive", "rpc"]), raw: z.strictObject({ text: z.string(), images: z.array(jsonSchema) }) }),
   z.strictObject({ kind: z.literal("input"), inputId: idSchema, offset: z.number().int().nonnegative() }),
   z.strictObject({ kind: z.literal("image"), inputId: idSchema, index: z.number().int().nonnegative() }),
@@ -135,7 +137,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     const harness = runtimeHarnessSchema.parse(current.settings.requested.harness);
     const path = join(launchDirectory, `${current.launchId}.json`);
     assertStartupPath(root, path, "file");
-    const manifest = encode({ socketPath: config.socketPath, credential, source: current.source, employeeId: current.employeeId, generation: current.generation, profile: config.profile, harness, skillsHome: config.skillsHome, startupRoot: config.startupRoot, skillsRoot: config.skillsRoot });
+    const manifest = encode({ socketPath: config.socketPath, credential, source: current.source, employeeId: current.employeeId, generation: current.generation, profile: config.profile, harness, ompConfigRoot: config.ompConfigRoot, skillsHome: config.skillsHome, startupRoot: config.startupRoot, skillsRoot: config.skillsRoot });
     if (existsSync(path)) {
       if (lstatSync(path).isSymbolicLink() || readFileSync(path, "utf8") !== manifest)
         throw new StoreConflictError("Launch manifest ownership conflicts with its reserved generation");
@@ -163,7 +165,10 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       return existing;
     }
     const source = profile(current, generation).source;
-    const prepared: RuntimeBinding = { employeeId: id, generation, launchId: randomUUID(), credentialDigest: digest(credential), source, settings: store.roleSettings(current.role), paneId: null, terminalId: null, tabId: null, nativeSession: null, state: "prepared", error: null, lastSeen: now(), lastPoll: 0, lastProgress: now(), turnActive: false, stateSequence: null, observedState: null };
+    const selected = store.roleSettings(current.role);
+    const frozen = current.role === "manager" ? readPreparedManagerSettings(store.scope) : null;
+    if (current.role === "manager" && frozen === null && (selected.revision !== 0 || selected.requested.model.value !== null || selected.requested.effort.value !== null)) throw new StoreConflictError("Manager settings require prepareManagerLaunch before a genuinely new native process; existing sessions cannot adopt saved settings");
+    const prepared: RuntimeBinding = { employeeId: id, generation, launchId: randomUUID(), credentialDigest: digest(credential), source, settings: frozen ?? selected, paneId: null, terminalId: null, tabId: null, nativeSession: null, state: "prepared", error: null, lastSeen: now(), lastPoll: 0, lastProgress: now(), turnActive: false, stateSequence: null, observedState: null };
     launchFiles(prepared, credential);
     return store.prepareRuntime(prepared);
   }
@@ -234,7 +239,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     try {
       const selected = current.settings.requested;
       const args = harness === "omp"
-        ? ["--profile", config.profile, "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot, ...ompSettingsArgs(current.settings)]
+        ? ["--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot, ...ompSettingsArgs(current.settings)]
         : (() => {
           const files = claudeRuntimeFiles();
           return claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: files.settingsFile, mcpFile: files.mcpFile, name, model: selected.model.value, effort: selected.effort.value });
@@ -289,7 +294,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     assertStartupPath(root, manifest, "file");
     const base: Readonly<Record<string, string>> = { JP_SKILLS_HOME: config.skillsHome, STARTUP_ROOT: config.startupRoot, STARTUP_V7_MANIFEST: manifest };
     return current.settings.requested.harness === "omp"
-      ? { ...base, OMPCODE: "", OMP_PROFILE: "default", PI_PROFILE: "default", PI_CODING_AGENT_DIR: config.startupRoot, STARTUP_HERDR_OMP_EXTENSION: config.herdrIntegration }
+      ? { ...base, OMPCODE: "", OMP_PROFILE: "", PI_PROFILE: "", PI_CODING_AGENT_DIR: config.ompConfigRoot, STARTUP_HERDR_OMP_EXTENSION: config.herdrIntegration }
       : { ...base, CLAUDE_CONFIG_DIR: config.startupRoot };
   }
   async function createEmployeeTab(id: string, label: string): Promise<Readonly<{ tabId: string; paneId: string }>> {
@@ -411,6 +416,17 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
       case "item":
         if ((request.request.action === "decide" && ["MERGED", "DONE"].includes(request.request.status)) || (request.request.action === "gate" && request.request.verdict === "APPROVE")) requirePA();
         output = store.transitionItem({ employee: current.binding, request: request.request }); break;
+      case "receive_status": {
+        const snapshot = store.snapshot();
+        const saved = current.employee.role === "manager"
+          ? snapshot.inputs.find((entry) => entry.id === request.id)
+          : snapshot.messages.find((entry) => entry.id === `pane-input-${request.id}`)?.payload;
+        const parsed = z.object({ source: z.enum(["interactive", "rpc"]), raw: rawInputSchema, employeeId: idSchema.optional() }).safeParse(saved);
+        if (!parsed.success) { output = { state: "missing", id: request.id }; break; }
+        if (current.employee.role !== "manager" && parsed.data.employeeId !== current.employee.id) throw new StoreAuthorityError("Input receipt belongs to another employee");
+        output = { state: "committed", id: request.id, digest: digest(encode({ source: parsed.data.source, raw: parsed.data.raw })) };
+        break;
+      }
       case "receive":
         if (current.employee.role === "manager") output = store.receiveInput({ receivedAt: now(), disposition: null, id: request.id, source: request.source, raw: request.raw });
         else output = store.runtimeAlert({ id: `pane-input-${request.id}`, correlation: current.employee.assignment ?? current.employee.id, payload: { kind: "direct-pane-input", employeeId: current.employee.id, source: request.source, raw: request.raw, receivedAt: now() } });
@@ -715,7 +731,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     },
     command(connection, command) {
       const kind = commandSchema.parse(command).kind;
-      if (["claim", "begin_turn", "end_turn", "staff", "settle", "send", "item", "capture", "input", "image", "receive"].includes(kind)) return execute(connection, command);
+      if (["claim", "begin_turn", "end_turn", "staff", "settle", "send", "item", "capture", "input", "image", "receive", "receive_status"].includes(kind)) return execute(connection, command);
       const operation = serial.then(() => execute(connection, command));
       serial = operation.then(() => undefined, () => undefined);
       return operation;

@@ -1,16 +1,60 @@
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { hostname } from "node:os";
-import { readOwnerControl } from "./store";
-import { runtimePolicySchema } from "./runtime-contracts";
-import { assertStartupPath, ensureStartupRoot } from "./boot";
+import { openStore, readOwnerControl } from "./store";
+import type { Environment } from "./employee-entry";
+import { encode, scopeSchema, type Scope } from "./contracts";
+import { savedRoleSettingsSchema, runtimePolicySchema, type SavedRoleSettings } from "./runtime-contracts";
+import { assertStartupPath, ensureStartupRoot, StartupBootError } from "./boot";
 
+export function integrationPath(environment: Environment): string {
+  const path: string = realpathSync(z.string().startsWith("/").parse(environment.STARTUP_HERDR_OMP_EXTENSION));
+  const source: string = readFileSync(path, "utf8");
+  if (!/^\/\/ HERDR_INTEGRATION_ID=omp$/m.test(source) || !/^\/\/ HERDR_INTEGRATION_VERSION=[1-9]\d*$/m.test(source))
+    throw new StartupBootError("Startup requires the managed Herdr OMP integration headers; configure STARTUP_HERDR_OMP_EXTENSION with its canonical file");
+  return path;
+}
+const preparedManagerSchema = z.strictObject({ scope: scopeSchema, settings: savedRoleSettingsSchema });
+export function readPreparedManagerSettings(scope: Scope): SavedRoleSettings | null {
+  const path: string = join(scope.startupRoot, "manager-launch.json");
+  assertStartupPath(scope.startupRoot, path, "file");
+  if (!existsSync(path)) return null;
+  const saved = preparedManagerSchema.parse(readPrivateJson(path));
+  if (encode(saved.scope) !== encode(scope) || saved.settings.role !== "manager") throw new StartupBootError("Prepared manager launch belongs to another Startup/native identity");
+  return saved.settings;
+}
+export function prepareManagerLaunch(input: Readonly<{ scope: Scope; harness: "omp" | "claude"; now: () => number; expectedControl: Readonly<{ ownerEpoch: number; revision: number }> | null }>): SavedRoleSettings {
+  const scope: Scope = scopeSchema.parse(input.scope);
+  const lockPath: string = join(scope.startupRoot, "runtime-launch.lock");
+  assertStartupPath(scope.startupRoot, lockPath, "file");
+  const lock: number = openSync(lockPath, "wx", 0o600);
+  try {
+  const existing = readPreparedManagerSettings(scope);
+  if (existing !== null) {
+    const current = readOwnerControl(scope);
+    if (current.archived || current.leaseExpires > input.now()) throw new StartupBootError("Prepared manager launch refuses an archived Startup or live owner");
+    if (input.expectedControl !== null && (current.ownerEpoch !== input.expectedControl.ownerEpoch || current.revision !== input.expectedControl.revision)) throw new StartupBootError("Prepared manager launch snapshot changed");
+    if (existing.requested.harness !== input.harness) throw new StartupBootError("Prepared manager harness differs; reconcile the prior native launch before another launch");
+    return existing;
+  }
+  const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: randomUUID(), managerGeneration: 1, leaseMs: 60000 }, now: input.now, ...(input.expectedControl === null ? {} : { expectedControl: input.expectedControl }) });
+  try {
+    store.initializeRoleSettings(input.harness);
+    const settings: SavedRoleSettings = store.freezeManagerSettings(input.harness);
+    const path: string = join(scope.startupRoot, "manager-launch.json");
+    assertStartupPath(scope.startupRoot, path, "file");
+    writeFileSync(path, encode({ scope, settings }), { flag: "wx", mode: 0o600 });
+    return settings;
+  } finally { store.close(); }
+  } finally { closeSync(lock); unlinkSync(lockPath); }
+}
 const ompConfigSchema = z.strictObject({
   name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
-  skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
+  ompConfigRoot: z.string().startsWith("/"), skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
   boundRoot: z.string().startsWith("/"), skillsRoot: z.string().startsWith("/"),
   socketPath: z.string().startsWith("/"), profile: z.literal("default"),
   managerSession: z.string().min(1), managerFile: z.string().startsWith("/"),
@@ -150,9 +194,9 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
           ...process.env,
           JP_SKILLS_HOME: config.skillsHome,
           STARTUP_ROOT: config.startupRoot,
-          PI_CODING_AGENT_DIR: config.startupRoot,
-          OMP_PROFILE: "default",
-          PI_PROFILE: "default",
+          PI_CODING_AGENT_DIR: config.ompConfigRoot,
+          OMP_PROFILE: "",
+          PI_PROFILE: "",
           OMPCODE: "",
           ...("harness" in config ? { CLAUDE_CONFIG_DIR: config.startupRoot } : {}),
         },

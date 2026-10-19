@@ -2,11 +2,16 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { executeHostControl, type HostControlRuntime } from "../host-control";
-import { ownerControlReceiptSchema, type Scope } from "../src/contracts";
-import { launchRuntimeHost, type RuntimeHostConfig } from "../src/v7-launch";
+import { executeHostControl as executeTypedHostControl, hostControlResponseSchema, hostControlReceiptSchema, type HostControlRuntime } from "../host-control";
+import { type Scope } from "../src/contracts";
+import { prepareManagerLaunch, launchRuntimeHost, type RuntimeHostConfig } from "../src/v7-launch";
 import { openStore, readOwnerControl } from "../src/store";
 
+async function executeHostControl(value: unknown, runtime: HostControlRuntime) {
+  const response = await executeTypedHostControl(value, runtime);
+  if (response.operation === "receipt") return response.result.state === "found" ? response.result.receipt : null;
+  return response.result;
+}
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture() {
@@ -24,7 +29,7 @@ function fixture() {
 test("cold create and list need no running owner and select is read-only", async () => {
   const f = fixture();
   expect(await executeHostControl({ kind: "list", configHome: f.configHome, after: null, limit: 10 }, f.runtime)).toEqual({ rows: [], nextCursor: null });
-  const created = ownerControlReceiptSchema.parse(await executeHostControl(f.create, f.runtime));
+  const created = hostControlReceiptSchema.parse(await executeHostControl(f.create, f.runtime));
   expect(created).toMatchObject({ state: "committed", kind: "create", sideEffects: "root_initialized" });
   expect(await executeHostControl(f.create, f.runtime)).toEqual(created);
   const before = readOwnerControl(f.scope);
@@ -74,7 +79,7 @@ test("cold resume cannot create a replacement manager and cross-root requests fa
 });
 
 function runtimeConfig(f: ReturnType<typeof fixture>): RuntimeHostConfig {
-  return { name: f.scope.name, skillsHome: f.scope.skillsHome, startupRoot: f.scope.startupRoot, stateDirectory: f.scope.startupRoot, boundRoot: f.scope.boundRoot, skillsRoot: f.create.skillsRoot, socketPath: join(f.scope.startupRoot, "runtime.sock"), profile: "default", managerSession: f.scope.managerSession, managerFile: join(f.scope.startupRoot, "manager.jsonl"), managerPaneId: "w1:p1", managerCredential: "private-fixture", herdrSession: "fixture", workspaceId: "w1", herdrBinary: "herdr", herdrIntegration: "/fixture/herdr-agent-state.sh", ownerGeneration: 1, policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 4 } };
+  return { name: f.scope.name, ompConfigRoot: join(f.configHome, "ronin"), skillsHome: f.scope.skillsHome, startupRoot: f.scope.startupRoot, stateDirectory: f.scope.startupRoot, boundRoot: f.scope.boundRoot, skillsRoot: f.create.skillsRoot, socketPath: join(f.scope.startupRoot, "runtime.sock"), profile: "default", managerSession: f.scope.managerSession, managerFile: join(f.scope.startupRoot, "manager.jsonl"), managerPaneId: "w1:p1", managerCredential: "private-fixture", herdrSession: "fixture", workspaceId: "w1", herdrBinary: "herdr", herdrIntegration: "/fixture/herdr-agent-state.sh", ownerGeneration: 1, policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 4 } };
 }
 test("uncertain resume is looked up without replay and concurrent creates cannot duplicate initialization", async () => {
   const f = fixture();
@@ -128,4 +133,49 @@ test("cold create excludes a distinct request while another process owns initial
   expect(await executeHostControl(f.create, f.runtime)).toMatchObject({ state: "committed" });
   await expect(executeHostControl({ ...f.create, requestId: "second-request", harness: "claude" }, f.runtime)).rejects.toThrow("already has a binding");
   expect(readOwnerControl(f.scope).settings.every((entry) => entry.requested.harness === "omp")).toBe(true);
+});
+
+test("host output identifies the operation and typed missing receipt", async () => {
+  const f = fixture();
+  const created = await executeTypedHostControl(f.create, f.runtime);
+  expect(created).toMatchObject({ operation: "create", result: { state: "committed", kind: "create" } });
+  expect(await executeTypedHostControl({ kind: "receipt", scope: f.scope, requestId: "missing" }, f.runtime)).toEqual({ operation: "receipt", result: { state: "missing", requestId: "missing" } });
+  expect(hostControlResponseSchema.safeParse({ ...created, operation: "archive" }).success).toBe(false);
+  if (created.operation !== "create") throw new Error("Expected create response");
+  expect(hostControlResponseSchema.safeParse({ ...created, result: { ...created.result, state: "missing_session" } }).success).toBe(false);
+});
+
+test("OMP manager preparation freezes applied settings before launch and receipt replay", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  const cold = readOwnerControl(f.scope);
+  await executeHostControl({ kind: "settings_apply", requestId: "manager-settings", scope: f.scope, expectedOwnerEpoch: cold.ownerEpoch, expectedRevision: cold.revision, role: "manager", harness: "omp", model: "provider/model", effort: "high", baseSettingsRevision: 0 }, f.runtime);
+  const saved = readOwnerControl(f.scope);
+  const request = { kind: "prepare_manager", scope: f.scope, requestId: "prepare-1", harness: "omp", expectedOwnerEpoch: saved.ownerEpoch, expectedRevision: saved.revision };
+  const prepared = await executeHostControl(request, f.runtime);
+  expect(prepared).toMatchObject({ state: "committed", sideEffects: "manager_prepared", result: { argv: ["--model", "provider/model", "--thinking", "high"], settings: { revision: 1 } } });
+  const after = readOwnerControl(f.scope);
+  await executeHostControl({ kind: "settings_apply", requestId: "later-settings", scope: f.scope, expectedOwnerEpoch: after.ownerEpoch, expectedRevision: after.revision, role: "manager", harness: "omp", model: "provider/later", effort: "low", baseSettingsRevision: 1 }, f.runtime);
+  expect(await executeHostControl(request, f.runtime)).toEqual(prepared);
+  await expect(executeHostControl({ ...request, harness: "claude" }, f.runtime)).rejects.toThrow("payload conflict");
+});
+
+test("manager preparation excludes archive and rejects stale acquisition without freezing", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  const cold = readOwnerControl(f.scope);
+  const request = { kind: "prepare_manager", scope: f.scope, requestId: "locked-prep", harness: "omp", expectedOwnerEpoch: cold.ownerEpoch, expectedRevision: cold.revision };
+  const lock = join(f.scope.startupRoot, "runtime-launch.lock");
+  writeFileSync(lock, "archive in progress", { mode: 0o600 });
+  await expect(executeHostControl(request, f.runtime)).rejects.toThrow("exist");
+  expect(existsSync(join(f.scope.startupRoot, "manager-launch.json"))).toBe(false);
+  rmSync(lock);
+});
+test("wrong manager harness cannot freeze selection for a later launch", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  expect(() => prepareManagerLaunch({ scope: f.scope, harness: "claude", now: f.runtime.now, expectedControl: null })).toThrow("harness");
+  const current = readOwnerControl(f.scope);
+  await executeHostControl({ kind: "settings_apply", requestId: "correct-harness", scope: f.scope, expectedOwnerEpoch: current.ownerEpoch, expectedRevision: current.revision, role: "manager", harness: "claude", model: "sonnet", effort: "high", baseSettingsRevision: 0 }, f.runtime);
+  expect(prepareManagerLaunch({ scope: f.scope, harness: "claude", now: f.runtime.now, expectedControl: null }).requested.harness).toBe("claude");
 });

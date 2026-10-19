@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { hostname } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { bridgeInstructions, claudeEntryConfig } from "../claude-bridge";
@@ -9,7 +9,8 @@ import { bootSelection, parseBootCommand, persistBinding, StartupBootError } fro
 import { claudeSettings } from "../src/claude-launch";
 import { ClaudeBridgeSocketError, ClaudeWaiterPathTooLongError, exchangeBridge, startupRoot, waiterSocketPath } from "../src/claude-waiter";
 import { jsonSchema, type Json } from "../src/contracts";
-import { loadProfile, profileText } from "../src/profiles";
+import { openStore } from "../src/store";
+import { validateRoleSettings, loadProfile, profileText } from "../src/profiles";
 
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
@@ -82,7 +83,7 @@ function bridgeFixture(mode: "employee" | "manager") {
   cleanup.push(() => { server.stop(true); });
   mkdirSync(join(startupRootPath, "launches"), { mode: 0o700 });
   const manifest: string = join(startupRootPath, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: home, startupRoot: startupRootPath, skillsRoot }), { mode: 0o600 });
+  writeFileSync(manifest, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", ompConfigRoot: join(configHome, "ronin"), skillsHome: home, startupRoot: startupRootPath, skillsRoot }), { mode: 0o600 });
   writeFileSync(join(startupRootPath, "launches", `${sessionId}.prompt.md`), text, { mode: 0o600 });
   if (mode === "manager") {
     const selection = bootSelection({ cwd: repo, skillsHome: home, startupRoot: startupRootPath, configHome, skillsRoot, host: hostname(), managerSession: sessionId, command: parseBootCommand("new acme"), explicitName: null, executionLimit: null });
@@ -112,7 +113,8 @@ function bridgeFixture(mode: "employee" | "manager") {
     cleanup.push(() => { process.kill(); });
     return process;
   }
-  return { root, home, startupRoot: startupRootPath, child, commands, admissions, errors, rpc, spawnHook, transcript: join(root, "t.jsonl"), setPending(value: readonly string[]): void { pending = value; }, respond(kind: string, response: Response): void { commandResponses.set(kind, response); } };
+  mkdirSync(join(startupRootPath, "projects", "fixture"), { recursive: true, mode: 0o700 });
+  return { root, home, startupRoot: startupRootPath, child, commands, admissions, errors, rpc, spawnHook, transcript: join(startupRootPath, "projects", "fixture", `${sessionId}.jsonl`), setPending(value: readonly string[]): void { pending = value; }, respond(kind: string, response: Response): void { commandResponses.set(kind, response); } };
 }
 const hookText = (result: Json): Json => jsonSchema.parse(JSON.parse(z.object({ content: z.tuple([z.object({ type: z.literal("text"), text: z.string() })]) }).parse(result).content[0].text));
 const publicToolProperties = {
@@ -339,7 +341,7 @@ function managerFixture() {
   persistBinding(selection);
   const environment: Record<string, string> = { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p1", STARTUP_NAME: "acme", STARTUP_ROOT: startupRoot, JP_SKILLS_HOME: home, CLAUDE_CONFIG_DIR: startupRoot, XDG_CONFIG_HOME: configHome };
   const config = {
-    name: "acme", skillsHome: home, startupRoot, stateDirectory: startupRoot, boundRoot: repo, skillsRoot, socketPath: join(startupRoot, "runtime.sock"), profile: "default",
+    name: "acme", ompConfigRoot: join(configHome, "ronin"), skillsHome: home, startupRoot, stateDirectory: startupRoot, boundRoot: repo, skillsRoot, socketPath: join(startupRoot, "runtime.sock"), profile: "default",
     managerSession: sessionId, managerFile: join(root, "manager.jsonl"), managerPaneId: "w1:p1", managerCredential: "private-credential",
     herdrSession: "fixture", workspaceId: "w1", herdrBinary: "herdr", herdrIntegration: "/fixture/herdr-agent-state.sh", ownerGeneration: 1,
     policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 4 },
@@ -403,4 +405,37 @@ test("native clear identity revokes an already admitted MCP bridge", async () =>
   expect(await f.rpc({ id: 3, method: "tools/call", params: { name: "startup_claim", arguments: { itemId: "q" } } })).toMatchObject({ isError: true });
   expect(f.commands).toHaveLength(count);
   expect(f.admissions).toHaveLength(1);
+});
+
+test("Claude entry resolves the OMP child integration independently of its own hook", () => {
+  const root = shortRoot();
+  const extension = join(root, "herdr.ts");
+  writeFileSync(extension, "// HERDR_INTEGRATION_ID=omp\n// HERDR_INTEGRATION_VERSION=1\n");
+  const env = { STARTUP_HERDR_OMP_EXTENSION: extension, CLAUDE_CONFIG_DIR: root };
+  const entry = claudeEntryConfig(env, sessionId, () => null);
+  expect(entry.integration(env)).toBe(extension);
+});
+
+test("new Claude manager consumes saved model and effort once while resume preserves native settings", () => {
+  const f = managerFixture();
+  const scope = { skillsHome: f.home, startupRoot: f.startupRoot, boundRoot: f.repo, host: hostname(), name: "acme", managerSession: sessionId };
+  const store = openStore({ path: join(f.startupRoot, "staff.sqlite"), scope, owner: { id: "fixture", managerGeneration: 1, leaseMs: 1000 }, now: () => 1000 });
+  store.initializeRoleSettings("claude");
+  const selected = validateRoleSettings({ role: "manager", harness: "claude", model: "sonnet", effort: "high" });
+  if (selected.status !== "accepted") throw new Error(selected.reason);
+  store.saveRoleSettings({ manager: store.managerBinding, requested: selected.requested, expectedRevision: 0 });
+  store.close();
+  const args = managerLaunch(f.input);
+  expect(args).toContain("--model"); expect(args[args.indexOf("--model") + 1]).toBe("sonnet");
+  expect(args[args.indexOf("--effort") + 1]).toBe("high");
+  f.save({ ...f.config, harness: "claude" });
+  const resume = managerLaunch(f.input);
+  expect(resume[0]).toBe("--resume"); expect(resume).not.toContain("--model"); expect(resume).not.toContain("--effort");
+});
+
+test.each([undefined, "", "relative-config"])("native entry uses execution-user config home for invalid XDG value %s", (xdg) => {
+  const environment = xdg === undefined ? {} : { XDG_CONFIG_HOME: xdg };
+  const entry = claudeEntryConfig(environment, sessionId, () => null);
+  expect(entry.configHome).toBe(join(homedir(), ".config"));
+  expect(entry.skillsHome).toBe(join(homedir(), ".config", "jp-skills"));
 });

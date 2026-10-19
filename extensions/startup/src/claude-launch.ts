@@ -38,8 +38,8 @@ function sharedArgs(input: Readonly<{ promptFile: string; settingsFile: string; 
 export function claudeEmployeeArgs(input: Readonly<{ sessionId: string; promptFile: string; settingsFile: string; mcpFile: string; name: string; model: string | null; effort: string | null }>): readonly string[] {
   return ["--session-id", input.sessionId, ...(input.model === null ? [] : ["--model", input.model]), ...(input.effort === null ? [] : ["--effort", input.effort]), ...sharedArgs(input)];
 }
-export function claudeManagerArgs(input: Readonly<{ session: Readonly<{ kind: "new" | "resume"; id: string }>; promptFile: string; settingsFile: string; mcpFile: string }>): readonly string[] {
-  return [input.session.kind === "new" ? "--session-id" : "--resume", input.session.id, ...sharedArgs({ ...input, name: "startup-manager" })];
+export function claudeManagerArgs(input: Readonly<{ session: Readonly<{ kind: "new" | "resume"; id: string }>; model: string | null; effort: string | null; promptFile: string; settingsFile: string; mcpFile: string }>): readonly string[] {
+  return [input.session.kind === "new" ? "--session-id" : "--resume", input.session.id, ...(input.session.kind === "resume" || input.model === null ? [] : ["--model", input.model]), ...(input.session.kind === "resume" || input.effort === null ? [] : ["--effort", input.effort]), ...sharedArgs({ ...input, name: "startup-manager" })];
 }
 function privateFile(path: string, content: string): void {
   if (!existsSync(path)) { writeFileSync(path, content, { flag: "wx", mode: 0o600 }); return; }
