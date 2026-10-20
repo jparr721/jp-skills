@@ -191,7 +191,7 @@ function fixture() {
   writeFileSync(integration, "// installed by herdr\n// HERDR_INTEGRATION_ID=omp\n// HERDR_INTEGRATION_VERSION=10\n");
   const environment: Record<string, string | undefined> = {
     HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", OMP_PROFILE: "", STARTUP_HERDR_OMP_EXTENSION: integration,
-    JP_SKILLS_HOME: skillsHome, STARTUP_ROOT: startupRoot, PI_CODING_AGENT_DIR: join(configHome, "ronin"), CLAUDE_CONFIG_DIR: startupRoot,
+    JP_SKILLS_HOME: skillsHome, STARTUP_ROOT: startupRoot, PI_CODING_AGENT_DIR: join(configHome, "ronin"), CLAUDE_CONFIG_DIR: startupRoot, XDG_CONFIG_HOME: configHome,
   };
   function useEnvironment(): void {
     const previous = new Map<string, string | undefined>();
@@ -221,7 +221,7 @@ function entryRoots(f: ReturnType<typeof fixture>, startupRoot: string | null = 
     f.environment.PI_CODING_AGENT_DIR = join(f.configHome, "ronin");
     f.environment.CLAUDE_CONFIG_DIR = startupRoot;
   }
-  return { skillsHome: f.skillsHome, startupRoot, configHome: f.configHome, skillsRoot: f.skillsRoot };
+  return { skillsHome: f.skillsHome, startupRoot, skillsRoot: f.skillsRoot };
 }
 function bindRuntimeFixture(f: ReturnType<typeof fixture>, config: RuntimeHostConfig): void {
   const selection = bootSelection({ cwd: f.cwd, skillsHome: config.skillsHome, startupRoot: config.startupRoot, skillsRoot: f.skillsRoot, host: hostname(), managerSession: config.managerSession, command: parseBootCommand(`new ${config.name}`), explicitName: null, executionLimit: null });

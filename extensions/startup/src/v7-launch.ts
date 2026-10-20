@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import { hostname } from "node:os";
 import { openStore, readOwnerControl } from "./store";
 import type { Environment } from "./employee-entry";
 import { encode, scopeSchema, type Scope } from "./contracts";
 import { savedRoleSettingsSchema, runtimePolicySchema, type SavedRoleSettings } from "./runtime-contracts";
-import { assertStartupPath, ensureStartupRoot, StartupBootError } from "./boot";
+import { assertStartupPath, contains, ensureStartupRoot, StartupBootError } from "./boot";
 
 export function integrationPath(environment: Environment): string {
   const path: string = realpathSync(z.string().startsWith("/").parse(environment.STARTUP_HERDR_OMP_EXTENSION));
@@ -75,10 +75,6 @@ export const intentSchema = z.discriminatedUnion("state", [
 ]);
 export class RuntimeLaunchError extends Error {}
 class RuntimeStartupError extends RuntimeLaunchError {}
-function contains(parent: string, child: string): boolean {
-  const path: string = relative(parent, child);
-  return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
-}
 function validateRuntimePaths(config: RuntimeHostConfig): string {
   const root: string = ensureStartupRoot(config.startupRoot);
   if (root !== config.startupRoot || config.stateDirectory !== root || resolve(config.socketPath) !== config.socketPath || !contains(root, config.socketPath))

@@ -3,7 +3,7 @@ import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
-import { executionConfigHome, assertStartupPath, bootSelection, canonicalStartupRoot, persistBinding, StartupBootError, type Selection } from "./src/boot";
+import { executionSkillsHome, assertStartupPath, bootSelection, canonicalStartupRoot, persistBinding, startupsDirectory, StartupBootError, type Selection } from "./src/boot";
 import { claudeIntegrationPath, claudeManagerArgs, requireClaudeTrust, writeClaudeFiles } from "./src/claude-launch";
 import type { Environment } from "./src/employee-entry";
 import { scopeSchema } from "./src/contracts";
@@ -11,14 +11,13 @@ import { loadProfile, profileText } from "./src/profiles";
 import { prepareManagerLaunch, readPrivateJson, parseRuntimeHostConfig } from "./src/v7-launch";
 
 const bindingSchema = z.strictObject({ scope: scopeSchema, executionLimit: z.number().int().positive().safe().nullable() });
-export function managerLaunch(input: Readonly<{ environment: Environment; cwd: string; skillsHome: string; startupRoot: string | null; skillsRoot: string; bun: string }>): readonly string[] {
+export function managerLaunch(input: Readonly<{ environment: Environment; cwd: string; skillsHome: string; startupRoot: string; skillsRoot: string; bun: string }>): readonly string[] {
   const paneId: string | undefined = input.environment.HERDR_PANE_ID?.trim();
   if (input.environment.HERDR_ENV !== "1" || paneId === undefined || paneId === "")
     throw new StartupBootError("startup-claude must run inside a Herdr pane (HERDR_ENV=1 and HERDR_PANE_ID)");
   const name: string = z.string().regex(/^[a-zA-Z0-9_-]+$/).parse(input.environment.STARTUP_NAME);
-  const rootOverride: string | null = input.environment.STARTUP_ROOT ?? input.startupRoot;
-  if (rootOverride !== null && !isAbsolute(rootOverride)) throw new StartupBootError(`STARTUP_ROOT must be absolute: ${rootOverride}`);
-  const requestedRoot: string = rootOverride ?? join(input.skillsHome, "startup", name);
+  const requestedRoot: string = input.environment.STARTUP_ROOT ?? input.startupRoot;
+  if (!isAbsolute(requestedRoot)) throw new StartupBootError(`STARTUP_ROOT must be absolute: ${requestedRoot}`);
   const root: string = canonicalStartupRoot(resolve(requestedRoot), true);
   let managerSession: string = randomUUID();
   const bindingPath: string = join(root, "binding.json");
@@ -65,14 +64,14 @@ export function managerLaunch(input: Readonly<{ environment: Environment; cwd: s
 async function launch(): Promise<void> {
   if (process.argv.length > 2) throw new StartupBootError("startup-claude takes no arguments; set STARTUP_NAME to choose a Startup");
   const environment: Environment = process.env;
-  const configHome: string = executionConfigHome(environment.XDG_CONFIG_HOME);
-  const skillsHome: string = resolve(environment.JP_SKILLS_HOME ?? join(configHome, "jp-skills"));
+  const skillsHome: string = executionSkillsHome(environment);
   const skillsRoot: string = resolve(environment.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."));
+  const requestedRoot: string = environment.STARTUP_ROOT ?? join(startupsDirectory(skillsHome), z.string().parse(environment.STARTUP_NAME));
   const args: readonly string[] = managerLaunch({
-    environment, cwd: process.cwd(), skillsHome, startupRoot: environment.STARTUP_ROOT ?? null,
+    environment, cwd: process.cwd(), skillsHome, startupRoot: requestedRoot,
     bun: process.execPath, skillsRoot,
   });
-  const startupRoot: string = canonicalStartupRoot(resolve(environment.STARTUP_ROOT ?? join(skillsHome, "startup", z.string().parse(environment.STARTUP_NAME))), false);
+  const startupRoot: string = canonicalStartupRoot(resolve(requestedRoot), false);
   const child = Bun.spawn(["claude", ...args], {
     stdio: ["inherit", "inherit", "inherit"],
     env: { ...process.env, JP_SKILLS_HOME: skillsHome, STARTUP_ROOT: startupRoot, CLAUDE_CONFIG_DIR: startupRoot },

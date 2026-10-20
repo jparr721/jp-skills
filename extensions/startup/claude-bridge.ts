@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { hostname } from "node:os";
 import { z } from "zod";
 import type { EntryConfig } from "./v7";
-import { executionConfigHome, assertStartupPath, bootSelection, StartupBootError } from "./src/boot";
+import { executionOmpConfigRoot, executionSkillsHome, assertStartupPath, bootSelection, StartupBootError } from "./src/boot";
 import { claudeHookInputSchema, claudeRoot, createClaudeHost, type ClaudeHost, type WaiterHandle } from "./src/claude-host";
 import { priorEventCount, splitLines, TranscriptTail } from "./src/claude-ledger";
 import { bridgeRequestSchema, startupRoot as selectedStartupRoot, waiterSocketPath } from "./src/claude-waiter";
@@ -17,11 +17,9 @@ const callSchema = z.looseObject({ name: z.string().min(1), arguments: z.record(
 type SocketState = { buffer: string; waiter: WaiterHandle | null };
 
 export function claudeEntryConfig(environment: Environment, sessionId: string, transcript: () => string | null): EntryConfig {
-  const configHome: string = executionConfigHome(environment.XDG_CONFIG_HOME);
   return {
-    skillsHome: resolve(environment.JP_SKILLS_HOME ?? join(configHome, "jp-skills")),
+    skillsHome: executionSkillsHome(environment),
     startupRoot: environment.STARTUP_ROOT ?? null,
-    configHome,
     skillsRoot: resolve(environment.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")),
     environment, launch: launchRuntimeHost,
     harness: "claude", root: claudeRoot({ sessionId, transcript }), integration: integrationPath,
@@ -97,7 +95,7 @@ async function serve(): Promise<void> {
   const environment: Environment = process.env;
   const sessionId: string = z.string().uuid().parse(environment.CLAUDE_CODE_SESSION_ID);
   const startupRoot: string = selectedStartupRoot(environment);
-  const skillsHome: string = resolve(environment.JP_SKILLS_HOME ?? join(executionConfigHome(environment.XDG_CONFIG_HOME), "jp-skills"));
+  const skillsHome: string = executionSkillsHome(environment);
   const manifest: string | undefined = environment.STARTUP_V7_MANIFEST;
   if (manifest !== undefined && !manifest.endsWith(".json")) throw new StartupBootError(`STARTUP_V7_MANIFEST must name a launch .json manifest: ${manifest}`);
   if (manifest !== undefined) {
@@ -145,7 +143,7 @@ async function serve(): Promise<void> {
       if (transcript !== path) { shim.fail(new Error(`Claude transcript path changed from ${transcript} to ${path}; the Startup bridge serves one session`)); return shim.shutdown(); }
       return started ?? Promise.resolve();
     }
-    assertNativeTranscript({ harness: "claude", startupRoot, ompConfigRoot: resolve(executionConfigHome(environment.XDG_CONFIG_HOME), "ronin"), sessionId, file: path });
+    assertNativeTranscript({ harness: "claude", startupRoot, ompConfigRoot: executionOmpConfigRoot(environment), sessionId, file: path });
     transcript = path;
     let skip: number;
     try { skip = priorEventCount(path); }

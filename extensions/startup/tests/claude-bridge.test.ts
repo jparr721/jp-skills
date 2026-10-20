@@ -7,7 +7,7 @@ import { bridgeInstructions, claudeEntryConfig } from "../claude-bridge";
 import { managerLaunch } from "../claude-manager";
 import { bootSelection, parseBootCommand, persistBinding, StartupBootError } from "../src/boot";
 import { claudeSettings } from "../src/claude-launch";
-import { ClaudeBridgeSocketError, ClaudeWaiterPathTooLongError, exchangeBridge, startupRoot, waiterSocketPath } from "../src/claude-waiter";
+import { ClaudeBridgeSocketError, exchangeBridge, startupRoot, waiterSocketPath } from "../src/claude-waiter";
 import { jsonSchema, type Json } from "../src/contracts";
 import { openStore } from "../src/store";
 import { validateRoleSettings, loadProfile, profileText } from "../src/profiles";
@@ -303,16 +303,14 @@ test("the waiter socket path uses the selected root and returns a typed error ov
   mkdirSync(longRoot, { mode: 0o700 });
   let caught: unknown = null;
   try { waiterSocketPath({ startupRoot: longRoot, sessionId }); } catch (error: unknown) { caught = error; }
-  expect(caught).toBeInstanceOf(ClaudeWaiterPathTooLongError);
   expect(caught).toBeInstanceOf(ClaudeBridgeSocketError);
-  expect(caught).toMatchObject({ code: "STARTUP_CLAUDE_SOCKET_PATH_TOO_LONG" });
   expect(caught instanceof Error ? caught.message : "").toContain("exceeds 103 bytes");
 });
 
 test("the Claude entry config refuses an implicit execution limit and names every tool in its load instruction", () => {
   const root = shortRoot();
   const config = claudeEntryConfig({ JP_SKILLS_HOME: "/h", XDG_CONFIG_HOME: "/cfg", STARTUP_ROOT: root, CLAUDE_CONFIG_DIR: root, STARTUP_SKILLS_ROOT: "/s" }, sessionId, () => null);
-  expect(config).toMatchObject({ skillsHome: "/h", startupRoot: root, configHome: "/cfg", skillsRoot: "/s", harness: "claude" });
+  expect(config).toMatchObject({ skillsHome: "/h", startupRoot: root, skillsRoot: "/s", harness: "claude" });
   expect(() => config.nativeLimit({ agent: { id: sessionId, kind: "main" }, cwd: "/", sessionManager: { getSessionId: () => sessionId, getSessionFile: () => undefined }, getSystemPrompt: () => [], setInterval: setInterval, clearTimer: clearInterval })).toThrow("STARTUP_EXECUTION_LIMIT");
   expect(bridgeInstructions(["startup_claim", "startup_retire"])).toContain("ToolSearch query \"select:mcp__startup__startup_claim,mcp__startup__startup_retire\"");
 });
@@ -437,7 +435,6 @@ test("new Claude manager consumes saved model and effort once while resume prese
 test.each([undefined, "", "relative-config"])("native entry uses execution-user config home for invalid XDG value %s", (xdg) => {
   const environment = xdg === undefined ? {} : { XDG_CONFIG_HOME: xdg };
   const entry = claudeEntryConfig(environment, sessionId, () => null);
-  expect(entry.configHome).toBe(join(homedir(), ".config"));
   expect(entry.skillsHome).toBe(join(homedir(), ".config", "jp-skills"));
 });
 

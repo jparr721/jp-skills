@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import {
   bootSelection,
+  executionSkillsHome,
   parseBootCommand,
   persistBinding,
   StartupBootError,
@@ -1053,13 +1054,7 @@ export default function startup(pi: HostAPI): void {
     pi,
     {
       name,
-      skillsHome: resolve(
-        process.env.JP_SKILLS_HOME ??
-          join(
-            process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"),
-            "jp-skills",
-          ),
-      ),
+      skillsHome: executionSkillsHome(process.env),
       startupRoot: process.env.STARTUP_ROOT ?? null,
       skillsRoot: resolve(
         process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."),

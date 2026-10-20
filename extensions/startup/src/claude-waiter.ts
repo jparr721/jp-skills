@@ -5,9 +5,6 @@ import { jsonSchema, type Json } from "./contracts";
 import type { Environment } from "./employee-entry";
 
 export class ClaudeBridgeSocketError extends Error {}
-export class ClaudeWaiterPathTooLongError extends ClaudeBridgeSocketError {
-  readonly code: string = "STARTUP_CLAUDE_SOCKET_PATH_TOO_LONG";
-}
 export const bridgeRequestSchema = z.union([
   z.strictObject({ sessionId: z.string().min(1), transcript: z.string().startsWith("/") }),
   z.strictObject({ sessionId: z.string().min(1), event: z.literal("StopFailure"), error: z.string() }),
@@ -37,7 +34,7 @@ export function waiterSocketPath(input: Readonly<{ startupRoot: string; sessionI
   const path: string = join(root, "startup", "claude", "w", `${input.sessionId}.sock`);
   assertStartupPath(root, path, "socket");
   if (Buffer.byteLength(path) > socketBytes)
-    throw new ClaudeWaiterPathTooLongError(`Claude Startup bridge socket path exceeds ${socketBytes} bytes; set STARTUP_ROOT to a shorter directory: ${path}`);
+    throw new ClaudeBridgeSocketError(`Claude Startup bridge socket path exceeds ${socketBytes} bytes; set STARTUP_ROOT to a shorter directory: ${path}`);
   return path;
 }
 export async function exchangeBridge(input: Readonly<{ path: string; request: Json; connectDeadlineMs: number }>): Promise<BridgeReply | null> {

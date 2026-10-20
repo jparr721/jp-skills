@@ -424,12 +424,12 @@ test("manager /startup new boots inside UserPromptSubmit through the unchanged V
   const cwd: string = join(f.root, "repo");
   mkdirSync(cwd);
   const transcript: string = join(f.startupRoot, "projects", "fixture", `${sessionId}.jsonl`);
-  const environment: Readonly<Record<string, string>> = { HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", STARTUP_EXECUTION_LIMIT: "4", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot };
+  const environment: Readonly<Record<string, string>> = { HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", STARTUP_EXECUTION_LIMIT: "4", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot, XDG_CONFIG_HOME: f.configHome };
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd, instructions: null, transcript: () => transcript, formatGuardMs: 10000 });
   cleanup.push(() => shim.shutdown());
   const launched: RuntimeHostConfig[] = [];
   installStartupV7(shim.host, {
-    skillsHome: f.skillsHome, startupRoot: null, configHome: f.configHome, skillsRoot: f.skillsRoot, environment, harness: "claude", root: claudeRoot({ sessionId, transcript: () => transcript }),
+    skillsHome: f.skillsHome, startupRoot: null, skillsRoot: f.skillsRoot, environment, harness: "claude", root: claudeRoot({ sessionId, transcript: () => transcript }),
     integration: () => "/fixture/claude/hooks/herdr-agent-state.sh",
     nativeLimit: () => { throw new Error("Claude has no native limit"); },
     launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; },

@@ -81,6 +81,17 @@ test("new and current selection keep the Startup root under the skills home", ()
   expect(existsSync(join(selected.startupRoot, "binding.json"))).toBe(true);
 });
 
+test("current selection skips an old-format Startup root beside a current one", () => {
+  const f = fixture();
+  const selected = bootSelection({ ...f, command: parseBootCommand("new alpha"), explicitName: null, executionLimit: null });
+  if (selected === null) throw new Error("Missing selection");
+  persistBinding(selected);
+  const old = join(f.skillsHome, "startup", "legacy");
+  mkdirSync(old, { mode: 0o700 });
+  writeFileSync(join(old, "binding.json"), JSON.stringify({ name: "legacy", bound_root: f.boundRoot }), { mode: 0o600 });
+  expect(bootSelection({ ...f, command: null, explicitName: null, executionLimit: null })).toMatchObject({ name: "alpha", startupRoot: selected.startupRoot });
+});
+
 test("STARTUP_ROOT is canonicalized and persisted binding rejects a changed root", () => {
   const f = fixture();
   const configured = join(f.configHome, "chosen", "..", "startup");

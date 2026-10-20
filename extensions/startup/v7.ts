@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { cfgTaskMaxConcurrency } from "@oh-my-pi/pi-coding-agent/task/settings";
 import type { HostAPI } from "./index";
-import { executionConfigHome, bootSelection, parseBootCommand, persistBinding, StartupBootError, type BootCommand, type Selection } from "./src/boot";
+import { executionOmpConfigRoot, executionSkillsHome, bootSelection, parseBootCommand, persistBinding, StartupBootError, type BootCommand, type Selection } from "./src/boot";
 import { encode } from "./src/contracts";
 import { assertNativeTranscript, attach, inputBlock, reconcileInput, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
 import { requireOmpModelRoles } from "./src/model-roles";
@@ -18,7 +18,6 @@ export { installLaunchedEmployee } from "./src/employee-entry";
 export type EntryConfig = Readonly<{
   skillsHome: string;
   startupRoot: string | null;
-  configHome: string;
   skillsRoot: string;
   environment: Environment;
   launch: (config: RuntimeHostConfig) => Promise<RuntimeHostConfig>;
@@ -66,7 +65,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       await admitted.close();
       admitted = null;
     }
-    const ompConfigRoot: string = resolve(input.configHome, "ronin");
+    const ompConfigRoot: string = executionOmpConfigRoot(input.environment);
     assertNativeTranscript({ harness: input.harness, startupRoot: next.startupRoot, ompConfigRoot, sessionId: nativeSession, file: nativeFile });
     const savedPath: string = join(next.startupRoot, "runtime-config.json");
     const saved: RuntimeHostConfig | null = runtimeConfig ?? (existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null);
@@ -186,9 +185,8 @@ export default function startupV7(host: HostAPI): void {
   const manifest: string | undefined = process.env.STARTUP_V7_MANIFEST;
   if (manifest !== undefined) { installLaunchedEmployee(host, manifest); return; }
   installStartupV7(host, {
-    skillsHome: resolve(process.env.JP_SKILLS_HOME ?? join(executionConfigHome(process.env.XDG_CONFIG_HOME), "jp-skills")),
+    skillsHome: executionSkillsHome(process.env),
     startupRoot: process.env.STARTUP_ROOT ?? null,
-    configHome: executionConfigHome(process.env.XDG_CONFIG_HOME),
     skillsRoot: resolve(process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")),
     environment: process.env, launch: launchRuntimeHost,
     harness: "omp", root: nativeRoot, integration: integrationPath,

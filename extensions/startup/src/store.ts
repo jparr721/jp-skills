@@ -13,10 +13,10 @@ import {
   fsyncSync,
   unlinkSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import { hostAssociationQuerySchema, hostAssociationPageSchema, type HostAssociationPage, type HostAssociationRow, runtimeConnectionSchema, runtimeIdentitySchema, type RuntimeIdentity, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
-import { assertStartupPath, ensureStartupRoot } from "./boot";
+import { assertStartupPath, contains, ensureStartupRoot } from "./boot";
 import { validateRoleSettings } from "./profiles";
 import {
   ownerControlRequestSchema, ownerControlReceiptSchema, type OwnerControlRequest, type OwnerControlReceipt,
@@ -305,12 +305,7 @@ export function openStore(args: {
     );
   if (realpathSync(scope.skillsHome) !== scope.skillsHome || realpathSync(scope.boundRoot) !== scope.boundRoot)
     throw new StoreAuthorityError("Startup scope roots must be canonical directories");
-  const contains = (parent: string, child: string): boolean => {
-    const path: string = relative(parent, child);
-    return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
-  };
-  const overlaps = (first: string, second: string): boolean => contains(first, second) || contains(second, first);
-  if (contains(startupRoot, skillsHome) || overlaps(startupRoot, boundRootPath))
+  if (contains(startupRoot, skillsHome) || contains(startupRoot, boundRootPath) || contains(boundRootPath, startupRoot))
     throw new StoreAuthorityError(
       "Startup state may not contain JP_SKILLS_HOME and must stay outside the bound repository",
     );

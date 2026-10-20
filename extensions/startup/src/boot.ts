@@ -11,10 +11,24 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { homedir } from "node:os";
 import { scopeSchema, type Scope } from "./contracts";
+import type { Environment } from "./employee-entry";
 
 export class StartupBootError extends Error {}
-export function executionConfigHome(xdg: string | undefined): string {
+function executionConfigHome(xdg: string | undefined): string {
   return xdg !== undefined && isAbsolute(xdg) ? resolve(xdg) : join(homedir(), ".config");
+}
+export function executionSkillsHome(environment: Environment): string {
+  return resolve(environment.JP_SKILLS_HOME ?? join(executionConfigHome(environment.XDG_CONFIG_HOME), "jp-skills"));
+}
+export function executionOmpConfigRoot(environment: Environment): string {
+  return resolve(executionConfigHome(environment.XDG_CONFIG_HOME), "ronin");
+}
+export function startupsDirectory(skillsHome: string): string {
+  return join(skillsHome, "startup");
+}
+export function contains(parent: string, child: string): boolean {
+  const within: string = relative(parent, child);
+  return within === "" || (within !== ".." && !within.startsWith(`..${sep}`) && !isAbsolute(within));
 }
 const nameSchema = z.string().regex(/^[a-zA-Z0-9_-]+$/);
 const limitSchema = z.number().int().positive().safe().nullable();
@@ -89,9 +103,9 @@ export function assertSharedOmpTranscript(root: string, path: string): void {
 function assertContainedPath(root: string, path: string, kind: PathKind): void {
   if (!isAbsolute(path) || resolve(path) !== path)
     throw new StartupBootError(`Startup artifact path must be absolute and canonical: ${path}`);
-  const within: string = relative(root, path);
-  if (within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within))
+  if (!contains(root, path))
     throw new StartupBootError(`Startup artifact escapes the selected root: ${path}`);
+  const within: string = relative(root, path);
   let cursor: string = root;
   const segments: readonly string[] = within === "" ? [] : pathSegments(within);
   for (let index = -1; index < segments.length; index += 1) {
@@ -118,15 +132,10 @@ export function ensureStartupRoot(path: string): string {
   return canonicalStartupRoot(root, false);
 }
 
-function overlaps(first: string, second: string): boolean {
-  const within: string = relative(first, second);
-  return within === "" || (within !== ".." && !within.startsWith(`..${sep}`) && !isAbsolute(within));
-}
-
 function rejectRootOverlap(startupRoot: string, skillsHome: string, boundRoot: string): void {
-  if (overlaps(startupRoot, skillsHome))
+  if (contains(startupRoot, skillsHome))
     throw new StartupBootError("Startup root may not contain JP_SKILLS_HOME");
-  if (overlaps(startupRoot, boundRoot) || overlaps(boundRoot, startupRoot))
+  if (contains(startupRoot, boundRoot) || contains(boundRoot, startupRoot))
     throw new StartupBootError("Startup state must remain outside the bound repository");
 }
 
@@ -142,6 +151,14 @@ function sameScope(first: Scope, second: Scope): boolean {
 
 function bindingPath(startupRoot: string): string {
   return join(startupRoot, "binding.json");
+}
+
+// An old-format Startup (binding.json without scope) is historical evidence: enumerators skip it, an explicit select refuses it.
+export function isLegacyBinding(startupRoot: string): boolean {
+  const path: string = bindingPath(startupRoot);
+  if (maybeStat(path) === null) return false;
+  const saved = z.record(z.string(), z.unknown()).safeParse(JSON.parse(readFileSync(path, "utf8")));
+  return saved.success && !("scope" in saved.data);
 }
 
 function readBinding(startupRoot: string): Binding | null {
@@ -178,7 +195,7 @@ function discoverCurrentBinding(input: Readonly<{
   host: string;
   managerSession: string;
 }>): Binding | null {
-  const parent: string = join(input.skillsHome, "startup");
+  const parent: string = startupsDirectory(input.skillsHome);
   const parentStat = maybeStat(parent);
   if (parentStat === null) return null;
   if (parentStat.isSymbolicLink() || !parentStat.isDirectory())
@@ -198,7 +215,7 @@ function discoverCurrentBinding(input: Readonly<{
     if (stat === null) continue;
     if (stat.isSymbolicLink())
       throw new StartupBootError(`Startup root may not be a symlink: ${root}`);
-    if (!stat.isDirectory()) continue;
+    if (!stat.isDirectory() || isLegacyBinding(root)) continue;
     const binding = readBinding(root);
     if (binding === null) continue;
     if (binding.scope.skillsHome !== input.skillsHome)
@@ -270,7 +287,7 @@ export function bootSelection(input: Readonly<{
     const scope: Scope = scopeSchema.parse({ ...saved.scope, skillsHome, host: input.host, managerSession: input.managerSession });
     return { ...scope, skillsRoot, executionLimit: combineLimit(executionLimit, saved.executionLimit) };
   }
-  const startupRoot: string = canonicalStartupRoot(resolve(override ?? join(skillsHome, "startup", name)), true);
+  const startupRoot: string = canonicalStartupRoot(resolve(override ?? join(startupsDirectory(skillsHome), name)), true);
   const parentStat = maybeStat(dirname(startupRoot));
   if (parentStat?.isSymbolicLink())
     throw new StartupBootError(`Startup root parent may not be a symlink: ${dirname(startupRoot)}`);

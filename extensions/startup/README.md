@@ -37,16 +37,12 @@ The older named-profile installer is historical tooling and is not invoked by ho
 bun extensions/startup/install.ts install [PROFILE]
 ```
 
-`config.ts` reads and changes saved Startups, including ones created before this existed:
+`config.ts` reads saved Startups under `<skills home>/startup`. A Startup saved in the old format (`binding.json` without `scope`) is skipped by `list` and refused by `get`:
 
 ```sh
-bun extensions/startup/config.ts profiles                       # saved OMP profiles
 bun extensions/startup/config.ts list                           # saved Startups, harness and profile
 bun extensions/startup/config.ts get NAME [KEY]                 # runtime config, manager credential redacted
-bun extensions/startup/config.ts set NAME profile [PROFILE]     # switch the Startup's OMP profile
 ```
-
-`set` rewrites only `profile` in the Startup's `runtime-config.json`. It refuses while the coordinator process runs or its launch is uncertain, for a Claude Code Startup, and for a profile that is neither saved nor `default`. It prints the command that resumes the manager in the new profile. The V7 runtime runs OMP on its default profile only (see Requirements), so a Startup saved with a named profile is refused at boot until `set NAME profile default` restores it.
 
 ## Model roles
 
@@ -267,7 +263,7 @@ Inspect the artifact's actual status/checks and source hashes before treating it
 
 A live `settings_apply` whose response is lost throws `HostControlUncertainError`. The CLI exits 1 and includes `outcome`, validated by `hostControlUncertaintySchema`: `{state:"uncertain", kind:"settings_apply", requestId, scope, replay:"forbidden", recovery:{kind:"receipt", requestId, scope}}`. Execute only that read-only recovery command. The uncertainty is not a committed receipt; lookup returns the owner's saved result when available. Pre-dispatch validation and read-only transport failures keep their original error types.
 
-- `list`: configHome, after cursor and limit (1-100); reads `<configHome>/jp-skills/startup/*` and works with zero owners.
+- `list`: configHome, after cursor and limit (1-100); reads `<configHome>/jp-skills/startup/*` (the default skills home; `JP_SKILLS_HOME` is not consulted), skips old-format roots (`binding.json` without `scope`) and works with zero owners.
 - `create`: scope, requestId, skillsRoot, executionLimit, harness, expectedOwnerEpoch=0 and expectedRevision=0. Initializes a cold root; it does not manufacture a manager process.
 - `select`: validates the binding and reads it without a lease or process start.
 - `status`, `staff`, `progress`, `alerts`: optional bounded `query` with limit and queue/staff/team/input cursors. These reuse the typed host status, queue/team progress and supervision reasons. Offline state is explicit unavailable.

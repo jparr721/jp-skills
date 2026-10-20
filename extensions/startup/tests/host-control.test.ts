@@ -42,6 +42,14 @@ test("cold create and list need no running owner and select is read-only", async
   await expect(executeHostControl({ ...f.create, requestId: "another-create" }, f.runtime)).rejects.toThrow("already has a binding");
   await expect(executeHostControl({ ...f.create, harness: "claude" }, f.runtime)).rejects.toThrow("payload conflict");
 });
+test("list skips an old-format Startup root beside a current one", async () => {
+  const f = fixture();
+  await executeHostControl(f.create, f.runtime);
+  const old = join(f.scope.skillsHome, "startup", "legacy");
+  mkdirSync(old, { mode: 0o700 });
+  writeFileSync(join(old, "binding.json"), JSON.stringify({ name: "legacy", bound_root: f.scope.boundRoot, executionLimit: null }), { mode: 0o600 });
+  expect(await executeHostControl({ kind: "list", configHome: f.configHome, after: null, limit: 10 }, f.runtime)).toMatchObject({ rows: [{ scope: f.scope }], nextCursor: null });
+});
 test("offline settings preserve future-launch scope, revision fencing and exact receipts", async () => {
   const f = fixture();
   await executeHostControl(f.create, f.runtime);

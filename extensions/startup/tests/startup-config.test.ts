@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listStartups, readStartupConfig, requireSwitchable, setStartupProfile, StartupConfigError } from "../src/startup-config";
+import { listStartups, readStartupConfig, StartupConfigError } from "../src/startup-config";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -40,48 +40,12 @@ test("readStartupConfig redacts the manager credential and reads one key", () =>
   expect(() => readStartupConfig({ home: f.home, name: "missing", key: null })).toThrow(StartupConfigError);
 });
 
-test("setStartupProfile rewrites only the profile and keeps the file owner-only", () => {
+test("a Startup saved in the old format is skipped by listStartups and refused by readStartupConfig", () => {
   const f = fixture(base);
-  const result = setStartupProfile({ home: f.home, name: "alpha", profile: "new", saved: ["new", "old"] });
-  expect(result).toEqual({ name: "alpha", previous: "old", profile: "new", resume: "OMP_PROFILE=new omp --profile new --resume '/sessions/m.jsonl'" });
-  expect(JSON.parse(readFileSync(f.path, "utf8"))).toEqual({ ...base, profile: "new" });
-  expect(statSync(f.path).mode & 0o777).toBe(0o600);
-});
-
-test("setStartupProfile accepts the default profile and the current profile unchanged", () => {
-  const f = fixture(base);
-  expect(setStartupProfile({ home: f.home, name: "alpha", profile: "default", saved: [] }).profile).toBe("default");
-  expect(setStartupProfile({ home: f.home, name: "alpha", profile: "default", saved: [] }).previous).toBe("default");
-});
-
-test("setStartupProfile refuses an unsaved profile and a Claude Startup without writing", () => {
-  const f = fixture(base);
-  expect(() => setStartupProfile({ home: f.home, name: "alpha", profile: "ghost", saved: ["new"] })).toThrow(/saved OMP profiles: new/);
-  expect(JSON.parse(readFileSync(f.path, "utf8")).profile).toBe("old");
-  const claude = fixture({ ...base, name: "gamma", harness: "claude" });
-  expect(() => setStartupProfile({ home: claude.home, name: "gamma", profile: "new", saved: ["new"] })).toThrow(/Claude/);
-});
-
-test("setStartupProfile refuses while the coordinator runs or its launch is uncertain", () => {
-  const live = fixture(base);
-  writeFileSync(join(live.directory, "runtime-launch.json"), JSON.stringify({ state: "spawned", startedAt: 1, pid: process.pid }), { mode: 0o600 });
-  expect(() => setStartupProfile({ home: live.home, name: "alpha", profile: "new", saved: ["new"] })).toThrow(new RegExp(`pid ${process.pid}`));
-  const prepared = fixture(base);
-  writeFileSync(join(prepared.directory, "runtime-launch.json"), JSON.stringify({ state: "prepared", startedAt: 1 }), { mode: 0o600 });
-  expect(() => setStartupProfile({ home: prepared.home, name: "alpha", profile: "new", saved: ["new"] })).toThrow(/uncertain/);
-  expect(JSON.parse(readFileSync(live.path, "utf8")).profile).toBe("old");
-});
-
-test("the resume command shell-quotes the transcript path", () => {
-  const f = fixture({ ...base, managerFile: "/Users/a b/it's.jsonl" });
-  expect(setStartupProfile({ home: f.home, name: "alpha", profile: "new", saved: ["new"] }).resume).toBe("OMP_PROFILE=new omp --profile new --resume '/Users/a b/it'\\''s.jsonl'");
-});
-
-test("requireSwitchable checks the Startup before any profile is chosen", () => {
-  const f = fixture(base);
-  expect(() => requireSwitchable({ home: f.home, name: "missing" })).toThrow(StartupConfigError);
-  const claude = fixture({ ...base, name: "gamma", harness: "claude" });
-  expect(() => requireSwitchable({ home: claude.home, name: "gamma" })).toThrow(/Claude/);
-  writeFileSync(join(f.directory, "runtime-launch.json"), JSON.stringify({ state: "spawned", startedAt: 1, pid: process.pid }), { mode: 0o600 });
-  expect(() => requireSwitchable({ home: f.home, name: "alpha" })).toThrow(new RegExp(`pid ${process.pid}`));
+  const legacy = join(f.home, "startup", "legacy");
+  mkdirSync(legacy);
+  writeFileSync(join(legacy, "runtime-config.json"), JSON.stringify({ name: "legacy", home: "/h" }), { mode: 0o600 });
+  writeFileSync(join(legacy, "binding.json"), JSON.stringify({ name: "legacy", bound_root: "/repo", executionLimit: null }), { mode: 0o600 });
+  expect(listStartups(f.home)).toEqual([{ name: "alpha", harness: "omp", profile: "old" }]);
+  expect(() => readStartupConfig({ home: f.home, name: "legacy", key: null })).toThrow(StartupConfigError);
 });

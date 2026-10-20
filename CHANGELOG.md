@@ -13,13 +13,14 @@
 
 ### Changed
 
+- `config.ts set` and `config.ts profiles` are removed: V7 runs OMP on its default profile only, so a saved named profile could only brick that Startup at boot.
+- Name-less Startup discovery, host-control `list` and `config.ts list` skip old-format Startup roots (`binding.json` without `scope`) instead of failing.
 - An OMP employee still launches on the OMP model role bound to its Startup role, unless its saved settings request a model, which replaces the bound role for that launch. Manager boot checks the bound roles only for a fresh admission.
 
 ### Verification
 
 - Scoped Startup typecheck, registration/catalog tests and role-refusal tests are recorded in the SYT-9095 Slice D runrecord. Full merge-gate verification remains CI-only; interactive OMP/Claude and installed-runtime acceptance are not claimed by the local test lane.
 - The merge of 7.3.0 to 7.5.0 into this work was resolved without running the test suite; run the Startup suite before release.
-- Known limit: V7 runs OMP on its default profile (`PI_CODING_AGENT_DIR` set, `--profile` never passed), so `config.ts set NAME profile` can save a named profile that the V7 runtime then refuses at boot.
 
 ## [7.5.0] - 2026-10-19
 

@@ -3,7 +3,7 @@ import { closeSync, existsSync, openSync, readdirSync, renameSync, unlinkSync, w
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { assertStartupPath, bootSelection, canonicalStartupRoot, ensureStartupRoot, persistBinding } from "./src/boot";
+import { assertStartupPath, bootSelection, canonicalStartupRoot, ensureStartupRoot, isLegacyBinding, persistBinding, startupsDirectory } from "./src/boot";
 import { encode, hostStatusQuerySchema, hostStatusSchema, idSchema, jsonSchema, ownerControlReceiptSchema, ownerControlRequestSchema, scopeSchema, timeSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, type Json, type OwnerControlReceipt, type Scope } from "./src/contracts";
 import { createHerdrRuntime, runHerdrCommand } from "./src/herdr-runtime";
 import { ompSettingsArgs, validateRoleSettings } from "./src/profiles";
@@ -14,7 +14,7 @@ import { prepareManagerLaunch, launchRuntimeHost, parseRuntimeHostConfig, readPr
 export const hostControlCommandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("list"), configHome: z.string().startsWith("/"), after: z.string().nullable(), limit: z.number().int().min(1).max(100) }),
   z.strictObject({ kind: z.literal("create"), requestId: idSchema, scope: scopeSchema, skillsRoot: z.string().startsWith("/"), executionLimit: z.number().int().min(3), harness: z.enum(["omp", "claude"]), expectedOwnerEpoch: z.literal(0), expectedRevision: z.literal(0) }),
-  z.strictObject({ kind: z.enum(["select"]), scope: scopeSchema }),
+  z.strictObject({ kind: z.literal("select"), scope: scopeSchema }),
   z.strictObject({ kind: z.enum(["status", "staff", "progress", "alerts"]), scope: scopeSchema, query: hostStatusQuerySchema.optional() }),
   z.strictObject({ kind: z.literal("associations"), scope: scopeSchema, ...hostAssociationQuerySchema.shape }),
   z.strictObject({ kind: z.literal("settings"), scope: scopeSchema, after: idSchema.optional(), limit: z.number().int().min(1).max(100).optional() }),
@@ -126,15 +126,24 @@ async function ownerRequest(scope: Scope, path: string, body: Json | null): Prom
     throw error;
   }
 }
+function requestDigest(request: HostControlCommand): string {
+  return createHash("sha256").update(encode(request)).digest("hex");
+}
+function replay(scope: Scope, requestId: string, digest: string, message: string): Json | null {
+  const existing = readOwnerControlFile(scope, requestId) ?? readOwnerControlReceipt(scope, requestId);
+  if (existing === null) return null;
+  if (existing.digest !== digest) throw new StoreConflictError(message);
+  return jsonSchema.parse(existing);
+}
 async function dispatchHostControl(request: HostControlCommand, runtime: HostControlRuntime): Promise<Json> {
   if (request.kind === "list") {
-    const directory = join(request.configHome, "jp-skills", "startup");
+    const directory = startupsDirectory(join(request.configHome, "jp-skills"));
     if (!existsSync(directory)) return { rows: [], nextCursor: null };
     const names = readdirSync(directory).filter((name) => /^[a-zA-Z0-9_-]+$/.test(name)).sort().filter((name) => request.after === null || name > request.after);
     const rows = names.slice(0, request.limit).flatMap((name) => {
       const root = join(directory, name);
       assertStartupPath(root, join(root, "binding.json"), "file");
-      if (!existsSync(join(root, "binding.json"))) return [];
+      if (!existsSync(join(root, "binding.json")) || isLegacyBinding(root)) return [];
       const saved = z.object({ scope: scopeSchema }).parse(readPrivateJson(join(root, "binding.json")));
       if (saved.scope.startupRoot !== root || saved.scope.name !== name) throw new StoreAuthorityError("Listed binding does not match its canonical root");
       return [{ scope: saved.scope, state: readOwnerControl(saved.scope).archived ? "archived" : "selected" }];
@@ -144,7 +153,7 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
   const scope = request.scope;
   if (scope.host !== runtime.executionHost()) throw new StoreAuthorityError("Requested Startup host differs from the execution host");
   if (request.kind === "create") {
-    const digest = createHash("sha256").update(encode(request)).digest("hex");
+    const digest = requestDigest(request);
     ensureStartupRoot(scope.startupRoot);
     const lockPath: string = join(scope.startupRoot, "create.lock");
     assertStartupPath(scope.startupRoot, lockPath, "file");
@@ -190,12 +199,9 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
   }
   const snapshot = readOwnerControl(scope);
   if (request.kind === "prepare_manager") {
-    const digest: string = createHash("sha256").update(encode(request)).digest("hex");
-    const existing = readOwnerControlFile(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
-    if (existing !== null) {
-      if (existing.digest !== digest) throw new StoreConflictError("Manager preparation idempotency key payload conflict");
-      return jsonSchema.parse(existing);
-    }
+    const digest: string = requestDigest(request);
+    const existing = replay(scope, request.requestId, digest, "Manager preparation idempotency key payload conflict");
+    if (existing !== null) return existing;
     if (snapshot.ownerEpoch !== request.expectedOwnerEpoch || snapshot.revision !== request.expectedRevision || snapshot.archived || snapshot.leaseExpires > runtime.now()) throw new StoreFenceError("Manager preparation snapshot changed, Startup archived or owner live");
     if (existsSync(join(scope.startupRoot, "runtime-config.json"))) throw new StoreConflictError("Saved manager must resume its native identity; preparation cannot replace it");
     const intent = ownerControlReceiptSchema.parse({ requestId: request.requestId, digest, scope, kind: "prepare_manager", state: "uncertain", ownerEpoch: snapshot.ownerEpoch, revision: snapshot.revision, sideEffects: "manager_prepared", result: { reason: "Inspect manager-launch.json before another native launch" } });
@@ -214,18 +220,15 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
   if (request.kind === "select") return jsonSchema.parse({ scope, ...snapshot, sideEffects: "none" });
   if (request.kind === "settings_draft") return jsonSchema.parse({ draft: validateRoleSettings(request.selection), scope: "future_launch", sideEffects: "none" });
   if (request.kind === "settings_apply" || request.kind === "archive") {
-    const receipt = readOwnerControlFile(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
-    if (receipt !== null) {
-      if (receipt.digest !== createHash("sha256").update(encode(request)).digest("hex")) throw new StoreConflictError("Control idempotency key payload conflict");
-      return jsonSchema.parse(receipt);
-    }
+    const receipt = replay(scope, request.requestId, requestDigest(request), "Control idempotency key payload conflict");
+    if (receipt !== null) return receipt;
     if (snapshot.leaseExpires > runtime.now()) return ownerRequest(scope, "/host/control", jsonSchema.parse(request));
     return jsonSchema.parse(applyOfflineOwnerControl(request, runtime.now()));
   }
   if (request.kind === "resume") {
-    const digest = createHash("sha256").update(encode(request)).digest("hex");
-    const existing = readOwnerControlFile(scope, request.requestId) ?? readOwnerControlReceipt(scope, request.requestId);
-    if (existing !== null) { if (existing.digest !== digest) throw new StoreConflictError("Resume idempotency key payload conflict"); return jsonSchema.parse(existing); }
+    const digest = requestDigest(request);
+    const existing = replay(scope, request.requestId, digest, "Resume idempotency key payload conflict");
+    if (existing !== null) return existing;
     if (snapshot.ownerEpoch !== request.expectedOwnerEpoch || snapshot.revision !== request.expectedRevision || snapshot.archived) throw new StoreFenceError("Resume snapshot changed or Startup archived");
     const base = { requestId: request.requestId, digest, scope, kind: "resume" as const, ownerEpoch: snapshot.ownerEpoch, revision: snapshot.revision };
     const configPath = join(scope.startupRoot, "runtime-config.json");
