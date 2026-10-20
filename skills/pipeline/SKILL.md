@@ -197,6 +197,13 @@ names the behavior change, the affected areas, and the acceptance criteria - a w
 Linear ticket usually clears this bar; a one-line bug report never does. When in doubt, convene
 the party. State the call and its reason in one line to the supervisor ledger.
 
+When ticket acceptance was generated from a larger handoff, trace each disputed requirement to
+the original user decision or handoff before treating it as a blocker. Probe the current supported
+owner interface in source, shipped CLI help, API schema, or docs before declaring an upstream gap.
+Separate supported composition from the exact capability that remains unproven. Keep unresolved
+claims open until evidence supports the blocker. Evidence: `runrecords/feasibility.md` in the
+SYT-9093 run record.
+
 Otherwise convene the party. Adapted from BMAD party mode. Goal: super-detailed breakdown with
 consensus, then **start implementing without making anyone step through the insane plan**.
 
@@ -244,6 +251,36 @@ Parallelize as much as the file graph allows, and not one step further.
    before continuing. Commit each landed wave before dispatching the next (constraint 10: small logical commits, message states decision/why) — never batch the whole implementation into one commit at Step 5.
 5. **A single-slice task is a single agent, or just do it yourself.** Do not manufacture
    parallelism that the work does not contain.
+
+After repeated source-fidelity misses by a Luna implementation worker, stop the narrow patch loop
+and escalate the next authoring pass to a stronger available model. Use independent reviewers at
+the orchestrator's stronger default model tier when architecture, composition, integration, edge
+cases, or exact visual fidelity need that judgment; do not downgrade review just because the
+implementation used Luna. The stronger authoring pass is a new attempt, not proof that earlier
+misses are resolved. This is a response to the recorded repeated misses, not a general claim about
+every Luna task. Run evidence: SYT-9093 used `gpt-6-luna` at xhigh for implementation and the
+orchestrator's stronger default tier for independent review. Treat this as the recorded run choice,
+not a universal model default. Evidence: `ledger.md`, `sidebar/pipeline.md`,
+`sidebar/review-r2-verdict.md`, and
+`sidebar/review-r3-verdict.md` in the SYT-9093 run record.
+
+Before an executable CLI probe, treat even `--help`, `--version`, and path/config inspection as
+potentially stateful. Prefer direct structured argv with an explicit isolated environment, absolute
+temporary `HOME` and `XDG_CONFIG_HOME`, tool-specific config/profile/session roots, and an isolated
+working directory. Capture the child's exit code and start/end separately from the enclosing shell.
+If a shell is unavoidable, use a single-quoted heredoc and pass data as argv/env/stdin; never place
+backticks or other interpolating text inside a double-quoted shell argument. A command error, old
+file timestamp, or successful outer shell does not prove that no side effect occurred. Evidence:
+`factoryrecords/omp/incident-lessons.md` and `factoryrecords/omp/incident-audit.md` in the
+SYT-9093 run record.
+
+For long or high-uncertainty implementation slices, set a bounded checkpoint and a concrete
+completion signal before dispatch. The supervisor records stage, elapsed time, outputs, and the
+next dependency, then redirects or escalates when a slice churns without reaching its checkpoint;
+do not let a multi-hour worker continue without a meaningful checkpoint. In SYT-9093, vendoring
+S3 ran for about three hours after S2 without a checkpoint, then required a preserved interruption
+and bounded continuation. Evidence: `vendoring/supervisor.md` and
+`vendoring/implementation-interruption.json` in the SYT-9093 run record.
 
 > Ordering hint: schedule slices so shared foundations - schemas, migrations, shared types -
 > land in an early wave alone. Everything that consumes them parallelizes cleanly afterwards.
@@ -296,6 +333,15 @@ surface:   ci runs: <commands>
 none of it locally - push (or wait on the existing PR) and read `gh pr checks` instead; every
 line below is then logged as not-run with reason `ci-only mode`, and "re-verify (Step 4b)"
 everywhere in Steps 5-8 means push plus CI green, not a local run.
+
+Bind every result to a commit SHA. Record local `HEAD`, the pushed PR head, and the head attached
+to each required check. In `ci-only` mode, only completed successful checks for the current PR
+head pass; queued, running, missing, or prior-head checks are pending or stale, never green. A
+rebase or version-only advance requires fresh checks on the resulting SHA. Do not reconcile or
+rewrite a branch while its review is active; wait for reviewers, then reconcile and re-run the
+gate. Evidence: `runrecords/pr189-main-metadata-reconcile.md`,
+`runrecords/pr189-190-reconciliation.md`, and `runrecords/feasibility.md` in the SYT-9093 run
+record.
 
 In this order, fixing until green:
 
@@ -372,10 +418,21 @@ clean round 1 still runs to round 3.
 
 For each round:
 
-1. **Review.** Invoke the `pr-review-toolkit` full fight scoped to the PR: all five angles in
-   parallel, club fight, verdict block required. Pass the ticket acceptance plus the consensus
-   slice table as the task source. Review the **pushed diff**, never a stale local one - each
-   round's review must see the previous round's fixes. The supervisor tracks round state.
+All five independent review angles and the club verdict are required in every round. When the
+available agent slots are fewer than the reviewer count, dispatch bounded batches, collect each
+short result, then dispatch the next batch. The supervisor yields while workers are active and
+resumes from bounded completion notices. After a capacity error, refresh live agent state before
+dispatching again. Capacity changes scheduling, not reviewer coverage or round credit. Evidence:
+`sidebar/pipeline.md` and `runrecords/feasibility.md` in the SYT-9093 run record.
+
+Keep the pushed head unchanged until the round finishes. A missing reviewer result is not a
+no-finding result, and a duplicate or incomplete batch does not count as the round's full fight.
+
+1. **Review.** Invoke the `pr-review-toolkit` full fight scoped to the PR: all five independent
+   angles in capacity-bounded parallel batches as defined by that skill, then the club fight, with
+   a verdict block required. Pass the ticket acceptance plus the consensus slice table as the task
+   source. Review the **pushed diff**, never a stale local one - each round's review must see the
+   previous round's fixes. The supervisor tracks round state.
    A round without a verdict block is not a round - re-dispatch.
 2. **Enforce** the verdict:
    - **BLOCK** - stop. Escalate via the supervisor immediately; line fixes are the wrong tool.
@@ -408,8 +465,9 @@ stated rather than hidden.
 **At the cap with must-fix still open** after round 5 - fix
 the accepted ones, re-verify (Step 4b), push, then **stop and report via the supervisor**. It gives
 you the open must-fix items, what the post-last-review fixes changed, and the fact that those fixes are unreviewed;
-you decide between merging, raising the cap, or handing it back. Do not open a round past the cap on
-your own initiative, and do not merge past open must-fix items.
+mark the ticket BLOCKED until an explicit decision resolves them. Do not mark DONE or merge past
+open must-fix items. Do not open a round past the cap on your own initiative; a higher cap needs
+explicit authorization.
 
 **Escalate via the supervisor immediately**, without spending another round, on a BLOCK verdict,
 or if a fix would require a design change the consensus plan does not cover. Another review
@@ -471,6 +529,14 @@ Then merge using **the repository's own convention** - read it from
 Squash-merge repos: `gh pr merge <PR> --squash --delete-branch`.
 Merge-commit repos: `gh pr merge <PR> --merge --delete-branch`.
 
+For a PR under active review, freeze the coherent pushed head for the full round. Do not rebase
+merely because unrelated main commits arrive between reviewer batches or rounds. At the merge
+boundary, inspect the current target and changed-file overlap; reconcile only when required to
+resolve conflict or preserve correctness, then run the chosen gate and require fresh checks on the
+resulting exact head. Record why reconciliation was needed and any reviewed-versus-reconciled delta.
+Evidence: `sidebar/pipeline.md`, `runrecords/pr189-main-metadata-reconcile.md`, and
+`runrecords/pr189-190-reconciliation.md` in the SYT-9093 run record.
+
 **On conflict**, rebase the work branch on the target, re-verify (Step 4b in the chosen mode - in
 local mode the full gate, since the target moved underneath you, which is precisely when a
 cross-workspace type or test breakage appears; in ci-only mode push plus CI green), force-push the
@@ -505,6 +571,20 @@ executes it.
    writes or extends stories exercising the actual changed files/components in those states and
    captures the rendered output as evidence. Workshop proof renders the real changed code, so it
    counts as verification - standalone mockups of what the change "would look like" do not.
+   For source-fidelity work, compare the actual changed components to the authoritative source
+   during authoring and after accepted fixes, using matching data, theme, and viewport. Inspect
+   the paired captures and correct visible differences. Structural or count assertions do not
+   prove fidelity. Keep expected semantics independent of the implementation under test: neutral
+   fixture inputs may be shared, but identity, status, warning, attention, and animation
+   expectations must come from the source contract. A fixture that derives expected colors or
+   motion from implementation output can become a false oracle. Check normal, calm, and
+   reduced-motion behavior on the actual components.
+   Label source-expanded references as references, not as runs of the original product runtime.
+   Storybook proves the changed components with its stated fixtures; it does not prove live data,
+   native runtime behavior, or mocked callbacks. State those limits when the original runtime or
+   a real integration path is unavailable. Evidence: `sidebar/pipeline.md`,
+   `sidebar/review-r4-proof.md`, `sidebar/review-r4-verdict.md`, and
+   `sidebar/qa/integration-independent/result.md` in the SYT-9093 run record.
 3. **Auth token: pre-supplied first, asked for only if needed.** If an `auth token` override came
    with the prompt, the supervisor holds it and hands it to QA via env - QA tries it before asking
    for anything. If QA needs authenticated access it does not have (staging/production session,
@@ -538,7 +618,8 @@ executes it.
 ```
 qa:      <target: post-merge <sha/env> | worktree/preview>
          method: <what real-data proof ran>
-         result: pass | fail (<failing proof>)
+         result: PASS | FAIL | BLOCKED | PENDING (<evidence or reason>)
+         head: <exact commit SHA, or none + reason>
          token: provided (redacted) | not needed
 deck:    <absolute copy-out path + worktree-relative path> (assets: <paths>)
 ```
@@ -549,7 +630,9 @@ deck:    <absolute copy-out path + worktree-relative path> (assets: <paths>)
 task:      <ticket id or summary>
 supervisor: <agent id>
 worktree:  <path> (<removed | kept: reason>)
+status:    <DONE | BLOCKED | NEEDS_DECISION | IN_PROGRESS>
 pr:        <url> (<merged | open>)
+head:      <exact PR SHA for the reported checks, or none + reason>
 rounds:    <n>/5, min 3 (must-fix fixed=<a>, dissent=<b>, still open=<c>, last verdict=<APPROVE | FIX-THEN-SHIP | BLOCK>)
 simplify:  applied=<x> dropped=<y> (<or: skipped - reason>)
 unreviewed: <what was pushed after the last review round: post-last-review fixes, simplify edits, or none>
