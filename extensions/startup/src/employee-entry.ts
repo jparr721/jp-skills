@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { HostAPI } from "../index";
-import { assertSharedOmpTranscript, assertStartupPath, StartupBootError } from "./boot";
+import { assertSharedOmpTranscript, assertStartupPath, ompDirectories, ompProfileFromEnvironment, ompProfileSchema, StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, roleSchema, sourceSchema, type Json } from "./contracts";
 import { connectEmployee, EmployeeCommandError, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
 import { itemActionSchema } from "./items";
@@ -15,7 +15,7 @@ import { readPrivateJson } from "./v7-launch";
 const manifestSchema = z.strictObject({
   socketPath: z.string().startsWith("/"), credential: z.string().min(1), source: sourceSchema,
   employeeId: idSchema, generation: z.number().int().nonnegative().safe(), skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"),
-  ompConfigRoot: z.string().startsWith("/"), profile: z.literal("default"), harness: z.enum(["omp", "claude"]), skillsRoot: z.string().startsWith("/"),
+  profile: ompProfileSchema, harness: z.enum(["omp", "claude"]), skillsRoot: z.string().startsWith("/"),
 });
 export type LaunchManifest = z.infer<typeof manifestSchema>;
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -48,17 +48,13 @@ export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<Nat
   });
   return { nativeSession: file, file, lastAssistant: lastAssistant === undefined ? undefined : assistant.parse(lastAssistant).message };
 }
-export async function paneEnvironment(environment: Environment): Promise<Readonly<{ paneId: string; workspaceId: string; session: string; profile: "default" }>> {
+export async function paneEnvironment(environment: Environment): Promise<Readonly<{ paneId: string; workspaceId: string; session: string; profile: string }>> {
   const session = environment.STARTUP_HERDR_SESSION?.trim() || environment.HERDR_SESSION?.trim() || null;
   const paneId = environment.HERDR_PANE_ID?.trim();
   const workspaceId = environment.HERDR_WORKSPACE_ID?.trim();
   const location = paneId && workspaceId && session ? { paneId, workspaceId, session } :
     await herdrContext({ binary: environment.HERDR_BIN_PATH?.trim() || "herdr", session });
-  const requestedProfile: string = (environment.OMP_PROFILE ?? environment.PI_PROFILE ?? "").trim();
-  if (requestedProfile !== "") throw new StartupBootError("Startup requires the stock OMP default profile; named profiles are unsupported");
-  return {
-    ...location, profile: "default",
-  };
+  return { ...location, profile: ompProfileFromEnvironment(environment) };
 }
 function verifyManifest(manifest: LaunchManifest): Profile {
   const role = roleSchema.parse(basename(dirname(manifest.source.rolePath)).replace(/^startup-role-/, ""));
@@ -72,25 +68,27 @@ export function sameRoot(admission: Admission, ctx: NativeContext): boolean {
   return ctx.agent.kind === "main" && ctx.agent.id === admission.context.agent.id &&
     ctx.sessionManager.getSessionId() === admission.sessionId && ctx.sessionManager.getSessionFile() === admission.sessionFile;
 }
-export function assertNativeTranscript(input: Readonly<{ harness: "omp" | "claude"; startupRoot: string; ompConfigRoot: string; sessionId: string; file: string }>): void {
-  const root: string = input.harness === "omp" ? input.ompConfigRoot : input.startupRoot;
+// An OMP session lives under the agent directory of the Startup's profile, a Claude session under the Startup root.
+export function nativeTranscriptRoot(input: Readonly<{ harness: "omp" | "claude"; startupRoot: string; profile: string; environment: Environment }>): string {
+  return input.harness === "omp" ? ompDirectories(input.environment, input.profile).agent : input.startupRoot;
+}
+export function assertNativeTranscript(input: Readonly<{ harness: "omp" | "claude"; root: string; sessionId: string; file: string }>): void {
   const directory: string = input.harness === "omp" ? "sessions" : "projects";
-  const path: string = relative(root, input.file);
+  const path: string = relative(input.root, input.file);
   if (!path.startsWith(directory + sep) || (input.harness === "claude" && basename(input.file) !== `${input.sessionId}.jsonl`)) throw new StartupBootError("Native transcript must belong to the selected harness session tree");
-  if (input.harness === "omp") assertSharedOmpTranscript(root, input.file);
-  else assertStartupPath(root, input.file, "file");
+  if (input.harness === "omp") assertSharedOmpTranscript(input.root, input.file);
+  else assertStartupPath(input.root, input.file, "file");
 }
 export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment, nativeRootOf: NativeRootFn): Promise<Admission> {
   const sessionId = ctx.sessionManager.getSessionId();
   const profile: Profile = verifyManifest(manifest);
   if ((environment.STARTUP_ROOT === undefined || resolve(environment.STARTUP_ROOT) !== manifest.startupRoot) || (environment.JP_SKILLS_HOME === undefined || resolve(environment.JP_SKILLS_HOME) !== manifest.skillsHome) ||
-      (manifest.harness === "omp" && (environment.PI_CODING_AGENT_DIR === undefined || resolve(environment.PI_CODING_AGENT_DIR) !== manifest.ompConfigRoot)) ||
       (manifest.harness === "claude" && (environment.CLAUDE_CONFIG_DIR === undefined || resolve(environment.CLAUDE_CONFIG_DIR) !== manifest.startupRoot)))
     throw new StartupBootError("Employee process roots do not match the Startup launch manifest");
-  if (manifest.harness === "omp" && (environment.OMP_PROFILE ?? environment.PI_PROFILE ?? "").trim() !== "")
-    throw new StartupBootError("Startup requires the stock OMP default profile; named profiles are unsupported");
+  if (manifest.harness === "omp" && ompProfileFromEnvironment(environment) !== manifest.profile)
+    throw new StartupBootError(`Actual OMP profile differs from the launch manifest profile ${manifest.profile}; relaunch the employee on that profile`);
   const root: NativeRoot = await nativeRootOf(host, ctx);
-  assertNativeTranscript({ ...manifest, sessionId, file: root.file });
+  assertNativeTranscript({ harness: manifest.harness, root: nativeTranscriptRoot({ ...manifest, environment }), sessionId, file: root.file });
   const sessionFile = ctx.sessionManager.getSessionFile();
   if (ctx.sessionManager.getSessionId() !== sessionId) throw new StartupBootError("Native session changed while resolving admission identity");
   const nativeSession: string = root.nativeSession;

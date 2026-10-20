@@ -82,7 +82,7 @@ async function employeeFixture(options: Readonly<{ instructions: string | null; 
   f.setPoll({ projection: `${text}\nLIVE STATE A` });
   mkdirSync(join(f.startupRoot, "launches"), { mode: 0o700 });
   const manifest: string = join(f.startupRoot, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", ompConfigRoot: join(f.configHome, "ronin"), skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
+  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
   useEnvironment({ HERDR_PANE_ID: "w1:p2", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot });
   const transcript: string = join(f.startupRoot, "projects", "fixture", `${sessionId}.jsonl`);
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd: f.root, instructions: options.instructions === null ? text : options.instructions, transcript: () => transcript, formatGuardMs: options.formatGuardMs });
@@ -247,7 +247,7 @@ test("a cue raised before any waiter is armed fires when the first waiter arrive
   f.setPoll({ projection: `${profileText(profile)}\nLIVE STATE A` });
   mkdirSync(join(f.startupRoot, "launches"), { mode: 0o700 });
   const manifest: string = join(f.startupRoot, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", ompConfigRoot: join(f.configHome, "ronin"), skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
+  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
   useEnvironment({ HERDR_PANE_ID: "w1:p2", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot });
   const transcript: string = join(f.startupRoot, "projects", "fixture", `${sessionId}.jsonl`);
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd: f.root, instructions: profileText(profile), transcript: () => transcript, formatGuardMs: 10000 });

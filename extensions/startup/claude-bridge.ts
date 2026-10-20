@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { hostname } from "node:os";
 import { z } from "zod";
 import type { EntryConfig } from "./v7";
-import { executionOmpConfigRoot, executionSkillsHome, assertStartupPath, bootSelection, StartupBootError } from "./src/boot";
+import { executionSkillsHome, assertStartupPath, bootSelection, StartupBootError } from "./src/boot";
 import { claudeHookInputSchema, claudeRoot, createClaudeHost, type ClaudeHost, type WaiterHandle } from "./src/claude-host";
 import { priorEventCount, splitLines, TranscriptTail } from "./src/claude-ledger";
 import { bridgeRequestSchema, startupRoot as selectedStartupRoot, waiterSocketPath } from "./src/claude-waiter";
@@ -143,7 +143,7 @@ async function serve(): Promise<void> {
       if (transcript !== path) { shim.fail(new Error(`Claude transcript path changed from ${transcript} to ${path}; the Startup bridge serves one session`)); return shim.shutdown(); }
       return started ?? Promise.resolve();
     }
-    assertNativeTranscript({ harness: "claude", startupRoot, ompConfigRoot: executionOmpConfigRoot(environment), sessionId, file: path });
+    assertNativeTranscript({ harness: "claude", root: startupRoot, sessionId, file: path });
     transcript = path;
     let skip: number;
     try { skip = priorEventCount(path); }

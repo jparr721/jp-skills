@@ -75,7 +75,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     },
     observe: async () => { if (observationBarrier) await observationBarrier; if (observationFailure) throw observationFailure; return observations; },
   };
-  const config = { ompConfigRoot: "/fixture/ronin", name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), herdrSession: "fixture-herdr", profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
+  const config = { name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), herdrSession: "fixture-herdr", profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
   const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => { const value = now; now += clockStep; return value; } });
   async function admit(employeeId: string): Promise<string> {
     const runtime = store.runtimeBindings().findLast((r) => r.employeeId === employeeId);
@@ -162,7 +162,7 @@ test("admission preserves observation progress committed while its Herdr read is
   expect(f.store.runtimeBindings().find((r) => r.employeeId === pa)).toMatchObject({ stateSequence: 10, observedState: "done" });
 });
 
-test("OMP launches use only the Startup root and the stock default profile", async () => {
+test("OMP launches on the default profile pin no agent directory and pass no --profile", async () => {
   const f = fixture(8);
   await f.ready();
   const saved = f.store.runtimeBindings().find((entry) => entry.employeeId !== "manager");
@@ -172,12 +172,47 @@ test("OMP launches use only the Startup root and the stock default profile", asy
     STARTUP_ROOT: f.config.startupRoot,
     STARTUP_V7_MANIFEST: join(f.config.startupRoot, "launches", `${saved.launchId}.json`),
     OMPCODE: "",
-    OMP_PROFILE: "",
-    PI_PROFILE: "",
-    PI_CODING_AGENT_DIR: f.config.ompConfigRoot,
+    OMP_PROFILE: "default",
     STARTUP_HERDR_OMP_EXTENSION: f.config.herdrIntegration,
   });
+  expect(f.launches[0]?.args).not.toContain("--profile");
   expect(existsSync(join(f.config.startupRoot, "staff.sqlite"))).toBe(true);
+});
+
+test("OMP employees launch on the profile recorded in their launch manifest", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  (f.config as { profile: string }).profile = "work";
+  const hire = z.object({ employees: z.array(z.object({ id: z.string() })) }).parse(await f.coordinator.command(manager, { kind: "hire", requestId: "profile-ops", role: "devops", additional: 1 }));
+  const id = hire.employees[0]!.id;
+  (f.config as { profile: string }).profile = "switched";
+  await f.coordinator.command(manager, { kind: "activate", employeeIds: [id] });
+  await f.coordinator.launching();
+  const binding = f.store.runtimeBindings().findLast((r) => r.employeeId === id);
+  if (binding === undefined) throw new Error("Missing devops launch");
+  const manifest = z.object({ profile: z.string() }).parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${binding.launchId}.json`), "utf8")));
+  expect(manifest.profile).toBe("work");
+  const launch = f.launches.find((entry) => entry.name === `s-${binding.launchId.replaceAll("-", "").slice(0, 28)}`);
+  expect(launch?.args.slice(0, 2)).toEqual(["--profile", "work"]);
+  expect(f.layouts.at(-1)?.OMP_PROFILE).toBe("work");
+  expect(f.launches[0]?.args).not.toContain("--profile");
+  expect(f.layouts[0]?.OMP_PROFILE).toBe("default");
+});
+
+test("a manifest that records an invalid profile refuses the launch", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  const hire = z.object({ employees: z.array(z.object({ id: z.string() })) }).parse(await f.coordinator.command(manager, { kind: "hire", requestId: "profile-bad", role: "devops", additional: 1 }));
+  const id = hire.employees[0]!.id;
+  const binding = f.store.runtimeBindings().findLast((r) => r.employeeId === id);
+  if (binding === undefined) throw new Error("Missing prepared launch");
+  const path = join(f.config.stateDirectory, "launches", `${binding.launchId}.json`);
+  writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, "utf8")), profile: "../escape" }), { mode: 0o600 });
+  const launched = f.launches.length;
+  await f.coordinator.command(manager, { kind: "activate", employeeIds: [id] });
+  await f.coordinator.launching();
+  expect(f.launches).toHaveLength(launched);
+  expect(f.store.runtimeBindings().findLast((r) => r.employeeId === id)?.state).toBe("uncertain");
 });
 
 test("one Startup freezes six role settings and launches mixed OMP and interactive Claude processes", async () => {
@@ -206,7 +241,7 @@ test("one Startup freezes six role settings and launches mixed OMP and interacti
   expect(f.launches.map((launch) => launch.harness)).toEqual(["claude", "claude", "omp", "claude", "omp"]);
   expect(f.launches.find((launch) => launch.name === `s-${runtimeByRole.get("qa")?.launchId.replaceAll("-", "").slice(0, 28)}`)?.args.slice(-4)).toEqual(["--model", "openai/gpt-5.2", "--thinking", "medium"]);
   expect(f.launches.find((launch) => launch.name === `s-${runtimeByRole.get("devops")?.launchId.replaceAll("-", "").slice(0, 28)}`)?.args.slice(-4)).toEqual(["--model", "anthropic/claude-sonnet-4-5", "--thinking", "auto"]);
-  expect(f.layouts.filter((env) => env.PI_CODING_AGENT_DIR !== undefined).every((env) => env.PI_CODING_AGENT_DIR === f.config.ompConfigRoot && env.OMP_PROFILE === "")).toBe(true);
+  expect(f.layouts.filter((env) => env.OMP_PROFILE !== undefined).every((env) => env.OMP_PROFILE === "default" && env.PI_CODING_AGENT_DIR === undefined)).toBe(true);
   expect(f.layouts.filter((env) => env.CLAUDE_CONFIG_DIR !== undefined).every((env) => env.CLAUDE_CONFIG_DIR === f.config.startupRoot)).toBe(true);
   const architect = idsByRole.get("architect");
   if (architect === undefined) throw new Error("Missing architect employee");
@@ -1481,16 +1516,20 @@ test("host status accepts the same long filesystem paths as scope", async () => 
   expect(hostStatusSchema.parse({ ...status, binding: { ...status.binding, boundRoot: longPath, home: longPath } }).binding.boundRoot).toBe(longPath);
 });
 
-test("two Startup owners launch OMP against one config root without sharing owner identity", async () => {
+test("two Startup owners launch OMP on their own profiles without sharing owner identity", async () => {
   const first = fixture(8);
   const second = fixture(8);
+  (second.config as { profile: string }).profile = "work";
   await first.ready(); await second.ready();
-  const firstRoot = first.layouts.find((env) => env.PI_CODING_AGENT_DIR !== undefined)!;
-  const secondRoot = second.layouts.find((env) => env.PI_CODING_AGENT_DIR !== undefined)!;
-  expect(firstRoot.PI_CODING_AGENT_DIR).toBe("/fixture/ronin");
-  expect(secondRoot.PI_CODING_AGENT_DIR).toBe(firstRoot.PI_CODING_AGENT_DIR);
-  expect(firstRoot.STARTUP_ROOT).not.toBe(secondRoot.STARTUP_ROOT);
-  expect(firstRoot.STARTUP_V7_MANIFEST).not.toBe(secondRoot.STARTUP_V7_MANIFEST);
+  const firstEnv = first.layouts.find((env) => env.OMP_PROFILE !== undefined)!;
+  const secondEnv = second.layouts.find((env) => env.OMP_PROFILE !== undefined)!;
+  expect(firstEnv.OMP_PROFILE).toBe("default");
+  expect(secondEnv.OMP_PROFILE).toBe("work");
+  expect(first.launches[0]?.args).not.toContain("--profile");
+  expect(second.launches[0]?.args.slice(0, 2)).toEqual(["--profile", "work"]);
+  expect([...first.layouts, ...second.layouts].every((env) => env.PI_CODING_AGENT_DIR === undefined && env.PI_PROFILE === undefined)).toBe(true);
+  expect(firstEnv.STARTUP_ROOT).not.toBe(secondEnv.STARTUP_ROOT);
+  expect(firstEnv.STARTUP_V7_MANIFEST).not.toBe(secondEnv.STARTUP_V7_MANIFEST);
 });
 
 test("input reconciliation reads exact owner receipts and refuses other employee input", async () => {

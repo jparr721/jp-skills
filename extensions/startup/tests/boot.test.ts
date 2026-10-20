@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { bootSelection, parseBootCommand, persistBinding } from "../src/boot";
+import { bootSelection, ompDirectories, ompProfileFromEnvironment, parseBootCommand, persistBinding, StartupBootError } from "../src/boot";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -174,4 +174,36 @@ test("boot command preserves work and rejects malformed names and options", () =
   });
   expect(() => parseBootCommand("new ../wrong")).toThrow();
   expect(() => parseBootCommand("new alpha --unknown value")).toThrow();
+});
+
+// Each expectation was observed on OMP 18.11.1 by starting it under an isolated HOME and reading where it created sessions/ and plugins/.
+test("OMP directories follow OMP's own profile, override and XDG resolution", () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "startup-omp-dirs-")));
+  directories.push(home);
+  mkdirSync(join(home, "xdg-app", "omp"), { recursive: true });
+  mkdirSync(join(home, "xdg-work", "omp", "profiles", "work"), { recursive: true });
+  const base = join(home, ".omp");
+  const dirs = (environment: Readonly<Record<string, string>>, profile: string) => ompDirectories({ HOME: home, ...environment }, profile);
+  expect(dirs({}, "default")).toEqual({ root: base, agent: join(base, "agent") });
+  expect(dirs({}, "work")).toEqual({ root: join(base, "profiles", "work"), agent: join(base, "profiles", "work", "agent") });
+  expect(dirs({ PI_CONFIG_DIR: ".cfg" }, "default")).toEqual({ root: join(home, ".cfg"), agent: join(home, ".cfg", "agent") });
+  expect(dirs({ PI_CODING_AGENT_DIR: join(home, "custom") }, "default")).toEqual({ root: base, agent: join(home, "custom") });
+  expect(dirs({ PI_CODING_AGENT_DIR: join(home, "custom") }, "work")).toEqual(dirs({}, "work"));
+  const xdgApp = join(home, "xdg-app", "omp");
+  expect(dirs({ XDG_DATA_HOME: join(home, "xdg-app") }, "default")).toEqual({ root: xdgApp, agent: xdgApp });
+  expect(dirs({ XDG_DATA_HOME: join(home, "xdg-app") }, "work")).toEqual(dirs({}, "work"));
+  expect(dirs({ XDG_DATA_HOME: join(home, "xdg-app"), PI_CODING_AGENT_DIR: join(home, "custom") }, "default")).toEqual({ root: base, agent: join(home, "custom") });
+  const xdgWork = join(home, "xdg-work", "omp", "profiles", "work");
+  expect(dirs({ XDG_DATA_HOME: join(home, "xdg-work") }, "work")).toEqual({ root: xdgWork, agent: xdgWork });
+  expect(dirs({ XDG_DATA_HOME: join(home, "xdg-work") }, "default")).toEqual({ root: join(home, "xdg-work", "omp"), agent: join(home, "xdg-work", "omp") });
+  expect(dirs({ XDG_DATA_HOME: join(home, "missing") }, "default")).toEqual(dirs({}, "default"));
+});
+
+test("the active OMP profile is OMP_PROFILE even when empty, else PI_PROFILE, else the default", () => {
+  expect(ompProfileFromEnvironment({})).toBe("default");
+  expect(ompProfileFromEnvironment({ OMP_PROFILE: "", PI_PROFILE: "other" })).toBe("default");
+  expect(ompProfileFromEnvironment({ OMP_PROFILE: "default", PI_PROFILE: "other" })).toBe("default");
+  expect(ompProfileFromEnvironment({ OMP_PROFILE: " work ", PI_PROFILE: "other" })).toBe("work");
+  expect(ompProfileFromEnvironment({ PI_PROFILE: "other" })).toBe("other");
+  for (const OMP_PROFILE of ["invalid/profile", "Upper", "../x"]) expect(() => ompProfileFromEnvironment({ OMP_PROFILE })).toThrow(StartupBootError);
 });

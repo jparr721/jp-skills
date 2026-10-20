@@ -5,9 +5,9 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { cfgTaskMaxConcurrency } from "@oh-my-pi/pi-coding-agent/task/settings";
 import type { HostAPI } from "./index";
-import { executionOmpConfigRoot, executionSkillsHome, bootSelection, parseBootCommand, persistBinding, StartupBootError, type BootCommand, type Selection } from "./src/boot";
+import { executionSkillsHome, bootSelection, parseBootCommand, persistBinding, StartupBootError, type BootCommand, type Selection } from "./src/boot";
 import { encode } from "./src/contracts";
-import { assertNativeTranscript, attach, inputBlock, reconcileInput, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
+import { assertNativeTranscript, attach, inputBlock, reconcileInput, inputSchema, installLaunchedEmployee, nativeRoot, nativeTranscriptRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
 import { requireOmpModelRoles } from "./src/model-roles";
 import type { NativeContext } from "./src/omp-adapter";
 import { loadProfile, verifyProfile } from "./src/profiles";
@@ -65,11 +65,10 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
       await admitted.close();
       admitted = null;
     }
-    const ompConfigRoot: string = executionOmpConfigRoot(input.environment);
-    assertNativeTranscript({ harness: input.harness, startupRoot: next.startupRoot, ompConfigRoot, sessionId: nativeSession, file: nativeFile });
+    assertNativeTranscript({ harness: input.harness, root: nativeTranscriptRoot({ harness: input.harness, startupRoot: next.startupRoot, profile: location.profile, environment: input.environment }), sessionId: nativeSession, file: nativeFile });
     const savedPath: string = join(next.startupRoot, "runtime-config.json");
     const saved: RuntimeHostConfig | null = runtimeConfig ?? (existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null);
-    if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.ompConfigRoot !== ompConfigRoot || saved.name !== next.name || saved.skillsHome !== next.skillsHome || saved.startupRoot !== next.startupRoot || saved.stateDirectory !== next.startupRoot ||
+    if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.name !== next.name || saved.skillsHome !== next.skillsHome || saved.startupRoot !== next.startupRoot || saved.stateDirectory !== next.startupRoot ||
       saved.boundRoot !== next.boundRoot || saved.skillsRoot !== next.skillsRoot || saved.managerSession !== ctx.sessionManager.getSessionId() ||
       (input.harness === "omp" && realpathSync(saved.managerFile) !== realpathSync(nativeFile)) || saved.managerPaneId !== location.paneId || saved.profile !== location.profile ||
       saved.workspaceId !== location.workspaceId || saved.herdrSession !== location.session))
@@ -81,7 +80,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     persistBinding(next);
     const stateDirectory: string = next.startupRoot;
     const fresh: RuntimeHostConfig = {
-      name: next.name, ompConfigRoot, stateDirectory, boundRoot: next.boundRoot, skillsRoot: next.skillsRoot,
+      name: next.name, stateDirectory, boundRoot: next.boundRoot, skillsRoot: next.skillsRoot,
       socketPath: join(stateDirectory, "runtime.sock"), profile: location.profile,
       managerSession: ctx.sessionManager.getSessionId(), managerFile: nativeFile, managerPaneId: location.paneId,
       managerCredential: randomUUID(), policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit },
@@ -91,7 +90,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     const config: RuntimeHostConfig = await input.launch(saved ?? (input.harness === "claude" ? { ...fresh, harness: "claude" } : fresh));
     runtimeConfig = config;
     if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager identity changed during owner launch; preserve launch evidence and reconcile before retry");
-    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, harness: input.harness, ompConfigRoot, skillsHome: next.skillsHome, startupRoot: next.startupRoot, skillsRoot: next.skillsRoot }, { ...input.environment, STARTUP_ROOT: next.startupRoot, JP_SKILLS_HOME: next.skillsHome }, input.root);
+    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, harness: input.harness, skillsHome: next.skillsHome, startupRoot: next.startupRoot, skillsRoot: next.skillsRoot }, { ...input.environment, STARTUP_ROOT: next.startupRoot, JP_SKILLS_HOME: next.skillsHome }, input.root);
     if (stopped) { await connected.close(); return; }
     admitted = connected;
     await reconcileInput(connected);

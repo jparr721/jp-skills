@@ -20,16 +20,11 @@ import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { ompDirectories, ompProfileSchema } from "./src/boot";
 import { claudeIntegrationPath } from "./src/claude-launch";
 
 export class StartupInstallError extends Error {}
 const packageName = "@jp-skills/startup";
-export const ompProfileSchema = z
-  .string()
-  .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/)
-  .refine(
-    (value) => !/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(value),
-  );
 const configSchema = z.strictObject({
   plugins: z.record(z.string(), z.unknown()).optional(),
   settings: z.record(z.string(), z.unknown()).optional(),
@@ -82,17 +77,18 @@ export function savedOmpProfiles(
   );
   return [...names].sort();
 }
-export function pickProfile(saved: readonly string[], answer: string): string {
-  const chosen: string | undefined = /^[1-9]\d*$/.test(answer.trim()) ? saved[Number(answer.trim()) - 1] : undefined;
-  if (chosen === undefined)
-    throw new StartupInstallError(`Answer a number from 1 to ${saved.length} to pick a saved OMP profile; received "${answer}"`);
-  return chosen;
-}
-export async function askProfile(saved: readonly string[]): Promise<string> {
-  if (!process.stdin.isTTY)
+export function profileFromAnswer(answer: string): string {
+  const name: string = answer.trim();
+  if (name === "") return "default";
+  const parsed = ompProfileSchema.safeParse(name);
+  if (!parsed.success)
     throw new StartupInstallError(
-      `Several saved OMP profiles exist and no terminal is available to ask; pass one of: ${saved.join(", ")}`,
+      `"${name}" is not a valid OMP profile name; use lowercase letters, digits, dots, underscores or hyphens, at most 64 characters`,
     );
+  return parsed.data;
+}
+export async function askProfile(question: string): Promise<string> {
+  if (!process.stdin.isTTY) return "default";
   const terminal = createInterface({ input: process.stdin, output: process.stderr });
   // Bun leaves question() pending on Ctrl-C and Ctrl-D, so a closed terminal must cancel the prompt.
   const cancelled = new Promise<never>((_, reject) => {
@@ -100,55 +96,18 @@ export async function askProfile(saved: readonly string[]): Promise<string> {
   });
   terminal.once("SIGINT", () => terminal.close());
   try {
-    const answer: string = await Promise.race([
-      terminal.question(
-        `Saved OMP profiles:\n${saved.map((name, index) => `  ${index + 1}. ${name}`).join("\n")}\nPick one: `,
-      ),
-      cancelled,
-    ]);
-    return pickProfile(saved, answer);
+    return profileFromAnswer(await Promise.race([terminal.question(question), cancelled]));
   } finally {
     terminal.close();
   }
-}
-export async function chooseProfile(
-  input: Readonly<{
-    saved: readonly string[];
-    requested: string | null;
-    ask: (saved: readonly string[]) => Promise<string>;
-  }>,
-): Promise<string> {
-  if (input.requested !== null) return ompProfileSchema.parse(input.requested);
-  const only: string | undefined = input.saved[0];
-  if (only === undefined)
-    throw new StartupInstallError(
-      "No saved OMP profiles exist; create one with `omp --profile NAME` or pass the profile name",
-    );
-  if (input.saved.length === 1) return only;
-  const answer: string = await input.ask(input.saved);
-  if (!input.saved.includes(answer))
-    throw new StartupInstallError(
-      `${answer} is not a saved profile; saved OMP profiles: ${input.saved.join(", ")}`,
-    );
-  return answer;
 }
 export function pluginsDirectory(
   profile: string,
   env: NodeJS.ProcessEnv,
 ): string {
   ompProfileSchema.parse(profile);
-  const configName = configDirectoryName(env);
-  const xdg = env.XDG_DATA_HOME
-    ? join(resolve(env.XDG_DATA_HOME), "omp", "profiles", profile)
-    : null;
-  return join(
-    xdg !== null &&
-      existsSync(xdg) &&
-      (process.platform === "darwin" || process.platform === "linux")
-      ? xdg
-      : join(homedir(), configName, "profiles", profile),
-    "plugins",
-  );
+  configDirectoryName(env);
+  return join(ompDirectories(env, profile).root, "plugins");
 }
 function checkParents(path: string): string {
   const identities: string[] = [];
@@ -329,10 +288,11 @@ export function manageInstallation(options: InstallOptions): Readonly<{
       ) + "\n",
       { flag: "wx", mode: 0o600 },
     );
+    // An empty OMP_PROFILE selects the default profile even when the caller's environment names another.
     const command = spawnSync(
       options.omp,
-      ["--profile", profile, "plugin", "link", source],
-      { env: options.env, encoding: "utf8" },
+      [...(profile === "default" ? [] : ["--profile", profile]), "plugin", "link", source],
+      { env: profile === "default" ? { ...options.env, OMP_PROFILE: "" } : options.env, encoding: "utf8" },
     );
     const after = readRegular(lock);
     if (
@@ -475,11 +435,13 @@ if (import.meta.main && ["install-claude", "uninstall-claude"].includes(process.
   const [action, requested] = z
     .tuple([z.enum(["install", "uninstall"]), ompProfileSchema.optional()])
     .parse(process.argv.slice(2));
-  const profile: string = await chooseProfile({
-    saved: savedOmpProfiles(process.env, homedir()),
-    requested: requested ?? null,
-    ask: askProfile,
-  });
+  const profile: string =
+    requested ??
+    (await askProfile(
+      action === "install"
+        ? "Install into a named OMP profile? Enter a profile name (existing or new), or press Enter for the default profile: "
+        : "Uninstall from which OMP profile? Enter the profile name, or press Enter for the default profile: ",
+    ));
   process.stdout.write(
     JSON.stringify(
       manageInstallation({

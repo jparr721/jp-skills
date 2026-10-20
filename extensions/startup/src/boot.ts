@@ -1,4 +1,5 @@
 import {
+  existsSync,
   lstatSync,
   mkdirSync,
   readFileSync,
@@ -20,8 +21,28 @@ function executionConfigHome(xdg: string | undefined): string {
 export function executionSkillsHome(environment: Environment): string {
   return resolve(environment.JP_SKILLS_HOME ?? join(executionConfigHome(environment.XDG_CONFIG_HOME), "jp-skills"));
 }
-export function executionOmpConfigRoot(environment: Environment): string {
-  return resolve(executionConfigHome(environment.XDG_CONFIG_HOME), "ronin");
+export const ompProfileSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/)
+  .refine((value) => !value.endsWith(".") && !/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(value));
+// Mirrors OMP 18.11.1 packages/utils/src/dirs.ts (normalizeProfileName, resolveProfileEnv): the schema is its profile-name rule and OMP_PROFILE wins even when empty, then PI_PROFILE; empty or "default" is the default profile.
+export function ompProfileFromEnvironment(environment: Environment): string {
+  const requested: string = (environment.OMP_PROFILE ?? environment.PI_PROFILE ?? "").trim();
+  const profile = ompProfileSchema.safeParse(requested === "" ? "default" : requested);
+  if (!profile.success) throw new StartupBootError(`Invalid OMP_PROFILE/PI_PROFILE "${requested}"; use the active OMP profile name and retry Startup`);
+  return profile.data;
+}
+// Mirrors OMP 18.11.1 packages/utils/src/dirs.ts (DirResolver, getSessionsDir, getPluginsDir): PI_CONFIG_DIR under the home, a named profile's own root, an agent directory override that only the default profile honours,
+// and the XDG data directory that replaces both when it exists and the agent directory is not overridden. `agent` holds sessions/ and `root` holds plugins/.
+export function ompDirectories(environment: Environment, profile: string): Readonly<{ root: string; agent: string }> {
+  const base: string = join(environment.HOME || homedir(), environment.PI_CONFIG_DIR || ".omp");
+  const root: string = profile === "default" ? base : join(base, "profiles", profile);
+  const override: string | undefined = profile === "default" ? environment.PI_CODING_AGENT_DIR : undefined;
+  const agent: string = override ? resolve(override) : join(root, "agent");
+  const xdgApp: string | null = environment.XDG_DATA_HOME ? join(resolve(environment.XDG_DATA_HOME), "omp") : null;
+  const xdgRoot: string | null = xdgApp === null ? null : profile === "default" ? xdgApp : join(xdgApp, "profiles", profile);
+  const data: string | null = xdgRoot !== null && agent === join(root, "agent") && existsSync(xdgRoot) ? xdgRoot : null;
+  return { root: data ?? root, agent: data ?? agent };
 }
 export function startupsDirectory(skillsHome: string): string {
   return join(skillsHome, "startup");

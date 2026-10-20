@@ -99,6 +99,9 @@ const testSchemaBuilder: HostAPI["zod"] = {
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); });
 function fixture() {
+  return fixtureFor("default");
+}
+function fixtureFor(ompProfile: string) {
   const root: string = realpathSync(mkdtempSync(join(tmpdir(), "v7-entry-")));
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const skillsRoot: string = join(root, "skills-repo");
@@ -116,8 +119,10 @@ function fixture() {
   mkdirSync(startupRoot, { mode: 0o700 });
   const cwd: string = join(root, "repo");
   mkdirSync(cwd);
-  mkdirSync(join(configHome, "ronin", "sessions"), { recursive: true, mode: 0o700 });
-  const file: string = join(configHome, "ronin", "sessions", "native.jsonl");
+  const ompHome: string = join(root, "omp-home");
+  const agentDirectory: string = ompProfile === "default" ? join(ompHome, ".omp", "agent") : join(ompHome, ".omp", "profiles", ompProfile, "agent");
+  mkdirSync(join(agentDirectory, "sessions"), { recursive: true, mode: 0o700 });
+  const file: string = join(agentDirectory, "sessions", "native.jsonl");
   writeFileSync(file, JSON.stringify({ type: "session", id: "native-root" }) + "\n");
   const handlers = new Map<string, ((event: unknown, ctx: NativeContext) => unknown)[]>();
   const tools = new Map<string, Parameters<HostAPI["registerTool"]>[0]>();
@@ -190,8 +195,8 @@ function fixture() {
   const integration: string = join(root, "herdr-omp-agent-state.ts");
   writeFileSync(integration, "// installed by herdr\n// HERDR_INTEGRATION_ID=omp\n// HERDR_INTEGRATION_VERSION=10\n");
   const environment: Record<string, string | undefined> = {
-    HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", OMP_PROFILE: "", STARTUP_HERDR_OMP_EXTENSION: integration,
-    JP_SKILLS_HOME: skillsHome, STARTUP_ROOT: startupRoot, PI_CODING_AGENT_DIR: join(configHome, "ronin"), CLAUDE_CONFIG_DIR: startupRoot, XDG_CONFIG_HOME: configHome,
+    HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", OMP_PROFILE: ompProfile === "default" ? "" : ompProfile, STARTUP_HERDR_OMP_EXTENSION: integration,
+    JP_SKILLS_HOME: skillsHome, STARTUP_ROOT: startupRoot, HOME: ompHome, CLAUDE_CONFIG_DIR: startupRoot, XDG_CONFIG_HOME: configHome,
   };
   function useEnvironment(): void {
     const previous = new Map<string, string | undefined>();
@@ -206,19 +211,17 @@ function fixture() {
     const startupRoot: string = join(root, "manifest-state");
     mkdirSync(startupRoot, { mode: 0o700 });
     environment.STARTUP_ROOT = startupRoot;
-    environment.PI_CODING_AGENT_DIR = join(configHome, "ronin");
     environment.JP_SKILLS_HOME = skillsHome;
     const path: string = join(startupRoot, "manifest.json");
-    writeFileSync(path, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: profile.employeeId, generation: 1, profile: "default", harness: "omp", ompConfigRoot: join(configHome, "ronin"), skillsHome, startupRoot, skillsRoot }), { mode: 0o600 });
+    writeFileSync(path, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: profile.employeeId, generation: 1, profile: ompProfile, harness: "omp", skillsHome, startupRoot, skillsRoot }), { mode: 0o600 });
     useEnvironment();
     return path;
   }
-  return { handlers, disconnect: () => { for (const channel of channels) channel.close(); }, root, skillsRoot, skillsHome, configHome, cwd, file, ctx, host, tools, commands, messages, requests, admissions, pollReports, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; }, setAvailable(value: boolean) { available = value; }, setCommandResponse(value: Response) { commandResponse = value; } };
+  return { handlers, disconnect: () => { for (const channel of channels) channel.close(); }, root, skillsRoot, skillsHome, configHome, ompHome, agentDirectory, cwd, file, ctx, host, tools, commands, messages, requests, admissions, pollReports, socketPath, environment, useEnvironment, manifest, emit, getAborts: () => aborts, setProjection(value: string) { projection = value; }, setAvailable(value: boolean) { available = value; }, setCommandResponse(value: Response) { commandResponse = value; } };
 }
 function entryRoots(f: ReturnType<typeof fixture>, startupRoot: string | null = f.environment.STARTUP_ROOT ?? null) {
   if (startupRoot !== null) {
     f.environment.STARTUP_ROOT = startupRoot;
-    f.environment.PI_CODING_AGENT_DIR = join(f.configHome, "ronin");
     f.environment.CLAUDE_CONFIG_DIR = startupRoot;
   }
   return { skillsHome: f.skillsHome, startupRoot, skillsRoot: f.skillsRoot };
@@ -280,11 +283,11 @@ test("employee reattachment restores a provider pause even after a gated turn wa
   expect(f.requests.filter((request) => z.object({ kind: z.literal("begin_turn") }).safeParse(request).success)).toHaveLength(0);
 });
 
-test("manager resume refuses a foreign root, pane or harness before using saved credentials", async () => {
-  for (const mismatch of ["session", "pane", "harness"]) {
+test("manager resume refuses a foreign root, pane, profile or harness before using saved credentials", async () => {
+  for (const mismatch of ["session", "pane", "profile", "harness"]) {
     const f = fixture();
     const { config: initial } = runtimeFixture(f);
-    const config: RuntimeHostConfig = parseRuntimeHostConfig({ ...initial, socketPath: f.socketPath, boundRoot: realpathSync(f.cwd), skillsRoot: realpathSync(f.skillsRoot), ...(mismatch === "session" ? { managerSession: "another-root" } : {}), ...(mismatch === "pane" ? { managerPaneId: "other-pane" } : {}), ...(mismatch === "harness" ? { harness: "claude" } : {}) });
+    const config: RuntimeHostConfig = parseRuntimeHostConfig({ ...initial, socketPath: f.socketPath, boundRoot: realpathSync(f.cwd), skillsRoot: realpathSync(f.skillsRoot), ...(mismatch === "session" ? { managerSession: "another-root" } : {}), ...(mismatch === "pane" ? { managerPaneId: "other-pane" } : {}), ...(mismatch === "profile" ? { profile: "other-profile" } : {}), ...(mismatch === "harness" ? { harness: "claude" } : {}) });
     mkdirSync(config.stateDirectory, { recursive: true, mode: 0o700 });
     bindRuntimeFixture(f, mismatch === "session" ? { ...config, managerSession: initial.managerSession } : config);
     writeFileSync(join(config.stateDirectory, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
@@ -564,7 +567,7 @@ test("existing live runtime intent is reused without spawning a duplicate host",
   const stateDirectory: string = join(f.root, "state");
   mkdirSync(stateDirectory, { mode: 0o700 });
   const config: RuntimeHostConfig = {
-    name: "alpha", ompConfigRoot: join(f.configHome, "ronin"), skillsHome: f.skillsHome, startupRoot: stateDirectory, stateDirectory, boundRoot: f.cwd, skillsRoot: f.skillsRoot,
+    name: "alpha", skillsHome: f.skillsHome, startupRoot: stateDirectory, stateDirectory, boundRoot: f.cwd, skillsRoot: f.skillsRoot,
     socketPath: join(stateDirectory, "runtime.sock"), profile: "default", managerSession: "native-root", managerFile: f.file, managerPaneId: "w1:p1", managerCredential: "private-credential",
     herdrSession: "fixture", workspaceId: "w1", herdrBinary: "/must-not-run", herdrIntegration: f.environment.STARTUP_HERDR_OMP_EXTENSION ?? "", ownerGeneration: 1,
     policy: { tickMs: 100, paCadenceMs: 1000, progressDeadlineMs: 3000, connectionDeadlineMs: 1000, executionLimit: 4 },
@@ -630,7 +633,7 @@ process.stdout.write(JSON.stringify(result));
   const managerSession = harness === "claude" ? { source: "herdr:claude", agent: "claude", kind: "id", value: "native-root" } : { source: "herdr:omp", agent: "omp", kind: "path", value: f.file };
   writeFileSync(stateFile, JSON.stringify({ agents: [{ agent: harness, name: "manager", workspace_id: "w1", tab_id: "w1:t1", pane_id: "w1:p1", terminal_id: "term-1", agent_status: "idle", state_change_seq: 1, interactive_ready: true, agent_session: managerSession }] }));
   const config: RuntimeHostConfig = {
-    name: "alpha", ompConfigRoot: join(f.configHome, "ronin"), skillsHome, startupRoot, stateDirectory, boundRoot: f.cwd, skillsRoot: f.skillsRoot, socketPath, profile: "default", managerSession: "native-root", managerFile: harness === "claude" ? join(f.environment.STARTUP_ROOT!, "projects", "repo", "native-root.jsonl") : f.file, managerPaneId: "w1:p1", managerCredential: "private-credential",
+    name: "alpha", skillsHome, startupRoot, stateDirectory, boundRoot: f.cwd, skillsRoot: f.skillsRoot, socketPath, profile: "default", managerSession: "native-root", managerFile: harness === "claude" ? join(f.environment.STARTUP_ROOT!, "projects", "repo", "native-root.jsonl") : f.file, managerPaneId: "w1:p1", managerCredential: "private-credential",
     herdrSession: "fixture", workspaceId: "w1", herdrBinary: fake, herdrIntegration: f.environment.STARTUP_HERDR_OMP_EXTENSION ?? "", ownerGeneration: 1,
     policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 8 },
   };
@@ -820,18 +823,45 @@ test("fresh native helper factories block employee tools before any root attachm
   }
 });
 
-test("named OMP profiles are rejected before employee admission", async () => {
-  const f = fixture();
-  f.environment.OMP_PROFILE = "startup.v7";
-  f.useEnvironment();
-  const path: string = f.manifest("dev");
-  const manifest = z.record(z.string(), z.json()).parse(JSON.parse(readFileSync(path, "utf8")));
-  writeFileSync(path, JSON.stringify({ ...manifest, profile: "startup.v7" }));
-  installLaunchedEmployee(f.host, path);
-  await expect(f.emit("session_start", {}, f.ctx)).resolves.toBeUndefined();
-  expect(f.messages.join("\n")).toContain("Startup employee boot blocked");
-  expect(f.messages.join("\n")).toContain("profile");
+test("named OMP profile accepted by installer is accepted by employee admission", async () => {
+  const f = fixtureFor("startup.v7");
+  installLaunchedEmployee(f.host, f.manifest("dev"));
+  await f.emit("session_start", {}, f.ctx);
+  expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
+  expect(f.admissions).toHaveLength(1);
+});
+
+test("an employee whose actual OMP profile differs from its launch manifest is refused before admission", async () => {
+  for (const [actual, recorded] of [["default", "work"], ["work", "default"], ["other", "work"]] as const) {
+    const f = fixtureFor(actual);
+    const path: string = f.manifest("dev");
+    writeFileSync(path, JSON.stringify({ ...z.record(z.string(), z.json()).parse(JSON.parse(readFileSync(path, "utf8"))), profile: recorded }), { mode: 0o600 });
+    installLaunchedEmployee(f.host, path);
+    await f.emit("session_start", {}, f.ctx);
+    expect(f.messages.join("\n")).toContain(`launch manifest profile ${recorded}`);
+    expect(f.admissions).toHaveLength(0);
+  }
+});
+
+test("a named-profile employee transcript must live under that profile's agent directory", async () => {
+  const f = fixtureFor("work");
+  const defaultTranscript = join(f.ompHome, ".omp", "agent", "sessions", "native.jsonl");
+  mkdirSync(join(f.ompHome, ".omp", "agent", "sessions"), { recursive: true, mode: 0o700 });
+  writeFileSync(defaultTranscript, JSON.stringify({ type: "session", id: "native-root" }) + "\n");
+  const altered: NativeContext = { ...f.ctx, sessionManager: { getSessionId: () => "native-root", getSessionFile: () => defaultTranscript } };
+  installLaunchedEmployeeWith(f.host, f.manifest("dev"), async () => ({ nativeSession: defaultTranscript, file: defaultTranscript, lastAssistant: undefined }));
+  await f.emit("session_start", {}, altered);
   expect(f.admissions).toHaveLength(0);
+  expect(f.messages.join("\n")).toContain("Native transcript");
+});
+
+test("a manager on a named OMP profile records it and keeps its transcripts under that profile", async () => {
+  const f = fixtureFor("work");
+  const launched: RuntimeHostConfig[] = [];
+  installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; } });
+  await f.emit("input", { text: "/startup new named", source: "interactive", images: [] }, f.ctx);
+  expect(launched[0]?.profile).toBe("work");
+  expect(f.admissions).toHaveLength(1);
 });
 
 
@@ -1102,15 +1132,15 @@ test("admission rejects a foreign native transcript tree", async () => {
 
 test("native transcript policy rejects symlink ancestors, symlink files and Claude session mismatch", () => {
   const f = fixture();
-  const ompConfigRoot = join(f.configHome, "ronin");
   const foreign = join(f.root, "foreign"); mkdirSync(foreign);
   const file = join(foreign, "native.jsonl"); writeFileSync(file, "{}");
-  symlinkSync(foreign, join(ompConfigRoot, "sessions", "link"));
-  symlinkSync(file, join(ompConfigRoot, "sessions", "linked.jsonl"));
-  for (const target of [join(ompConfigRoot, "sessions", "link", "native.jsonl"), join(ompConfigRoot, "sessions", "linked.jsonl")]) {
-    expect(() => assertNativeTranscript({ harness: "omp", startupRoot: f.environment.STARTUP_ROOT!, ompConfigRoot, sessionId: "native-root", file: target })).toThrow("symlink");
+  symlinkSync(foreign, join(f.agentDirectory, "sessions", "link"));
+  symlinkSync(file, join(f.agentDirectory, "sessions", "linked.jsonl"));
+  for (const target of [join(f.agentDirectory, "sessions", "link", "native.jsonl"), join(f.agentDirectory, "sessions", "linked.jsonl")]) {
+    expect(() => assertNativeTranscript({ harness: "omp", root: f.agentDirectory, sessionId: "native-root", file: target })).toThrow("symlink");
   }
-  expect(() => assertNativeTranscript({ harness: "claude", startupRoot: f.environment.STARTUP_ROOT!, ompConfigRoot, sessionId: "native-root", file: join(f.environment.STARTUP_ROOT!, "projects", "repo", "other.jsonl") })).toThrow("Native transcript");
+  expect(() => assertNativeTranscript({ harness: "omp", root: f.agentDirectory, sessionId: "native-root", file: join(foreign, "native.jsonl") })).toThrow("Native transcript");
+  expect(() => assertNativeTranscript({ harness: "claude", root: f.environment.STARTUP_ROOT!, sessionId: "native-root", file: join(f.environment.STARTUP_ROOT!, "projects", "repo", "other.jsonl") })).toThrow("Native transcript");
 });
 
 test("manager admission resolves an omitted Startup root independently of tooling home", async () => {
@@ -1137,7 +1167,7 @@ async function lifecycleOwnerFixture() {
   let now = 1000;
   const store = openStore({ path: join(startupRoot, "staff.sqlite"), scope: { skillsHome: f.skillsHome, startupRoot, boundRoot: f.cwd, host: hostname(), name: "lifecycle", managerSession: "native-root" }, owner: { id: "lifecycle-owner", managerGeneration: 1, leaseMs: 60000 }, now: () => now });
   cleanup.push(() => store.close());
-  const config: RuntimeHostConfig = { name: "lifecycle", skillsHome: f.skillsHome, startupRoot, stateDirectory: startupRoot, boundRoot: f.cwd, skillsRoot: f.skillsRoot, ompConfigRoot: join(f.configHome, "ronin"), socketPath: join(startupRoot, "r.sock"), profile: "default", managerSession: "native-root", managerFile: f.file, managerPaneId: "w1:p1", managerCredential: "owner-manager", herdrSession: "fixture", workspaceId: "w1", herdrBinary: "unused", herdrIntegration: f.environment.STARTUP_HERDR_OMP_EXTENSION!, ownerGeneration: 1, policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 8 } };
+  const config: RuntimeHostConfig = { name: "lifecycle", skillsHome: f.skillsHome, startupRoot, stateDirectory: startupRoot, boundRoot: f.cwd, skillsRoot: f.skillsRoot, socketPath: join(startupRoot, "r.sock"), profile: "default", managerSession: "native-root", managerFile: f.file, managerPaneId: "w1:p1", managerCredential: "owner-manager", herdrSession: "fixture", workspaceId: "w1", herdrBinary: "unused", herdrIntegration: f.environment.STARTUP_HERDR_OMP_EXTENSION!, ownerGeneration: 1, policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 8 } };
   const observations: HerdrObservation[] = [{ harness: "omp", name: "manager", workspaceId: "w1", tabId: "w1:t1", paneId: "w1:p1", terminalId: "manager-term", nativeSession: f.file, state: "idle", stateSequence: 1, interactiveReady: true }];
   let commandAccepted: (() => void) | null = null;
   let lastConnection: string | null = null;
@@ -1152,7 +1182,7 @@ async function lifecycleOwnerFixture() {
     split: async () => `w1:p${++layouts + 1}`,
     launch: async (input) => {
       launches++;
-      const nativeSession = join(config.ompConfigRoot, "sessions", `${input.name}.jsonl`);
+      const nativeSession = join(f.agentDirectory, "sessions", `${input.name}.jsonl`);
       writeFileSync(nativeSession, JSON.stringify({ type: "session", id: input.name }) + "\n");
       const observation: HerdrObservation = { harness: "omp", name: input.name, workspaceId: "w1", tabId: "w1:t2", paneId: input.paneId, terminalId: input.name, nativeSession, state: "idle", stateSequence: 1, interactiveReady: true };
       observations.push(observation);
@@ -1342,7 +1372,7 @@ for (const pendingInput of [false, true]) test(`expired employee explicitly re-a
 
 for (const role of ["manager", "employee"] as const) test(`${role} accepts a canonical shared OMP root at mode 0755 without changing it`, async () => {
   const f = fixture();
-  const sharedRoot = join(f.configHome, "ronin");
+  const sharedRoot = f.agentDirectory;
   chmodSync(sharedRoot, 0o755);
   if (role === "employee") {
     installLaunchedEmployee(f.host, f.manifest("dev"));
@@ -1359,10 +1389,10 @@ for (const role of ["manager", "employee"] as const) test(`${role} accepts a can
 
 test("shared OMP containment does not weaken private Startup root permissions or native header identity", async () => {
   const f = fixture();
-  chmodSync(join(f.configHome, "ronin"), 0o755);
+  chmodSync(f.agentDirectory, 0o755);
   writeFileSync(f.file, JSON.stringify({ type: "session", id: "foreign" }) + "\n");
   await expect(nativeRoot(f.host, f.ctx)).rejects.toThrow("does not match");
   const startupRoot = f.environment.STARTUP_ROOT!;
   chmodSync(startupRoot, 0o755);
-  expect(() => assertNativeTranscript({ harness: "claude", startupRoot, ompConfigRoot: join(f.configHome, "ronin"), sessionId: "native-root", file: join(startupRoot, "projects", "repo", "native-root.jsonl") })).toThrow("owner-only");
+  expect(() => assertNativeTranscript({ harness: "claude", root: startupRoot, sessionId: "native-root", file: join(startupRoot, "projects", "repo", "native-root.jsonl") })).toThrow("owner-only");
 });

@@ -38,7 +38,7 @@ Humans may interact directly with every employee pane. Pane access does not chan
 
 Native `/startup status` (in Claude Code intercepted by the Startup bridge) shows supported runtime staffing/duties; the broader skill renders queue/bulletin too. `startup-sprint` is internal, every five merged items.
 
-State stays under selected `startupRoot`: `staff.sqlite`, canonical `queue.json`, ledger, memory (64KB), standing instructions, bulletin, resource inventory and completions. Preserve this owner's IDs and receipts. Boot is a hard cut: an old-format Startup (`binding.json` without `scope`) under home/startup and repository .startup files remain historical evidence, never an import source or alternate mutable namespace. Shared default-profile OMP configuration and `mcp.json` live at the execution user's Ronin config root; they do not select Startup authority.
+State stays under selected `startupRoot`: `staff.sqlite`, canonical `queue.json`, ledger, memory (64KB), standing instructions, bulletin, resource inventory and completions. Preserve this owner's IDs and receipts. Boot is a hard cut: an old-format Startup (`binding.json` without `scope`) under home/startup and repository .startup files remain historical evidence, never an import source or alternate mutable namespace. OMP's own configuration and `mcp.json` in the Startup profile's OMP agent directory are shared native state; they do not select Startup authority.
 
 ## Framework tail
 

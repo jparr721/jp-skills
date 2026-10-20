@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { chooseProfile, manageClaudeInstallation, manageInstallation, pickProfile, pluginsDirectory, savedOmpProfiles, StartupInstallError } from "../install";
+import { askProfile, manageClaudeInstallation, manageInstallation, pluginsDirectory, profileFromAnswer, savedOmpProfiles, StartupInstallError } from "../install";
 const temporary: string[] = [];
 afterEach(() => {
   for (const path of temporary.splice(0))
@@ -283,16 +283,91 @@ test("saved OMP profiles are the named profile directories under the XDG and hom
   expect(() => savedOmpProfiles({ PI_CONFIG_DIR: "../x" }, home)).toThrow(StartupInstallError);
 });
 
-test("profile choice uses an explicit name, the only saved profile, or asks among several", async () => {
-  const ask = async (saved: readonly string[]): Promise<string> => saved[1] ?? "";
-  expect(await chooseProfile({ saved: ["a", "b"], requested: "z", ask })).toBe("z");
-  expect(await chooseProfile({ saved: ["only"], requested: null, ask })).toBe("only");
-  expect(await chooseProfile({ saved: ["a", "b"], requested: null, ask })).toBe("b");
-  await expect(chooseProfile({ saved: [], requested: null, ask })).rejects.toThrow(StartupInstallError);
-  await expect(chooseProfile({ saved: ["a", "b"], requested: null, ask: async () => "c" })).rejects.toThrow(/not a saved profile/);
+test("a profile answer names a profile, and an empty answer is the default profile", () => {
+  expect(profileFromAnswer("work")).toBe("work");
+  expect(profileFromAnswer("  new.profile-1\n")).toBe("new.profile-1");
+  for (const answer of ["", "  ", "\n", "default"]) expect(profileFromAnswer(answer)).toBe("default");
+  for (const answer of ["Bad Name", "../x", "UPPER", "-lead", "a/b", "con", "work.", "x".repeat(65)]) expect(() => profileFromAnswer(answer)).toThrow(StartupInstallError);
 });
 
-test("a numbered answer picks one saved profile and anything else is refused", () => {
-  expect(pickProfile(["a", "b"], "2")).toBe("b");
-  for (const answer of ["", "0", "3", "b", "1.5"]) expect(() => pickProfile(["a", "b"], answer)).toThrow(StartupInstallError);
+test("without a terminal the profile prompt answers the default profile without asking", async () => {
+  const original = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+  try {
+    expect(await askProfile("must not be asked")).toBe("default");
+  } finally {
+    if (original === undefined) delete (process.stdin as { isTTY?: boolean }).isTTY;
+    else Object.defineProperty(process.stdin, "isTTY", original);
+  }
+});
+
+test("the default profile's plugin directory is the home OMP root, or the XDG data root once it exists", () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "startup-default-home-")));
+  temporary.push(home);
+  expect(pluginsDirectory("default", { HOME: home })).toBe(join(home, ".omp", "plugins"));
+  expect(pluginsDirectory("default", { HOME: home, PI_CONFIG_DIR: ".cfg" })).toBe(join(home, ".cfg", "plugins"));
+  expect(pluginsDirectory("default", { HOME: home, XDG_DATA_HOME: join(home, "data") })).toBe(join(home, ".omp", "plugins"));
+  mkdirSync(join(home, "data", "omp"), { recursive: true });
+  expect(pluginsDirectory("default", { HOME: home, XDG_DATA_HOME: join(home, "data") })).toBe(join(home, "data", "omp", "plugins"));
+  expect(pluginsDirectory("work", { HOME: home, XDG_DATA_HOME: join(home, "data") })).toBe(join(home, ".omp", "profiles", "work", "plugins"));
+});
+
+test("the default profile installs with no --profile even when the environment names another, and uninstalls by receipt", () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "startup-default-install-")));
+  temporary.push(home);
+  const plugins = join(home, ".omp", "plugins");
+  mkdirSync(plugins, { recursive: true });
+  const original = '{"settings":{"user":{"keep":true}}}\n';
+  const lock = join(plugins, "omp-plugins.lock.json");
+  writeFileSync(lock, original);
+  const seen = join(home, "seen.json");
+  const executable = join(home, "omp-default-fixture");
+  writeFileSync(executable, `#!${process.execPath}
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+const plugins = ${JSON.stringify(plugins)};
+if (process.argv[2] === "--version") process.stdout.write("omp/18.11.1" + String.fromCharCode(10));
+else {
+  const source = process.argv.at(-1);
+  const manifest = JSON.parse(readFileSync(source + "/package.json", "utf8"));
+  writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ args: process.argv.slice(2), profile: process.env.OMP_PROFILE ?? null }));
+  mkdirSync(plugins + "/node_modules/@jp-skills", { recursive: true });
+  symlinkSync(source, plugins + "/node_modules/@jp-skills/startup");
+  writeFileSync(plugins + "/omp-plugins.lock.json", JSON.stringify({ plugins: { "@jp-skills/startup": { version: manifest.version, enabledFeatures: null, enabled: true } }, settings: { user: { keep: true } } }, null, 2));
+}
+`, { mode: 0o700 });
+  const source = resolve(import.meta.dir, "..");
+  const options = { action: "install" as const, profile: "default", source, omp: executable, env: { HOME: home, OMP_PROFILE: "inherited", PI_PROFILE: "inherited" } };
+  expect(manageInstallation(options)).toMatchObject({ profile: "default", plugins });
+  expect(JSON.parse(readFileSync(seen, "utf8"))).toEqual({ args: ["plugin", "link", realpathSync(source)], profile: "" });
+  expect(JSON.parse(readFileSync(join(plugins, "jp-skills-startup.install.json"), "utf8")).profile).toBe("default");
+  manageInstallation({ ...options, action: "uninstall", omp: "must-not-execute" });
+  expect(readFileSync(lock, "utf8")).toBe(original);
+  expect(existsSync(join(plugins, "node_modules/@jp-skills/startup"))).toBe(false);
+  expect(existsSync(join(plugins, "jp-skills-startup.install.json"))).toBe(false);
+});
+
+test("a named profile that does not exist yet installs through --profile and creates its own plugin directory", () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "startup-new-profile-")));
+  temporary.push(home);
+  const plugins = join(home, ".omp", "profiles", "brand-new", "plugins");
+  const seen = join(home, "seen.json");
+  const executable = join(home, "omp-new-profile-fixture");
+  writeFileSync(executable, `#!${process.execPath}
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+const plugins = ${JSON.stringify(plugins)};
+if (process.argv[2] === "--version") process.stdout.write("omp/18.11.1" + String.fromCharCode(10));
+else {
+  const source = process.argv.at(-1);
+  const manifest = JSON.parse(readFileSync(source + "/package.json", "utf8"));
+  writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ args: process.argv.slice(2), profile: process.env.OMP_PROFILE ?? null }));
+  mkdirSync(plugins + "/node_modules/@jp-skills", { recursive: true });
+  symlinkSync(source, plugins + "/node_modules/@jp-skills/startup");
+  writeFileSync(plugins + "/omp-plugins.lock.json", JSON.stringify({ plugins: { "@jp-skills/startup": { version: manifest.version, enabledFeatures: null, enabled: true } }, settings: {} }, null, 2));
+}
+`, { mode: 0o700 });
+  const source = resolve(import.meta.dir, "..");
+  expect(existsSync(plugins)).toBe(false);
+  expect(manageInstallation({ action: "install", profile: "brand-new", source, omp: executable, env: { HOME: home } })).toMatchObject({ profile: "brand-new", plugins });
+  expect(JSON.parse(readFileSync(seen, "utf8"))).toEqual({ args: ["--profile", "brand-new", "plugin", "link", realpathSync(source)], profile: null });
+  expect(JSON.parse(readFileSync(join(plugins, "jp-skills-startup.install.json"), "utf8")).profile).toBe("brand-new");
 });

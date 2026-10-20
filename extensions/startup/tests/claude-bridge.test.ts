@@ -84,7 +84,7 @@ function bridgeFixture(mode: "employee" | "manager") {
   cleanup.push(() => { server.stop(true); });
   mkdirSync(join(startupRootPath, "launches"), { mode: 0o700 });
   const manifest: string = join(startupRootPath, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", ompConfigRoot: join(configHome, "ronin"), skillsHome: home, startupRoot: startupRootPath, skillsRoot }), { mode: 0o600 });
+  writeFileSync(manifest, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: home, startupRoot: startupRootPath, skillsRoot }), { mode: 0o600 });
   writeFileSync(join(startupRootPath, "launches", `${sessionId}.prompt.md`), text, { mode: 0o600 });
   if (mode === "manager") {
     const selection = bootSelection({ cwd: repo, skillsHome: home, startupRoot: startupRootPath, skillsRoot, host: hostname(), managerSession: sessionId, command: parseBootCommand("new acme"), explicitName: null, executionLimit: null });
@@ -340,7 +340,7 @@ function managerFixture() {
   persistBinding(selection);
   const environment: Record<string, string> = { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p1", STARTUP_NAME: "acme", STARTUP_ROOT: startupRoot, JP_SKILLS_HOME: home, CLAUDE_CONFIG_DIR: startupRoot, XDG_CONFIG_HOME: configHome };
   const config = {
-    name: "acme", ompConfigRoot: join(configHome, "ronin"), skillsHome: home, startupRoot, stateDirectory: startupRoot, boundRoot: repo, skillsRoot, socketPath: join(startupRoot, "runtime.sock"), profile: "default",
+    name: "acme", skillsHome: home, startupRoot, stateDirectory: startupRoot, boundRoot: repo, skillsRoot, socketPath: join(startupRoot, "runtime.sock"), profile: "default",
     managerSession: sessionId, managerFile: join(root, "manager.jsonl"), managerPaneId: "w1:p1", managerCredential: "private-credential",
     herdrSession: "fixture", workspaceId: "w1", herdrBinary: "herdr", herdrIntegration: "/fixture/herdr-agent-state.sh", ownerGeneration: 1,
     policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 4 },

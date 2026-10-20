@@ -9,7 +9,7 @@ import { openStore, readOwnerControl } from "./store";
 import type { Environment } from "./employee-entry";
 import { encode, scopeSchema, type Scope } from "./contracts";
 import { savedRoleSettingsSchema, runtimePolicySchema, type SavedRoleSettings } from "./runtime-contracts";
-import { assertStartupPath, contains, ensureStartupRoot, StartupBootError } from "./boot";
+import { assertStartupPath, contains, ensureStartupRoot, ompProfileSchema, StartupBootError } from "./boot";
 
 export function integrationPath(environment: Environment): string {
   const path: string = realpathSync(z.string().startsWith("/").parse(environment.STARTUP_HERDR_OMP_EXTENSION));
@@ -54,9 +54,9 @@ export function prepareManagerLaunch(input: Readonly<{ scope: Scope; harness: "o
 }
 const ompConfigSchema = z.strictObject({
   name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
-  ompConfigRoot: z.string().startsWith("/"), skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
+  skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
   boundRoot: z.string().startsWith("/"), skillsRoot: z.string().startsWith("/"),
-  socketPath: z.string().startsWith("/"), profile: z.string().min(1),
+  socketPath: z.string().startsWith("/"), profile: ompProfileSchema,
   managerSession: z.string().min(1), managerFile: z.string().startsWith("/"),
   managerPaneId: z.string().min(1), managerCredential: z.string().min(1),
   herdrSession: z.string().min(1), workspaceId: z.string().min(1),
@@ -190,9 +190,6 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
           ...process.env,
           JP_SKILLS_HOME: config.skillsHome,
           STARTUP_ROOT: config.startupRoot,
-          PI_CODING_AGENT_DIR: config.ompConfigRoot,
-          OMP_PROFILE: "",
-          PI_PROFILE: "",
           OMPCODE: "",
           ...("harness" in config ? { CLAUDE_CONFIG_DIR: config.startupRoot } : {}),
         },

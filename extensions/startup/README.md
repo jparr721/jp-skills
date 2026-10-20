@@ -2,9 +2,9 @@
 
 The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP or Claude Code root in a directly interactive Herdr pane. Each of the six roles selects OMP or Claude independently; a prepared launch records that selection immutably. OMP setup follows; Claude Code setup is in [Claude Code](#claude-code). The manager's inference or process can stop while the coordinator continues observing.
 
-V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path. Historical named-profile installation is not the root-scoped V7 launch path.
+V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path.
 
-The [manager recovery guide](../../docs/startup-v7/manager-recovery.md) covers automatic reconnection of the original manager transcript, bounded lifecycle alerts, honest connectivity health and finished crew retirement. A resumed manager must use its saved Herdr pane, Startup root and default OMP profile with the managed Herdr integration loaded.
+The [manager recovery guide](../../docs/startup-v7/manager-recovery.md) covers automatic reconnection of the original manager transcript, bounded lifecycle alerts, honest connectivity health and finished crew retirement. A resumed manager must use its saved Herdr pane, Startup root and OMP profile with the managed Herdr integration loaded.
 
 The 7.0.2 [recovery proof](../../docs/startup-v7/recovery-acceptance.json) and [screenshot deck](../../docs/slides/startup-v7-recovery-2026-10-15.html) record a live local Herdr run with both session variables unset: a forced employee boot error alerted the manager, the original process recovered automatically in the same pane, PA reports continued, and all owned proof processes were shut down. This does not establish remote Linux compatibility or indefinite liveness.
 
@@ -13,36 +13,46 @@ The 7.0.2 [recovery proof](../../docs/startup-v7/recovery-acceptance.json) and [
 - Bun 1.3.13 or newer (Unix WebSocket support) and OMP with native root sessions, persistent transcripts, `ctx.abort`, `isIdle()` and `hasPendingMessages()` support.
 - A running Herdr server reporting client/endpoint compatibility, the required layout and agent APIs, and its managed OMP integration.
 - An existing Herdr pane and socket context. Missing pane/workspace/session variables are resolved with `herdr pane current --current` and `herdr status server --json`; the default server reports a null session. No focused-pane discovery from outside Herdr.
-- Canonical role/loop sources available locally. Managed OMP launches clear `OMP_PROFILE`, `PI_PROFILE` and `OMPCODE`, and pass no `--profile` argument. The internal `profile: "default"` is an identity discriminator, not a native profile name.
+- Canonical role/loop sources available locally. Managed OMP launches clear `OMPCODE` and select the Startup's recorded OMP profile (see [Profiles](#profiles)): `OMP_PROFILE` is set to it, and only a named profile also gets `--profile NAME`.
 
-Use stock OMP and Herdr binaries. Startup does not fork or install either runtime. Select the canonical Startup root with `STARTUP_ROOT` (default: `<skills home>/startup/<name>`, where the skills home is `JP_SKILLS_HOME`, else `${XDG_CONFIG_HOME:-~/.config}/jp-skills`). OMP uses its default profile with `PI_CODING_AGENT_DIR` set to the execution user's canonical Ronin config root (`${XDG_CONFIG_HOME:-~/.config}/ronin`). Owner config and launch manifests carry this separate `ompConfigRoot`; all Startups for that user share its native `mcp.json`. Named profiles are refused. Startup authority remains under `STARTUP_ROOT`, separately from shared native configuration.
+Use stock OMP and Herdr binaries. Startup does not fork or install either runtime. Select the canonical Startup root with `STARTUP_ROOT` (default: `<skills home>/startup/<name>`, where the skills home is `JP_SKILLS_HOME`, else `${XDG_CONFIG_HOME:-~/.config}/jp-skills`). OMP runs on its own configuration, resolved by OMP itself. The default profile uses the same agent directory a regular `omp` does (`~/.omp/agent`, or wherever `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR` and `XDG_DATA_HOME` move it), so its logins, `config.yml`, `mcp.json` and sessions are shared with your normal OMP. A Startup can instead run on a named OMP profile. Startup pins no agent directory and sets none of those variables. Startup authority remains under `STARTUP_ROOT`, separately from native configuration.
 
 Repository development can load the extension directly after root provisioning:
 
 ```sh
 bun install --cwd extensions/startup --frozen-lockfile
-export PI_CODING_AGENT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ronin"
-OMP_PROFILE= PI_PROFILE= OMPCODE= omp --extension "$STARTUP_HERDR_OMP_EXTENSION" --extension "$PWD/extensions/startup/v7.ts"
+OMPCODE= omp --extension "$STARTUP_HERDR_OMP_EXTENSION" --extension "$PWD/extensions/startup/v7.ts"
 ```
+
+Add `--profile NAME` to run the manager, and so the Startup, on a named OMP profile.
 
 The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and a positive numeric `HERDR_INTEGRATION_VERSION` header. The revision identifies the managed file; it is not pinned to v10. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. It is required for either manager harness, because any role may launch an OMP employee. The Claude hook path is validated separately and is never passed to OMP as an extension. Worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle.
 
-The older named-profile installer is historical tooling and is not invoked by host control. Root provisioning and installed runtime changes require their own explicit operation.
+`install.ts` links the extension into an OMP profile and is not invoked by host control. Root provisioning and installed runtime changes require their own explicit operation.
 
 ## Profiles
 
-`install` and `uninstall` take an optional profile. With no name they use the only saved named OMP profile, or list the saved ones and ask you to pick one (a terminal is required; otherwise pass the name):
+A Startup runs on the OMP default profile or on one named profile. Boot records the manager's profile (`OMP_PROFILE`, else `PI_PROFILE`, else the default, as OMP resolves it) in the Startup's `runtime-config.json`, refuses to resume a saved manager under a different one, and launches every OMP employee on it: `OMP_PROFILE` is set in the pane so an inherited `OMP_PROFILE` or `PI_PROFILE` cannot select another profile, and a named profile also passes `--profile NAME`. Each launch keeps the profile recorded in its manifest when the launch was prepared. An employee refuses admission when its actual profile differs from that manifest. Native transcripts must live under `sessions/` in that profile's OMP agent directory.
+
+`install` and `uninstall` take an optional profile:
 
 ```sh
 bun extensions/startup/install.ts install [PROFILE]
+bun extensions/startup/install.ts uninstall [PROFILE]
 ```
 
-`config.ts` reads saved Startups under `<skills home>/startup`. A Startup saved in the old format (`binding.json` without `scope`) is skipped by `list` and refused by `get`:
+With no profile on a terminal, `install` asks `Install into a named OMP profile? Enter a profile name (existing or new), or press Enter for the default profile:`. Enter links into the default profile with `omp plugin link` and no `--profile` (plugin directory `~/.omp/plugins`, or `$XDG_DATA_HOME/omp/plugins` once that directory exists), so the extension is installed for your regular OMP. A name links with `omp --profile NAME plugin link`, whether or not the profile exists yet. With no terminal and no profile, `install` uses the default profile. The ownership receipt records the profile as its name or `default`.
+
+`config.ts` reads and changes saved Startups under `<skills home>/startup`. A Startup saved in the old format (`binding.json` without `scope`) is skipped by `list` and refused by `get`:
 
 ```sh
+bun extensions/startup/config.ts profiles                       # saved named OMP profiles
 bun extensions/startup/config.ts list                           # saved Startups, harness and profile
 bun extensions/startup/config.ts get NAME [KEY]                 # runtime config, manager credential redacted
+bun extensions/startup/config.ts set NAME profile PROFILE       # switch the Startup's OMP profile (default or a saved name)
 ```
+
+`set` rewrites only `profile` in the Startup's `runtime-config.json`. It refuses while the coordinator process runs or its launch is uncertain, for a Startup with a Claude Code manager (that manager takes its profile from the `OMP_PROFILE` of the shell that starts `startup-claude`), and for a profile that is neither saved nor `default`. It prints the command that resumes the manager in the new profile. Resume by path keeps the original manager transcript, so crews, queue and history are preserved. Launches prepared after the switch use the new profile. The new profile must resolve each [model role](#model-roles), or manager boot blocks and names the missing ones.
 
 ## Model roles
 
@@ -69,7 +79,7 @@ bun install --cwd extensions/startup --frozen-lockfile
 bun extensions/startup/install.ts install-claude
 ```
 
-`install-claude` checks those requirements and writes `~/.local/bin/startup-claude` plus an ownership receipt. `uninstall-claude` removes both only when their bytes still match the receipt. The OMP `install|uninstall PROFILE` paths are unchanged.
+`install-claude` checks those requirements and writes `~/.local/bin/startup-claude` plus an ownership receipt. `uninstall-claude` removes both only when their bytes still match the receipt. The OMP `install|uninstall [PROFILE]` paths are unchanged.
 
 Boot: open a Herdr pane in the bound root, run `startup-claude`, then type `/startup new NAME` (or `select NAME`, `status`, `-- WORK`). The bound root must be trusted in Claude Code (it or an ancestor has `hasTrustDialogAccepted`), and `STARTUP_EXECUTION_LIMIT` is required because Claude Code exposes no native helper concurrency. Startup runtime guidance stays under the selected root. Resuming a saved manager with a different harness is refused; new employee launches use each role's saved harness.
 
@@ -122,7 +132,7 @@ In the original manager's Herdr/OMP root:
 
 Names contain letters, digits, underscore or hyphen. `new` binds an existing directory, defaulting to native cwd. `select` reads the saved binding. Current selection discovers exactly one matching ancestor `.startup/config.md` binding or uses `STARTUP_NAME`. Startup home resolves `JP_SKILLS_HOME`, then `XDG_CONFIG_HOME/jp-skills`, then `~/.config/jp-skills`; state must remain outside the bound repository.
 
-Boot verifies the actual OMP version, root identity, unparented transcript/header, canonical source hashes, default profile and Herdr location. It preserves unrelated root AGENTS/configuration bytes, records private runtime configuration and launch intent, then starts or reconnects to the independent runtime. A live or uncertain host is never blindly spawned again. Read-only health checks are bounded; partial PA startup failure keeps the endpoint available and records a manager blocker.
+Boot verifies the actual OMP version, root identity, unparented transcript/header, canonical source hashes, OMP profile and Herdr location. It preserves unrelated root AGENTS/configuration bytes, records private runtime configuration and launch intent, then starts or reconnects to the independent runtime. A live or uncertain host is never blindly spawned again. Read-only health checks are bounded; partial PA startup failure keeps the endpoint available and records a manager blocker.
 
 After a boot attempt, failed or incomplete admission blocks native and Startup tools. Source/turn admission failure invokes native abort; a swallowed extension hook exception does not grant work authority. Boot failure produces one stop reminder and then parks. The `/startup` command remains available for explicit correction/retry.
 
@@ -294,7 +304,7 @@ After cold create and any settings apply, call owner `prepare_manager` with scop
 
 ### Native artifact policy
 
-OMP native sessions are the explicit shared-storage exception: managed default-profile sessions reside under `<ompConfigRoot>/sessions`, with an exact root-session header and current native API identity. This follows stock [OMP 18.11.1 directory resolution](https://github.com/can1357/oh-my-pi/blob/v18.11.1/packages/utils/src/dirs.ts) and [SessionManager](https://github.com/can1357/oh-my-pi/blob/v18.11.1/packages/coding-agent/src/session/session-manager.ts). Startup does not copy native history or equate a transcript path with owner authority.
+OMP native sessions are the explicit shared-storage exception: managed sessions reside under `sessions/` in the Startup profile's OMP agent directory (`~/.omp/agent` for the default profile, `~/.omp/profiles/NAME/agent` for a named one, or the XDG data directory OMP substitutes for it), with an exact root-session header and current native API identity. `ompDirectories` in `src/boot.ts` mirrors stock [OMP 18.11.1 directory resolution](https://github.com/can1357/oh-my-pi/blob/v18.11.1/packages/utils/src/dirs.ts) and [SessionManager](https://github.com/can1357/oh-my-pi/blob/v18.11.1/packages/coding-agent/src/session/session-manager.ts). Startup does not copy native history or equate a transcript path with owner authority.
 
 Claude launches select `CLAUDE_CONFIG_DIR=startupRoot`; transcripts must be under `projects/` there with the exact native session ID as their filename. [Claude's directory documentation](https://code.claude.com/docs/en/claude-directory) specifies this config override and transcript tree. Both harnesses reject foreign trees, noncanonical paths and symlink ancestors/files; resume retains the saved exact native session/file. Hook-provided Claude paths are checked before tailing. These source contracts still require current-version live acceptance.
 

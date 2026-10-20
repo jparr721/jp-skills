@@ -89,7 +89,7 @@ test("cold resume cannot create a replacement manager and cross-root requests fa
 });
 
 function runtimeConfig(f: ReturnType<typeof fixture>): RuntimeHostConfig {
-  return { name: f.scope.name, ompConfigRoot: join(f.configHome, "ronin"), skillsHome: f.scope.skillsHome, startupRoot: f.scope.startupRoot, stateDirectory: f.scope.startupRoot, boundRoot: f.scope.boundRoot, skillsRoot: f.create.skillsRoot, socketPath: join(f.scope.startupRoot, "runtime.sock"), profile: "default", managerSession: f.scope.managerSession, managerFile: join(f.scope.startupRoot, "manager.jsonl"), managerPaneId: "w1:p1", managerCredential: "private-fixture", herdrSession: "fixture", workspaceId: "w1", herdrBinary: "herdr", herdrIntegration: "/fixture/herdr-agent-state.sh", ownerGeneration: 1, policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 4 } };
+  return { name: f.scope.name, skillsHome: f.scope.skillsHome, startupRoot: f.scope.startupRoot, stateDirectory: f.scope.startupRoot, boundRoot: f.scope.boundRoot, skillsRoot: f.create.skillsRoot, socketPath: join(f.scope.startupRoot, "runtime.sock"), profile: "default", managerSession: f.scope.managerSession, managerFile: join(f.scope.startupRoot, "manager.jsonl"), managerPaneId: "w1:p1", managerCredential: "private-fixture", herdrSession: "fixture", workspaceId: "w1", herdrBinary: "herdr", herdrIntegration: "/fixture/herdr-agent-state.sh", ownerGeneration: 1, policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 4 } };
 }
 test("uncertain resume is looked up without replay and concurrent creates cannot duplicate initialization", async () => {
   const f = fixture();
