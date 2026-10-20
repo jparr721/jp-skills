@@ -13,8 +13,9 @@
 
 ### Changed
 
-- Startup runs OMP on OMP's own configuration, with nothing pinned: the default profile shares the same agent directory a regular `omp` uses, and a Startup can run on a named OMP profile instead. A Startup records its profile, every OMP employee launches on the profile in its launch manifest (`--profile NAME` for a named one, none for the default, `OMP_PROFILE` always set), and managed transcripts must live under that profile's OMP agent directory.
-- `install.ts` asks for a named OMP profile (existing or new) or Enter for the default profile; with no terminal it installs into the default profile. `config.ts profiles` and `config.ts set NAME profile PROFILE` switch a saved Startup's profile while its coordinator is stopped.
+- Startup runs OMP on OMP's own configuration, with nothing pinned: the default profile shares the same agent directory a regular `omp` uses, and a Startup can run on a named OMP profile instead. A Startup records its profile, every OMP employee launches on the profile in its launch manifest (`OMP_PROFILE` set in its pane), and managed transcripts must live under that profile's OMP agent directory.
+- `install.ts` asks for a named OMP profile (existing or new) or Enter for the default profile; with no terminal it installs into the default profile.
+- `config.ts set` and `config.ts profiles` are removed: a Startup's profile is fixed when it is created, because its manager transcript lives under that profile's OMP agent directory.
 - Name-less Startup discovery, host-control `list` and `config.ts list` skip old-format Startup roots (`binding.json` without `scope`) instead of failing.
 - An OMP employee still launches on the OMP model role bound to its Startup role, unless its saved settings request a model, which replaces the bound role for that launch. Manager boot checks the bound roles only for a fresh admission.
 

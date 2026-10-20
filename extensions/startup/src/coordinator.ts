@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { assertStartupPath, ensureStartupRoot, ompProfileSchema, StartupBootError } from "./boot";
+import { assertStartupPath, ensureStartupRoot, StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, sourceSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, ClaimSettlementError, type Binding, type Employee, type HostReceipt, type HostStatus, ownerControlRequestSchema, type OwnerControlRequest, type OwnerControlReceipt, type Json, type Source } from "./contracts";
 import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
@@ -136,22 +136,10 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
   function launchArtifact(current: RuntimeBinding): string {
     return join(launchDirectory, `${current.launchId}${current.settings.requested.harness === "omp" ? ".ts" : ".prompt.md"}`);
   }
-  function manifestPath(current: RuntimeBinding): string {
-    const path = join(launchDirectory, `${current.launchId}.json`);
-    assertStartupPath(root, path, "file");
-    return path;
-  }
-  // A launch keeps the profile its manifest was written under, so a profile switch between prepare and launch never splits one launch across profiles.
-  function launchProfile(current: RuntimeBinding): string {
-    return z.object({ profile: ompProfileSchema }).parse(JSON.parse(readFileSync(manifestPath(current), "utf8"))).profile;
-  }
-  function profileArgs(current: RuntimeBinding): readonly string[] {
-    const named: string = launchProfile(current);
-    return named === "default" ? [] : ["--profile", named];
-  }
   function launchFiles(current: RuntimeBinding, credential: string): void {
     const harness = runtimeHarnessSchema.parse(current.settings.requested.harness);
-    const path = manifestPath(current);
+    const path = join(launchDirectory, `${current.launchId}.json`);
+    assertStartupPath(root, path, "file");
     const manifest = encode({ socketPath: config.socketPath, credential, source: current.source, employeeId: current.employeeId, generation: current.generation, profile: config.profile, harness, skillsHome: config.skillsHome, startupRoot: config.startupRoot, skillsRoot: config.skillsRoot });
     if (existsSync(path)) {
       if (lstatSync(path).isSymbolicLink() || readFileSync(path, "utf8") !== manifest)
@@ -261,7 +249,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     try {
       const selected = current.settings.requested;
       const args = harness === "omp"
-        ? [...profileArgs(current), "--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot, ...(selected.model.value === null ? ompModelArgs(selected.role) : []), ...ompSettingsArgs(current.settings)]
+        ? ["--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot, ...(selected.model.value === null ? ompModelArgs(selected.role) : []), ...ompSettingsArgs(current.settings)]
         : (() => {
           const files = claudeRuntimeFiles();
           return claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: files.settingsFile, mcpFile: files.mcpFile, name, model: selected.model.value, effort: selected.effort.value });
@@ -314,9 +302,11 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     });
   }
   function paneEnvironment(current: RuntimeBinding): Readonly<Record<string, string>> {
-    const base: Readonly<Record<string, string>> = { JP_SKILLS_HOME: config.skillsHome, STARTUP_ROOT: config.startupRoot, STARTUP_V7_MANIFEST: manifestPath(current) };
+    const manifest = join(launchDirectory, `${current.launchId}.json`);
+    assertStartupPath(root, manifest, "file");
+    const base: Readonly<Record<string, string>> = { JP_SKILLS_HOME: config.skillsHome, STARTUP_ROOT: config.startupRoot, STARTUP_V7_MANIFEST: manifest };
     return current.settings.requested.harness === "omp"
-      ? { ...base, OMPCODE: "", OMP_PROFILE: launchProfile(current), STARTUP_HERDR_OMP_EXTENSION: config.herdrIntegration }
+      ? { ...base, OMPCODE: "", OMP_PROFILE: config.profile, STARTUP_HERDR_OMP_EXTENSION: config.herdrIntegration }
       : { ...base, CLAUDE_CONFIG_DIR: config.startupRoot };
   }
   async function createEmployeeTab(id: string, label: string): Promise<Readonly<{ tabId: string; paneId: string }>> {

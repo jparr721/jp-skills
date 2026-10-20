@@ -962,6 +962,8 @@ test("runtime config parses saved OMP bytes unchanged, accepts Claude and reject
   const claude: string = JSON.stringify({ ...config, harness: "claude" });
   expect(JSON.stringify(parseRuntimeHostConfig(JSON.parse(claude)))).toBe(claude);
   for (const harness of ["omp", "codex", null]) expect(() => parseRuntimeHostConfig({ ...config, harness })).toThrow(z.ZodError);
+  expect(parseRuntimeHostConfig({ ...config, profile: "work" }).profile).toBe("work");
+  for (const profile of ["../escape", "Upper", "work."]) expect(() => parseRuntimeHostConfig({ ...config, profile })).toThrow(z.ZodError);
 });
 
 test("an invalid OMP runtime config reports only the OMP schema issues", () => {

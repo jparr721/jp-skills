@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { askProfile, manageClaudeInstallation, manageInstallation, pluginsDirectory, profileFromAnswer, savedOmpProfiles, StartupInstallError } from "../install";
+import { askProfile, manageClaudeInstallation, manageInstallation, pluginsDirectory, profileFromAnswer, StartupInstallError } from "../install";
 const temporary: string[] = [];
 afterEach(() => {
   for (const path of temporary.splice(0))
@@ -40,9 +40,6 @@ test("native named profile resolution uses existing profile XDG path and rejects
   const f = fixture();
   expect(pluginsDirectory(f.profile, f.env)).toBe(f.plugins);
   expect(() => pluginsDirectory("../default", f.env)).toThrow();
-  expect(() =>
-    pluginsDirectory(f.profile, { PI_CONFIG_DIR: "/tmp" }),
-  ).toThrow();
 });
 test("installer refuses foreign plugin link, config, dependency and malformed lock before native execution", () => {
   for (const kind of ["link", "config", "dependency", "malformed"]) {
@@ -184,7 +181,7 @@ import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 const plugins = ${JSON.stringify(f.plugins)};
 if (process.argv[2] === "--version") process.stdout.write(${JSON.stringify("omp/")} + ${JSON.stringify(version)} + String.fromCharCode(10));
 else {
-  const source = process.argv[6];
+  const source = process.argv.at(-1);
   const manifest = JSON.parse(readFileSync(source + "/package.json", "utf8"));
   if (manifest.omp.extensions.length !== 1 || manifest.omp.extensions[0] !== "v7.ts") throw new Error("V7 entry not selected");
   mkdirSync(plugins + "/node_modules/@jp-skills", { recursive: true });
@@ -271,18 +268,6 @@ test("uninstall-claude refuses a changed launcher or a missing receipt and prese
   expect(existsSync(f.receipt)).toBe(true);
 });
 
-test("saved OMP profiles are the named profile directories under the XDG and home roots", () => {
-  const f = fixture();
-  const home = realpathSync(mkdtempSync(join(tmpdir(), "startup-home-")));
-  temporary.push(home);
-  mkdirSync(join(home, ".omp", "profiles", "work"), { recursive: true });
-  mkdirSync(join(home, ".omp", "profiles", "Bad Name"), { recursive: true });
-  writeFileSync(join(home, ".omp", "profiles", "stray-file"), "");
-  expect(savedOmpProfiles(f.env, home)).toEqual(["isolated-test", "work"]);
-  expect(savedOmpProfiles({}, home)).toEqual(["work"]);
-  expect(() => savedOmpProfiles({ PI_CONFIG_DIR: "../x" }, home)).toThrow(StartupInstallError);
-});
-
 test("a profile answer names a profile, and an empty answer is the default profile", () => {
   expect(profileFromAnswer("work")).toBe("work");
   expect(profileFromAnswer("  new.profile-1\n")).toBe("new.profile-1");
@@ -306,13 +291,14 @@ test("the default profile's plugin directory is the home OMP root, or the XDG da
   temporary.push(home);
   expect(pluginsDirectory("default", { HOME: home })).toBe(join(home, ".omp", "plugins"));
   expect(pluginsDirectory("default", { HOME: home, PI_CONFIG_DIR: ".cfg" })).toBe(join(home, ".cfg", "plugins"));
+  expect(pluginsDirectory("default", { HOME: home, PI_CONFIG_DIR: "" })).toBe(join(home, ".omp", "plugins"));
   expect(pluginsDirectory("default", { HOME: home, XDG_DATA_HOME: join(home, "data") })).toBe(join(home, ".omp", "plugins"));
   mkdirSync(join(home, "data", "omp"), { recursive: true });
   expect(pluginsDirectory("default", { HOME: home, XDG_DATA_HOME: join(home, "data") })).toBe(join(home, "data", "omp", "plugins"));
   expect(pluginsDirectory("work", { HOME: home, XDG_DATA_HOME: join(home, "data") })).toBe(join(home, ".omp", "profiles", "work", "plugins"));
 });
 
-test("the default profile installs with no --profile even when the environment names another, and uninstalls by receipt", () => {
+test("the default profile installs under OMP_PROFILE=default even when the environment names another, and uninstalls by receipt", () => {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "startup-default-install-")));
   temporary.push(home);
   const plugins = join(home, ".omp", "plugins");
@@ -338,7 +324,7 @@ else {
   const source = resolve(import.meta.dir, "..");
   const options = { action: "install" as const, profile: "default", source, omp: executable, env: { HOME: home, OMP_PROFILE: "inherited", PI_PROFILE: "inherited" } };
   expect(manageInstallation(options)).toMatchObject({ profile: "default", plugins });
-  expect(JSON.parse(readFileSync(seen, "utf8"))).toEqual({ args: ["plugin", "link", realpathSync(source)], profile: "" });
+  expect(JSON.parse(readFileSync(seen, "utf8"))).toEqual({ args: ["plugin", "link", realpathSync(source)], profile: "default" });
   expect(JSON.parse(readFileSync(join(plugins, "jp-skills-startup.install.json"), "utf8")).profile).toBe("default");
   manageInstallation({ ...options, action: "uninstall", omp: "must-not-execute" });
   expect(readFileSync(lock, "utf8")).toBe(original);
@@ -346,7 +332,7 @@ else {
   expect(existsSync(join(plugins, "jp-skills-startup.install.json"))).toBe(false);
 });
 
-test("a named profile that does not exist yet installs through --profile and creates its own plugin directory", () => {
+test("a named profile that does not exist yet installs under OMP_PROFILE and creates its own plugin directory", () => {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "startup-new-profile-")));
   temporary.push(home);
   const plugins = join(home, ".omp", "profiles", "brand-new", "plugins");
@@ -368,6 +354,6 @@ else {
   const source = resolve(import.meta.dir, "..");
   expect(existsSync(plugins)).toBe(false);
   expect(manageInstallation({ action: "install", profile: "brand-new", source, omp: executable, env: { HOME: home } })).toMatchObject({ profile: "brand-new", plugins });
-  expect(JSON.parse(readFileSync(seen, "utf8"))).toEqual({ args: ["--profile", "brand-new", "plugin", "link", realpathSync(source)], profile: null });
+  expect(JSON.parse(readFileSync(seen, "utf8"))).toEqual({ args: ["plugin", "link", realpathSync(source)], profile: "brand-new" });
   expect(JSON.parse(readFileSync(join(plugins, "jp-skills-startup.install.json"), "utf8")).profile).toBe("brand-new");
 });

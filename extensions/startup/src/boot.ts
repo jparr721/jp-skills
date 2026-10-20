@@ -35,12 +35,11 @@ export function ompProfileFromEnvironment(environment: Environment): string {
 // Mirrors OMP 18.11.1 packages/utils/src/dirs.ts (DirResolver, getSessionsDir, getPluginsDir): PI_CONFIG_DIR under the home, a named profile's own root, an agent directory override that only the default profile honours,
 // and the XDG data directory that replaces both when it exists and the agent directory is not overridden. `agent` holds sessions/ and `root` holds plugins/.
 export function ompDirectories(environment: Environment, profile: string): Readonly<{ root: string; agent: string }> {
-  const base: string = join(environment.HOME || homedir(), environment.PI_CONFIG_DIR || ".omp");
-  const root: string = profile === "default" ? base : join(base, "profiles", profile);
+  const at = (directory: string): string => (profile === "default" ? directory : join(directory, "profiles", profile));
+  const root: string = at(join(environment.HOME || homedir(), environment.PI_CONFIG_DIR || ".omp"));
   const override: string | undefined = profile === "default" ? environment.PI_CODING_AGENT_DIR : undefined;
   const agent: string = override ? resolve(override) : join(root, "agent");
-  const xdgApp: string | null = environment.XDG_DATA_HOME ? join(resolve(environment.XDG_DATA_HOME), "omp") : null;
-  const xdgRoot: string | null = xdgApp === null ? null : profile === "default" ? xdgApp : join(xdgApp, "profiles", profile);
+  const xdgRoot: string | null = environment.XDG_DATA_HOME ? at(join(resolve(environment.XDG_DATA_HOME), "omp")) : null;
   const data: string | null = xdgRoot !== null && agent === join(root, "agent") && existsSync(xdgRoot) ? xdgRoot : null;
   return { root: data ?? root, agent: data ?? agent };
 }

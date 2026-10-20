@@ -16,7 +16,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -44,39 +44,6 @@ export type InstallOptions = Readonly<{
   omp: string;
   env: NodeJS.ProcessEnv;
 }>;
-function configDirectoryName(env: NodeJS.ProcessEnv): string {
-  const configName = env.PI_CONFIG_DIR ?? ".omp";
-  if (
-    !/^[a-zA-Z0-9._-]+$/.test(configName) ||
-    configName === "." ||
-    configName === ".."
-  )
-    throw new StartupInstallError(
-      "PI_CONFIG_DIR must be a single directory name under the real home",
-    );
-  return configName;
-}
-export function savedOmpProfiles(
-  env: NodeJS.ProcessEnv,
-  home: string,
-): readonly string[] {
-  const roots: readonly string[] = [
-    ...(env.XDG_DATA_HOME && (process.platform === "darwin" || process.platform === "linux")
-      ? [join(resolve(env.XDG_DATA_HOME), "omp", "profiles")]
-      : []),
-    join(home, configDirectoryName(env), "profiles"),
-  ];
-  const names: ReadonlySet<string> = new Set(
-    roots.flatMap((root) =>
-      existsSync(root)
-        ? readdirSync(root, { withFileTypes: true })
-            .filter((entry) => entry.isDirectory() && ompProfileSchema.safeParse(entry.name).success)
-            .map((entry) => entry.name)
-        : [],
-    ),
-  );
-  return [...names].sort();
-}
 export function profileFromAnswer(answer: string): string {
   const name: string = answer.trim();
   if (name === "") return "default";
@@ -106,7 +73,6 @@ export function pluginsDirectory(
   env: NodeJS.ProcessEnv,
 ): string {
   ompProfileSchema.parse(profile);
-  configDirectoryName(env);
   return join(ompDirectories(env, profile).root, "plugins");
 }
 function checkParents(path: string): string {
@@ -288,11 +254,10 @@ export function manageInstallation(options: InstallOptions): Readonly<{
       ) + "\n",
       { flag: "wx", mode: 0o600 },
     );
-    // An empty OMP_PROFILE selects the default profile even when the caller's environment names another.
     const command = spawnSync(
       options.omp,
-      [...(profile === "default" ? [] : ["--profile", profile]), "plugin", "link", source],
-      { env: profile === "default" ? { ...options.env, OMP_PROFILE: "" } : options.env, encoding: "utf8" },
+      ["plugin", "link", source],
+      { env: { ...options.env, OMP_PROFILE: profile }, encoding: "utf8" },
     );
     const after = readRegular(lock);
     if (
@@ -436,12 +401,7 @@ if (import.meta.main && ["install-claude", "uninstall-claude"].includes(process.
     .tuple([z.enum(["install", "uninstall"]), ompProfileSchema.optional()])
     .parse(process.argv.slice(2));
   const profile: string =
-    requested ??
-    (await askProfile(
-      action === "install"
-        ? "Install into a named OMP profile? Enter a profile name (existing or new), or press Enter for the default profile: "
-        : "Uninstall from which OMP profile? Enter the profile name, or press Enter for the default profile: ",
-    ));
+    requested ?? (await askProfile("OMP profile name (existing or new), or press Enter for the default profile: "));
   process.stdout.write(
     JSON.stringify(
       manageInstallation({

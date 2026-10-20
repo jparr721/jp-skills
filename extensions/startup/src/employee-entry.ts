@@ -68,7 +68,6 @@ export function sameRoot(admission: Admission, ctx: NativeContext): boolean {
   return ctx.agent.kind === "main" && ctx.agent.id === admission.context.agent.id &&
     ctx.sessionManager.getSessionId() === admission.sessionId && ctx.sessionManager.getSessionFile() === admission.sessionFile;
 }
-// An OMP session lives under the agent directory of the Startup's profile, a Claude session under the Startup root.
 export function nativeTranscriptRoot(input: Readonly<{ harness: "omp" | "claude"; startupRoot: string; profile: string; environment: Environment }>): string {
   return input.harness === "omp" ? ompDirectories(input.environment, input.profile).agent : input.startupRoot;
 }

@@ -162,7 +162,7 @@ test("admission preserves observation progress committed while its Herdr read is
   expect(f.store.runtimeBindings().find((r) => r.employeeId === pa)).toMatchObject({ stateSequence: 10, observedState: "done" });
 });
 
-test("OMP launches on the default profile pin no agent directory and pass no --profile", async () => {
+test("OMP launches select the Startup's profile through OMP_PROFILE alone and pin no agent directory", async () => {
   const f = fixture(8);
   await f.ready();
   const saved = f.store.runtimeBindings().find((entry) => entry.employeeId !== "manager");
@@ -179,13 +179,12 @@ test("OMP launches on the default profile pin no agent directory and pass no --p
   expect(existsSync(join(f.config.startupRoot, "staff.sqlite"))).toBe(true);
 });
 
-test("OMP employees launch on the profile recorded in their launch manifest", async () => {
+test("OMP employees of a Startup on a named profile record it in their manifest and pane environment", async () => {
   const f = fixture(8);
-  const { manager } = await f.ready();
   (f.config as { profile: string }).profile = "work";
+  const { manager } = await f.ready();
   const hire = z.object({ employees: z.array(z.object({ id: z.string() })) }).parse(await f.coordinator.command(manager, { kind: "hire", requestId: "profile-ops", role: "devops", additional: 1 }));
   const id = hire.employees[0]!.id;
-  (f.config as { profile: string }).profile = "switched";
   await f.coordinator.command(manager, { kind: "activate", employeeIds: [id] });
   await f.coordinator.launching();
   const binding = f.store.runtimeBindings().findLast((r) => r.employeeId === id);
@@ -193,26 +192,8 @@ test("OMP employees launch on the profile recorded in their launch manifest", as
   const manifest = z.object({ profile: z.string() }).parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${binding.launchId}.json`), "utf8")));
   expect(manifest.profile).toBe("work");
   const launch = f.launches.find((entry) => entry.name === `s-${binding.launchId.replaceAll("-", "").slice(0, 28)}`);
-  expect(launch?.args.slice(0, 2)).toEqual(["--profile", "work"]);
+  expect(launch?.args).not.toContain("--profile");
   expect(f.layouts.at(-1)?.OMP_PROFILE).toBe("work");
-  expect(f.launches[0]?.args).not.toContain("--profile");
-  expect(f.layouts[0]?.OMP_PROFILE).toBe("default");
-});
-
-test("a manifest that records an invalid profile refuses the launch", async () => {
-  const f = fixture(8);
-  const { manager } = await f.ready();
-  const hire = z.object({ employees: z.array(z.object({ id: z.string() })) }).parse(await f.coordinator.command(manager, { kind: "hire", requestId: "profile-bad", role: "devops", additional: 1 }));
-  const id = hire.employees[0]!.id;
-  const binding = f.store.runtimeBindings().findLast((r) => r.employeeId === id);
-  if (binding === undefined) throw new Error("Missing prepared launch");
-  const path = join(f.config.stateDirectory, "launches", `${binding.launchId}.json`);
-  writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, "utf8")), profile: "../escape" }), { mode: 0o600 });
-  const launched = f.launches.length;
-  await f.coordinator.command(manager, { kind: "activate", employeeIds: [id] });
-  await f.coordinator.launching();
-  expect(f.launches).toHaveLength(launched);
-  expect(f.store.runtimeBindings().findLast((r) => r.employeeId === id)?.state).toBe("uncertain");
 });
 
 test("one Startup freezes six role settings and launches mixed OMP and interactive Claude processes", async () => {
@@ -1525,8 +1506,7 @@ test("two Startup owners launch OMP on their own profiles without sharing owner 
   const secondEnv = second.layouts.find((env) => env.OMP_PROFILE !== undefined)!;
   expect(firstEnv.OMP_PROFILE).toBe("default");
   expect(secondEnv.OMP_PROFILE).toBe("work");
-  expect(first.launches[0]?.args).not.toContain("--profile");
-  expect(second.launches[0]?.args.slice(0, 2)).toEqual(["--profile", "work"]);
+  expect([...first.launches, ...second.launches].every((launch) => !launch.args.includes("--profile"))).toBe(true);
   expect([...first.layouts, ...second.layouts].every((env) => env.PI_CODING_AGENT_DIR === undefined && env.PI_PROFILE === undefined)).toBe(true);
   expect(firstEnv.STARTUP_ROOT).not.toBe(secondEnv.STARTUP_ROOT);
   expect(firstEnv.STARTUP_V7_MANIFEST).not.toBe(secondEnv.STARTUP_V7_MANIFEST);

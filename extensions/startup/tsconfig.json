@@ -20,7 +20,6 @@
     "runtime-host.ts",
     "src/**/*.ts",
     "tests/**/*.ts",
-    "install.ts",
-    "config.ts"
+    "install.ts"
   ]
 }
