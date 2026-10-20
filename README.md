@@ -20,6 +20,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 | [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. Dependent tickets stack as `--base` chains (STACK_MODE auto/stacked/flat) with a standing stack driver; merges bottom-up with child retarget. | Changes code, can merge to `main` |
 | [`startup`](skills/startup/SKILL.md) | A persistent queue with one manager, a permanent PA, and architect-led crews in interactive Herdr panes. V7 requires OMP or Claude Code (2.1.302+), Herdr and the companion; full role/loop sources bind each employee. | Changes code, enforces scoped landing gates, monitors progress |
 | [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate, light review + simplify pass, final approval gate. Commits per site as it goes. | Commits scoped fix on current branch + opens ready PR, never merges |
+| [`quickfix`](skills/quickfix/SKILL.md) | A fix-it-now mode you invoke by hand (`/quickfix`) - edit right here on the current branch, ask only when blocked, fix at the root with the repo's own helpers. No plan gate, worktree, review, or PR. | Edits the working tree in place, never commits |
 
 Startup family (roles + procedures):
 
@@ -82,7 +83,7 @@ Startup family (roles + procedures):
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (7.2.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (7.6.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 

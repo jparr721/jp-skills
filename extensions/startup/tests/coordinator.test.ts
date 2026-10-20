@@ -1164,6 +1164,29 @@ test("host cancel withdraws one request and settles only that item's worker gene
   expect(admitted.mode).toBe("startup_outcome");
 });
 
+test("OMP employees launch on the OMP model role bound to their Startup role", async () => {
+  const f = fixture(8);
+  const { manager } = await f.ready();
+  const team = await f.delegate(manager, "model-roles");
+  const launched = f.launches.map((launch) => {
+    const binding = f.store.runtimeBindings().find((r) => launch.name === `s-${r.launchId.replaceAll("-", "").slice(0, 28)}`);
+    const employee = f.store.snapshot().employees.find((e) => e.id === binding?.employeeId);
+    return { role: employee?.role, model: launch.args[launch.args.indexOf("--model") + 1] };
+  });
+  expect(launched.map((l) => l.role).sort()).toEqual(["architect", "dev", "pa", "qa"]);
+  expect(Object.fromEntries(launched.map((l) => [l.role, l.model]))).toEqual({ pa: "@smol", architect: "@plan", dev: "@slow", qa: "@advisor" });
+  expect(team.devs).toHaveLength(1);
+});
+
+test("a saved model request replaces the bound OMP model role for that launch", async () => {
+  const f = fixture(8);
+  f.setRoleSettings("qa", "omp", "openai/gpt-5.2", null);
+  const { manager } = await f.ready();
+  await f.delegate(manager, "model-override");
+  const models = f.launches.flatMap((launch) => launch.args.flatMap((arg, index) => arg === "--model" ? [launch.args[index + 1]] : []));
+  expect(models.sort()).toEqual(["@plan", "@slow", "@smol", "openai/gpt-5.2"]);
+});
+
 test("Claude employees launch with an assigned session, prompt suffix and shared hook files only", async () => {
   const f = harnessFixture(8, "claude");
   const { pa } = await f.ready();

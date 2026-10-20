@@ -132,6 +132,7 @@ function fixture() {
     abort: () => { aborts += 1; },
     isIdle: () => false,
     hasPendingMessages: () => false,
+    models: { resolve: () => ({ id: "model" }) },
     setInterval(callback, ms) { const timer = setInterval(callback, ms); timers.add(timer); return timer; },
     clearTimer(timer) { clearInterval(timer); timers.delete(timer); },
   };
@@ -532,6 +533,30 @@ test("invalid profiles and missing native abort are reported without launching a
     expect(await f.emit("session_stop", {}, context)).toMatchObject({ continue: true });
     expect(await f.emit("session_stop", {}, context)).toBeUndefined();
   }
+});
+
+test("an OMP profile missing a bound model role is reported without launching a coordinator", async () => {
+  for (const kind of ["unresolved", "unsupported"]) {
+    const f = fixture();
+    let launched: boolean = false;
+    const { models: _models, ...withoutModels } = f.ctx;
+    const context: NativeContext = kind === "unsupported" ? withoutModels : { ...f.ctx, models: { resolve: (spec: string) => spec === "@plan" ? undefined : { id: "model" } } };
+    installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched = true; return config; } });
+    expect(await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, context)).toEqual({ handled: true });
+    expect(launched).toBe(false);
+    expect(f.messages.join("\n")).toContain(kind === "unresolved" ? "@plan (architect)" : "ctx.models");
+    expect(f.admissions).toHaveLength(0);
+  }
+});
+
+test("an admitted manager is not blocked when a bound model role later stops resolving", async () => {
+  const f = fixture();
+  installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async (config) => ({ ...config, socketPath: f.socketPath }) });
+  await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, f.ctx);
+  expect(f.admissions).toHaveLength(1);
+  const degraded: NativeContext = { ...f.ctx, models: { resolve: () => undefined } };
+  await f.emit("input", { text: "/startup status", source: "interactive", images: [] }, degraded);
+  expect(await f.emit("tool_call", { toolName: "bash", input: { command: "ls" } }, f.ctx)).toBeUndefined();
 });
 
 test("existing live runtime intent is reused without spawning a duplicate host", async () => {

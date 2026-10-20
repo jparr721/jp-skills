@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { manageClaudeInstallation, manageInstallation, pluginsDirectory } from "../install";
+import { chooseProfile, manageClaudeInstallation, manageInstallation, pickProfile, pluginsDirectory, savedOmpProfiles, StartupInstallError } from "../install";
 const temporary: string[] = [];
 afterEach(() => {
   for (const path of temporary.splice(0))
@@ -269,4 +269,30 @@ test("uninstall-claude refuses a changed launcher or a missing receipt and prese
   expect(() => manageClaudeInstallation({ ...f.options, action: "uninstall-claude" })).toThrow("changed since installation");
   expect(readFileSync(f.launcher, "utf8")).toBe("#!/bin/sh\nexec user-edited\n");
   expect(existsSync(f.receipt)).toBe(true);
+});
+
+test("saved OMP profiles are the named profile directories under the XDG and home roots", () => {
+  const f = fixture();
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "startup-home-")));
+  temporary.push(home);
+  mkdirSync(join(home, ".omp", "profiles", "work"), { recursive: true });
+  mkdirSync(join(home, ".omp", "profiles", "Bad Name"), { recursive: true });
+  writeFileSync(join(home, ".omp", "profiles", "stray-file"), "");
+  expect(savedOmpProfiles(f.env, home)).toEqual(["isolated-test", "work"]);
+  expect(savedOmpProfiles({}, home)).toEqual(["work"]);
+  expect(() => savedOmpProfiles({ PI_CONFIG_DIR: "../x" }, home)).toThrow(StartupInstallError);
+});
+
+test("profile choice uses an explicit name, the only saved profile, or asks among several", async () => {
+  const ask = async (saved: readonly string[]): Promise<string> => saved[1] ?? "";
+  expect(await chooseProfile({ saved: ["a", "b"], requested: "z", ask })).toBe("z");
+  expect(await chooseProfile({ saved: ["only"], requested: null, ask })).toBe("only");
+  expect(await chooseProfile({ saved: ["a", "b"], requested: null, ask })).toBe("b");
+  await expect(chooseProfile({ saved: [], requested: null, ask })).rejects.toThrow(StartupInstallError);
+  await expect(chooseProfile({ saved: ["a", "b"], requested: null, ask: async () => "c" })).rejects.toThrow(/not a saved profile/);
+});
+
+test("a numbered answer picks one saved profile and anything else is refused", () => {
+  expect(pickProfile(["a", "b"], "2")).toBe("b");
+  for (const answer of ["", "0", "3", "b", "1.5"]) expect(() => pickProfile(["a", "b"], answer)).toThrow(StartupInstallError);
 });

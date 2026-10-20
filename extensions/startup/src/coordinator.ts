@@ -7,6 +7,7 @@ import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, s
 import { openHostSurface } from "./host-surface";
 import { inputPage, inputSummary, rawInputSchema, imageSchema } from "./inputs";
 import { itemActionSchema, terminalItemStatuses } from "./items";
+import { ompModelArgs } from "./model-roles";
 import { loadProfile, ompSettingsArgs, profileText, verifyProfile, type Profile } from "./profiles";
 import { hostAssociationQuerySchema, type HostAssociationPage, effectiveRoleSettingsSchema, settingsSampleSchema, ompSessionSettingsReportSchema, runtimeCapabilitySchema, runtimeHarnessSchema, runtimePolicySchema, type SavedRoleSettings, type EffectiveRoleSettings, type OmpSessionSettingsReport, type RuntimeBinding, type RuntimeCapability, type RuntimePolicy } from "./runtime-contracts";
 import type { StartupStore } from "./store";
@@ -248,7 +249,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; herdr: He
     try {
       const selected = current.settings.requested;
       const args = harness === "omp"
-        ? ["--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot, ...ompSettingsArgs(current.settings)]
+        ? ["--no-extensions", "--extension", config.herdrIntegration, "--extension", bootstrap, "--cwd", config.boundRoot, ...(selected.model.value === null ? ompModelArgs(selected.role) : []), ...ompSettingsArgs(current.settings)]
         : (() => {
           const files = claudeRuntimeFiles();
           return claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: files.settingsFile, mcpFile: files.mcpFile, name, model: selected.model.value, effort: selected.effort.value });

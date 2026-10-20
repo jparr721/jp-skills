@@ -29,6 +29,41 @@ The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID
 
 The older named-profile installer is historical tooling and is not invoked by host control. Root provisioning and installed runtime changes require their own explicit operation.
 
+## Profiles
+
+`install` and `uninstall` take an optional profile. With no name they use the only saved named OMP profile, or list the saved ones and ask you to pick one (a terminal is required; otherwise pass the name):
+
+```sh
+bun extensions/startup/install.ts install [PROFILE]
+```
+
+`config.ts` reads and changes saved Startups, including ones created before this existed:
+
+```sh
+bun extensions/startup/config.ts profiles                       # saved OMP profiles
+bun extensions/startup/config.ts list                           # saved Startups, harness and profile
+bun extensions/startup/config.ts get NAME [KEY]                 # runtime config, manager credential redacted
+bun extensions/startup/config.ts set NAME profile [PROFILE]     # switch the Startup's OMP profile
+```
+
+`set` rewrites only `profile` in the Startup's `runtime-config.json`. It refuses while the coordinator process runs or its launch is uncertain, for a Claude Code Startup, and for a profile that is neither saved nor `default`. It prints the command that resumes the manager in the new profile. The V7 runtime runs OMP on its default profile only (see Requirements), so a Startup saved with a named profile is refused at boot until `set NAME profile default` restores it.
+
+## Model roles
+
+OMP employees launch with `--model @ROLE`, so each Startup role runs on one OMP model role from the manager's profile, unless that role's saved settings request a model, which replaces the bound role for that launch. The binding lives in `src/model-roles.ts`; the manager is launched by you, so it keeps whatever model you start it with:
+
+| Startup role | OMP model role |
+| --- | --- |
+| architect | `plan` |
+| dev | `slow` |
+| qa | `advisor` |
+| devops | `slow` |
+| pa | `smol` |
+
+Retune a model by assigning the role in the profile's `config.yml` `modelRoles` or with the `/model` role picker; Startup needs no change. `advisor` also drives OMP's advisor runtime, `plan` its plan mode, so a change applies to both uses. Subagents the dev spawns with `task` still use `modelRoles.task`.
+
+Boot refuses to start when the profile cannot resolve a bound role (`ctx.models.resolve("@ROLE")`), naming each missing role and the Startup roles that need it. There is no fallback to `default`. Claude Code employees are unchanged and use the harness's own model selection.
+
 ## Claude Code
 
 Requirements: Claude Code 2.1.302 or newer, Bun, Herdr's managed Claude integration (`$STARTUP_ROOT/hooks/herdr-agent-state.sh` with `# HERDR_INTEGRATION_ID=claude` and a numeric `# HERDR_INTEGRATION_VERSION`, registered as a SessionStart hook in `$STARTUP_ROOT/settings.json`), and root-scoped skills resolving into this checkout. Set `CLAUDE_CONFIG_DIR` to the selected Startup root.

@@ -8,6 +8,7 @@ import type { HostAPI } from "./index";
 import { executionConfigHome, bootSelection, parseBootCommand, persistBinding, StartupBootError, type BootCommand, type Selection } from "./src/boot";
 import { encode } from "./src/contracts";
 import { assertNativeTranscript, attach, inputBlock, reconcileInput, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
+import { requireOmpModelRoles } from "./src/model-roles";
 import type { NativeContext } from "./src/omp-adapter";
 import { loadProfile, verifyProfile } from "./src/profiles";
 import { integrationPath, launchRuntimeHost, readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
@@ -56,6 +57,8 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager native identity changed during startup discovery");
     const next: Selection | null = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, configHome: input.configHome, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
     if (next === null) return;
+    // A manager that is already admitted is re-attached, not re-checked: only a fresh admission needs every bound model role.
+    if (input.harness === "omp" && admitted === null) requireOmpModelRoles(ctx.models, location.profile);
     if (admitted !== null) {
       if (!sameRoot(admitted, ctx) || next.name !== selection?.name || next.boundRoot !== selection.boundRoot)
         throw new StartupBootError("Startup already belongs to another selected manager root");

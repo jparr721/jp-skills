@@ -1,4 +1,5 @@
 import { createDuties } from "./duties";
+import type { ModelQuery } from "./model-roles";
 import { rawInputSchema, imageSchema, inputSummary } from "./inputs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -156,6 +157,7 @@ export type NativeContext = Readonly<{
     getSessionFile: () => string | undefined;
   }>;
   getSystemPrompt: () => string[];
+  models?: ModelQuery;
   abort?: () => void;
   isIdle?: () => boolean;
   hasPendingMessages?: () => boolean;

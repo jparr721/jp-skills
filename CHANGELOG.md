@@ -2,18 +2,63 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
-## [7.3.0] - 2026-10-18
+## [7.6.0] - 2026-10-20
 
 ### Added
 
-- Each of the six Startup roles can select OMP or interactive Claude Code with separately saved model/effort requests. The selected Ronin Startup root is independent of `JP_SKILLS_HOME`; typed requested, saved and effective values preserve unavailable readback instead of inferring runtime state.
+- Each of the six Startup roles can select OMP or interactive Claude Code with separately saved model/effort requests. A Startup's root is `<skills home>/startup/<name>`; typed requested, saved and effective values preserve unavailable readback instead of inferring runtime state.
 - A typed owner host-control entrypoint supports list, create, select, resume, safe archive, bounded status/staff/progress/alerts, settings draft/apply/readback and receipt lookup without direct database access or employee impersonation.
 - The OMP extension and Claude Code MCP bridge publish the verified 20-tool `startup_*` employee catalog. The reference documents their published schemas, owner validation, results, errors and role gates separately from host lifecycle control.
 - Employee authority and settings observations are bound to the current native connection epoch. Re-admission, disconnect, shutdown, session change, retirement and owner replacement revoke old authority; uncertain writes are not replayed.
 
+### Changed
+
+- An OMP employee still launches on the OMP model role bound to its Startup role, unless its saved settings request a model, which replaces the bound role for that launch. Manager boot checks the bound roles only for a fresh admission.
+
 ### Verification
 
 - Scoped Startup typecheck, registration/catalog tests and role-refusal tests are recorded in the SYT-9095 Slice D runrecord. Full merge-gate verification remains CI-only; interactive OMP/Claude and installed-runtime acceptance are not claimed by the local test lane.
+- The merge of 7.3.0 to 7.5.0 into this work was resolved without running the test suite; run the Startup suite before release.
+- Known limit: V7 runs OMP on its default profile (`PI_CODING_AGENT_DIR` set, `--profile` never passed), so `config.ts set NAME profile` can save a named profile that the V7 runtime then refuses at boot.
+
+## [7.5.0] - 2026-10-19
+
+### Added
+
+- `quickfix`: a hand-invoked fix-it-now mode, the ungated sibling of `hotfix`. Each request is edited in place on the checked-out branch beside any dirty files; it asks only when a missing fact blocks the edit (one batched message, each question with a recommended default), fixes at the root with the repo's own helpers, reports sibling defects and pre-existing red for you to call, and leaves edits uncommitted. It is `disable-model-invocation`, so it never competes with `hotfix`; OMP surfaces it as `/skill:quickfix`.
+
+### Verification
+
+- Pressure-tested with subagents in scratch repos under the superpowers session-start rules: a plain agent committed unasked on the feature branch and asked an open-ended brainstorming question; with `quickfix` the same requests produced uncommitted in-place edits and one batched question with defaults, with no brainstorming or worktree skill read. One run per scenario.
+
+## [7.4.0] - 2026-10-17
+
+### Added
+
+- `install.ts install|uninstall` take an optional profile: with none, the only saved named OMP profile is used, otherwise a terminal prompt picks one of the saved profiles.
+- `config.ts` lists saved OMP profiles and Startups, reads a saved Startup's runtime config with the manager credential redacted, and switches a Startup's OMP profile after the fact. A switch refuses while the coordinator runs or its launch is uncertain and prints the resume command for the new profile.
+
+### Changed
+
+- Each employee launch uses the profile recorded in its launch manifest instead of the live coordinator config, so a switch cannot split one launch across two profiles.
+
+### Verification
+
+- 510 tests, 2544 assertions, and TypeScript checking pass.
+- Resume by path under another profile appends to the original manager transcript (checked against OMP 18.11.1). The numbered prompt and its Ctrl-C and Ctrl-D cancel were exercised in a real pty.
+- Known limits: a switch needs the coordinator process stopped first; employees already running keep their launch profile until relaunched; the new profile must resolve every bound model role.
+
+## [7.3.0] - 2026-10-17
+
+### Added
+
+- Startup OMP employees launch on the OMP model role bound to their Startup role: architect `plan`, dev `slow`, QA `advisor`, DevOps `slow`, PA `smol`. The binding is one table in `extensions/startup/src/model-roles.ts`; retune a model in the OMP profile's `modelRoles`.
+- Manager boot checks that the profile resolves every bound role through `ctx.models` and blocks with the missing roles named. There is no fallback to `default`. An already-admitted manager is not re-checked.
+
+### Verification
+
+- 498 tests, 2501 assertions, and TypeScript checking pass.
+- Upgrade note: a profile that sets only `modelRoles.default` (such as `startup-v7`) now blocks manager boot until `plan` and `advisor` are assigned.
 
 ## [7.2.0] - 2026-10-16
 

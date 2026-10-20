@@ -56,7 +56,7 @@ const ompConfigSchema = z.strictObject({
   name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
   ompConfigRoot: z.string().startsWith("/"), skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
   boundRoot: z.string().startsWith("/"), skillsRoot: z.string().startsWith("/"),
-  socketPath: z.string().startsWith("/"), profile: z.literal("default"),
+  socketPath: z.string().startsWith("/"), profile: z.string().min(1),
   managerSession: z.string().min(1), managerFile: z.string().startsWith("/"),
   managerPaneId: z.string().min(1), managerCredential: z.string().min(1),
   herdrSession: z.string().min(1), workspaceId: z.string().min(1),
@@ -69,7 +69,7 @@ export type RuntimeHostConfig = Readonly<z.infer<typeof ompConfigSchema> | z.inf
 export function parseRuntimeHostConfig(value: unknown): RuntimeHostConfig {
   return typeof value === "object" && value !== null && "harness" in value ? claudeConfigSchema.parse(value) : ompConfigSchema.parse(value);
 }
-const intentSchema = z.discriminatedUnion("state", [
+export const intentSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("prepared"), startedAt: z.number().int().nonnegative() }),
   z.strictObject({ state: z.literal("spawned"), startedAt: z.number().int().nonnegative(), pid: z.number().int().positive() }),
 ]);
@@ -100,7 +100,7 @@ export function readPrivateJson(path: string): unknown {
     throw new RuntimeLaunchError(`Startup private file must be a regular owner-only file: ${path}`);
   return JSON.parse(readFileSync(path, "utf8"));
 }
-function processAlive(pid: number): boolean {
+export function processAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; }
   catch (error: unknown) {
     const parsed = z.object({ code: z.string() }).safeParse(error);
