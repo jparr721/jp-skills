@@ -86,8 +86,8 @@ function validateRuntimePaths(config: RuntimeHostConfig): string {
   if (!isAbsolute(config.skillsHome) || resolve(config.skillsHome) !== config.skillsHome || realpathSync(config.skillsHome) !== config.skillsHome ||
       !isAbsolute(config.boundRoot) || resolve(config.boundRoot) !== config.boundRoot || realpathSync(config.boundRoot) !== config.boundRoot)
     throw new RuntimeLaunchError("JP_SKILLS_HOME and bound repository must be canonical directories");
-  if (contains(root, config.skillsHome) || contains(config.skillsHome, root) || contains(root, config.boundRoot) || contains(config.boundRoot, root))
-    throw new RuntimeLaunchError("Startup root, JP_SKILLS_HOME and bound repository must remain separate trees");
+  if (contains(root, config.skillsHome) || contains(root, config.boundRoot) || contains(config.boundRoot, root))
+    throw new RuntimeLaunchError("Startup root may not contain JP_SKILLS_HOME and must stay separate from the bound repository");
   assertStartupPath(root, config.socketPath, "socket");
   return root;
 }

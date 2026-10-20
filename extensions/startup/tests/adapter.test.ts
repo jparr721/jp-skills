@@ -132,7 +132,7 @@ function configuredFixture(
   mkdirSync(cwd);
   const home: string = join(root, "home");
   mkdirSync(home);
-  const startupRoot: string = join(root, "config", "ronin", "startups", "fixture");
+  const startupRoot: string = join(home, "startup", "fixture");
   const sessionFile: string = join(root, "root.jsonl");
   writeFileSync(
     sessionFile,
@@ -852,7 +852,7 @@ test("failed manager reopens through current-root reconciliation before source a
       boundRoot: f.ctx.cwd,
       name: "fixture",
       skillsHome: join(f.root, "home"),
-      startupRoot: join(f.root, "config", "ronin", "startups", "fixture"),
+      startupRoot: join(f.root, "home", "startup", "fixture"),
       skillsRoot: f.root,
       employeeLimit: null,
       executionLimit: null,
@@ -2746,7 +2746,7 @@ test("item intent recovery replays a canonical replacement once with assignment 
       boundRoot: f.ctx.cwd,
       name: "fixture",
       skillsHome: join(f.root, "home"),
-      startupRoot: join(f.root, "config", "ronin", "startups", "fixture"),
+      startupRoot: join(f.root, "home", "startup", "fixture"),
       skillsRoot: f.root,
       employeeLimit: null,
       executionLimit: null,

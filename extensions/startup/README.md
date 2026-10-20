@@ -15,7 +15,7 @@ The 7.0.2 [recovery proof](../../docs/startup-v7/recovery-acceptance.json) and [
 - An existing Herdr pane and socket context. Missing pane/workspace/session variables are resolved with `herdr pane current --current` and `herdr status server --json`; the default server reports a null session. No focused-pane discovery from outside Herdr.
 - Canonical role/loop sources available locally. Managed OMP launches clear `OMP_PROFILE`, `PI_PROFILE` and `OMPCODE`, and pass no `--profile` argument. The internal `profile: "default"` is an identity discriminator, not a native profile name.
 
-Use stock OMP and Herdr binaries. Startup does not fork or install either runtime. Select the canonical Startup root with `STARTUP_ROOT` (default: `$XDG_CONFIG_HOME/ronin/startups/<name>`) and keep `JP_SKILLS_HOME` separate. OMP uses its default profile with `PI_CODING_AGENT_DIR` set to the execution user's canonical Ronin config root (`${XDG_CONFIG_HOME:-~/.config}/ronin`). Owner config and launch manifests carry this separate `ompConfigRoot`; all Startups for that user share its native `mcp.json`. Named profiles are refused. Startup authority remains under `STARTUP_ROOT`, separately from shared native configuration.
+Use stock OMP and Herdr binaries. Startup does not fork or install either runtime. Select the canonical Startup root with `STARTUP_ROOT` (default: `<skills home>/startup/<name>`, where the skills home is `JP_SKILLS_HOME`, else `${XDG_CONFIG_HOME:-~/.config}/jp-skills`). OMP uses its default profile with `PI_CODING_AGENT_DIR` set to the execution user's canonical Ronin config root (`${XDG_CONFIG_HOME:-~/.config}/ronin`). Owner config and launch manifests carry this separate `ompConfigRoot`; all Startups for that user share its native `mcp.json`. Named profiles are refused. Startup authority remains under `STARTUP_ROOT`, separately from shared native configuration.
 
 Repository development can load the extension directly after root provisioning:
 
@@ -267,7 +267,7 @@ Inspect the artifact's actual status/checks and source hashes before treating it
 
 A live `settings_apply` whose response is lost throws `HostControlUncertainError`. The CLI exits 1 and includes `outcome`, validated by `hostControlUncertaintySchema`: `{state:"uncertain", kind:"settings_apply", requestId, scope, replay:"forbidden", recovery:{kind:"receipt", requestId, scope}}`. Execute only that read-only recovery command. The uncertainty is not a committed receipt; lookup returns the owner's saved result when available. Pre-dispatch validation and read-only transport failures keep their original error types.
 
-- `list`: configHome, after cursor and limit (1-100); works with zero owners.
+- `list`: configHome, after cursor and limit (1-100); reads `<configHome>/jp-skills/startup/*` and works with zero owners.
 - `create`: scope, requestId, skillsRoot, executionLimit, harness, expectedOwnerEpoch=0 and expectedRevision=0. Initializes a cold root; it does not manufacture a manager process.
 - `select`: validates the binding and reads it without a lease or process start.
 - `status`, `staff`, `progress`, `alerts`: optional bounded `query` with limit and queue/staff/team/input cursors. These reuse the typed host status, queue/team progress and supervision reasons. Offline state is explicit unavailable.

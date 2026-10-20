@@ -87,7 +87,7 @@ function bridgeFixture(mode: "employee" | "manager") {
   writeFileSync(manifest, JSON.stringify({ socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", ompConfigRoot: join(configHome, "ronin"), skillsHome: home, startupRoot: startupRootPath, skillsRoot }), { mode: 0o600 });
   writeFileSync(join(startupRootPath, "launches", `${sessionId}.prompt.md`), text, { mode: 0o600 });
   if (mode === "manager") {
-    const selection = bootSelection({ cwd: repo, skillsHome: home, startupRoot: startupRootPath, configHome, skillsRoot, host: hostname(), managerSession: sessionId, command: parseBootCommand("new acme"), explicitName: null, executionLimit: null });
+    const selection = bootSelection({ cwd: repo, skillsHome: home, startupRoot: startupRootPath, skillsRoot, host: hostname(), managerSession: sessionId, command: parseBootCommand("new acme"), explicitName: null, executionLimit: null });
     if (selection === null) throw new Error("Missing manager Startup selection");
     persistBinding(selection);
   }
@@ -337,7 +337,7 @@ function managerFixture() {
   writeFileSync(hook, "#!/bin/sh\n# HERDR_INTEGRATION_ID=claude\n# HERDR_INTEGRATION_VERSION=11\nset -eu\n", { mode: 0o600 });
   const hookSettings = { hooks: { SessionStart: [{ hooks: [{ type: "command", command: hook }] }] } };
   writeFileSync(join(startupRoot, "settings.json"), JSON.stringify(hookSettings), { mode: 0o600 });
-  const selection = bootSelection({ cwd: repo, skillsHome: home, startupRoot, configHome, skillsRoot, host: hostname(), managerSession: sessionId, command: parseBootCommand("new acme"), explicitName: null, executionLimit: null });
+  const selection = bootSelection({ cwd: repo, skillsHome: home, startupRoot, skillsRoot, host: hostname(), managerSession: sessionId, command: parseBootCommand("new acme"), explicitName: null, executionLimit: null });
   if (selection === null) throw new Error("Missing fixture Startup selection");
   persistBinding(selection);
   const environment: Record<string, string> = { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p1", STARTUP_NAME: "acme", STARTUP_ROOT: startupRoot, JP_SKILLS_HOME: home, CLAUDE_CONFIG_DIR: startupRoot, XDG_CONFIG_HOME: configHome };
@@ -348,7 +348,7 @@ function managerFixture() {
     policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit: 4 },
   };
   const save = (value: Json): void => { writeFileSync(join(startupRoot, "runtime-config.json"), JSON.stringify(value), { mode: 0o600 }); };
-  const input = { environment, cwd: repo, skillsHome: home, configHome, startupRoot, skillsRoot, bun: "/opt/bun" };
+  const input = { environment, cwd: repo, skillsHome: home, startupRoot, skillsRoot, bun: "/opt/bun" };
   return { root, home, startupRoot, repo, skillsRoot, claudeJson, config, save, input };
 }
 

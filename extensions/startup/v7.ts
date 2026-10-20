@@ -55,7 +55,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     const contextFile = ctx.sessionManager.getSessionFile();
     const location = await paneEnvironment(input.environment);
     if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager native identity changed during startup discovery");
-    const next: Selection | null = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, configHome: input.configHome, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
+    const next: Selection | null = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
     if (next === null) return;
     // A manager that is already admitted is re-attached, not re-checked: only a fresh admission needs every bound model role.
     if (input.harness === "omp" && admitted === null) requireOmpModelRoles(ctx.models, location.profile);
@@ -129,7 +129,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     if (admitted !== null && !sameRoot(admitted, ctx)) { await admitted.close(); stopped = true; report(new StartupBootError("Manager native session changed; explicit re-admission required"), ctx); ctx.abort?.(); return; }
     if (admitted !== null) return;
     try {
-      const next = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, configHome: input.configHome, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
+      const next = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
       if (next === null || !existsSync(join(next.startupRoot, "runtime-config.json"))) return;
       await retry(ctx);
     } catch (error: unknown) { attempted = true; report(error, ctx); ctx.abort?.(); }

@@ -31,7 +31,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
   mkdirSync(home);
   const boundRoot = join(root, "repo");
   mkdirSync(boundRoot);
-  const startupRoot = join(root, "config", "ronin", "startups", "test");
+  const startupRoot = join(home, "startup", "test");
   const stateDirectory = startupRoot;
   mkdirSync(join(startupRoot, "hooks"), { recursive: true, mode: 0o700 });
   writeFileSync(join(startupRoot, "hooks", "herdr-agent-state.sh"), "# HERDR_INTEGRATION_ID=claude\n# HERDR_INTEGRATION_VERSION=11\n", { mode: 0o600 });
@@ -178,7 +178,6 @@ test("OMP launches use only the Startup root and the stock default profile", asy
     STARTUP_HERDR_OMP_EXTENSION: f.config.herdrIntegration,
   });
   expect(existsSync(join(f.config.startupRoot, "staff.sqlite"))).toBe(true);
-  expect(existsSync(join(f.config.skillsHome, "startup", f.config.name))).toBe(false);
 });
 
 test("one Startup freezes six role settings and launches mixed OMP and interactive Claude processes", async () => {

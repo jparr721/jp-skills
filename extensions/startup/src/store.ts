@@ -310,9 +310,9 @@ export function openStore(args: {
     return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
   };
   const overlaps = (first: string, second: string): boolean => contains(first, second) || contains(second, first);
-  if (overlaps(startupRoot, skillsHome) || overlaps(startupRoot, boundRootPath))
+  if (contains(startupRoot, skillsHome) || overlaps(startupRoot, boundRootPath))
     throw new StoreAuthorityError(
-      "Startup state, JP_SKILLS_HOME and bound repository must be separate trees",
+      "Startup state may not contain JP_SKILLS_HOME and must stay outside the bound repository",
     );
   for (const path of [expected, `${expected}-wal`, `${expected}-shm`, `${expected}-journal`]) {
     assertStartupPath(startupRoot, path, "file");

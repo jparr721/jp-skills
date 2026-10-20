@@ -124,7 +124,6 @@ const rootConfigSchema = z.strictObject({
     .nullable(),
   skillsHome: z.string().min(1),
   startupRoot: z.string().min(1).nullable(),
-  configHome: z.string().min(1),
   skillsRoot: z.string().min(1),
   employeeLimit: z.number().int().positive().nullable(),
   executionLimit: z.number().int().positive().nullable(),
@@ -162,7 +161,7 @@ function rootAdapter(
   return sessionId === undefined ? undefined : adapters.get(sessionId);
 }
 export type StartupConfig = Omit<AdapterConfig, "name" | "boundRoot" | "startupRoot"> &
-  Readonly<{ name: string | null; startupRoot: string | null; configHome: string }>;
+  Readonly<{ name: string | null; startupRoot: string | null }>;
 export function installStartup(
   pi: HostAPI,
   config: StartupConfig,
@@ -219,7 +218,6 @@ export function installStartup(
       cwd: ctx.cwd,
       skillsHome: config.skillsHome,
       startupRoot: config.startupRoot,
-      configHome: config.configHome,
       skillsRoot: config.skillsRoot,
       host: hostname(),
       managerSession: ctx.sessionManager.getSessionId(),
@@ -1063,7 +1061,6 @@ export default function startup(pi: HostAPI): void {
           ),
       ),
       startupRoot: process.env.STARTUP_ROOT ?? null,
-      configHome: resolve(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config")),
       skillsRoot: resolve(
         process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."),
       ),

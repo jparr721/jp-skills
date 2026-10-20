@@ -40,7 +40,7 @@ function fixture() {
   };
 }
 
-test("new and current selection keep skills home separate from the canonical Ronin root", () => {
+test("new and current selection keep the Startup root under the skills home", () => {
   const f = fixture();
   const selected = bootSelection({
     ...f,
@@ -53,12 +53,11 @@ test("new and current selection keep skills home separate from the canonical Ron
     name: "alpha",
     boundRoot: f.boundRoot,
     skillsHome: f.skillsHome,
-    startupRoot: join(f.configHome, "ronin", "startups", "alpha"),
+    startupRoot: join(f.skillsHome, "startup", "alpha"),
     host: "host-a",
     managerSession: "manager-session-a",
     executionLimit: 7,
   });
-  expect(selected.startupRoot).not.toStartWith(join(f.skillsHome, "startup"));
   persistBinding(selected);
 
   const child = join(f.boundRoot, "src");
@@ -142,18 +141,17 @@ test("selection refuses symlinked roots and state inside the bound repository", 
   })).toThrow("outside");
 });
 
-test("select ignores the retired JP_SKILLS_HOME startup path", () => {
+test("select rejects an old-format binding at the Startup root instead of importing it", () => {
   const f = fixture();
   const old = join(f.skillsHome, "startup", "alpha");
   mkdirSync(old, { recursive: true, mode: 0o700 });
-  writeFileSync(join(old, "binding.json"), JSON.stringify({ name: "alpha", bound_root: f.boundRoot }));
+  writeFileSync(join(old, "binding.json"), JSON.stringify({ name: "alpha", bound_root: f.boundRoot }), { mode: 0o600 });
   expect(() => bootSelection({
     ...f,
     command: parseBootCommand("select alpha"),
     explicitName: null,
     executionLimit: null,
-  })).toThrow("Startup binding missing");
-  expect(existsSync(join(f.configHome, "ronin", "startups", "alpha"))).toBe(false);
+  })).toThrow("Startup binding is invalid");
 });
 
 test("boot command preserves work and rejects malformed names and options", () => {

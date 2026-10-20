@@ -23,7 +23,7 @@ function fixture() {
   const root: string = realpathSync(mkdtempSync(join(tmpdir(), "startup-store-")));
   roots.push(root);
   const home: string = join(root, "home");
-  const startupRoot: string = join(root, "config", "ronin", "startups", "test");
+  const startupRoot: string = join(home, "startup", "test");
   const boundRoot: string = join(root, "repo");
   mkdirSync(home);
   mkdirSync(boundRoot);

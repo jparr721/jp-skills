@@ -19,11 +19,11 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "startup-control-")));
   roots.push(root);
-  const skillsHome = join(root, "skills-home");
-  const boundRoot = join(root, "repo");
-  mkdirSync(skillsHome); mkdirSync(boundRoot);
   const configHome = join(root, "config");
-  const scope: Scope = { skillsHome, boundRoot, startupRoot: join(configHome, "ronin", "startups", "alpha"), name: "alpha", host: hostname(), managerSession: "native-manager" };
+  const skillsHome = join(configHome, "jp-skills");
+  const boundRoot = join(root, "repo");
+  mkdirSync(skillsHome, { recursive: true }); mkdirSync(boundRoot);
+  const scope: Scope = { skillsHome, boundRoot, startupRoot: join(skillsHome, "startup", "alpha"), name: "alpha", host: hostname(), managerSession: "native-manager" };
   const runtime: HostControlRuntime = { now: () => 1000, executionHost: hostname, observeManager: async () => false, resume: async () => { throw new Error("No runtime launch authorized in fixture"); } };
   const create = { kind: "create", requestId: "create-alpha", scope, skillsRoot: resolve(import.meta.dir, "../../.."), executionLimit: 8, harness: "omp", expectedOwnerEpoch: 0, expectedRevision: 0 };
   return { root, configHome, scope, runtime, create };

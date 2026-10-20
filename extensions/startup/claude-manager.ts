@@ -11,21 +11,21 @@ import { loadProfile, profileText } from "./src/profiles";
 import { prepareManagerLaunch, readPrivateJson, parseRuntimeHostConfig } from "./src/v7-launch";
 
 const bindingSchema = z.strictObject({ scope: scopeSchema, executionLimit: z.number().int().positive().safe().nullable() });
-export function managerLaunch(input: Readonly<{ environment: Environment; cwd: string; skillsHome: string; configHome: string; startupRoot: string | null; skillsRoot: string; bun: string }>): readonly string[] {
+export function managerLaunch(input: Readonly<{ environment: Environment; cwd: string; skillsHome: string; startupRoot: string | null; skillsRoot: string; bun: string }>): readonly string[] {
   const paneId: string | undefined = input.environment.HERDR_PANE_ID?.trim();
   if (input.environment.HERDR_ENV !== "1" || paneId === undefined || paneId === "")
     throw new StartupBootError("startup-claude must run inside a Herdr pane (HERDR_ENV=1 and HERDR_PANE_ID)");
   const name: string = z.string().regex(/^[a-zA-Z0-9_-]+$/).parse(input.environment.STARTUP_NAME);
   const rootOverride: string | null = input.environment.STARTUP_ROOT ?? input.startupRoot;
   if (rootOverride !== null && !isAbsolute(rootOverride)) throw new StartupBootError(`STARTUP_ROOT must be absolute: ${rootOverride}`);
-  const requestedRoot: string = rootOverride ?? resolve(input.configHome, "ronin", "startups", name);
+  const requestedRoot: string = rootOverride ?? join(input.skillsHome, "startup", name);
   const root: string = canonicalStartupRoot(resolve(requestedRoot), true);
   let managerSession: string = randomUUID();
   const bindingPath: string = join(root, "binding.json");
   assertStartupPath(root, bindingPath, "file");
   if (existsSync(bindingPath)) managerSession = bindingSchema.parse(readPrivateJson(bindingPath)).scope.managerSession;
   const selection: Selection | null = bootSelection({
-    cwd: input.cwd, skillsHome: input.skillsHome, startupRoot: root, configHome: input.configHome,
+    cwd: input.cwd, skillsHome: input.skillsHome, startupRoot: root,
     skillsRoot: input.skillsRoot, host: hostname(), managerSession, command: null, explicitName: name, executionLimit: null,
   });
   if (selection === null) throw new StartupBootError(`No Startup selected for ${name}`);
@@ -69,10 +69,10 @@ async function launch(): Promise<void> {
   const skillsHome: string = resolve(environment.JP_SKILLS_HOME ?? join(configHome, "jp-skills"));
   const skillsRoot: string = resolve(environment.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."));
   const args: readonly string[] = managerLaunch({
-    environment, cwd: process.cwd(), skillsHome, configHome, startupRoot: environment.STARTUP_ROOT ?? null,
+    environment, cwd: process.cwd(), skillsHome, startupRoot: environment.STARTUP_ROOT ?? null,
     bun: process.execPath, skillsRoot,
   });
-  const startupRoot: string = canonicalStartupRoot(resolve(environment.STARTUP_ROOT ?? join(configHome, "ronin", "startups", z.string().parse(environment.STARTUP_NAME))), false);
+  const startupRoot: string = canonicalStartupRoot(resolve(environment.STARTUP_ROOT ?? join(skillsHome, "startup", z.string().parse(environment.STARTUP_NAME))), false);
   const child = Bun.spawn(["claude", ...args], {
     stdio: ["inherit", "inherit", "inherit"],
     env: { ...process.env, JP_SKILLS_HOME: skillsHome, STARTUP_ROOT: startupRoot, CLAUDE_CONFIG_DIR: startupRoot },

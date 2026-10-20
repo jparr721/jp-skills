@@ -66,8 +66,6 @@ function entryFixture() {
   mkdirSync(cwd);
   const skillsHome = join(root, "home");
   mkdirSync(skillsHome);
-  const configHome = join(root, "config");
-  mkdirSync(configHome);
   const file = join(root, "session.jsonl");
   writeFileSync(file, '{"type":"session","id":"same-canonical-session"}\n');
   const ctx: NativeContext = {
@@ -159,7 +157,6 @@ function entryFixture() {
       name,
       skillsHome,
       startupRoot: null,
-      configHome,
       skillsRoot: root,
       employeeLimit: null,
       executionLimit: null,
@@ -331,7 +328,7 @@ test("host execution limit retains guards and rejects invalid input before store
       });
       expect(() => parseExecutionLimit(invalid)).toThrow();
       expect(
-        existsSync(join(root, "config", "ronin", "startups", "fixture", "staff.sqlite")),
+        existsSync(join(root, "home", "startup", "fixture", "staff.sqlite")),
       ).toBe(false);
     }
     expect(parseExecutionLimit(undefined)).toBeNull();
@@ -424,7 +421,7 @@ test("native boot keeps mutable state in the Startup root and ignores repository
   expect(
     host.messages.some((text) => text.includes("Saved Startup work event")),
   ).toBe(true);
-  const firstRoot = join(root, "config", "ronin", "startups", "first");
+  const firstRoot = join(root, "home", "startup", "first");
   expect(existsSync(join(firstRoot, "binding.json"))).toBe(true);
   expect(existsSync(join(firstRoot, "staff.sqlite"))).toBe(true);
   expect(existsSync(join(ctx.cwd, "AGENTS.md"))).toBe(false);
@@ -435,7 +432,7 @@ test("native boot keeps mutable state in the Startup root and ignores repository
   const staff = await broken.tools.get("startup_staff")!
     .execute("staff", {}, undefined, undefined, ctx);
   expect(staff.isError).not.toBe(true);
-  expect(existsSync(join(root, "config", "ronin", "startups", "broken", "staff.sqlite"))).toBe(true);
+  expect(existsSync(join(root, "home", "startup", "broken", "staff.sqlite"))).toBe(true);
   expect(readFileSync(join(ctx.cwd, "AGENTS.md"), "utf8")).toBe("<!-- jp-skills-startup:begin -->");
   await expect(broken.handlers.get("session_shutdown")!({}, ctx)).resolves.toBeUndefined();
 });
@@ -483,7 +480,7 @@ test("nonmatching native command names and delimiters never boot Startup", async
       ),
     ).toBeUndefined();
     expect(existsSync(join(ctx.cwd, "AGENTS.md"))).toBe(false);
-    expect(existsSync(join(root, "config/ronin/startups/unrelated/staff.sqlite"))).toBe(
+    expect(existsSync(join(root, "home/startup/unrelated/staff.sqlite"))).toBe(
       false,
     );
   }

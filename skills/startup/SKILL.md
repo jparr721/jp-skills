@@ -15,7 +15,7 @@ Use the installed OMP or Claude Code and Herdr binaries first. Treat release num
 
 Boot the canonical manager in its Herdr pane with an online coordinator. Coordinator startup automatically reserves its singleton permanent PA; admit that identity with complete canonical source before any new delegation or landing. Missing harness (OMP or Claude Code), Herdr, coordinator or PA supervision is an explicit blocker. Use actual absolute canonical paths; preserve existing configuration and selection ownership.
 
-Selection remains fixed in the manager chat. Resolve `startupRoot` from absolute `STARTUP_ROOT`, or `${XDG_CONFIG_HOME:-~/.config}/ronin/startups/<name>`; the canonical `binding.json` there owns the selection. Without a name, the owner searches canonical Startup bindings for the nearest bound repository. An item's repo never changes selection. `JP_SKILLS_HOME` owns tooling, caches and worktrees, separately from Startup state. Preserve explicit limits. Coordinator root-turn slots and each harness root's local helper capacity are separate; see `../hire/SKILL.md`.
+Selection remains fixed in the manager chat. Resolve `startupRoot` from absolute `STARTUP_ROOT`, or `<skills home>/startup/<name>`; the canonical `binding.json` there owns the selection. Without a name, the owner searches canonical Startup bindings for the nearest bound repository. An item's repo never changes selection. `JP_SKILLS_HOME` owns tooling, caches, worktrees and the default Startup roots. Preserve explicit limits. Coordinator root-turn slots and each harness root's local helper capacity are separate; see `../hire/SKILL.md`.
 
 ## Every request
 
@@ -38,7 +38,7 @@ Humans may interact directly with every employee pane. Pane access does not chan
 
 Native `/startup status` (in Claude Code intercepted by the Startup bridge) shows supported runtime staffing/duties; the broader skill renders queue/bulletin too. `startup-sprint` is internal, every five merged items.
 
-State stays under selected `startupRoot`: `staff.sqlite`, canonical `queue.json`, ledger, memory (64KB), standing instructions, bulletin, resource inventory and completions. Preserve this owner's IDs and receipts. Boot is a hard cut: old home/startup and repository .startup files remain historical evidence, never an import source or alternate mutable namespace. Shared default-profile OMP configuration and `mcp.json` live at the execution user's Ronin config root; they do not select Startup authority.
+State stays under selected `startupRoot`: `staff.sqlite`, canonical `queue.json`, ledger, memory (64KB), standing instructions, bulletin, resource inventory and completions. Preserve this owner's IDs and receipts. Boot is a hard cut: an old-format Startup (`binding.json` without `scope`) under home/startup and repository .startup files remain historical evidence, never an import source or alternate mutable namespace. Shared default-profile OMP configuration and `mcp.json` live at the execution user's Ronin config root; they do not select Startup authority.
 
 ## Framework tail
 

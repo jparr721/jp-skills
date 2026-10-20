@@ -106,9 +106,8 @@ async function serve(): Promise<void> {
     if (saved.skillsHome !== skillsHome || saved.startupRoot !== startupRoot)
       throw new StartupBootError("Claude employee manifest does not match JP_SKILLS_HOME and STARTUP_ROOT");
   } else {
-    const configHome: string = executionConfigHome(environment.XDG_CONFIG_HOME);
     const selection = bootSelection({
-      cwd: process.cwd(), skillsHome, startupRoot, configHome,
+      cwd: process.cwd(), skillsHome, startupRoot,
       skillsRoot: resolve(environment.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")), host: hostname(),
       managerSession: sessionId, command: null, explicitName: environment.STARTUP_NAME ?? null, executionLimit: null,
     });

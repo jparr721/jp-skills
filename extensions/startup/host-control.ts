@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import { assertStartupPath, bootSelection, canonicalStartupRoot, ensureStartupRoot, persistBinding } from "./src/boot";
 import { encode, hostStatusQuerySchema, hostStatusSchema, idSchema, jsonSchema, ownerControlReceiptSchema, ownerControlRequestSchema, scopeSchema, timeSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, type Json, type OwnerControlReceipt, type Scope } from "./src/contracts";
@@ -128,7 +128,7 @@ async function ownerRequest(scope: Scope, path: string, body: Json | null): Prom
 }
 async function dispatchHostControl(request: HostControlCommand, runtime: HostControlRuntime): Promise<Json> {
   if (request.kind === "list") {
-    const directory = join(request.configHome, "ronin", "startups");
+    const directory = join(request.configHome, "jp-skills", "startup");
     if (!existsSync(directory)) return { rows: [], nextCursor: null };
     const names = readdirSync(directory).filter((name) => /^[a-zA-Z0-9_-]+$/.test(name)).sort().filter((name) => request.after === null || name > request.after);
     const rows = names.slice(0, request.limit).flatMap((name) => {
@@ -159,7 +159,7 @@ async function dispatchHostControl(request: HostControlCommand, runtime: HostCon
       writeFileSync(lock, encode({ requestId: request.requestId, digest, pid: process.pid }));
       const existing = readOwnerControlFile(scope, request.requestId);
       if (existing !== null) { if (existing.digest !== digest) throw new StoreConflictError("Create idempotency key payload conflict"); return jsonSchema.parse(existing); }
-      const selection = bootSelection({ cwd: scope.boundRoot, skillsHome: scope.skillsHome, startupRoot: scope.startupRoot, configHome: dirname(dirname(dirname(scope.startupRoot))), skillsRoot: request.skillsRoot, host: scope.host, managerSession: scope.managerSession, command: { kind: "new", name: scope.name, directory: scope.boundRoot, work: null }, explicitName: scope.name, executionLimit: request.executionLimit });
+      const selection = bootSelection({ cwd: scope.boundRoot, skillsHome: scope.skillsHome, startupRoot: scope.startupRoot, skillsRoot: request.skillsRoot, host: scope.host, managerSession: scope.managerSession, command: { kind: "new", name: scope.name, directory: scope.boundRoot, work: null }, explicitName: scope.name, executionLimit: request.executionLimit });
       if (selection === null || encode({ skillsHome: selection.skillsHome, startupRoot: selection.startupRoot, host: selection.host, name: selection.name, boundRoot: selection.boundRoot, managerSession: selection.managerSession }) !== encode(scope)) throw new StoreAuthorityError("Create selection differs from requested canonical scope");
       const intent = ownerControlReceiptSchema.parse({ requestId: request.requestId, digest, scope, kind: "create", state: "uncertain", ownerEpoch: 0, revision: 0, sideEffects: "root_initialized", result: { reason: "Inspect initialized root before any retry" } });
       const previous = beginOperation(intent);

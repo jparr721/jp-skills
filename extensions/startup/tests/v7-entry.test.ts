@@ -224,7 +224,7 @@ function entryRoots(f: ReturnType<typeof fixture>, startupRoot: string | null = 
   return { skillsHome: f.skillsHome, startupRoot, configHome: f.configHome, skillsRoot: f.skillsRoot };
 }
 function bindRuntimeFixture(f: ReturnType<typeof fixture>, config: RuntimeHostConfig): void {
-  const selection = bootSelection({ cwd: f.cwd, skillsHome: config.skillsHome, startupRoot: config.startupRoot, configHome: f.configHome, skillsRoot: f.skillsRoot, host: hostname(), managerSession: config.managerSession, command: parseBootCommand(`new ${config.name}`), explicitName: null, executionLimit: null });
+  const selection = bootSelection({ cwd: f.cwd, skillsHome: config.skillsHome, startupRoot: config.startupRoot, skillsRoot: f.skillsRoot, host: hostname(), managerSession: config.managerSession, command: parseBootCommand(`new ${config.name}`), explicitName: null, executionLimit: null });
   if (selection === null) throw new Error("Missing fixture Startup selection");
   persistBinding(selection);
 }
@@ -583,7 +583,7 @@ function runtimeFixture(f: ReturnType<typeof fixture>): Readonly<{ config: Runti
 }
 function harnessRuntimeFixture(f: ReturnType<typeof fixture>, harness: "omp" | "claude"): Readonly<{ config: RuntimeHostConfig; stateFile: string }> {
   const skillsHome: string = f.skillsHome;
-  const startupRoot: string = join(f.configHome, "ronin", "startups", "alpha");
+  const startupRoot: string = join(skillsHome, "startup", "alpha");
   const stateDirectory: string = startupRoot;
   const socketPath: string = join(startupRoot, "runtime.sock");
   if (harness === "claude") {

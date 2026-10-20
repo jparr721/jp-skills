@@ -124,8 +124,8 @@ function overlaps(first: string, second: string): boolean {
 }
 
 function rejectRootOverlap(startupRoot: string, skillsHome: string, boundRoot: string): void {
-  if (overlaps(startupRoot, skillsHome) || overlaps(skillsHome, startupRoot))
-    throw new StartupBootError("Startup root and JP_SKILLS_HOME must be separate trees");
+  if (overlaps(startupRoot, skillsHome))
+    throw new StartupBootError("Startup root may not contain JP_SKILLS_HOME");
   if (overlaps(startupRoot, boundRoot) || overlaps(boundRoot, startupRoot))
     throw new StartupBootError("Startup state must remain outside the bound repository");
 }
@@ -172,18 +172,13 @@ function currentBoundRoot(cwd: string): string {
   return path;
 }
 
-function defaultStartupRoot(configHome: string, name: string): string {
-  return resolve(configHome, "ronin", "startups", name);
-}
-
 function discoverCurrentBinding(input: Readonly<{
   cwd: string;
-  configHome: string;
   skillsHome: string;
   host: string;
   managerSession: string;
 }>): Binding | null {
-  const parent: string = resolve(input.configHome, "ronin", "startups");
+  const parent: string = join(input.skillsHome, "startup");
   const parentStat = maybeStat(parent);
   if (parentStat === null) return null;
   if (parentStat.isSymbolicLink() || !parentStat.isDirectory())
@@ -241,7 +236,6 @@ export function bootSelection(input: Readonly<{
   cwd: string;
   skillsHome: string;
   startupRoot: string | null;
-  configHome: string;
   skillsRoot: string;
   host: string;
   managerSession: string;
@@ -268,7 +262,6 @@ export function bootSelection(input: Readonly<{
   if (name === null) {
     const saved: Binding | null = discoverCurrentBinding({
       cwd: input.cwd,
-      configHome: input.configHome,
       skillsHome,
       host: input.host,
       managerSession: input.managerSession,
@@ -277,7 +270,7 @@ export function bootSelection(input: Readonly<{
     const scope: Scope = scopeSchema.parse({ ...saved.scope, skillsHome, host: input.host, managerSession: input.managerSession });
     return { ...scope, skillsRoot, executionLimit: combineLimit(executionLimit, saved.executionLimit) };
   }
-  const startupRoot: string = canonicalStartupRoot(resolve(override ?? defaultStartupRoot(input.configHome, name)), true);
+  const startupRoot: string = canonicalStartupRoot(resolve(override ?? join(skillsHome, "startup", name)), true);
   const parentStat = maybeStat(dirname(startupRoot));
   if (parentStat?.isSymbolicLink())
     throw new StartupBootError(`Startup root parent may not be a symlink: ${dirname(startupRoot)}`);
