@@ -11,6 +11,7 @@ import {
   observedRuntimeSchema,
   paBlockerSchema,
   roleSchema,
+  scopeSchema,
   runtimeStateSchema,
   setupPhaseSchema,
   setupReceiptSchema,
@@ -38,7 +39,7 @@ const hostRuntimeSchema = z.strictObject({
   lastPoll: timeSchema,
 }).readonly();
 const hostObservationSchema = z.strictObject({
-  binding: z.strictObject({ name: idSchema, boundRoot: idSchema, home: idSchema, host: idSchema }).readonly(),
+  binding: z.strictObject({ name: idSchema, boundRoot: scopeSchema.unwrap().shape.boundRoot, home: scopeSchema.unwrap().shape.skillsHome, host: idSchema }).readonly(),
   storeRevision: timeSchema,
   ownerEpoch: timeSchema,
   leaseExpires: timeSchema,

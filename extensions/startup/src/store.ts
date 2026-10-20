@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   realpathSync,
@@ -10,11 +11,15 @@ import {
   openSync,
   closeSync,
   fsyncSync,
+  unlinkSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
-import { runtimeAbandonmentSchema, runtimeBindingSchema, type RuntimeAbandonment, type RuntimeBinding } from "./runtime-contracts";
+import { hostAssociationQuerySchema, hostAssociationPageSchema, type HostAssociationPage, type HostAssociationRow, runtimeConnectionSchema, runtimeIdentitySchema, type RuntimeIdentity, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
+import { assertStartupPath, contains, ensureStartupRoot } from "./boot";
+import { validateRoleSettings } from "./profiles";
 import {
+  ownerControlRequestSchema, ownerControlReceiptSchema, type OwnerControlRequest, type OwnerControlReceipt,
   authoritySchema,
   bindingSchema,
   bindSchema,
@@ -44,6 +49,7 @@ import {
   messageSchema,
   ownerSchema,
   resultSchema,
+  roleSchema,
   rowSchema,
   scopeSchema,
   sourceSchema,
@@ -278,41 +284,39 @@ export function openStore(args: {
   readonly scope: Scope;
   readonly owner: Owner;
   readonly now: () => number;
+  readonly expectedControl?: Readonly<{ ownerEpoch: number; revision: number }>;
 }) {
   const scope: Scope = scopeSchema.parse(args.scope);
   const owner: Owner = ownerSchema.parse(args.owner);
-  const expected: string = join(
-    resolve(scope.home),
-    "startup",
-    scope.name,
-    "staff.sqlite",
-  );
+  const startupRoot: string = ensureStartupRoot(scope.startupRoot);
+  const stateDirectory: string = startupRoot;
+  const expected: string = join(startupRoot, "staff.sqlite");
+  const skillsHome: string = resolve(scope.skillsHome);
+  const boundRootPath: string = resolve(scope.boundRoot);
   if (
-    !isAbsolute(scope.home) ||
+    !isAbsolute(scope.skillsHome) ||
+    skillsHome !== scope.skillsHome ||
     !isAbsolute(scope.boundRoot) ||
+    boundRootPath !== scope.boundRoot ||
     resolve(args.path) !== expected
   )
     throw new StoreAuthorityError(
-      "Store path must be <absolute home>/startup/<name>/staff.sqlite",
+      "Store path must be <startupRoot>/staff.sqlite with canonical scope roots",
     );
-  mkdirSync(dirname(expected), { recursive: true, mode: 0o700 });
-  const stateDirectory: string = realpathSync(dirname(expected));
-  const boundRoot: string = realpathSync(scope.boundRoot);
-  const withinRoot: string = relative(boundRoot, stateDirectory);
-  if (
-    withinRoot === "" ||
-    (!withinRoot.startsWith("..") && !isAbsolute(withinRoot))
-  )
+  if (realpathSync(scope.skillsHome) !== scope.skillsHome || realpathSync(scope.boundRoot) !== scope.boundRoot)
+    throw new StoreAuthorityError("Startup scope roots must be canonical directories");
+  if (contains(startupRoot, skillsHome) || contains(startupRoot, boundRootPath) || contains(boundRootPath, startupRoot))
     throw new StoreAuthorityError(
-      "Startup state must be outside the bound repository",
+      "Startup state may not contain JP_SKILLS_HOME and must stay outside the bound repository",
     );
-  if (
-    existsSync(expected) &&
-    realpathSync(expected) !== join(stateDirectory, "staff.sqlite")
-  )
-    throw new StoreAuthorityError(
-      "Store file may not redirect through a symlink",
-    );
+  for (const path of [expected, `${expected}-wal`, `${expected}-shm`, `${expected}-journal`]) {
+    assertStartupPath(startupRoot, path, "file");
+    if (existsSync(path)) {
+      const stat = lstatSync(path);
+      if (!stat.isFile() || stat.isSymbolicLink())
+        throw new StoreAuthorityError(`SQLite file may not be foreign or symlinked: ${path}`);
+    }
+  }
   const db: Database = new Database(expected, { create: true, strict: true });
   db.exec(
     "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(kind,id)); CREATE TABLE IF NOT EXISTS audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS lease(singleton INTEGER PRIMARY KEY CHECK(singleton=1), token TEXT NOT NULL, epoch INTEGER NOT NULL, generation INTEGER NOT NULL, expires INTEGER NOT NULL);",
@@ -465,12 +469,14 @@ export function openStore(args: {
           throw new StoreAuthorityError(
             "Database belongs to a different host, Startup, bound root or manager session",
           );
+        if (read("controlArchive", "startup", jsonSchema) !== null) throw new StoreAuthorityError("Startup is archived; history is retained and launch is refused");
         const previous: unknown = db
           .query(
             "SELECT token,epoch,generation,expires FROM lease WHERE singleton=1",
           )
           .get();
         const lease = previous === null ? null : leaseSchema.parse(previous);
+        if (args.expectedControl !== undefined && (args.expectedControl.ownerEpoch !== (lease?.epoch ?? 0) || args.expectedControl.revision !== controlRevision(db))) throw new StoreFenceError("Manager preparation snapshot changed before owner acquisition");
         const timestamp: number = now();
         if (lease !== null && lease.expires > timestamp)
           throw new StoreFenceError(
@@ -1108,7 +1114,7 @@ export function openStore(args: {
         itemsTruncated: entry.items.length > query.limit,
       }));
       return {
-        binding: { name: scope.name, boundRoot: scope.boundRoot, home: scope.home, host: scope.host },
+        binding: { name: scope.name, boundRoot: scope.boundRoot, home: scope.skillsHome, host: scope.host },
         storeRevision, ownerEpoch: epoch, leaseExpires: lease.expires, observedAt, duties,
         pendingIntentCount: pending.length,
         queue,
@@ -1234,7 +1240,9 @@ export function openStore(args: {
   }
 
   return {
+    scope,
     ownerEpoch: epoch,
+    ownerId: owner.id,
     getEmployee: employee,
     getTeam: team,
     hasMessage(id: string): boolean { return read("message", id, messageSchema) !== null; },
@@ -1270,6 +1278,77 @@ export function openStore(args: {
     }),
     renewLease(): void {
       tx((): void => {});
+    },
+    initializeRoleSettings(defaultHarness: "omp" | "claude"): readonly SavedRoleSettings[] {
+      const harness = runtimeHarnessSchema.parse(defaultHarness);
+      return tx((): readonly SavedRoleSettings[] => roleSchema.options.map((role) => {
+        const current: SavedRoleSettings | null = read("roleSettings", role, savedRoleSettingsSchema);
+        if (current !== null) return current;
+        const input = roleSettingsInputSchema.parse({ role, harness, model: null, effort: null });
+        const requested = requestedRoleSettingsSchema.parse({
+          role: input.role,
+          harness: input.harness,
+          model: { value: input.model, validation: "not_requested" },
+          effort: { value: input.effort, validation: "not_requested" },
+        });
+        const saved = savedRoleSettingsSchema.parse({
+          role,
+          requested,
+          scope: "future_launch",
+          revision: 0,
+          provenance: roleSettingsProvenanceSchema.parse({ kind: "startup_default", actor: "startup", generation: null, updatedAt: now() }),
+        });
+        put("roleSettings", role, saved);
+        return saved;
+      }));
+    },
+    freezeManagerSettings(harness: "omp" | "claude"): SavedRoleSettings {
+      return tx(() => {
+        const frozen = read("managerLaunchSettings", scope.managerSession, savedRoleSettingsSchema);
+        if (frozen !== null) {
+          if (frozen.requested.harness !== harness) throw new StoreConflictError("Prepared manager harness differs from the requested launch");
+          return frozen;
+        }
+        const selected = read("roleSettings", "manager", savedRoleSettingsSchema);
+        if (selected === null) throw new StoreConflictError("Manager launch requires saved settings");
+        if (selected.requested.harness !== harness) throw new StoreConflictError("Saved manager harness differs from the requested new native launch");
+        put("managerLaunchSettings", scope.managerSession, selected);
+        return selected;
+      });
+    },
+    roleSettings(role: Employee["role"]): SavedRoleSettings {
+      const parsed = roleSchema.parse(role);
+      const found: SavedRoleSettings | null = read("roleSettings", parsed, savedRoleSettingsSchema);
+      if (found === null) throw new StoreConflictError(`No saved runtime settings for role ${parsed}`);
+      return found;
+    },
+    allRoleSettings(): readonly SavedRoleSettings[] {
+      return all("roleSettings", savedRoleSettingsSchema);
+    },
+    saveRoleSettings(input: Readonly<{ manager: Binding; requested: RequestedRoleSettings; expectedRevision: number }>): SavedRoleSettings {
+      return tx((): SavedRoleSettings => {
+        const actor = manager(input.manager);
+        const request = requestedRoleSettingsSchema.parse(input.requested);
+        const validation = validateRoleSettings({ role: request.role, harness: request.harness, model: request.model.value, effort: request.effort.value });
+        if (validation.status === "unsupported") throw new StoreAuthorityError(validation.reason);
+        const requested = validation.requested;
+        const current: SavedRoleSettings | null = read("roleSettings", requested.role, savedRoleSettingsSchema);
+        if (current === null) throw new StoreConflictError(`No saved runtime settings for role ${requested.role}`);
+        if (current.revision !== timeSchema.parse(input.expectedRevision))
+          throw new StoreConflictError(`Runtime settings revision changed for role ${requested.role}; refresh the saved setting before retrying`);
+        const saved: SavedRoleSettings = savedRoleSettingsSchema.parse({
+          role: requested.role,
+          requested,
+          scope: "future_launch",
+          revision: current.revision + 1,
+          provenance: roleSettingsProvenanceSchema.parse({ kind: "manager_request", actor: actor.id, generation: actor.generation, updatedAt: now() }),
+        });
+        put("roleSettings", requested.role, saved);
+        return saved;
+      });
+    },
+    hostControl(request: OwnerControlRequest): OwnerControlReceipt {
+      return withOwnerControlRequest(scope, request.requestId, () => tx(() => applyOwnerControl(db, scope, request, now(), epoch)));
     },
     recoverManager(input: { readonly evidence: Json }): Employee {
       return tx((): Employee => {
@@ -3171,14 +3250,19 @@ export function openStore(args: {
       return tx(() => {
         const runtime = runtimeBindingSchema.parse(input);
         const current = employee(runtime.employeeId);
+        if (runtime.settings.role !== current.role)
+          throw new StoreAuthorityError("Frozen launch settings do not match the reserved employee role");
         const key = `${runtime.employeeId}/${runtime.generation}`;
         const saved = read("runtimeBinding", key, runtimeBindingSchema);
         if (saved !== null) {
           if (saved.state === "abandoned") throw new StoreFenceError("Runtime generation was abandoned by manager recovery");
-          if (saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source))
+          if (saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source) || !sameDocument(saved.settings, runtime.settings))
             throw new StoreConflictError("Runtime generation already has a different launch reservation");
           return saved;
         }
+        const selected: SavedRoleSettings | null = (current.role === "manager" ? read("managerLaunchSettings", scope.managerSession, savedRoleSettingsSchema) : null) ?? read("roleSettings", current.role, savedRoleSettingsSchema);
+        if (selected === null || selected.revision !== runtime.settings.revision || !sameDocument(selected, runtime.settings))
+          throw new StoreConflictError("Role settings changed while the launch was being prepared; reserve a new launch with the current revision");
         if (runtime.generation !== (current.role === "manager" ? current.generation : current.generation + 1))
           throw new StoreFenceError("Runtime launch must match the next reserved employee generation");
         if (!runtime.source.rolePath.endsWith(`/startup-role-${current.role}/SKILL.md`) || (current.canonicalRevision !== null && runtime.source.roleRevision !== current.canonicalRevision))
@@ -3192,7 +3276,7 @@ export function openStore(args: {
         const runtime = runtimeBindingSchema.parse(input);
         const key = `${runtime.employeeId}/${runtime.generation}`;
         const saved = read("runtimeBinding", key, runtimeBindingSchema);
-        if (saved === null || saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source))
+        if (saved === null || saved.launchId !== runtime.launchId || saved.credentialDigest !== runtime.credentialDigest || encode(saved.source) !== encode(runtime.source) || !sameDocument(saved.settings, runtime.settings))
           throw new StoreFenceError("Runtime update does not match its saved launch reservation");
         if (saved.state === "abandoned") {
           if (!sameDocument(saved, runtime)) throw new StoreFenceError("Runtime generation was abandoned by manager recovery");
@@ -3208,8 +3292,102 @@ export function openStore(args: {
         return runtime;
       });
     },
+    hostAssociations(input: Readonly<{ after: string | null; limit: number; herdrSession: string; connectionDeadlineMs: number }>): HostAssociationPage {
+      const query = hostAssociationQuerySchema.parse({ after: input.after, limit: input.limit });
+      const herdrSession = idSchema.parse(input.herdrSession);
+      const deadline = z.number().int().positive().safe().parse(input.connectionDeadlineMs);
+      if (closed) throw new StoreFenceError("Association owner connection is closed");
+      return db.transaction(() => {
+        const observedAt = timeSchema.parse(now());
+        const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+        const employees = all("employee", employeeSchema).toSorted((a, b) => a.id.localeCompare(b.id));
+        const start = query.after === null ? 0 : employees.findIndex((entry) => entry.id === query.after) + 1;
+        if (query.after !== null && start === 0) throw new StoreAuthorityError(`Unknown association cursor ${query.after}`);
+        const rows = employees.slice(start, start + query.limit).map((entry): HostAssociationRow => {
+          const base = { employeeId: entry.id, role: entry.role, generation: entry.generation };
+          const unavailable = (reason: Extract<HostAssociationRow, { status: "unavailable" }>["reason"]): HostAssociationRow => ({ ...base, status: "unavailable", reason });
+          if (lease.token !== token || lease.epoch !== epoch || lease.generation !== owner.managerGeneration || lease.expires <= observedAt) return unavailable("stale-owner");
+          if (entry.employment === "retired") return unavailable("retired");
+          const runtime = latestRuntime(entry.id, 0);
+          if (runtime === null) return unavailable("unprepared");
+          if (runtime.generation !== entry.generation) return unavailable("stale-generation");
+          if (runtime.state !== "ready") return unavailable("runtime-not-ready");
+          if (runtime.error !== null || entry.error !== null) return unavailable("runtime-error");
+          if (runtime.terminalId === null) return unavailable("missing-terminal");
+          if (runtime.nativeSession === null || runtime.paneId === null || runtime.observedState === "offline" || runtime.observedState === "unknown") return unavailable("unobserved");
+          const connection = read("runtimeConnection", runtime.launchId, runtimeConnectionSchema);
+          const identity = connection?.identity;
+          if (!connection?.connected || identity === undefined || identity.ownerId !== owner.id || identity.ownerEpoch !== epoch || identity.startupRoot !== scope.startupRoot || identity.employeeId !== entry.id || identity.generation !== entry.generation || identity.launchId !== runtime.launchId || identity.harness !== runtime.settings.requested.harness || identity.nativeSession !== runtime.nativeSession) return unavailable("stale-connection");
+          if (entry.nativeHandle === null || entry.source === null || encode(entry.source) !== encode(runtime.source)) return unavailable("stale-source");
+          if (runtime.lastSeen === 0 || runtime.lastSeen > observedAt || observedAt - runtime.lastSeen > deadline) return unavailable("stale-observation");
+          if (runtime.lastPoll === 0 || runtime.lastPoll > observedAt || observedAt - runtime.lastPoll > deadline) return unavailable("stale-poll");
+          return { ...base, status: "current", launchId: runtime.launchId, harness: runtime.settings.requested.harness, nativeSession: runtime.nativeSession, terminalId: runtime.terminalId, source: runtime.source, lastSeen: runtime.lastSeen, lastPoll: runtime.lastPoll };
+        });
+        return hostAssociationPageSchema.parse({ state: "observed", scope, ownerId: owner.id, ownerEpoch: epoch, revision: controlRevision(db), observedAt, herdrSession, freshness: { leaseExpiresAt: lease.expires, connectionDeadlineMs: deadline }, total: employees.length, nextCursor: start + query.limit < employees.length ? rows.at(-1)?.employeeId : null, rows });
+      }).deferred();
+    },
     runtimeBindings(): readonly RuntimeBinding[] {
       return all("runtimeBinding", runtimeBindingSchema);
+    },
+    assertRuntimeConnection(launchId: string, connectionEpoch: string): void {
+      if (closed) throw new StoreFenceError("Owner connection is closed");
+      const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+      if (lease.token !== token || lease.epoch !== epoch || lease.expires <= now()) throw new StoreFenceError("Connection owner lease is stale");
+      const current = read("runtimeConnection", launchId, runtimeConnectionSchema);
+      if (!current?.connected || current.identity.connectionEpoch !== connectionEpoch) throw new StoreFenceError("Connection epoch is revoked");
+    },
+    admitRuntimeConnection(value: RuntimeIdentity): void {
+      tx(() => {
+        const identity = runtimeIdentitySchema.parse(value);
+        const runtime = read("runtimeBinding", `${identity.employeeId}/${identity.generation}`, runtimeBindingSchema);
+        if (identity.startupRoot !== scope.startupRoot || identity.harness !== runtime?.settings.requested.harness || identity.ownerId !== owner.id || identity.ownerEpoch !== epoch || runtime?.launchId !== identity.launchId || runtime.nativeSession !== identity.nativeSession || runtime.state !== "ready") throw new StoreFenceError("Connection does not match current runtime");
+        put("runtimeConnection", identity.launchId, { identity, connected: true });
+      });
+    },
+    revokeRuntimeConnection(launchId: string, connectionEpoch: string): void {
+      if (closed) return;
+      tx(() => {
+        const current = read("runtimeConnection", launchId, runtimeConnectionSchema);
+        if (current?.connected && current.identity.connectionEpoch === connectionEpoch) {
+          put("runtimeConnection", current.identity.launchId, { ...current, connected: false });
+          const key = `${current.identity.employeeId}/${current.identity.generation}`;
+          const runtime = read("runtimeBinding", key, runtimeBindingSchema);
+          if (runtime?.launchId === launchId) put("runtimeBinding", key, { ...runtime, lastPoll: 0 });
+        }
+      });
+    },
+    recordRuntimeSettings(input: Readonly<{ capability: RuntimeCapability; effective: EffectiveRoleSettings }>): Readonly<{ capability: RuntimeCapability; effective: EffectiveRoleSettings }> {
+      return tx(() => {
+        const capability = runtimeCapabilitySchema.parse(input.capability);
+        const effective = effectiveRoleSettingsSchema.parse(input.effective);
+        if (capability.session === null || effective.session === null || capability.observedAt === null || effective.observedAt === null ||
+          encode(capability.session) !== encode(effective.session) || capability.observedAt !== effective.observedAt)
+          throw new StoreAuthorityError("Runtime capability and effective settings require one exact observed native session sample");
+        const identity = capability.session;
+        const key = `${identity.employeeId}/${identity.generation}`;
+        const runtime = read("runtimeBinding", key, runtimeBindingSchema);
+        if (identity.startupRoot !== scope.startupRoot || identity.harness !== capability.harness || identity.ownerId !== owner.id || identity.ownerEpoch !== epoch || runtime === null || runtime.state !== "ready" ||
+          runtime.launchId !== identity.launchId || runtime.nativeSession !== identity.nativeSession ||
+          runtime.settings.requested.harness !== capability.harness || capability.harness !== effective.harness)
+          throw new StoreFenceError("Effective settings observation does not match the current owner, launch generation, harness and native session");
+        const connection = read("runtimeConnection", identity.launchId, runtimeConnectionSchema);
+        if (!connection?.connected || encode(connection.identity) !== encode(identity)) throw new StoreFenceError("Settings report connection is no longer current");
+        const priorCapability = read("runtimeCapability", runtime.launchId, runtimeCapabilitySchema);
+        const priorEffective = read("effectiveRoleSettings", runtime.launchId, effectiveRoleSettingsSchema);
+        if (capability.sampleSequence === null || capability.sampleSequence !== effective.sampleSequence) throw new StoreFenceError("Settings sample sequence is required");
+        if (priorEffective?.session?.connectionEpoch === identity.connectionEpoch && capability.sampleSequence <= (priorEffective.sampleSequence ?? 0)) throw new StoreFenceError("Settings sample sequence is not newer than the saved session readback");
+        if (encode(priorCapability) !== encode(capability)) put("runtimeCapability", runtime.launchId, capability);
+        put("effectiveRoleSettings", runtime.launchId, effective);
+        return { capability, effective };
+      });
+    },
+    runtimeCapability(employeeId: string, generation: number): RuntimeCapability | null {
+      const runtime = read("runtimeBinding", `${idSchema.parse(employeeId)}/${timeSchema.parse(generation)}`, runtimeBindingSchema);
+      return runtime === null ? null : read("runtimeCapability", runtime.launchId, runtimeCapabilitySchema);
+    },
+    effectiveRoleSettings(employeeId: string, generation: number): EffectiveRoleSettings | null {
+      const runtime = read("runtimeBinding", `${idSchema.parse(employeeId)}/${timeSchema.parse(generation)}`, runtimeBindingSchema);
+      return runtime === null ? null : read("effectiveRoleSettings", runtime.launchId, effectiveRoleSettingsSchema);
     },
     employeeRuntime(employeeId: string, minimumGeneration: number): RuntimeBinding | null {
       return selected("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.generation')>=? ORDER BY json_extract(payload,'$.generation') DESC LIMIT 1", [employeeId, minimumGeneration], runtimeBindingSchema)[0] ?? null;
@@ -3310,3 +3488,117 @@ export function openStore(args: {
   };
 }
 export type StartupStore = ReturnType<typeof openStore>;
+
+
+function controlDatabase(scope: Scope, readonly: boolean): Database {
+  const parsed = scopeSchema.parse(scope);
+  if (realpathSync(parsed.startupRoot) !== parsed.startupRoot) throw new StoreAuthorityError("Control root must be canonical");
+  const path = join(parsed.startupRoot, "staff.sqlite");
+  for (const candidate of [path, `${path}-wal`, `${path}-shm`]) assertStartupPath(parsed.startupRoot, candidate, "file");
+  return new Database(path, { readonly, strict: true });
+}
+function controlRead<T>(db: Database, kind: string, id: string, schema: z.ZodType<T>): T | null {
+  const row = z.object({ payload: z.string() }).nullable().parse(db.query("SELECT payload FROM records WHERE kind=? AND id=?").get(kind, id));
+  return row === null ? null : schema.parse(JSON.parse(row.payload));
+}
+function controlRevision(db: Database): number {
+  return z.object({ n: timeSchema }).parse(db.query("SELECT COALESCE(MAX(sequence),0) AS n FROM audit").get()).n;
+}
+function controlPut(db: Database, kind: string, id: string, payload: unknown): void {
+  const body = encode(payload);
+  db.query("INSERT INTO records(kind,id,payload) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET payload=excluded.payload").run(kind, id, body);
+  db.query("INSERT INTO audit(kind,id,payload) VALUES(?,?,?)").run(kind, id, body);
+}
+function controlScope(db: Database, scope: Scope): void {
+  if (encode(controlRead(db, "meta", "scope", scopeSchema)) !== encode(scope)) throw new StoreAuthorityError("Control request scope does not match the selected Startup");
+}
+export function readOwnerControl(scope: Scope): Readonly<{ ownerEpoch: number; revision: number; leaseExpires: number; archived: boolean; settings: readonly SavedRoleSettings[] }> {
+  const db = controlDatabase(scope, true);
+  try { return db.transaction(() => {
+    controlScope(db, scope);
+    const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+    const settings = roleSchema.options.flatMap((role) => { const saved = controlRead(db, "roleSettings", role, savedRoleSettingsSchema); return saved === null ? [] : [saved]; });
+    return { ownerEpoch: lease.epoch, revision: controlRevision(db), leaseExpires: lease.expires, archived: controlRead(db, "controlArchive", "startup", jsonSchema) !== null, settings };
+  }).deferred(); } finally { db.close(); }
+}
+export function ownerControlOperationPath(scope: Scope, requestId: string): string {
+  const directory = join(scope.startupRoot, "control");
+  assertStartupPath(scope.startupRoot, directory, "directory");
+  const path = join(directory, createHash("sha256").update(idSchema.parse(requestId)).digest("hex") + ".json");
+  assertStartupPath(scope.startupRoot, path, "file");
+  return path;
+}
+export function readOwnerControlFile(scope: Scope, requestId: string): OwnerControlReceipt | null {
+  const path = ownerControlOperationPath(scope, requestId);
+  if (!existsSync(path)) return null;
+  if ((lstatSync(dirname(path)).mode & 0o077) !== 0) throw new StoreAuthorityError("Control operation directory must be private");
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) throw new StoreAuthorityError("Control operation must be a private regular file");
+  const receipt = ownerControlReceiptSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  if (encode(receipt.scope) !== encode(scope) || receipt.requestId !== requestId) throw new StoreAuthorityError("Saved control operation scope differs");
+  return receipt;
+}
+export function withOwnerControlRequest<T>(scope: Scope, requestId: string, action: () => T): T {
+  const path = ownerControlOperationPath(scope, requestId) + ".lock";
+  assertStartupPath(scope.startupRoot, path, "file");
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const lock = openSync(path, "wx", 0o600);
+  try { return action(); }
+  finally { closeSync(lock); unlinkSync(path); }
+}
+export function readOwnerControlReceipt(scope: Scope, requestId: string): OwnerControlReceipt | null {
+  const db = controlDatabase(scope, true);
+  try { controlScope(db, scope); return controlRead(db, "ownerControlReceipt", idSchema.parse(requestId), ownerControlReceiptSchema); } finally { db.close(); }
+}
+function applyOwnerControl(db: Database, scope: Scope, input: OwnerControlRequest, at: number, epoch: number): OwnerControlReceipt {
+  const request = ownerControlRequestSchema.parse(input);
+  if (encode(scope) !== encode(request.scope)) throw new StoreAuthorityError("Control request crosses Startup roots");
+  controlScope(db, scope);
+  const digest = createHash("sha256").update(encode(request)).digest("hex");
+  const prior = readOwnerControlFile(scope, request.requestId) ?? controlRead(db, "ownerControlReceipt", request.requestId, ownerControlReceiptSchema);
+  if (prior !== null) { if (prior.digest !== digest) throw new StoreConflictError("Control idempotency key has a different payload"); return prior; }
+  if (epoch !== request.expectedOwnerEpoch || controlRevision(db) !== request.expectedRevision) throw new StoreFenceError("Control owner epoch or snapshot revision changed");
+  if (controlRead(db, "controlArchive", "startup", jsonSchema) !== null) throw new StoreAuthorityError("Startup is archived");
+  let result: Json;
+  if (request.kind === "settings_apply") {
+    const current = controlRead(db, "roleSettings", request.role, savedRoleSettingsSchema);
+    if (current === null || current.revision !== request.baseSettingsRevision) throw new StoreConflictError("Role settings base revision changed");
+    const validated = validateRoleSettings({ role: request.role, harness: request.harness, model: request.model, effort: request.effort });
+    if (validated.status !== "accepted") throw new StoreAuthorityError(validated.reason);
+    const saved = savedRoleSettingsSchema.parse({ role: request.role, requested: validated.requested, scope: "future_launch", revision: current.revision + 1, provenance: { kind: "host_request", actor: "host-control", generation: null, updatedAt: at } });
+    controlPut(db, "roleSettings", request.role, saved);
+    result = jsonSchema.parse(saved);
+  } else {
+    const unsafe = z.object({ n: timeSchema }).parse(db.query(`SELECT COUNT(*) AS n FROM records WHERE
+      (kind='message' AND json_extract(payload,'$.status')!='acknowledged') OR
+      (kind='receivedInput' AND json_extract(payload,'$.disposition') IS NULL AND json_extract(payload,'$.hold.kind') IS NOT 'cancelled') OR
+      (kind='claim' AND json_extract(payload,'$.status')!='settled') OR
+      (kind='grant' AND json_extract(payload,'$.state')!='released') OR
+      (kind='assignment' AND json_extract(payload,'$.state')!='complete') OR
+      (kind='intent' AND json_extract(payload,'$.state')='pending') OR
+      (kind='runtimeBinding' AND json_extract(payload,'$.state') NOT IN ('abandoned','failed'))`).get()).n;
+    const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+    if (unsafe > 0 || lease.expires > at) throw new StoreAuthorityError("Archive requires no live lease, active launches, pending input/messages, claims, grants, assignments or uncertain writes");
+    result = { archivedAt: at, history: "preserved" };
+    controlPut(db, "controlArchive", "startup", result);
+  }
+  const receipt = ownerControlReceiptSchema.parse({ requestId: request.requestId, digest, scope, kind: request.kind, state: "committed", ownerEpoch: epoch, revision: controlRevision(db) + 1, sideEffects: request.kind === "settings_apply" ? "future_launch_settings" : "history_archived", result });
+  controlPut(db, "ownerControlReceipt", request.requestId, receipt);
+  return receipt;
+}
+export function applyOfflineOwnerControl(input: OwnerControlRequest, at: number): OwnerControlReceipt {
+  const request = ownerControlRequestSchema.parse(input);
+  const lockPath = join(request.scope.startupRoot, "runtime-launch.lock");
+  assertStartupPath(request.scope.startupRoot, lockPath, "file");
+  const lock = request.kind === "archive" ? openSync(lockPath, "wx", 0o600) : null;
+  try {
+  if (request.kind === "archive" && existsSync(join(request.scope.startupRoot, "runtime-launch.json"))) throw new StoreAuthorityError("Archive refuses a saved runtime launch intent; reconcile it explicitly first");
+  const db = controlDatabase(request.scope, false);
+  try { return withOwnerControlRequest(request.scope, request.requestId, () => db.transaction(() => {
+    controlScope(db, request.scope);
+    const lease = leaseSchema.parse(db.query("SELECT token,epoch,generation,expires FROM lease WHERE singleton=1").get());
+    if (lease.expires > at) throw new StoreFenceError("A live owner must handle this control request through its socket");
+    return applyOwnerControl(db, request.scope, request, at, lease.epoch);
+  }).immediate()); } finally { db.close(); }
+  } finally { if (lock !== null) { closeSync(lock); unlinkSync(lockPath); } }
+}

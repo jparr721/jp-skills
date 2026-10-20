@@ -6,6 +6,8 @@ import {
   mkdirSync,
   rmSync,
   readFileSync,
+  realpathSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,20 +20,23 @@ afterEach((): void => {
     rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-  const root: string = mkdtempSync(join(tmpdir(), "startup-store-"));
+  const root: string = realpathSync(mkdtempSync(join(tmpdir(), "startup-store-")));
   roots.push(root);
   const home: string = join(root, "home");
+  const startupRoot: string = join(home, "startup", "test");
   const boundRoot: string = join(root, "repo");
+  mkdirSync(home);
   mkdirSync(boundRoot);
   const scope = {
-    home,
+    skillsHome: home,
+    startupRoot,
     boundRoot,
     host: "host",
     name: "test",
     managerSession: "native-manager",
   };
   const owner = { id: "owner", managerGeneration: 1, leaseMs: 1000 };
-  const path: string = join(home, "startup", "test", "staff.sqlite");
+  const path: string = join(startupRoot, "staff.sqlite");
   const store = openStore({ path, scope, owner, now: (): number => 100 });
   store.bindEmployee({
     manager: store.managerBinding,
@@ -42,7 +47,7 @@ function fixture() {
     },
   });
   const user = { kind: "user", acceptedEventId: "accepted" } as const;
-  return { root, home, scope, owner, path, store, user };
+  return { root, home, startupRoot, scope, owner, path, store, user };
 }
 
 test("hire requests are additive, immutable and survive reopening", (): void => {
@@ -548,6 +553,19 @@ test("one live owner and scoped database; expired owners and native generations 
   next.close();
 });
 
+test("SQLite and its sidecars stay under the canonical Startup root and preserve skills-home identity", (): void => {
+  const f = fixture();
+  f.store.close();
+  const linkedRoot = join(f.root, "linked-startup");
+  symlinkSync(f.startupRoot, linkedRoot);
+  expect(() => openStore({ path: join(linkedRoot, "staff.sqlite"), scope: { ...f.scope, startupRoot: linkedRoot }, owner: f.owner, now: () => 2000 })).toThrow("symlink");
+  const foreign = join(f.root, "foreign.sqlite-wal");
+  writeFileSync(foreign, "foreign");
+  rmSync(`${f.path}-wal`, { force: true });
+  symlinkSync(foreign, `${f.path}-wal`);
+  expect(() => openStore({ path: f.path, scope: f.scope, owner: { ...f.owner, id: "replacement" }, now: () => 2000 })).toThrow("symlink");
+});
+
 test("crashed active claims survive as reconciliation without duplicate delivery", (): void => {
   const f = fixture();
   const id = first(hire(f, "devops", "hire", 1));
@@ -587,7 +605,7 @@ function fields(request: string) {
   };
 }
 function queuePath(f: ReturnType<typeof fixture>): string {
-  return join(f.home, "startup", "test", "queue.json");
+  return join(f.startupRoot, "queue.json");
 }
 
 test.each(["rows", "items"])("canonical %s queues preserve their container through capture and item transitions", (key: string) => {
@@ -857,7 +875,7 @@ test("legacy ambiguous locks block only affected targets, preserve inventory, an
   if (other === undefined) throw new Error("Missing worker");
   const binding = bind(f, id, "devops", 1, null);
   const second = bind(f, other, "devops", 1, null);
-  const path: string = join(f.home, "startup", "test", "resources.json");
+  const path: string = join(f.startupRoot, "resources.json");
   const original = {
     inventory: ["server"],
     history: [{ old: true }],
@@ -1153,7 +1171,7 @@ test("source mismatch and native failures cannot advertise readiness; recovery a
 
 test("resource projection refuses external edits and unsupported ambiguous lock targets", (): void => {
   const f = fixture();
-  const path = join(f.home, "startup", "test", "resources.json");
+  const path = join(f.startupRoot, "resources.json");
   writeFileSync(
     path,
     JSON.stringify({
@@ -1305,7 +1323,7 @@ test("delegated pending row ownership cannot be reclaimed by a later unrelated c
 
 test("held-by inventory outside locks cannot silently bypass target exclusion", (): void => {
   const f = fixture();
-  const path = join(f.home, "startup", "test", "resources.json");
+  const path = join(f.startupRoot, "resources.json");
   writeFileSync(
     path,
     JSON.stringify({
@@ -1320,7 +1338,7 @@ test("held-by inventory outside locks cannot silently bypass target exclusion", 
   ).toEqual(["preview-1"]);
   f.store.close();
   const other = fixture();
-  const otherPath = join(other.home, "startup", "test", "resources.json");
+  const otherPath = join(other.startupRoot, "resources.json");
   writeFileSync(
     otherPath,
     JSON.stringify({

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { encode, idSchema, jsonSchema, sourceSchema, settlementRecoverySchema, type SettlementRecovery, type Json, type Source } from "./contracts";
 import type { HostAPI } from "../index";
 import type { NativeContext } from "./omp-adapter";
+import { ompSessionSettingsReportSchema, type OmpSessionSettingsReport } from "./runtime-contracts";
 
 const pollSchema = z.strictObject({
   projection: z.string().min(1),
@@ -13,6 +14,7 @@ const admissionSchema = z.strictObject({
   socketPath: z.string().startsWith("/"),
   credential: z.string().min(1),
   nativeSession: z.string().min(1),
+  agentSessionId: z.string().min(1).optional(),
   paneId: z.string().min(1),
   source: sourceSchema,
 });
@@ -24,9 +26,11 @@ const toolSchema = z.object({ toolName: z.string(), input: z.unknown() });
 export type EmployeePoll = z.infer<typeof pollSchema>;
 export type EmployeeClient = Readonly<{
   request: (command: Json) => Promise<Json>;
-  poll: () => Promise<EmployeePoll>;
+  poll: (settingsReport?: OmpSessionSettingsReport) => Promise<EmployeePoll>;
   close: () => void;
+  disconnect: () => Promise<void>;
   settlementBlock: () => string | null;
+  isClosed: () => boolean;
 }>;
 export type EmployeeBridgeHost = Pick<HostAPI, "on" | "sendMessage">;
 function isEmployeeTool(event: unknown): boolean {
@@ -103,12 +107,16 @@ export async function connectEmployee(input: Readonly<{
   socketPath: string;
   credential: string;
   nativeSession: string;
+  agentSessionId?: string;
   paneId: string;
   source: Source;
 }>): Promise<EmployeeClient> {
   const admitted = admissionSchema.parse(input);
   let connection: string | null = null;
   let closed: boolean = false;
+  let lifetime: WebSocket | null = null;
+  let previousReport: OmpSessionSettingsReport | undefined;
+  let sampleSequence: number = 0;
   let claimState: string | null = null;
   let settlementBlocked: EmployeeSettlementError | null = null;
   let commandBlocked: EmployeeCommandError | null = null;
@@ -122,6 +130,7 @@ export async function connectEmployee(input: Readonly<{
   }
   async function exchange(method: "GET" | "POST", path: string, body: Json): Promise<Json> {
     if (closed) throw new EmployeeClientError("Startup employee connection is closed");
+    const capturedConnection = connection;
     const headers: Headers = new Headers();
     if (connection !== null) headers.set("Authorization", `Bearer ${connection}`);
     if (method === "POST") headers.set("Content-Type", "application/json");
@@ -150,10 +159,13 @@ export async function connectEmployee(input: Readonly<{
         reason: redact(error instanceof Error ? error.message : String(error)),
       });
     }
+    if (closed || capturedConnection !== connection) throw new EmployeeClientError("Startup connection changed while request was in flight; outcome is uncertain, do not replay");
     if (!response.ok) {
       let recovery: SettlementRecovery | null = null;
       try {
-        const parsed = z.object({ recovery: settlementRecoverySchema }).safeParse(JSON.parse(redact(text)));
+        const body: unknown = JSON.parse(redact(text));
+        if (z.object({ admission: z.literal("revoked") }).safeParse(body).success) { closed = true; shutdown.abort(); lifetime?.close(); }
+        const parsed = z.object({ recovery: settlementRecoverySchema }).safeParse(body);
         if (parsed.success) recovery = parsed.data.recovery;
       } catch (error: unknown) { if (!(error instanceof SyntaxError)) throw error; }
       throw new EmployeeHttpError(response.status, `Startup ${method} ${path} HTTP ${response.status}: ${redact(text)}`, recovery);
@@ -166,16 +178,29 @@ export async function connectEmployee(input: Readonly<{
     }
   }
   async function admitConnection(): Promise<void> {
-    const receipt: Json = await exchange("POST", "/admit", {
-    credential: admitted.credential,
-    nativeSession: admitted.nativeSession,
-    paneId: admitted.paneId,
-    source: admitted.source,
-  });
-    const parsedConnection = connectionSchema.safeParse(receipt);
-    if (!parsedConnection.success)
-    throw new EmployeeClientError("Startup POST /admit HTTP 200 returned an invalid connection receipt");
-    connection = parsedConnection.data.connection;
+    const admissionStartedAt = Date.now();
+    const socket = new WebSocket(`ws+unix://${admitted.socketPath}:/admit`);
+    lifetime = socket;
+    const receipt = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(() => { reject(new EmployeeClientError("Admission channel timed out")); socket.close(); }, 10000);
+      socket.onopen = (): void => { socket.send(JSON.stringify({ credential: admitted.credential, nativeSession: admitted.nativeSession,
+        ...(admitted.agentSessionId === undefined ? {} : { agentSessionId: admitted.agentSessionId }), paneId: admitted.paneId, source: admitted.source })); };
+      socket.onmessage = (event): void => {
+        clearTimeout(timeout);
+        try {
+          const value: unknown = JSON.parse(String(event.data));
+          const failure = z.object({ status: z.number(), error: z.string() }).safeParse(value);
+          if (failure.success) { reject(new EmployeeHttpError(failure.data.status, `Admission /admit ${failure.data.status}: ${redact(failure.data.error)}`, null)); return; }
+          resolve(connectionSchema.parse(value).connection);
+        } catch (error: unknown) { reject(new EmployeeClientError(`Invalid /admit receipt: ${redact(error instanceof Error ? error.message : String(error))}`)); socket.close(); }
+      };
+      socket.onerror = (): void => { clearTimeout(timeout); reject(new EmployeeTransportError({ method: "GET", path: "/admit", socketPath: admitted.socketPath, code: "CHANNEL_CONNECT_FAILED", causeCode: null, elapsedMs: Date.now() - admissionStartedAt, timeoutMs: 10000, reason: "Unix WebSocket admission connection failed" })); };
+      socket.onclose = (): void => { clearTimeout(timeout); reject(new EmployeeClientError("Admission channel closed before receipt")); };
+    });
+    if (closed || socket.readyState !== WebSocket.OPEN) { socket.close(); throw new EmployeeClientError("Admission channel closed before activation"); }
+    connection = receipt;
+    socket.onclose = (): void => { closed = true; shutdown.abort(); };
+    socket.onerror = (): void => { closed = true; shutdown.abort(); socket.close(); };
     rejectedCommands.clear();
     commandBlocked = null;
   }
@@ -233,16 +258,16 @@ export async function connectEmployee(input: Readonly<{
         throw failure;
       }
     },
+    isClosed: () => closed,
     settlementBlock: () => settlementBlocked?.message ?? commandBlocked?.message ?? null,
-    async poll(): Promise<EmployeePoll> {
-      let body: Json;
-      try { body = await exchange("GET", "/poll", null); }
-      catch (error: unknown) {
-        if (!(error instanceof EmployeeHttpError) || ![401, 403, 409].includes(error.status)) throw error;
-        connection = null;
-        await awaitAdmission();
-        body = await exchange("GET", "/poll", null);
-      }
+    async poll(settingsReport?: OmpSessionSettingsReport): Promise<EmployeePoll> {
+      const unchanged = settingsReport !== undefined && previousReport !== undefined && settingsReport.nativeSession === previousReport.nativeSession && settingsReport.agentSessionId === previousReport.agentSessionId && (
+        settingsReport.status === "unavailable" && previousReport.status === "unavailable" && settingsReport.reason === previousReport.reason ||
+        settingsReport.status === "available" && previousReport.status === "available" && settingsReport.availableModels === previousReport.availableModels && settingsReport.availableEfforts === previousReport.availableEfforts && encode(settingsReport.model) === encode(previousReport.model) && settingsReport.configuredEffort === previousReport.configuredEffort && settingsReport.effectiveEffort === previousReport.effectiveEffort);
+      const report: Json | null = settingsReport === undefined || unchanged ? null : jsonSchema.parse(ompSessionSettingsReportSchema.parse(settingsReport));
+      const pollRequest = (): Promise<Json> => report === null ? exchange("GET", "/poll", null) : exchange("POST", "/poll", { sequence: ++sampleSequence, report });
+      const body: Json = await pollRequest();
+      previousReport = settingsReport;
       const parsed = pollSchema.safeParse(body);
       if (!parsed.success)
         throw new EmployeeClientError(`Startup GET /poll HTTP 200 returned an invalid employee projection: ${redact(parsed.error.message)}`);
@@ -254,6 +279,18 @@ export async function connectEmployee(input: Readonly<{
     close(): void {
       closed = true;
       shutdown.abort();
+      lifetime?.close();
+    },
+    async disconnect(): Promise<void> {
+      const capturedConnection = connection;
+      closed = true;
+      shutdown.abort();
+      try {
+        if (capturedConnection === null) throw new EmployeeClientError("Admission already lost; owner revocation acknowledgement is unavailable");
+        const response = await fetch("http://localhost/disconnect", { unix: admitted.socketPath, method: "POST", headers: { Authorization: `Bearer ${capturedConnection}` }, signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new EmployeeClientError(`Startup disconnect HTTP ${response.status}: ${redact(await response.text())}`);
+        z.strictObject({ revoked: z.literal(true) }).parse(await response.json());
+      } finally { lifetime?.close(); }
     },
   };
 }
@@ -263,6 +300,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   ctx: NativeContext;
   intervalMs: number;
   instructions: string;
+  settingsReport?: () => OmpSessionSettingsReport;
   lastAssistant?: unknown;
 }>): Readonly<{ poll: () => Promise<void>; close: () => void }> {
   z.number().int().positive().parse(input.intervalMs);
@@ -291,8 +329,9 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   let releasePending: boolean = false;
   let turnHeld: boolean = true;
   let turnBlocked: string | null = null;
+  const rootFile = input.ctx.sessionManager.getSessionFile();
   function isRoot(ctx: NativeContext): boolean {
-    return ctx.agent.kind === "main" && ctx.agent.id === rootId &&
+    return ctx.agent.kind === "main" && ctx.agent.id === rootId && ctx.sessionManager.getSessionFile() === rootFile &&
       ctx.sessionManager.getSessionId() === rootSession;
   }
   function observeAssistant(message: unknown): void {
@@ -304,7 +343,9 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   observeAssistant(input.lastAssistant);
   async function refresh(): Promise<void> {
     try {
-      const next: EmployeePoll = await input.client.poll();
+      if (!isRoot(input.ctx)) { close(); throw new EmployeeClientError("Native session changed before heartbeat"); }
+      const next: EmployeePoll = await input.client.poll(input.settingsReport?.());
+      if (!isRoot(input.ctx)) { close(); throw new EmployeeClientError("Native session changed during heartbeat"); }
       if (turnHeld && nativeIdle() && !nativePending()) releasePending = true;
       if (releasePending) { await input.client.request({ kind: "end_turn" }); releasePending = false; turnHeld = false; }
       if (closed) return;
@@ -466,6 +507,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     continuedReason = reason;
     return { continue: true, additionalContext: reason };
   });
-  host.on("session_shutdown", (_event, ctx) => { if (isRoot(ctx)) close(); });
+  host.on("session_start", (_event, ctx) => { if (ctx.agent.kind === "main" && !isRoot(ctx)) close(); });
+  host.on("session_shutdown", (_event, ctx) => { if (ctx.agent.kind === "main") close(); });
   return { poll, close };
 }

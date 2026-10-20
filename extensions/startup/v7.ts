@@ -1,21 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, realpathSync } from "node:fs";
+import { hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { cfgTaskMaxConcurrency } from "@oh-my-pi/pi-coding-agent/task/settings";
 import type { HostAPI } from "./index";
-import { bootSelection, parseBootCommand, StartupBootError, writeBootGuidance, writeClaudeGuidance, type BootCommand, type Selection } from "./src/boot";
+import { executionSkillsHome, bootSelection, parseBootCommand, persistBinding, StartupBootError, type BootCommand, type Selection } from "./src/boot";
 import { encode } from "./src/contracts";
-import { attach, inputSchema, installLaunchedEmployee, nativeRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
+import { assertNativeTranscript, attach, inputBlock, reconcileInput, inputSchema, installLaunchedEmployee, nativeRoot, nativeTranscriptRoot, paneEnvironment, receive, registerTools, sameRoot, type Admission, type Environment, type NativeRootFn } from "./src/employee-entry";
 import { requireOmpModelRoles } from "./src/model-roles";
 import type { NativeContext } from "./src/omp-adapter";
 import { loadProfile, verifyProfile } from "./src/profiles";
-import { launchRuntimeHost, readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
+import { integrationPath, launchRuntimeHost, readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
 
+export { integrationPath } from "./src/v7-launch";
 export { installLaunchedEmployee } from "./src/employee-entry";
 export type EntryConfig = Readonly<{
-  home: string;
+  skillsHome: string;
+  startupRoot: string | null;
   skillsRoot: string;
   environment: Environment;
   launch: (config: RuntimeHostConfig) => Promise<RuntimeHostConfig>;
@@ -25,13 +27,6 @@ export type EntryConfig = Readonly<{
   integration: (environment: Environment) => string;
 }>;
 
-export function integrationPath(environment: Environment): string {
-  const path: string = realpathSync(environment.STARTUP_HERDR_OMP_EXTENSION ?? join(environment.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"), "extensions", "herdr-omp-agent-state.ts"));
-  const source: string = readFileSync(path, "utf8");
-  if (!/^\/\/ HERDR_INTEGRATION_ID=omp$/m.test(source) || !/^\/\/ HERDR_INTEGRATION_VERSION=[1-9]\d*$/m.test(source))
-    throw new StartupBootError("Startup requires the managed Herdr OMP integration headers; configure STARTUP_HERDR_OMP_EXTENSION with its canonical file");
-  return path;
-}
 export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   let admitted: Admission | null = null;
   let selection: Selection | null = null;
@@ -45,33 +40,35 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   let commandReceipt: Readonly<{ args: string; inputId: string; work: boolean }> | null = null;
   host.on("tool_call", (_event, ctx) => {
     if (!attempted || ctx.agent.kind !== "main") return;
-    if (failure !== null || admitted === null || initializing !== null || !sameRoot(admitted, ctx))
+    if (failure !== null || admitted === null || admitted.client.isClosed() || initializing !== null || !sameRoot(admitted, ctx) || inputBlock(admitted) !== null)
       return { block: true, reason: `Startup V7 blocked: ${failure ?? "manager root admission is pending"}` };
     return;
   });
   host.on("before_agent_start", (_event, ctx) => {
-    if (attempted && ctx.agent.kind === "main" && (failure !== null || admitted === null)) ctx.abort?.();
+    if (attempted && ctx.agent.kind === "main" && (failure !== null || admitted === null || admitted.client.isClosed())) ctx.abort?.();
   });
   registerTools(host, () => failure === null ? admitted : null);
   async function initialize(ctx: NativeContext, command: BootCommand | null): Promise<void> {
+    const nativeSession = ctx.sessionManager.getSessionId();
     const nativeFile: string = (await input.root(host, ctx)).file;
+    const contextFile = ctx.sessionManager.getSessionFile();
     const location = await paneEnvironment(input.environment);
-    const next: Selection | null = bootSelection({ cwd: ctx.cwd, home: input.home, skillsRoot: input.skillsRoot, command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
+    if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager native identity changed during startup discovery");
+    const next: Selection | null = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
     if (next === null) return;
+    // A manager that is already admitted is re-attached, not re-checked: only a fresh admission needs every bound model role.
+    if (input.harness === "omp" && admitted === null) requireOmpModelRoles(ctx.models, location.profile);
     if (admitted !== null) {
       if (!sameRoot(admitted, ctx) || next.name !== selection?.name || next.boundRoot !== selection.boundRoot)
         throw new StartupBootError("Startup already belongs to another selected manager root");
       if (runtimeConfig === null) throw new StartupBootError("Admitted manager lost its coordinator configuration");
-      runtimeConfig = await input.launch(runtimeConfig);
-      await admitted.client.poll();
-      failure = null;
-      failureTurnPending = false;
-      return;
+      await admitted.close();
+      admitted = null;
     }
-    if (input.harness === "omp") requireOmpModelRoles(ctx.models, location.profile);
-    const savedPath: string = join(next.home, "startup", next.name, "runtime-config.json");
-    const saved: RuntimeHostConfig | null = existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null;
-    if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.name !== next.name || saved.home !== next.home || saved.stateDirectory !== join(next.home, "startup", next.name) ||
+    assertNativeTranscript({ harness: input.harness, root: nativeTranscriptRoot({ harness: input.harness, startupRoot: next.startupRoot, profile: location.profile, environment: input.environment }), sessionId: nativeSession, file: nativeFile });
+    const savedPath: string = join(next.startupRoot, "runtime-config.json");
+    const saved: RuntimeHostConfig | null = runtimeConfig ?? (existsSync(savedPath) ? parseRuntimeHostConfig(readPrivateJson(savedPath)) : null);
+    if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.name !== next.name || saved.skillsHome !== next.skillsHome || saved.startupRoot !== next.startupRoot || saved.stateDirectory !== next.startupRoot ||
       saved.boundRoot !== next.boundRoot || saved.skillsRoot !== next.skillsRoot || saved.managerSession !== ctx.sessionManager.getSessionId() ||
       (input.harness === "omp" && realpathSync(saved.managerFile) !== realpathSync(nativeFile)) || saved.managerPaneId !== location.paneId || saved.profile !== location.profile ||
       saved.workspaceId !== location.workspaceId || saved.herdrSession !== location.session))
@@ -80,22 +77,23 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     if (executionLimit < 3) throw new StartupBootError("Startup V7 requires at least three root slots for manager, PA and employee work");
     const profile = loadProfile({ skillsRoot: next.skillsRoot, role: "manager", employeeId: "manager", generation: 1 });
     verifyProfile(profile);
-    if (saved === null) writeBootGuidance(next);
-    if (saved === null && input.harness === "claude") writeClaudeGuidance(next);
-    const stateDirectory: string = join(next.home, "startup", next.name);
+    persistBinding(next);
+    const stateDirectory: string = next.startupRoot;
     const fresh: RuntimeHostConfig = {
       name: next.name, stateDirectory, boundRoot: next.boundRoot, skillsRoot: next.skillsRoot,
       socketPath: join(stateDirectory, "runtime.sock"), profile: location.profile,
       managerSession: ctx.sessionManager.getSessionId(), managerFile: nativeFile, managerPaneId: location.paneId,
       managerCredential: randomUUID(), policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit },
-      home: next.home, herdrSession: location.session, workspaceId: location.workspaceId,
+      skillsHome: next.skillsHome, startupRoot: next.startupRoot, herdrSession: location.session, workspaceId: location.workspaceId,
       herdrBinary: input.environment.HERDR_BIN_PATH ?? "herdr", herdrIntegration: input.integration(input.environment), ownerGeneration: 1,
     };
     const config: RuntimeHostConfig = await input.launch(saved ?? (input.harness === "claude" ? { ...fresh, harness: "claude" } : fresh));
     runtimeConfig = config;
-    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, skillsRoot: next.skillsRoot }, input.environment, input.root);
-    if (stopped) { connected.close(); return; }
+    if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager identity changed during owner launch; preserve launch evidence and reconcile before retry");
+    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, harness: input.harness, skillsHome: next.skillsHome, startupRoot: next.startupRoot, skillsRoot: next.skillsRoot }, { ...input.environment, STARTUP_ROOT: next.startupRoot, JP_SKILLS_HOME: next.skillsHome }, input.root);
+    if (stopped) { await connected.close(); return; }
     admitted = connected;
+    await reconcileInput(connected);
     selection = next;
     failure = null;
     failureTurnPending = false;
@@ -126,17 +124,19 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
   }
   host.on("session_start", async (_event, ctx) => {
     if (ctx.agent.kind !== "main" || stopped) return;
+    if (admitted !== null && !sameRoot(admitted, ctx)) { await admitted.close(); stopped = true; report(new StartupBootError("Manager native session changed; explicit re-admission required"), ctx); ctx.abort?.(); return; }
+    if (admitted !== null) return;
     try {
-      const next = bootSelection({ cwd: ctx.cwd, home: input.home, skillsRoot: input.skillsRoot, command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
-      if (next === null || !existsSync(join(next.home, "startup", next.name, "runtime-config.json"))) return;
+      const next = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command: null, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: null });
+      if (next === null || !existsSync(join(next.startupRoot, "runtime-config.json"))) return;
       await retry(ctx);
     } catch (error: unknown) { attempted = true; report(error, ctx); ctx.abort?.(); }
   });
-  host.on("session_shutdown", (_event, ctx) => {
+  host.on("session_shutdown", async (_event, ctx) => {
     if (ctx.agent.kind !== "main") return;
     stopped = true;
     if (retryTimer !== null) { ctx.clearTimer(retryTimer); retryTimer = null; }
-    admitted?.close();
+    await admitted?.close();
   });
   host.registerCommand("startup-retry", { description: "Reconnect the saved Startup manager in its existing pane.", handler: async (_args, ctx) => { await retry(ctx); } });
   host.on("input", async (event, ctx) => {
@@ -163,7 +163,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     handler: async (args, ctx) => {
       try {
         const command: BootCommand = parseBootCommand(args);
-        await boot(ctx, command);
+        if (commandReceipt?.args !== args) await boot(ctx, command);
         if (admitted === null) throw new StartupBootError("No Startup selected");
         if (command.work !== null && (commandReceipt?.args !== args || !commandReceipt.work))
           throw new StartupBootError("Startup work requires its original interactive/RPC input receipt");
@@ -184,7 +184,8 @@ export default function startupV7(host: HostAPI): void {
   const manifest: string | undefined = process.env.STARTUP_V7_MANIFEST;
   if (manifest !== undefined) { installLaunchedEmployee(host, manifest); return; }
   installStartupV7(host, {
-    home: resolve(process.env.JP_SKILLS_HOME ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "jp-skills")),
+    skillsHome: executionSkillsHome(process.env),
+    startupRoot: process.env.STARTUP_ROOT ?? null,
     skillsRoot: resolve(process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")),
     environment: process.env, launch: launchRuntimeHost,
     harness: "omp", root: nativeRoot, integration: integrationPath,

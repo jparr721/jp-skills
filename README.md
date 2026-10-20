@@ -83,7 +83,7 @@ Startup family (roles + procedures):
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (7.5.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (7.6.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 

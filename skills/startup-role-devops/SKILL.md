@@ -23,7 +23,7 @@ Health means the assigned filesystem acceptance only. Coordinator exit stops tim
 
 ## Resource history and cleanup
 
-Preserve per-target inventory, legacy locks and credentials under selected persistent home, never scratch. Secrets stay out of ledger/outcomes. For authorized worktree cleanup, require the proof-deck copy-out before removal. Ops evidence names target/mutation/independent verification; research uses memo evidence and needs no inferred provisioning.
+Preserve per-target inventory, legacy locks and credentials under selected canonical Startup root, never scratch. Secrets stay out of ledger/outcomes. For authorized worktree cleanup, require the proof-deck copy-out before removal. Ops evidence names target/mutation/independent verification; research uses memo evidence and needs no inferred provisioning.
 
 Manager may scale down idle DevOps with `startup_retire` only after duties, claims, assignments, mail and grants resolve. Retirement preserves identity/history. Until then queue drain means logical waiting.
 

@@ -2,7 +2,7 @@
 
 ## Ownership and preservation
 
-Use selected `<home>/startup/<name>/` throughout; an item's repo does not select the namespace. Runtime is the single canonical queue writer. Only the assigned architect captures its event's technical intake; manager retains high-level decisions/landing authority. All writes preserve old IDs, terminal rows, unknown fields, receipt history and the existing array/object container shape.
+Use selected canonical `startupRoot` from the owner binding throughout; an item's repo does not select the namespace. Runtime is the single canonical queue writer. Only the assigned architect captures its event's technical intake; manager retains high-level decisions/landing authority. All writes preserve old IDs, terminal rows, unknown fields, receipt history and the existing array/object container shape.
 
 Retain `id, source, status, repo, remote, target, merge-strategy, branch, worktree, base, stack-mode, report-handle, kind, procedure, convention-source, requested_roles`. New intake rows also carry `request, acceptance, blocked_on, intake_refs`. Source metadata is not the task payload. Missing requested_roles on legacy rows behaves as `[]`; recover absent request/acceptance from identified evidence or leave NEEDS_DECISION. Preserve ambiguous legacy ownership and original files.
 

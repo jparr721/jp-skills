@@ -25,6 +25,7 @@ import {
   StoreAuthorityError,
   StoreFenceError,
 } from "./contracts";
+import { ompSessionSettingsReportSchema, type OmpSessionSettingsReport } from "./runtime-contracts";
 import {
   openStore,
   type StartupStore,
@@ -67,6 +68,11 @@ export type NativeSession = Readonly<{
     getAllJobs: (filter: Readonly<{ ownerId: string }>) => readonly unknown[];
   }>;
   settings: unknown;
+  model?: Readonly<{ provider: string; id: string; name: string }>;
+  thinkingLevel?: string;
+  configuredThinkingLevel?: () => string | undefined;
+  getAvailableModels?: () => readonly Readonly<{ provider: string; id: string; name: string }>[];
+  getAvailableThinkingLevels?: () => readonly string[];
   effectiveExtensionRoots?: unknown;
   getSessionAgents?: () => readonly Readonly<{
     name: string;
@@ -82,6 +88,46 @@ export type NativeSession = Readonly<{
       }>
     | undefined;
 }>;
+
+export function readOmpSessionSettings(input: Readonly<{
+  session: NativeSession | null;
+  nativeSession: string;
+  agentSessionId: string;
+  observedAt: number;
+}>): OmpSessionSettingsReport {
+  const identity = { nativeSession: input.nativeSession, agentSessionId: input.agentSessionId, observedAt: input.observedAt };
+  const session = input.session;
+  if (session === null || session.sessionManager.getSessionId() !== input.agentSessionId ||
+    typeof session.getAvailableModels !== "function" || typeof session.configuredThinkingLevel !== "function" ||
+    typeof session.getAvailableThinkingLevels !== "function")
+    return ompSessionSettingsReportSchema.parse({ status: "unavailable", reason: "omp_session_api_unavailable", ...identity });
+  const model = session.model;
+  return ompSessionSettingsReportSchema.parse({
+    status: "available",
+    ...identity,
+    model: model === undefined ? null : { provider: model.provider, id: model.id, name: model.name },
+    availableModels: session.getAvailableModels().map((available) => ({ provider: available.provider, id: available.id, name: available.name })),
+    configuredEffort: session.configuredThinkingLevel() ?? null,
+    effectiveEffort: session.thinkingLevel ?? null,
+    availableEfforts: session.getAvailableThinkingLevels(),
+  });
+}
+export function createOmpSettingsSampler(input: Readonly<{ read: () => NativeSession | null; nativeSession: string; agentSessionId: string; now: () => number; refreshMs: number }>): () => OmpSessionSettingsReport {
+  let cached: OmpSessionSettingsReport | null = null;
+  let sampledSession: NativeSession | null = null;
+  let refreshedAt: number = 0;
+  return (): OmpSessionSettingsReport => {
+    const session = input.read();
+    const at = input.now();
+    if (cached === null || session !== sampledSession || (cached.status === "available" && (cached.model?.id !== session?.model?.id || cached.model?.provider !== session?.model?.provider)) || at - refreshedAt >= input.refreshMs || session?.sessionManager.getSessionId() !== input.agentSessionId) {
+      cached = readOmpSessionSettings({ session, nativeSession: input.nativeSession, agentSessionId: input.agentSessionId, observedAt: at });
+      sampledSession = session;
+      refreshedAt = at;
+    }
+    if (cached.status === "unavailable" || session === null) return { ...cached, observedAt: at };
+    return { ...cached, observedAt: at, model: session.model === undefined ? null : { provider: session.model.provider, id: session.model.id, name: session.model.name }, configuredEffort: session.configuredThinkingLevel?.() ?? null, effectiveEffort: session.thinkingLevel ?? null };
+  };
+}
 export type NativeRef = Readonly<{
   id: string;
   kind: string;
@@ -125,7 +171,8 @@ export type NativeContext = Readonly<{
 export type AdapterConfig = Readonly<{
   boundRoot: string;
   name: string;
-  home: string;
+  skillsHome: string;
+  startupRoot: string;
   skillsRoot: string;
   employeeLimit: number | null;
   executionLimit: number | null;
@@ -387,9 +434,10 @@ export function createAdapter(
     generation: root.createdAt,
   });
   const store: StartupStore = openStore({
-    path: join(config.home, "startup", config.name, "staff.sqlite"),
+    path: join(config.startupRoot, "staff.sqlite"),
     scope: {
-      home: config.home,
+      skillsHome: config.skillsHome,
+      startupRoot: config.startupRoot,
       host: hostname(),
       name: config.name,
       boundRoot: realpathSync(config.boundRoot),
@@ -1441,7 +1489,7 @@ export function createAdapter(
         throw new StoreAuthorityError(
           "Canonical role source differs from the hire reservation",
         );
-      writeProfile({ root: rootDirectory, profile });
+      writeProfile({ root: config.startupRoot, profile });
       prepared.push(profile);
       tasks.push({
         name: `${employee.id}-${generation}`,
@@ -2024,7 +2072,7 @@ export function createAdapter(
         const file: Json = jsonSchema.parse(
           JSON.parse(
             readFileSync(
-              join(config.home, "startup", config.name, "queue.json"),
+              join(config.startupRoot, "queue.json"),
               "utf8",
             ),
           ),

@@ -1,13 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import {
   bootSelection,
+  executionSkillsHome,
   parseBootCommand,
-  writeBootGuidance,
+  persistBinding,
   StartupBootError,
   type BootCommand,
   type Selection,
 } from "./src/boot";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { resolve, join } from "node:path";
 import { z } from "zod";
 import {
@@ -122,7 +123,8 @@ const rootConfigSchema = z.strictObject({
     .string()
     .regex(/^[a-zA-Z0-9_-]+$/)
     .nullable(),
-  home: z.string().min(1),
+  skillsHome: z.string().min(1),
+  startupRoot: z.string().min(1).nullable(),
   skillsRoot: z.string().min(1),
   employeeLimit: z.number().int().positive().nullable(),
   executionLimit: z.number().int().positive().nullable(),
@@ -159,8 +161,8 @@ function rootAdapter(
     ref?.session?.sessionManager.getSessionId();
   return sessionId === undefined ? undefined : adapters.get(sessionId);
 }
-export type StartupConfig = Omit<AdapterConfig, "name" | "boundRoot"> &
-  Readonly<{ name: string | null }>;
+export type StartupConfig = Omit<AdapterConfig, "name" | "boundRoot" | "startupRoot"> &
+  Readonly<{ name: string | null; startupRoot: string | null }>;
 export function installStartup(
   pi: HostAPI,
   config: StartupConfig,
@@ -215,8 +217,11 @@ export function installStartup(
       );
     const selection = bootSelection({
       cwd: ctx.cwd,
-      home: config.home,
+      skillsHome: config.skillsHome,
+      startupRoot: config.startupRoot,
       skillsRoot: config.skillsRoot,
+      host: hostname(),
+      managerSession: ctx.sessionManager.getSessionId(),
       command,
       explicitName: config.name,
       executionLimit: config.executionLimit,
@@ -231,11 +236,11 @@ export function installStartup(
         throw new StartupBootError(
           "Startup selection is already bound to another root or session; resume its canonical manager",
         );
-      writeBootGuidance(selection);
+      persistBinding(selection);
       bootFailure = null;
       return;
     }
-    writeBootGuidance(selection);
+    persistBinding(selection);
     const native = registry.get(ctx.agent.id);
     const session = native?.session?.sessionManager;
     if (
@@ -276,6 +281,8 @@ export function installStartup(
       config: {
         ...config,
         name: selection.name,
+        skillsHome: selection.skillsHome,
+        startupRoot: selection.startupRoot,
         boundRoot: selection.boundRoot,
         executionLimit: selection.executionLimit,
       },
@@ -370,7 +377,7 @@ export function installStartup(
       "Bind Startup: new <name> [--dir <JSON-quoted-path>] [-- <work>], select <name> [-- <work>], or status",
     handler: async (args, ctx) => {
       const command = parseBootCommand(args);
-      await boot(ctx, command);
+      if (commandReceipt?.args !== args) await boot(ctx, command);
       if (selected === null)
         throw new StartupBootError(
           "No Startup selected; use /startup new <name> or /startup select <name>",
@@ -1047,13 +1054,8 @@ export default function startup(pi: HostAPI): void {
     pi,
     {
       name,
-      home: resolve(
-        process.env.JP_SKILLS_HOME ??
-          join(
-            process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"),
-            "jp-skills",
-          ),
-      ),
+      skillsHome: executionSkillsHome(process.env),
+      startupRoot: process.env.STARTUP_ROOT ?? null,
       skillsRoot: resolve(
         process.env.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../.."),
       ),

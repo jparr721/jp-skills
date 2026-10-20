@@ -1,6 +1,6 @@
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
+import { assertStartupPath, canonicalStartupRoot, StartupBootError } from "./boot";
 import { jsonSchema, type Json } from "./contracts";
 import type { Environment } from "./employee-entry";
 
@@ -21,13 +21,20 @@ export type BridgeReply = z.infer<typeof waiterReplySchema>;
 const hookInputSchema = z.looseObject({ session_id: z.string().min(1), transcript_path: z.string().startsWith("/") });
 const socketBytes: number = 103;
 
-export function startupHome(environment: Environment): string {
-  return resolve(environment.JP_SKILLS_HOME ?? join(environment.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "jp-skills"));
+export function startupRoot(environment: Environment): string {
+  const configured: string | undefined = environment.STARTUP_ROOT;
+  if (configured === undefined) throw new StartupBootError("Claude Startup bridge requires the selected STARTUP_ROOT");
+  if (environment.CLAUDE_CONFIG_DIR !== configured)
+    throw new StartupBootError("CLAUDE_CONFIG_DIR must match the selected STARTUP_ROOT for Claude Startup hooks");
+  return canonicalStartupRoot(configured, false);
 }
-export function waiterSocketPath(input: Readonly<{ home: string; sessionId: string }>): string {
-  const path: string = join(input.home, "startup", "claude", "w", `${input.sessionId}.sock`);
+export function waiterSocketPath(input: Readonly<{ startupRoot: string; sessionId: string }>): string {
+  if (!/^[a-zA-Z0-9_-]+$/.test(input.sessionId)) throw new StartupBootError("Claude Startup session ID is not a safe socket filename");
+  const root: string = canonicalStartupRoot(input.startupRoot, false);
+  const path: string = join(root, "startup", "claude", "w", `${input.sessionId}.sock`);
+  assertStartupPath(root, path, "socket");
   if (Buffer.byteLength(path) > socketBytes)
-    throw new ClaudeBridgeSocketError(`Claude Startup bridge socket path exceeds ${socketBytes} bytes; set JP_SKILLS_HOME to a shorter directory: ${path}`);
+    throw new ClaudeBridgeSocketError(`Claude Startup bridge socket path exceeds ${socketBytes} bytes; set STARTUP_ROOT to a shorter directory: ${path}`);
   return path;
 }
 export async function exchangeBridge(input: Readonly<{ path: string; request: Json; connectDeadlineMs: number }>): Promise<BridgeReply | null> {
@@ -65,7 +72,7 @@ export function failHook(component: string, error: unknown): never {
 }
 async function wait(): Promise<void> {
   const hook = hookInputSchema.parse(JSON.parse(await Bun.stdin.text()));
-  const path: string = waiterSocketPath({ home: startupHome(process.env), sessionId: hook.session_id });
+  const path: string = waiterSocketPath({ startupRoot: startupRoot(process.env), sessionId: hook.session_id });
   const result: BridgeReply | null = await exchangeBridge({ path, request: { sessionId: hook.session_id, transcript: hook.transcript_path }, connectDeadlineMs: 30000 });
   if (result !== null && "fire" in result) { process.stderr.write(result.fire, () => process.exit(2)); return; }
   if (result === null || "superseded" in result) process.exit(0);

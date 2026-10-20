@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -37,19 +37,27 @@ function coordinatorFixture() {
   const root: string = realpathSync(mkdtempSync(join(tmpdir(), "claude-host-")));
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const skillsRoot: string = join(root, "skills-repo");
+  const skillsHome: string = join(root, "jp-skills");
+  const startupRoot: string = join(root, "startup-state");
+  const configHome: string = join(root, "xdg");
+  mkdirSync(skillsHome, { mode: 0o700 });
+  mkdirSync(startupRoot, { mode: 0o700 });
+  mkdirSync(configHome, { mode: 0o700 });
   for (const role of ["manager", "dev", "pa"]) {
     mkdirSync(join(skillsRoot, "skills", `startup-role-${role}`), { recursive: true });
     writeFileSync(join(skillsRoot, "skills", `startup-role-${role}`, "SKILL.md"), `Complete canonical ${role} persona`);
   }
   mkdirSync(join(skillsRoot, "skills", "startup-loop"));
   writeFileSync(join(skillsRoot, "skills", "startup-loop", "SKILL.md"), "Complete canonical shared loop");
-  const socketPath: string = join(root, "coordinator.sock");
+  const socketPath: string = join(startupRoot, "coordinator.sock");
   const commands: Json[] = [];
   const admissions: Json[] = [];
   const responses = new Map<string, Response>();
   let poll: Readonly<{ projection: string; pendingMessageIds: readonly string[]; toolBlockReason: string | null; waitReason: string | null }> = { projection: "LIVE STATE A", pendingMessageIds: [], toolBlockReason: null, waitReason: null };
-  const server = Bun.serve({ unix: socketPath, async fetch(request: Request): Promise<Response> {
+  const server = Bun.serve({ unix: socketPath, websocket: { message(socket, message): void { admissions.push(z.json().parse(JSON.parse(String(message)))); socket.send(JSON.stringify({ connection: "private-connection" })); } }, async fetch(request: Request, server): Promise<Response | undefined> {
+    if (new URL(request.url).pathname === "/admit" && server.upgrade(request)) return;
     const path: string = new URL(request.url).pathname;
+    if (path === "/disconnect") return Response.json({ revoked: true });
     if (path === "/admit") { admissions.push(z.json().parse(await request.json())); return Response.json({ connection: "private-connection" }); }
     if (path === "/poll") return Response.json(poll);
     if (path === "/launch-failure") return Response.json({ recorded: true });
@@ -61,7 +69,7 @@ function coordinatorFixture() {
   } });
   cleanup.push(() => { server.stop(true); });
   return {
-    root, skillsRoot, socketPath, commands, admissions,
+    root, skillsRoot, skillsHome, startupRoot, configHome, socketPath, commands, admissions,
     kinds: (): readonly string[] => commands.map((command) => z.object({ kind: z.string() }).parse(command).kind),
     setPoll(value: Partial<typeof poll>): void { poll = { ...poll, ...value }; },
     respond(kind: string, response: Response): void { responses.set(kind, response); },
@@ -72,11 +80,11 @@ async function employeeFixture(options: Readonly<{ instructions: string | null; 
   const profile = loadProfile({ skillsRoot: f.skillsRoot, role: "dev", employeeId: "dev-1", generation: 1 });
   const text: string = profileText(profile);
   f.setPoll({ projection: `${text}\nLIVE STATE A` });
-  mkdirSync(join(f.root, "launches"), { mode: 0o700 });
-  const manifest: string = join(f.root, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", skillsRoot: f.skillsRoot }), { mode: 0o600 });
-  useEnvironment({ HERDR_PANE_ID: "w1:p2" });
-  const transcript: string = join(f.root, `${sessionId}.jsonl`);
+  mkdirSync(join(f.startupRoot, "launches"), { mode: 0o700 });
+  const manifest: string = join(f.startupRoot, "launches", `${sessionId}.json`);
+  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
+  useEnvironment({ HERDR_PANE_ID: "w1:p2", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot });
+  const transcript: string = join(f.startupRoot, "projects", "fixture", `${sessionId}.jsonl`);
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd: f.root, instructions: options.instructions === null ? text : options.instructions, transcript: () => transcript, formatGuardMs: options.formatGuardMs });
   cleanup.push(() => shim.shutdown());
   installLaunchedEmployeeWith(shim.host, manifest, claudeRoot({ sessionId, transcript: () => transcript }));
@@ -88,6 +96,18 @@ const defaults = { instructions: null, formatGuardMs: 10000, waiters: [] } as co
 const ups = (prompt: string, promptId: string) => ({ event: "UserPromptSubmit", prompt, promptId, transcript: "/fixture/transcript.jsonl" }) as const;
 const pre = (tool: string, query: string, agentId: string) => ({ event: "PreToolUse", tool, query, agentId }) as const;
 const context = (reply: ClaudeHookReply): string | null => z.object({ hookSpecificOutput: z.object({ additionalContext: z.string() }) }).safeParse(reply).data?.hookSpecificOutput.additionalContext ?? null;
+
+test("Claude host lists the public Startup catalog and preserves image and manager-refusal results", async () => {
+  const f = await employeeFixture(defaults);
+  expect(f.shim.tools().map((tool) => tool.name)).toEqual([
+    "startup_claim", "startup_settle", "startup_send", "startup_item", "startup_capture", "startup_staff", "startup_hire", "startup_delegate", "startup_activate", "startup_replace", "startup_intake", "startup_route", "startup_input", "startup_image", "startup_reconcile", "startup_resolve", "startup_finish_team", "startup_refresh", "startup_block", "startup_retire",
+  ]);
+  expect(f.shim.tools().find((tool) => tool.name === "startup_image")?.inputSchema).toEqual({ type: "object", properties: { inputId: { type: "string" }, index: { type: "number" } }, required: ["inputId", "index"], additionalProperties: false });
+  const image = await f.shim.callTool("startup_image", { inputId: "input-1", index: 0 });
+  expect(image).toEqual({ content: [{ type: "image", data: "fixture-image", mimeType: "image/png" }], isError: false });
+  f.respond("staff", Response.json({ error: "Only the manager may perform this operation" }, { status: 403 }));
+  await expect(f.shim.callTool("startup_staff", {})).rejects.toThrow("Only the manager may perform this operation");
+});
 
 test("an idle UserPromptSubmit admits the turn, injects live state and verifies the launch prompt suffix", async () => {
   const f = await employeeFixture(defaults);
@@ -225,11 +245,11 @@ test("a cue raised before any waiter is armed fires when the first waiter arrive
   f.setPoll({ pendingMessageIds: ["m1"] });
   const profile = loadProfile({ skillsRoot: f.skillsRoot, role: "dev", employeeId: "dev-1", generation: 1 });
   f.setPoll({ projection: `${profileText(profile)}\nLIVE STATE A` });
-  mkdirSync(join(f.root, "launches"), { mode: 0o700 });
-  const manifest: string = join(f.root, "launches", `${sessionId}.json`);
-  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", skillsRoot: f.skillsRoot }), { mode: 0o600 });
-  useEnvironment({ HERDR_PANE_ID: "w1:p2" });
-  const transcript: string = join(f.root, `${sessionId}.jsonl`);
+  mkdirSync(join(f.startupRoot, "launches"), { mode: 0o700 });
+  const manifest: string = join(f.startupRoot, "launches", `${sessionId}.json`);
+  writeFileSync(manifest, JSON.stringify({ socketPath: f.socketPath, credential: "private-credential", source: profile.source, employeeId: "dev-1", generation: 1, profile: "default", harness: "claude", skillsHome: f.skillsHome, startupRoot: f.startupRoot, skillsRoot: f.skillsRoot }), { mode: 0o600 });
+  useEnvironment({ HERDR_PANE_ID: "w1:p2", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot });
+  const transcript: string = join(f.startupRoot, "projects", "fixture", `${sessionId}.jsonl`);
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd: f.root, instructions: profileText(profile), transcript: () => transcript, formatGuardMs: 10000 });
   cleanup.push(() => shim.shutdown());
   installLaunchedEmployeeWith(shim.host, manifest, claudeRoot({ sessionId, transcript: () => transcript }));
@@ -291,17 +311,17 @@ test("a queued prompt that starts before the previous end marker is read is stil
   expect(f.shim.context().isIdle?.()).toBe(true);
 });
 
-test("a ledger failure releases the open turn and refuses later turns", async () => {
+test("a ledger failure revokes adapter authority and refuses later turns", async () => {
   const f = await employeeFixture(defaults);
   await f.shim.hook(ups("go", "p1"));
   const before: number = f.commands.length;
   f.shim.fail(new Error("Unknown Claude transcript queue operation: rewind"));
-  await until(() => f.kinds().slice(before).includes("end_turn"), 2000);
+  await Bun.sleep(10);
   expect(f.shim.context().isIdle?.()).toBe(true);
   const next: ClaudeHookReply = await f.shim.hook(ups("again", "p2"));
   expect(next).toMatchObject({ decision: "block" });
   expect(String(next.reason)).toContain("Unknown Claude transcript queue operation: rewind");
-  expect(f.kinds().slice(before)).toEqual(["end_turn"]);
+  expect(f.kinds().slice(before)).toEqual([]);
   expect(f.shim.context().isIdle?.()).toBe(true);
 });
 
@@ -403,14 +423,13 @@ test("manager /startup new boots inside UserPromptSubmit through the unchanged V
   const f = coordinatorFixture();
   const cwd: string = join(f.root, "repo");
   mkdirSync(cwd);
-  const home: string = join(f.root, "home");
-  const transcript: string = join(f.root, "manager.jsonl");
-  const environment: Readonly<Record<string, string>> = { HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", STARTUP_EXECUTION_LIMIT: "4" };
+  const transcript: string = join(f.startupRoot, "projects", "fixture", `${sessionId}.jsonl`);
+  const environment: Readonly<Record<string, string>> = { HERDR_ENV: "1", HERDR_SESSION: "fixture", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "w1", STARTUP_EXECUTION_LIMIT: "4", JP_SKILLS_HOME: f.skillsHome, STARTUP_ROOT: f.startupRoot, CLAUDE_CONFIG_DIR: f.startupRoot, XDG_CONFIG_HOME: f.configHome };
   const shim: ClaudeHost = createClaudeHost({ sessionId, cwd, instructions: null, transcript: () => transcript, formatGuardMs: 10000 });
   cleanup.push(() => shim.shutdown());
   const launched: RuntimeHostConfig[] = [];
   installStartupV7(shim.host, {
-    home, skillsRoot: f.skillsRoot, environment, harness: "claude", root: claudeRoot({ sessionId, transcript: () => transcript }),
+    skillsHome: f.skillsHome, startupRoot: null, skillsRoot: f.skillsRoot, environment, harness: "claude", root: claudeRoot({ sessionId, transcript: () => transcript }),
     integration: () => "/fixture/claude/hooks/herdr-agent-state.sh",
     nativeLimit: () => { throw new Error("Claude has no native limit"); },
     launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; },
@@ -425,7 +444,8 @@ test("manager /startup new boots inside UserPromptSubmit through the unchanged V
   expect(f.kinds()).toEqual(["receive", "route", "staff", "begin_turn", "begin_turn"]);
   expect(f.commands[0]).toMatchObject({ source: "interactive", raw: { text: "/startup new claudeco", images: [] } });
   expect(reply.systemMessage).toBe(JSON.stringify({ accepted: true }));
-  expect(readFileSync(join(realpathSync(cwd), "CLAUDE.md"), "utf8")).toContain("@AGENTS.md");
+  expect(existsSync(join(realpathSync(cwd), "CLAUDE.md"))).toBe(false);
+  expect(existsSync(join(f.startupRoot, "binding.json"))).toBe(true);
   await shim.ledger({ kind: "human", id: "row-1", promptId: "p1", text: "/startup new claudeco", images: [] });
   expect(f.kinds().filter((kind) => kind === "receive")).toHaveLength(1);
   await shim.ledger({ kind: "end", marker: "turn_duration" });
@@ -443,4 +463,16 @@ test("the JSON Schema builder emits strict objects and anyOf unions", () => {
     { type: "object", properties: { action: { type: "string", enum: ["qa", "gate"] }, count: { type: "number" }, evidence: {} }, required: ["action", "count", "evidence"], additionalProperties: false },
   ] });
   expect(() => b.array({ type: "string" })).toThrow("Claude JSON Schema builder");
+});
+
+test("failed durable input remains visible and fences Claude work without replay", async () => {
+  const f = await employeeFixture(defaults);
+  f.respond("receive", new Response("lost response after owner commit", { status: 503 }));
+  await f.shim.ledger({ kind: "human", id: "uncertain-input", promptId: null, text: "important work", images: [] });
+  const blocked = await f.shim.hook(pre("Bash", "", ""));
+  expect(JSON.stringify(blocked)).toContain("uncertain-input");
+  expect(JSON.stringify(blocked)).toContain("deny");
+  const count = f.kinds().filter((kind) => kind === "receive").length;
+  await f.shim.ledger({ kind: "human", id: "uncertain-input", promptId: null, text: "important work", images: [] });
+  expect(f.kinds().filter((kind) => kind === "receive")).toHaveLength(count);
 });

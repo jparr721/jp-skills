@@ -2,6 +2,28 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.6.0] - 2026-10-20
+
+### Added
+
+- Each of the six Startup roles can select OMP or interactive Claude Code with separately saved model/effort requests. A Startup's root is `<skills home>/startup/<name>`; typed requested, saved and effective values preserve unavailable readback instead of inferring runtime state.
+- A typed owner host-control entrypoint supports list, create, select, resume, safe archive, bounded status/staff/progress/alerts, settings draft/apply/readback and receipt lookup without direct database access or employee impersonation.
+- The OMP extension and Claude Code MCP bridge publish the verified 20-tool `startup_*` employee catalog. The reference documents their published schemas, owner validation, results, errors and role gates separately from host lifecycle control.
+- Employee authority and settings observations are bound to the current native connection epoch. Re-admission, disconnect, shutdown, session change, retirement and owner replacement revoke old authority; uncertain writes are not replayed.
+
+### Changed
+
+- Startup runs OMP on OMP's own configuration, with nothing pinned: the default profile shares the same agent directory a regular `omp` uses, and a Startup can run on a named OMP profile instead. A Startup records its profile, every OMP employee launches on the profile in its launch manifest (`OMP_PROFILE` set in its pane), and managed transcripts must live under that profile's OMP agent directory.
+- `install.ts` asks for a named OMP profile (existing or new) or Enter for the default profile; with no terminal it installs into the default profile.
+- `config.ts set` and `config.ts profiles` are removed: a Startup's profile is fixed when it is created, because its manager transcript lives under that profile's OMP agent directory.
+- Name-less Startup discovery, host-control `list` and `config.ts list` skip old-format Startup roots (`binding.json` without `scope`) instead of failing.
+- An OMP employee still launches on the OMP model role bound to its Startup role, unless its saved settings request a model, which replaces the bound role for that launch. Manager boot checks the bound roles only for a fresh admission.
+
+### Verification
+
+- Scoped Startup typecheck, registration/catalog tests and role-refusal tests are recorded in the SYT-9095 Slice D runrecord. Full merge-gate verification remains CI-only; interactive OMP/Claude and installed-runtime acceptance are not claimed by the local test lane.
+- The merge of 7.3.0 to 7.5.0 into this work was resolved without running the test suite; run the Startup suite before release.
+
 ## [7.5.0] - 2026-10-19
 
 ### Added

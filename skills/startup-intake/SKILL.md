@@ -25,7 +25,7 @@ Kinds are code/research/docs/ops. Code acceptance names behavior; research names
 
 ## Boot ownership
 
-`startup new` deterministic selection/root guidance happens before this team is dispatched; see `../startup/SKILL.md`. Architect can collect repo inventory, verification preferences and unresolved setup decisions as scoped intake. Preserve existing `.startup/config.md`, binding, queue and resource history; runtime queue writes use the existing serialized writer.
+`startup new` deterministic selection/root guidance happens before this team is dispatched; see `../startup/SKILL.md`. Architect can collect repo inventory, verification preferences and unresolved setup decisions as scoped intake. Preserve the selected canonical Startup binding, queue and resource history; runtime queue writes use the existing serialized writer.
 
 ## Framework tail
 

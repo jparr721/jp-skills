@@ -1,15 +1,15 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { hostname } from "node:os";
 import { z } from "zod";
 import type { EntryConfig } from "./v7";
-import { StartupBootError } from "./src/boot";
+import { executionSkillsHome, assertStartupPath, bootSelection, StartupBootError } from "./src/boot";
 import { claudeHookInputSchema, claudeRoot, createClaudeHost, type ClaudeHost, type WaiterHandle } from "./src/claude-host";
-import { claudeIntegrationPath } from "./src/claude-launch";
 import { priorEventCount, splitLines, TranscriptTail } from "./src/claude-ledger";
-import { bridgeRequestSchema, startupHome, waiterSocketPath } from "./src/claude-waiter";
+import { bridgeRequestSchema, startupRoot as selectedStartupRoot, waiterSocketPath } from "./src/claude-waiter";
 import { jsonSchema, type Json } from "./src/contracts";
-import { installLaunchedEmployeeWith, type Environment } from "./src/employee-entry";
-import { launchRuntimeHost } from "./src/v7-launch";
+import { assertNativeTranscript, installLaunchedEmployeeWith, type Environment } from "./src/employee-entry";
+import { integrationPath, launchRuntimeHost, readPrivateJson } from "./src/v7-launch";
 
 const requestSchema = z.looseObject({ jsonrpc: z.literal("2.0"), id: z.union([z.string(), z.number()]).optional(), method: z.string(), params: z.unknown().optional() });
 const initializeSchema = z.looseObject({ protocolVersion: z.string().min(1) });
@@ -18,17 +18,19 @@ type SocketState = { buffer: string; waiter: WaiterHandle | null };
 
 export function claudeEntryConfig(environment: Environment, sessionId: string, transcript: () => string | null): EntryConfig {
   return {
-    home: startupHome(environment),
+    skillsHome: executionSkillsHome(environment),
+    startupRoot: environment.STARTUP_ROOT ?? null,
     skillsRoot: resolve(environment.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")),
     environment, launch: launchRuntimeHost,
-    harness: "claude", root: claudeRoot({ sessionId, transcript }), integration: claudeIntegrationPath,
+    harness: "claude", root: claudeRoot({ sessionId, transcript }), integration: integrationPath,
     nativeLimit: () => { throw new StartupBootError("Claude Code has no native root concurrency setting; set STARTUP_EXECUTION_LIMIT explicitly and retry Startup"); },
   };
 }
 export function bridgeInstructions(tools: readonly string[]): string {
   return `Startup V7 employee tools are deferred MCP tools on server startup. Before calling any of them, load them all with ToolSearch query "select:${tools.map((name) => `mcp__startup__${name}`).join(",")}". Use them only from the main session, never from subagents.`;
 }
-function listenDirectory(path: string): void {
+function listenDirectory(root: string, path: string): void {
+  assertStartupPath(root, path, "directory");
   if (!existsSync(path)) mkdirSync(path, { recursive: true, mode: 0o700 });
   const stat = lstatSync(path);
   if (stat.isSymbolicLink() || !stat.isDirectory() || (stat.mode & 0o077) !== 0)
@@ -40,7 +42,7 @@ function log(record: Readonly<Record<string, Json>>): void {
 function write(message: Json): void {
   process.stdout.write(JSON.stringify(message) + "\n");
 }
-async function answer(shim: ClaudeHost, version: string, attach: (transcript: string) => Promise<void>, line: string): Promise<void> {
+async function answer(shim: ClaudeHost, sessionId: string, version: string, attach: (transcript: string) => Promise<void>, line: string): Promise<void> {
   let id: string | number | null = null;
   try {
     const request = requestSchema.parse(JSON.parse(line));
@@ -57,7 +59,22 @@ async function answer(shim: ClaudeHost, version: string, attach: (transcript: st
     const call = callSchema.parse(request.params);
     const args: Json = call.arguments ?? {};
     if (call.name === "hook") {
-      const input = claudeHookInputSchema.parse(args);
+      const identity = z.looseObject({ sessionId: z.literal(sessionId) }).safeParse(args);
+      if (!identity.success) {
+        const error = new StartupBootError("Claude hook is missing the current native session identity; admission revoked");
+        shim.fail(error);
+        await shim.shutdown();
+        throw error;
+      }
+      const { sessionId: _sessionId, ...payload } = identity.data;
+      const lifecycle = z.strictObject({ event: z.literal("SessionStart"), transcript: z.string().min(1) }).safeParse(payload);
+      if (lifecycle.success) { await attach(lifecycle.data.transcript); write({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: "{}" }] } }); return; }
+      if (z.strictObject({ event: z.literal("SessionEnd") }).safeParse(payload).success) {
+        await shim.shutdown();
+        write({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: "{}" }] } });
+        return;
+      }
+      const input = claudeHookInputSchema.parse(payload);
       if (input.event === "UserPromptSubmit") await attach(input.transcript);
       write({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(await shim.hook(input)) }] } });
       return;
@@ -77,10 +94,34 @@ async function answer(shim: ClaudeHost, version: string, attach: (transcript: st
 async function serve(): Promise<void> {
   const environment: Environment = process.env;
   const sessionId: string = z.string().uuid().parse(environment.CLAUDE_CODE_SESSION_ID);
-  const home: string = startupHome(environment);
-  const socketPath: string = waiterSocketPath({ home, sessionId });
+  const startupRoot: string = selectedStartupRoot(environment);
+  const skillsHome: string = executionSkillsHome(environment);
   const manifest: string | undefined = environment.STARTUP_V7_MANIFEST;
   if (manifest !== undefined && !manifest.endsWith(".json")) throw new StartupBootError(`STARTUP_V7_MANIFEST must name a launch .json manifest: ${manifest}`);
+  if (manifest !== undefined) {
+    assertStartupPath(startupRoot, manifest, "file");
+    const saved = z.object({ skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/") }).parse(readPrivateJson(manifest));
+    if (saved.skillsHome !== skillsHome || saved.startupRoot !== startupRoot)
+      throw new StartupBootError("Claude employee manifest does not match JP_SKILLS_HOME and STARTUP_ROOT");
+  } else {
+    const selection = bootSelection({
+      cwd: process.cwd(), skillsHome, startupRoot,
+      skillsRoot: resolve(environment.STARTUP_SKILLS_ROOT ?? join(import.meta.dir, "../..")), host: hostname(),
+      managerSession: sessionId, command: null, explicitName: environment.STARTUP_NAME ?? null, executionLimit: null,
+    });
+    if (selection === null || selection.startupRoot !== startupRoot)
+      throw new StartupBootError("Claude manager bridge requires a selected persisted Startup root before opening its waiter socket");
+  }
+  const socketPath: string = waiterSocketPath({ startupRoot, sessionId });
+  const socketDirectory: string = dirname(socketPath);
+  for (const path of [join(startupRoot, "startup"), join(startupRoot, "startup", "claude"), socketDirectory]) {
+    assertStartupPath(startupRoot, path, "directory");
+    if (existsSync(path)) {
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink() || !stat.isDirectory() || (stat.mode & 0o077) !== 0)
+        throw new StartupBootError(`Claude Startup waiter directory must be owner-only: ${path}`);
+    }
+  }
   const version: string = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(join(import.meta.dir, "package.json"), "utf8"))).version;
   let transcript: string | null = null;
   let tail: TranscriptTail | null = null;
@@ -99,9 +140,10 @@ async function serve(): Promise<void> {
   }
   function attach(path: string): Promise<void> {
     if (transcript !== null) {
-      if (transcript !== path) shim.fail(new Error(`Claude transcript path changed from ${transcript} to ${path}; the Startup bridge serves one session`));
+      if (transcript !== path) { shim.fail(new Error(`Claude transcript path changed from ${transcript} to ${path}; the Startup bridge serves one session`)); return shim.shutdown(); }
       return started ?? Promise.resolve();
     }
+    assertNativeTranscript({ harness: "claude", root: startupRoot, sessionId, file: path });
     transcript = path;
     let skip: number;
     try { skip = priorEventCount(path); }
@@ -120,7 +162,7 @@ async function serve(): Promise<void> {
   }
   async function received(socket: Bun.Socket<SocketState>, line: string): Promise<void> {
     const request = bridgeRequestSchema.parse(JSON.parse(line));
-    if (request.sessionId !== sessionId) throw new StartupBootError(`Claude hook session ${request.sessionId} does not belong to bridge session ${sessionId}`);
+    if (request.sessionId !== sessionId) { const error = new StartupBootError(`Claude hook session ${request.sessionId} does not belong to bridge session ${sessionId}`); shim.fail(error); await shim.shutdown(); throw error; }
     if ("event" in request) {
       await shim.hook({ event: "StopFailure", error: request.error });
       socket.end(JSON.stringify({ received: true }) + "\n");
@@ -139,11 +181,8 @@ async function serve(): Promise<void> {
     shim.armWaiter(handle);
     log({ level: "info", state: "waiter-armed" });
   }
-  listenDirectory(dirname(socketPath));
-  if (existsSync(socketPath)) {
-    if (!lstatSync(socketPath).isSocket()) throw new StartupBootError(`Claude Startup waiter path is not a socket: ${socketPath}`);
-    rmSync(socketPath);
-  }
+  listenDirectory(startupRoot, socketDirectory);
+  if (existsSync(socketPath)) throw new StartupBootError(`Claude Startup waiter socket already exists; reconcile its owner before retrying: ${socketPath}`);
   const listener = Bun.listen<SocketState>({ unix: socketPath, socket: {
     open(socket): void { socket.data = { buffer: "", waiter: null }; },
     data(socket, data: Buffer): void {
@@ -159,6 +198,7 @@ async function serve(): Promise<void> {
     close(socket): void { if (socket.data.waiter !== null) shim.disarmWaiter(socket.data.waiter); },
   } });
   chmodSync(socketPath, 0o600);
+  const socketOwner = lstatSync(socketPath);
   let closing: boolean = false;
   async function shutdown(): Promise<void> {
     if (closing) return;
@@ -166,7 +206,12 @@ async function serve(): Promise<void> {
     tail?.close();
     await shim.shutdown();
     listener.stop(true);
-    rmSync(socketPath, { force: true });
+    if (existsSync(socketPath)) {
+      const current = lstatSync(socketPath);
+      if (!current.isSocket() || current.dev !== socketOwner.dev || current.ino !== socketOwner.ino)
+        throw new StartupBootError(`Claude Startup waiter socket ownership changed while running: ${socketPath}`);
+      rmSync(socketPath);
+    }
     process.exit(0);
   }
   process.on("SIGTERM", () => { void shutdown(); });
@@ -177,7 +222,7 @@ async function serve(): Promise<void> {
     buffer = rest;
     for (const line of lines) {
       if (line.trim() === "") continue;
-      void answer(shim, version, attach, line);
+      void answer(shim, sessionId, version, attach, line);
     }
   }
   await shutdown();
