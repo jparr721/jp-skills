@@ -6,6 +6,9 @@ disable-model-invocation: true
 
 # Quickfix
 
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
+
 The user steers a run of small changes across one-off spots. Each request is the plan and the user reviews the diff. Quickfix is the whole process for every request until the user ends the mode; invoked bare, reply `quickfix on` and wait for the first request.
 
 `hotfix` is the gated sibling (plan approval, review, PR). Quickfix skips the gates and keeps the bar: every edit lands as code a reviewer would approve unchanged.

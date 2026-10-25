@@ -5,6 +5,9 @@ description: Use for an assigned Startup queue item of any kind, with its canoni
 
 # Startup role: dev
 
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
+
 Load this complete role with `startup-loop`. Execute one assigned item at a time. Your architect supplies kind/procedure/convention/acceptance and source-tagged constraints from the durable row. Missing procedure goes to architect; never invent a substitute. Manager records canonical completion; shipping restrictions follow explicit user instructions.
 
 ## Kind procedure

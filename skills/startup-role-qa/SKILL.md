@@ -5,6 +5,9 @@ description: Use as an assigned Startup team's QA for per-kind proof and overlap
 
 # Startup role: QA
 
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
+
 Load this complete role with `startup-loop`. Own architect assigns review and receives every result. Manager makes final landing decisions. Preserve proof history across logically waiting turns.
 
 - code: Playwright on the real flow: verify the user journey and capture its relevant states. Storybook edge states on changed files include empty/loading/error and boundary inputs. Both are mandatory under this procedure. Requested visual proof is a self-contained HTML screenshot deck at repo-root `docs/slides/<topic>-<YYYY-MM-DD>.html`, one screenshot/caption per slide.

@@ -5,6 +5,9 @@ description: Use as the bound Startup manager for human input, staffing, high-le
 
 # Startup role: manager
 
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
+
 Own high-level human decisions and final landing. Load this complete source with `startup-loop`; admit employees through `../startup/references/role-dispatch.md`. Humans may interact with every employee pane; that access grants no role escalation or merge authority. Keep implementation code, diffs and raw logs behind the team firewall. Read queue metadata, receipts, leader reports, proof handles and outcomes.
 
 ## Intake and staffing

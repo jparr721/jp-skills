@@ -5,6 +5,9 @@ description: Use for each new Startup work event, including later requests, clar
 
 # Startup intake
 
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
+
 The manager saves/classifies raw input and dispatches a fresh complete team for every distinct invocation. Only that team's assigned architect runs this procedure. Direct invocation in the manager context routes to team dispatch; it does not make the manager a technical intake worker. A retry reuses the original event/team.
 
 ## Capture then triage

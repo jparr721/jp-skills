@@ -5,6 +5,9 @@ description: Use for requested Startup retros or a new five-merge boundary, with
 
 # Startup retro
 
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
+
 Use selected Startup memory/ledger/completion evidence since the last recorded retro. Manager owns high-level governance; route new technical investigation through a fresh complete intake team. Independent teams and input capture continue during retro.
 
 Inspect repeated review findings, QA escapes/overlapping flows, blockers/resource contention, assumption misses and oversized coding time. Distinguish coding from CI/review/block waiting using recorded evidence; do not reopen execution code/logs in manager context.

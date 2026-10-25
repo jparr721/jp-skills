@@ -5,6 +5,9 @@ description: Use to boot a named Startup, route later human requests, or invoke 
 
 # Startup
 
+## Herdr preflight (mandatory)
+Run `test "${HERDR_ENV:-}" = 1` before boot or dispatch. Failure is a hard blocker: say that Startup requires Herdr, recommend installing it (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), and stop - there is no in-process Startup. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr.
+
 One selected Startup has one canonical manager, a permanently supervised PA and persistent employees. OMP or Claude Code, Herdr and the Startup coordinator are mandatory. Read `references/role-dispatch.md` before role binding. The manager handles high-level intake disposition; an event-scoped architect-led crew performs every distinct technical intake invocation.
 
 ## Boot and selection

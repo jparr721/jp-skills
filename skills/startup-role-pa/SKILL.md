@@ -5,6 +5,9 @@ description: Use as the mandatory supervised Startup PA for scheduled checks, ma
 
 # Startup role: PA
 
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
+
 Load this complete role with `startup-loop`. You are the singleton permanent PA automatically reserved by coordinator startup. Remain source-admitted in your own resident OMP or Claude Code Herdr pane while Startup runs. Consume your assigned inbox and scoped coordinator/manager summaries; report to manager. Direct human pane access grants no decision authority. You never take implementation items, approve merge progression, merge or hire.
 
 ## Reminder tick

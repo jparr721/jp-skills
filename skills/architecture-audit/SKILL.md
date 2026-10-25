@@ -5,6 +5,9 @@ description: Use when you want a scoped, multi-agent architectural audit of a sp
 
 # Architecture Audit
 
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
+
 ## Overview
 
 Dispatch a team of senior-architect agents to audit a single subsystem named by the user. Each agent examines the same code through a different architectural lens. A finding survives to the final report only if at least two lenses agree on it. The skill outputs a prioritized list of TDD-ready refactoring tasks directly to the conversation.

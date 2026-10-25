@@ -5,6 +5,9 @@ description: Use when the user requests Startup staff or the bound manager needs
 
 # Hire Startup staff
 
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
+
 Only the user or bound manager authorizes hiring. Employees request capacity through their architect or manager. Exactly one manager and one permanent PA exist. Coordinator startup automatically reserves the PA; additional PA hiring is rejected. Hireable roles are `architect`, `qa`, `dev`, and `devops`.
 
 1. Resolve the selected Startup through `../startup/SKILL.md` and its admitted harness (OMP or Claude Code)/Herdr coordinator binding. Boot must already have refreshed root AGENTS (Claude Code: root `CLAUDE.md` imports `AGENTS.md`). Load the complete canonical role and `startup-loop` using `../startup/references/role-dispatch.md`.
