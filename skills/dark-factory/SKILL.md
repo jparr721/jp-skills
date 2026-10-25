@@ -1,9 +1,12 @@
 ---
 name: dark-factory
-description: Use when you want an entire Linear epic (or multi-ticket task) driven to merged-on-main as one coordinated run. Spawns a principal orchestrator that decomposes the epic and fans out one sub-orchestrator per ticket; each sub-orchestrator runs the full `pipeline` skill on its ticket (party deliberation, pr-review-toolkit fight to APPROVE verdict min 3 / cap 5 rounds, gated merge, real-data QA + slide deck). Dependent tickets stack as `--base` chains along DAG edges (STACK_MODE auto/stacked/flat), a standing stack driver keeps chains merge-ready, principal merges bottom-up with child retarget. Requires the `pipeline` skill - if it is absent the run pauses with the link instead of improvising. Changes application code and can merge PRs to main.
+description: Use when you want an entire Linear epic (or multi-ticket task) driven to merged-on-main as one coordinated run. Spawns a principal orchestrator that decomposes the epic and fans out one sub-orchestrator per ticket; each sub-orchestrator runs the full `pipeline` skill on its ticket (party deliberation, pr-review-toolkit fight to APPROVE verdict min 3 / cap 5 rounds, gated merge, real-data QA + slide deck). Dependent tickets stack as `--base` chains along DAG edges (STACK_MODE auto/stacked/flat), a standing stack driver keeps chains merge-ready, principal merges bottom-up with child retarget. Requires the `pipeline` skill - if it is absent the run pauses with the link instead of improvising. Each worker runs in its own Herdr pane on the user's chosen coding agent (codex, claude, omp, ...) when Herdr is present; outside Herdr the run recommends installing it and fans out in-process. Changes application code and can merge PRs to main.
 ---
 
 # Dark Factory
+
+## Herdr preflight
+Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
 
 ## Overview
 
@@ -44,6 +47,10 @@ implement/review loop. No `pipeline`, no factory.
    under the epic, never silent inline expansion.
 9. **Every ticket proves itself.** No ticket is done without its pipeline's QA pass and deck
    path in the outcome block - pre-merge, post-merge, or both per section 5.4.
+10. **Herdr is the layout owner when present.** Step 0 checks `HERDR_ENV`. Inside Herdr, one
+    pane per worker on `WORKER_AGENT`, ledger-recorded ids, and only the principal allocates or
+    closes them. Outside Herdr, recommend the install once and use the in-process fan-out;
+    never inspect or control panes from outside Herdr.
 
 ## When to Use
 
@@ -86,7 +93,7 @@ own ticket; `qa-found` follow-ups still drain through backfill).
 ```dot
 digraph dark_factory {
   rankdir=LR;
-  intake   [label="Step 0\nPrecondition:\npipeline present?\n+ confirm epic branch" shape=doublecircle];
+  intake   [label="Step 0\nPrecondition:\npipeline present?\nHerdr preflight?\n+ confirm epic branch" shape=doublecircle];
   gate     [label="Step 1\nParam gate\n(AUTO_MERGE?\nVERIFY_MODE?\nAUTH_TOKEN?)" shape=diamond];
   plan     [label="PLAN\nPlanner agent\n-> DAG + waves"];
   fanout   [label="FAN-OUT\nsub-orchestrator\nper ticket\nruns pipeline"];
@@ -108,14 +115,29 @@ digraph dark_factory {
 1. **Confirm `pipeline` is available.** If it is not installed or not resolvable, pause and tell
    the user exactly where to get it (install path / link), then stop. Do not proceed, do not
    substitute a bespoke implement/review loop. No `pipeline`, no factory.
-2. **Confirm the current branch** with `git rev-parse --abbrev-ref HEAD`. This is the
+2. **Herdr preflight.** Run `test "${HERDR_ENV:-}" = 1` and read
+   `references/herdr-panes.md` before any pane command.
+   - Pass: `herdr status server --json` must report `running` with compatible APIs. Record
+     `HERDR_PANE_ID`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`, `PANE_LAYOUT`, and the resolved
+     `WORKER_AGENT` (`same` -> the caller pane's kind from `herdr agent list`, else `omp`).
+     Require `command -v <kind>`; if the binary is missing, stop at the gate and ask for
+     another kind - never substitute silently.
+   - Fail: say once that factory panes are unavailable and recommend installing Herdr
+     (`curl -fsSL https://herdr.dev/install.sh | sh`, then restart the factory from a Herdr
+     pane). `HERDR=auto` continues with the in-process fan-out and records
+     `herdr: unavailable`; `HERDR=required` stops. Never run pane commands from outside Herdr.
+   - This preflight is advisory unless `HERDR=required`: it is an execution-backend switch,
+     not a pause-with-link precondition like `pipeline`. The install recommendation is given
+     once by the principal; workers never repeat it.
+3. **Confirm the current branch** with `git rev-parse --abbrev-ref HEAD`. This is the
    orchestrator's branch, already set to the epic's Linear branch name by the user. Note it in
    the ledger as the context anchor. **Do not rename, create, or check out any branch here.**
-3. **Fetch the task** with the Linear MCP: `get_issue` with `id = LINEAR_TASK_ID`,
+4. **Fetch the task** with the Linear MCP: `get_issue` with `id = LINEAR_TASK_ID`,
    `includeRelations: true`. Read **only** identifier + title (truncate to <=6 words) into the
    ledger. Do **not** read the description body - that is the Planner agent's job (section 5.1).
-4. **Confirm** to the user: resolved task identifier + title, current branch, and that the
-   `pipeline` precondition passed. Then proceed to the parameter gate.
+5. **Confirm** to the user: resolved task identifier + title, current branch, `HERDR` mode and
+   `WORKER_AGENT` (or the install recommendation), and that the `pipeline` precondition passed.
+   Then proceed to the parameter gate.
 
 ## Step 1 - Parameter gate (blocking)
 
@@ -136,6 +158,23 @@ Before any pipeline is dispatched, confirm the high-consequence parameters with 
 5. **Linear team** - the team under which sub-orchestrators file `follow-up` / `qa-found`
    tickets (resolve via `list_issue_labels`/team metadata if not obvious from the task).
 6. **`STACK_MODE`** - `auto` (stack along DAG edges, flat fallback) vs `stacked` (no fallback — stacking failure stops and escalates) vs `flat` (every PR targets `TARGET_BRANCH`, pre-patch behavior). Default `auto`.
+7. **`HERDR`** - `auto` (panes when running inside Herdr, otherwise recommend the install once
+   and fan out in-process), `required` (stop unless running inside Herdr), or `off` (in-process
+   only). Default `auto`. This is an execution-backend choice, not a gate like `pipeline`.
+8. **`WORKER_AGENT`** - Herdr agent kind for every worker, planner, and driver pane: `same`
+   (the caller's kind from `herdr agent list`, else `omp`) or an explicit kind from
+   `herdr agent` (`codex`, `claude`, `omp`, `gemini`, ...). The binary must be on `PATH`.
+9. **`PANE_LAYOUT`** - `tab-per-ticket` (one tab per worker plus `df-plan` and
+   `df-stack-driver` tabs in the caller's workspace), `run-tab` (one `df-<epic>` tab with split
+   panes), or `workspace` (one workspace for the run). Default `tab-per-ticket`.
+10. **`PANE_FOCUS`** - `background` (`--no-focus`; the user keeps their focus) or `follow`
+    (focus each newly launched worker). Default `background`.
+11. **`WORKER_TIMEOUT`** - milliseconds without a settled state before a worker is treated as
+    stalled and inspected. Default `7200000`.
+
+Shared questions rule (4) also covers the Herdr parameters: `HERDR`, `WORKER_AGENT`,
+`PANE_LAYOUT`, `PANE_FOCUS`, and `WORKER_TIMEOUT` are decided once at this gate and propagated
+to every pane launch; never re-ask per ticket.
 
 Do not start planning until these are confirmed.
 
@@ -176,8 +215,12 @@ to a ticket's pipeline, not to you.
 
 Maintain this table verbatim. One row per ticket. Update in place; do not append narrative.
 
-| Ticket | Title (<=6 words) | Wave | Sub-orchestrator | Pipeline | PR | Deck | Deps | Status | Residual risk (<=12 words) |
-|--------|-------------------|------|------------------|----------|----|------|------|--------|----------------------------|
+| Ticket | Title (<=6 words) | Wave | Sub-orchestrator | Pane | Pipeline | PR | Deck | Deps | Status | Residual risk (<=12 words) |
+|--------|-------------------|------|------------------|------|----------|----|------|------|--------|----------------------------|
+
+`Pane` is `<herdr-agent-name>@<pane-id>` in pane mode, or `in-process`. Record the run header
+once: `herdr: session=<inherited> workspace=<id> worker-agent=<kind> layout=<mode>`, or
+`herdr: unavailable` / `herdr: off`.
 
 `Status` is one of `QUEUED | PIPELINE_RUNNING | PR_OPEN | MERGED | BLOCKED`.
 
@@ -201,6 +244,7 @@ ticket:          SYT-xxx
 status:          DONE | BLOCKED | NEEDS_DECISION
 pr:              <ready PR URL - REQUIRED; "none" is a protocol violation; draft is a protocol violation>
 verify-mode:     <local | ci-only>
+herdr:           <inside | outside>
 rounds:          <n>/5, min 3
 verdict:         <last-round APPROVE | FIX-THEN-SHIP-at-cap + must-fix open=<m> | BLOCK>
 deck:            <absolute copy-out path>
@@ -229,13 +273,32 @@ Reject and re-dispatch anything that does not conform. You read **only** this bl
    - a **wave assignment** (topological layers) honoring `MAX_PARALLEL`,
    - a **stack chain** along hard deps (same repo): each blocked ticket's work branch bases on its blocker parent's branch; independent tickets stay flat on `TARGET_BRANCH`. Record per-ticket `stack-mode: stacked|flat (+ reason)` in the ledger.
    The Planner returns this as a compact structured block - not prose. You ingest **only** the DAG + waves + branch names.
+   Inside Herdr, the Planner runs in its own `df-plan` tab (`references/herdr-panes.md`:
+   allocate -> launch -> prompt -> collect). Prompt it with the planning brief, poll its state,
+   and read only the structured DAG block (last 120 lines or the outcome file). Keep the tab
+   until cleanup.
 3. Populate the ledger.
 
 ### 5.2 FAN-OUT (one sub-orchestrator per ticket runs `pipeline`)
 
 For each wave, in dependency order:
-- Spin up to `MAX_PARALLEL` sub-orchestrators, one per ticket. Each creates its own pipeline
-  run, which creates its own worktree (`WORKTREE_MODE=local` puts it at `<home>/worktrees/<repo>/<branch>` per the `pipeline` Step 1b contract; `vm` uses Conductor) and supervisor under it. Use each ticket's `gitBranchName` for its work branch.
+- Allocate first, then launch, up to `MAX_PARALLEL` workers per wave. For each ticket: allocate
+  its pane by `PANE_LAYOUT`, record the tab/pane id in the ledger, then
+  `herdr agent start <worker> --kind "$WORKER_AGENT" --pane <pane-id>` per
+  `references/herdr-panes.md`. Pane cwd is the orchestrator checkout; each worker's pipeline
+  creates and enters its own worktree (`WORKTREE_MODE=local` puts it at
+  `<home>/worktrees/<repo>/<branch>` per the `pipeline` Step 1b contract; `vm` uses Conductor)
+  and supervisor under it. Use each ticket's `gitBranchName` for its work branch.
+- Submit each wave's briefs without `--wait` so same-wave workers run concurrently, then poll
+  `herdr agent list` every ~45s. `idle`/`done` -> collect; `blocked` -> read the last 40 lines
+  and answer ticket-local questions or escalate, keeping the pane alive; `unknown` past
+  `WORKER_TIMEOUT` -> inspect and escalate.
+- Collect only the outcome block (last 120 lines or the outcome file under
+  `<home>/tmp/dark-factory/<epic>/`). Rename the pane to `<TICKET> <status>`.
+- A pane or agent failure retries once, then that ticket runs in-process with `pane: failed` in
+  the ledger. Never run a ticket both in a pane and in-process.
+- `HERDR=off` or `herdr: unavailable`: keep the existing in-process sub-orchestrator fan-out
+  unchanged, still enforcing the same brief and outcome schema.
 - Give each sub-orchestrator the **Sub-orchestrator Brief** (section 6) with the invocation:
   ticket id + `target {{STACK_PARENT}}` (stack-parent branch when this ticket is chained, else `{{TARGET_BRANCH}}`) + `don't merge` (pipelines never merge here - the
   principal owns merges, and QA then runs pre-merge per pipeline Step 9) + `verify-mode
@@ -265,6 +328,9 @@ happened inside each ticket's pipeline. The principal only verifies the outcome:
 - Rounds line present (`<n>/5, min 3`) with `verdict: APPROVE` for DONE (at-cap must-fix-open
   is stop-and-report, BLOCK is BLOCKED — neither merges)
 
+Collect from the pane per `references/herdr-panes.md`; a malformed block is re-prompted in the
+same pane, never re-dispatched as a second pipeline.
+
 If the outcome is `BLOCKED` / `NEEDS_DECISION`, mark the ticket `BLOCKED` and escalate the
 one-liner to the user. Do not reach into the ticket's pipeline to repair it yourself -
 re-dispatch the sub-orchestrator with the decision or the corrected brief.
@@ -272,7 +338,9 @@ re-dispatch the sub-orchestrator with the decision or the corrected brief.
 If CI is red after a DONE outcome (a race with a post-push check): dispatch a **targeted Fix
 agent** on that ticket's worktree with the specific failing CI output (handle only - no raw
 logs). It fixes, re-verifies in the ticket's `verify-mode`, and pushes. You only read its
-one-line result.
+one-line result. Inside Herdr, the Fix agent gets an ephemeral `df-fix-<pr>` pane; prompt it
+with handles only, wait for `done`, read the one-liner, then close the tab. Keep it open only
+when it fails.
 
 ### 5.4 PR MERGE (topological order; skipped when `AUTO_MERGE=false`)
 
@@ -285,7 +353,8 @@ Merge ticket PRs in topological order (no PR is merged before all its `blocks`/`
      `git fetch origin {{TARGET_BRANCH}} && git rebase origin/{{TARGET_BRANCH}}`, resolve
      conflicts, re-verify in the ticket's `verify-mode`, and force-push the branch only. No
      re-review runs - the ticket's pipeline already completed min 3 / cap 5; a rebase is not a
-     new implementation.
+     new implementation. Inside Herdr, run it in an ephemeral `df-rebase-<pr>` pane, wait for
+     `done`, read the one-line result, then close that tab; keep it open only on failure.
    - Structural/ambiguous conflict -> stop, escalate to the user.
 3. Mark the ticket `MERGED` in the ledger. Collapse the row (deck path retained for the report).
 4. **Sync the orchestrator branch with `TARGET_BRANCH`** after each merge: `git fetch origin && git rebase origin/{{TARGET_BRANCH}}`. Resolve any conflicts directly - do not dispatch an agent for this. The orchestrator branch carries no code changes, so conflicts are rare and always local. Resolve, then continue.
@@ -303,6 +372,9 @@ One dedicated sub-agent per run whose whole mission is getting code merged faste
 - Owns all stack traffic: verifies each chained PR's base, retargets children after parent merges (`gh pr edit --base`), rebases stale branches, re-greens in the ticket's `verify-mode`, and pushes branch-only force-pushes.
 - Owns the flat fallback: when stacking is unavailable (host lacks `--base` chains, protection rules block it), drops that child to flat on `{{TARGET_BRANCH}}` and records the reason in the ledger — never stalls the run waiting for stack support.
 - Reports per-ticket `stack-mode` + merge-readiness to the principal in ≤5 lines; the principal still issues every `gh pr merge`.
+- Inside Herdr, it runs in its own `df-stack-driver` tab and agent. Check in with
+  `herdr agent prompt df-stack-driver "<handle-only message>" --wait --timeout 300000` and read
+  at most its 5-line report. It never allocates panes.
 
 ### 5.5 EPIC CLOSE
 
@@ -319,6 +391,9 @@ Runs only when all ledger rows are `MERGED`, post-merge QA passes are in, and th
   pipelines created under `<home>/worktrees/<repo>/` (`git worktree remove <home>/worktrees/<repo>/<branch> --force`, then `git worktree prune`). Do **not** touch the orchestrator checkout - the user manages that.
 - Delete merged ticket branches: `git branch -d <branch>` locally (the remote branch is deleted by `--delete-branch` at merge time).
 - Verify `git worktree list` shows only the orchestrator worktree and the tree is clean.
+- Close only the Herdr tabs/workspaces this run created, recorded in the ledger. Keep panes
+  open on BLOCKED/failure and name them in the report. Never close the caller's pane/tab or
+  another client's panes; never stop the Herdr server or session.
 - In `vm` mode, return Conductor VMs to the pool.
 - Emit the final report (section 9).
 
@@ -330,6 +405,12 @@ Runs only when all ledger rows are `MERGED`, post-merge QA passes are in, and th
 > {{AUTH_TOKEN_LINE}}Acceptance criteria: {{AC}}. Work branch: the ticket's Linear `gitBranchName`.
 > (`{{AUTH_TOKEN_LINE}}` is `auth token <value>,` when a token was supplied at the gate and empty otherwise.)
 > Stacking: `target` above names the stack-parent branch when the principal chains this ticket (open the PR with `--base <parent>`), else `{{TARGET_BRANCH}}`. Commit early and often (per slice/wave, per fix batch — small logical commits, message states decision/why); push promptly so stacked children can base on real commits.
+> Herdr: you run inside a Herdr pane (`HERDR_ENV=1`) owned by the principal. Do not create,
+> split, move, or close panes/tabs/workspaces, and do not start or rename agents. Do not
+> recommend installing Herdr and do not run its install nudge - the principal owns that
+> message. Report `herdr: inside` (or `herdr: outside` when launched in-process) on the
+> outcome's `herdr:` line. If `HERDR_ENV` is not 1 you are running in-process; continue
+> normally and attempt no pane control.
 > 1. **Run the pipeline, do not freelance.** Invoke `pipeline` with the ticket id and the
 >    overrides above. Never implement, review, or QA anything yourself - the pipeline's swarm
 >    does that. Your job is invocation, question-routing, and outcome enforcement.
@@ -396,28 +477,38 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
 - **Context:** if any outcome block exceeds the schema, discard and re-dispatch. Protect your context.
 - **Stack driver owns stack traffic, principal owns merges.** The driver retargets, rebases, and re-greens; it never runs `gh pr merge` itself. No second driver per run.
 - **Flat is always a valid fallback.** Stacking failure records a reason and continues flat — never a stall, never a silent unstacked merge of a chained child (retarget first, then merge).
+- **Preflight once, at Step 0.** Workers inherit `HERDR_ENV`; they never re-run pane commands and never emit the install recommendation. One nudge per run, from the principal.
+- **Herdr is a backend, not a gate.** Only `HERDR=required` blocks; `auto`/`off` always have an in-process path.
+- **Never control panes from outside Herdr.** `HERDR_ENV != 1` -> recommend the install, use in-process.
+- **One live agent per pane, unique names, no focus stealing** (`--no-focus` unless `PANE_FOCUS=follow`).
+- **Never close panes/tabs/workspaces you did not create**, never `herdr server stop`, `herdr session stop`, `--session`, or `--machine`.
+- **Pane output is not context.** Read only the last 120 lines needed for the outcome block or the outcome file. Never scroll back through implementation output.
+- **A stalled worker is inspected, not duplicated.** Retry once, then fall back in-process for that ticket.
+- **`agent_not_ready` is not failure.** Wait for idle, then prompt; never relaunch.
 
 ## 9. Final Report (to the user)
 
 A single compact summary: epic id, `verify-mode` used for all tickets, `token: provided
 (redacted)` or `token: none`, per-ticket `stack-mode: stacked|flat (+ reason)`, tickets shipped vs blocked, all PR URLs (merged or open),
 per-ticket rounds + QA (pre/post-merge) + deck path, follow-up tickets filed/scheduled, epic
-closed in Linear (y/n), sub-worktrees cleaned (y/n), and any escalations needing a decision. No
+closed in Linear (y/n), sub-worktrees cleaned (y/n), `herdr: panes used (n) / in-process (m) /
+unavailable / off`, `worker-agent`, panes left open, and any escalations needing a decision. No
 transcripts.
 
 ## Quick Reference
 
 | Phase | Who runs | What the principal keeps |
 |-------|----------|-----------------------------|
-| Step 0 precondition + branch | Main thread (skill check + git + Linear MCP) | pipeline-present boolean, epic id, title, current branch |
-| Step 1 param gate | Main thread + user | `AUTO_MERGE`, `MAX_PARALLEL`, `VERIFY_MODE`, `AUTH_TOKEN` (redacted), team, `STACK_MODE` |
-| PLAN | Planner agent | DAG + waves + stack chains + per-ticket branches |
-| FAN-OUT | Sub-orchestrators (parallel, each runs `pipeline`) + stack driver | Outcome blocks + PR URLs + per-ticket stack-mode |
+| Step 0 precondition + branch | Main thread (skill check + Herdr preflight + git + Linear MCP) | pipeline-present boolean, pane/workspace ids, `WORKER_AGENT`, layout, epic id, title, current branch |
+| Pane lifecycle | Principal only (allocate, launch, prompt, collect, close) | tab/pane ids per ticket |
+| Step 1 param gate | Main thread + user | `AUTO_MERGE`, `MAX_PARALLEL`, `VERIFY_MODE`, `AUTH_TOKEN` (redacted), team, `STACK_MODE`, `HERDR`, `WORKER_AGENT`, `PANE_LAYOUT`, `PANE_FOCUS`, `WORKER_TIMEOUT` |
+| PLAN | Planner agent (own pane when Herdr is present) | DAG + waves + stack chains + per-ticket branches |
+| FAN-OUT | Sub-orchestrators (parallel, each runs `pipeline`; one Herdr pane each) + stack driver pane | Outcome blocks + PR URLs + per-ticket stack-mode + pane ids |
 | Epic re-poll | Main thread (Linear MCP) | new ticket ids -> Backfill queue |
 | COLLECT | Main thread (schema check + `gh pr checks`) | per-ticket done/blocked state |
 | PR MERGE | Stack driver preps, principal issues `gh pr merge` (topo order) | PR merge status + retargets + post-merge QA passes |
 | EPIC CLOSE | Main thread (Linear MCP) | closure confirmation |
-| CLEANUP | Main thread | sub-worktree-clean boolean + deck paths |
+| CLEANUP | Main thread | sub-worktree-clean boolean + deck paths + panes closed/kept |
 
 ## Common Mistakes
 
@@ -443,6 +534,12 @@ transcripts.
 - **Accepting a draft PR as DONE.** Every outcome PR is ready (`gh pr ready` repair when the repo defaults to drafts); draft is a protocol violation like "none".
 - **Merging a stacked child before its parent.** Merge bottom-up; retarget the child (`gh pr edit --base`) + re-green before merging it.
 - **Stacking tickets that share no dep edge.** Independent tickets stay flat on `TARGET_BRANCH`; chains follow hard DAG deps only.
+- **Spawning panes from outside Herdr.** Check `HERDR_ENV` and recommend the install instead.
+- **Letting workers allocate panes.** One pane per worker, principal-owned; workers never touch layout or emit the install nudge.
+- **Reading a pane's implementation output.** Outcome block or outcome file only.
+- **Leaving the caller's pane focused or resized.** `--no-focus` unless `PANE_FOCUS=follow`.
+- **Closing a tab the run did not create.** Record and close only your own ids.
+- **Running a ticket both in a pane and in-process.** One execution path per ticket.
 
 $ARGUMENTS
 
