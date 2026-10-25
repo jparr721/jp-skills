@@ -17,7 +17,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
 | [`pipeline`](skills/pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, ≥2 review rounds, merge on green CI. Commits early and often; stacks when the caller passes a parent base. | Changes code, merges PR |
-| [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. Dependent tickets stack as `--base` chains (STACK_MODE auto/stacked/flat) with a standing stack driver; merges bottom-up with child retarget. | Changes code, can merge to `main` |
+| [`dark-factory`](skills/dark-factory/SKILL.md) | An entire Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. Dependent tickets stack as `--base` chains (STACK_MODE auto/stacked/flat) with a standing stack driver; merges bottom-up with child retarget. Workers run in Herdr panes on the user's chosen coding agent (codex, claude, omp, ...) when Herdr is present; outside Herdr it recommends the install once and fans out in-process. | Changes code, can merge to `main` |
 | [`startup`](skills/startup/SKILL.md) | A persistent queue with one manager, a permanent PA, and architect-led crews in interactive Herdr panes. V7 requires OMP or Claude Code (2.1.302+), Herdr and the companion; full role/loop sources bind each employee. | Changes code, enforces scoped landing gates, monitors progress |
 | [`hotfix`](skills/hotfix/SKILL.md) | A bug fix in place on your current branch — opt-in live repro, conditional 1→3 spread check, dead-simple plan gate, light review + simplify pass, final approval gate. Commits per site as it goes. | Commits scoped fix on current branch + opens ready PR, never merges |
 | [`quickfix`](skills/quickfix/SKILL.md) | A fix-it-now mode you invoke by hand (`/quickfix`) - edit right here on the current branch, ask only when blocked, fix at the root with the repo's own helpers. No plan gate, worktree, review, or PR. | Edits the working tree in place, never commits |
@@ -83,7 +83,7 @@ Startup family (roles + procedures):
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (7.5.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (7.6.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
@@ -101,6 +101,7 @@ Most skills are self-contained. Two are not:
 |-------|----------|
 | `pipeline` | `pr-review-toolkit` and `code-simplifier` (this repo, linked), the `superpowers` plugin for `brainstorming` and `writing-plans` (`claude plugin install superpowers@claude-plugins-official`), `gh`, and Linear MCP when the task is given as a ticket id. |
 | `dark-factory` | Linear MCP, `gh`, and a worktree or VM pool. |
+| `dark-factory` (optional panes) | `herdr`. Without it the run recommends the install and fans out in-process. |
 
 ## Install
 
@@ -185,6 +186,8 @@ New skills follow the same shape: one directory, one `SKILL.md` with `name` + `d
 ## Harness Notes
 
 Skill instructions are written as generic actions. Each harness maps actions such as dispatching agents, asking the user, reading files, searching files, editing files, and running commands to its native tools.
+
+Every skill starts with a Herdr preflight: inside a pane (`HERDR_ENV=1`) agents may control panes through the `herdr` CLI; outside one they say so once, point at https://herdr.dev/docs/install/, and continue in-process. `startup` is the exception: Herdr is mandatory there, so absence blocks boot. `dark-factory` allocates one pane per worker on the selected `WORKER_AGENT` kind and falls back to in-process fan-out when Herdr is unavailable.
 
 Startup V7 requires Bun, OMP or Claude Code (2.1.302+), Herdr with its managed integration for that harness, and the companion. Compatibility follows the required live APIs and native hooks; release numbers are diagnostic metadata, including across major upgrades. It runs one independent coordinator and one harness root per employee, grouped into hierarchical crews. Linking skills alone does not install the runtime. See [install, boot and tool contracts](extensions/startup/README.md), [design and deployment limits](docs/startup-v7/design.md), and [native guard proof](extensions/startup/probes/v7-native-guards.json). The [live acceptance report](docs/startup-v7/acceptance.md) proves complete crews, PA supervision, real deadline fault detection and explicit recovery. V6 migration and automatic Herdr restore remain unsupported/unverified; companion installation remains profile-specific. The [V6 acceptance record](extensions/startup/probes/v6-acceptance.md) remains historical. Full-source binding is specified in [role-dispatch](skills/startup/references/role-dispatch.md).
 

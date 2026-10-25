@@ -2,6 +2,19 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.6.0] - 2026-10-25
+
+### Added
+
+- Every skill except the terminal `cleanup` tail starts with a Herdr preflight: inside a pane (`HERDR_ENV=1`) it may control panes through the `herdr` CLI; outside one it says so once, recommends `curl -fsSL https://herdr.dev/install.sh | sh`, and continues in-process. `startup` uses a mandatory variant: Herdr absence blocks boot, matching its existing coordinator/PA requirement.
+- `dark-factory` is Herdr-aware: `HERDR` (auto/required/off), `WORKER_AGENT` (same or an explicit `herdr agent` kind such as codex, claude, omp), `PANE_LAYOUT` (tab-per-ticket/run-tab/workspace), `PANE_FOCUS`, and `WORKER_TIMEOUT`. The principal allocates, launches, polls, collects from, and closes one pane per worker (planner, per-ticket sub-orchestrator, stack driver, ephemeral fix/rebase agents) and records ids in the ledger. The context firewall now allows only the outcome block from the pane or an outcome file, and the outcome schema carries a diagnostic `herdr:` line.
+
+### Verification
+
+- All Herdr commands and JSON fields re-checked against herdr 0.9.5 (`herdr --skill`, `herdr agent|pane|tab|workspace`, `herdr status server --json`); launch shape matches `extensions/startup/src/herdr-runtime.ts`.
+- Preflight coverage: `grep -L "## Herdr preflight" skills/*/SKILL.md` returns only `skills/cleanup/SKILL.md`.
+- Live smoke in an isolated named Herdr session (0.9.5): workspace create -> `agent start --kind omp` (ready, correct pane/kind) -> prompt -> `SMOKE-OK` read back -> agent listed -> workspace close -> session stop. Absent-Herdr path exercised from a plain shell. The in-pane path (`HERDR_ENV=1`) uses the same socket commands.
+
 ## [7.5.0] - 2026-10-19
 
 ### Added
