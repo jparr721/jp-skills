@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -12,9 +13,12 @@ import { join } from "node:path";
 import { loadProfile, projectEmployee, verifyProfile } from "../src/profiles";
 import {
   createAdapter,
+  readOmpSessionSettings,
+  createOmpSettingsSampler,
   type NativeContext,
   type NativeRef,
   type NativeResult,
+  type NativeSession,
   type StartupAdapter,
 } from "../src/omp-adapter";
 import { z } from "zod";
@@ -22,7 +26,7 @@ import type { Employee, Result } from "../src/contracts";
 import type { ItemAction } from "../src/items";
 const directories: string[] = [];
 function sources(): string {
-  const root: string = mkdtempSync(join(tmpdir(), "startup-adapter-"));
+  const root: string = realpathSync(mkdtempSync(join(tmpdir(), "startup-adapter-")));
   directories.push(root);
   for (const name of ["startup-role-devops", "startup-loop"]) {
     mkdirSync(join(root, "skills", name), { recursive: true });
@@ -71,6 +75,29 @@ test("missing canonical source blocks profiles honestly", (): void => {
   ).toThrow();
 });
 
+test("OMP session settings read the actual AgentSession model, effort and catalogs", (): void => {
+  const nativeSession: NativeSession = {
+    sessionManager: { getSessionId: () => "omp-session", getSessionFile: () => "/startup/omp-session.jsonl" },
+    settings: {},
+    model: { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" },
+    thinkingLevel: "high",
+    configuredThinkingLevel: () => "auto",
+    getAvailableModels: () => [{ provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }],
+    getAvailableThinkingLevels: () => ["low", "high"],
+    getPlanModeState: () => undefined,
+    getToolByName: () => undefined,
+  };
+  expect(readOmpSessionSettings({ session: nativeSession, nativeSession: "/startup/omp-session.jsonl", agentSessionId: "omp-session", observedAt: 50 })).toEqual({
+    status: "available", nativeSession: "/startup/omp-session.jsonl", agentSessionId: "omp-session", observedAt: 50,
+    model: { provider: "openai", id: "gpt-5.2", name: "GPT-5.2" },
+    availableModels: [{ provider: "openai", id: "gpt-5.2", name: "GPT-5.2" }],
+    configuredEffort: "auto", effectiveEffort: "high", availableEfforts: ["low", "high"],
+  });
+  expect(readOmpSessionSettings({ session: nativeSession, nativeSession: "/startup/omp-session.jsonl", agentSessionId: "another-session", observedAt: 51 })).toMatchObject({ status: "unavailable", reason: "omp_session_api_unavailable" });
+  const { getAvailableModels: _getAvailableModels, ...sessionWithoutCatalog }: NativeSession = nativeSession;
+  expect(readOmpSessionSettings({ session: sessionWithoutCatalog, nativeSession: "/startup/omp-session.jsonl", agentSessionId: "omp-session", observedAt: 52 })).toMatchObject({ status: "unavailable", reason: "omp_session_api_unavailable" });
+});
+
 const adapters: StartupAdapter[] = [];
 
 function configuredFixture(
@@ -88,6 +115,7 @@ function configuredFixture(
   ctx: NativeContext;
   refs: Map<string, NativeRef>;
   root: string;
+  startupRoot: string;
   activate: (params: Record<string, unknown>) => Promise<NativeResult>;
   project: (employee: Employee) => Promise<NativeContext>;
 }> {
@@ -103,6 +131,8 @@ function configuredFixture(
   const cwd: string = join(root, "repo");
   mkdirSync(cwd);
   const home: string = join(root, "home");
+  mkdirSync(home);
+  const startupRoot: string = join(home, "startup", "fixture");
   const sessionFile: string = join(root, "root.jsonl");
   writeFileSync(
     sessionFile,
@@ -203,7 +233,8 @@ function configuredFixture(
     config: {
       boundRoot: ctx.cwd,
       name: "fixture",
-      home,
+      skillsHome: home,
+      startupRoot,
       skillsRoot: root,
       employeeLimit: limits.employeeLimit,
       executionLimit: limits.executionLimit,
@@ -263,6 +294,7 @@ function configuredFixture(
     ctx,
     refs,
     root,
+    startupRoot,
     activate,
     project,
     managerNotifications,
@@ -819,7 +851,8 @@ test("failed manager reopens through current-root reconciliation before source a
     config: {
       boundRoot: f.ctx.cwd,
       name: "fixture",
-      home: join(f.root, "home"),
+      skillsHome: join(f.root, "home"),
+      startupRoot: join(f.root, "home", "startup", "fixture"),
       skillsRoot: f.root,
       employeeLimit: null,
       executionLimit: null,
@@ -998,7 +1031,7 @@ test("status/control disposition creates no work and synthetic or child input cr
 test("unrelated held resource cannot excuse undelegated intake", (): void => {
   const f = fixture();
   writeFileSync(
-    join(f.root, "home", "startup", "fixture", "resources.json"),
+    join(f.startupRoot, "resources.json"),
     JSON.stringify({ locks: { unrelated: { "held-by": "old-work" } } }),
   );
   f.adapter.store.importResources({ manager: f.adapter.store.managerBinding });
@@ -1258,7 +1291,7 @@ for (const mutation of [
         break;
       case "lease": {
         const db = new Database(
-          join(a.f.root, "home/startup/fixture/staff.sqlite"),
+          join(a.f.startupRoot, "staff.sqlite"),
         );
         db.query(
           "UPDATE lease SET token='other-owner' WHERE singleton=1",
@@ -2358,7 +2391,7 @@ test("item assignment and role-gated canonical completion preserve revision and 
     .parse(
       JSON.parse(
         readFileSync(
-          join(f.root, "home", "startup", "fixture", "queue.json"),
+          join(f.startupRoot, "queue.json"),
           "utf8",
         ),
       ),
@@ -2642,7 +2675,7 @@ test("item intent recovery replays a canonical replacement once with assignment 
   });
   f.adapter.close();
   const db = new Database(
-    join(f.root, "home", "startup", "fixture", "staff.sqlite"),
+    join(f.startupRoot, "staff.sqlite"),
   );
   const intentRow = z
     .object({ payload: z.string() })
@@ -2712,7 +2745,8 @@ test("item intent recovery replays a canonical replacement once with assignment 
     config: {
       boundRoot: f.ctx.cwd,
       name: "fixture",
-      home: join(f.root, "home"),
+      skillsHome: join(f.root, "home"),
+      startupRoot: join(f.root, "home", "startup", "fixture"),
       skillsRoot: f.root,
       employeeLimit: null,
       executionLimit: null,
@@ -3045,8 +3079,8 @@ test("later profile preparation failure leaves all undispatched hires retryable"
   const f = fixture();
   const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "prepare", role: "devops", additional: 2 });
   const profile = loadProfile({ skillsRoot: f.root, role: "devops", employeeId: hire.employees[1]!.id, generation: 1 });
-  const directory = join(f.ctx.cwd, ".omp", "agents");
-  mkdirSync(directory, { recursive: true });
+  const directory = join(f.startupRoot, ".omp", "agents");
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
   const conflict = join(directory, `${profile.name}.md`);
   writeFileSync(conflict, "foreign profile");
   const ids = hire.employees.map((employee) => employee.id);
@@ -3154,7 +3188,7 @@ for (const phase of ["before-rename", "after-rename"]) {
       const f = fixture();
       const { team, contexts } = await capturedTeam(f, "live-journal", ["live-one", "live-two"]);
       const architect = contexts.get(team.architect)!;
-      const state = join(f.root, "home/startup/fixture");
+      const state = f.startupRoot;
       const db = new Database(join(state, "staff.sqlite"));
       const token = z.object({ token: z.string() }).parse(db.query("SELECT token FROM lease").get()).token;
       const pendingPath = join(state, `queue.json.${token}.pending`);
@@ -3201,7 +3235,7 @@ test("failed preparation preserves a legitimate earlier in-flight activation", a
   const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "in-flight", role: "devops", additional: 3 });
   await f.adapter.activate(f.ctx, [hire.employees[0]!.id]);
   const profile = loadProfile({ skillsRoot: f.root, role: "devops", employeeId: hire.employees[2]!.id, generation: 1 });
-  const conflict = join(f.ctx.cwd, ".omp/agents", profile.name + ".md");
+  const conflict = join(f.startupRoot, ".omp/agents", profile.name + ".md");
   writeFileSync(conflict, "Owned fixture conflict");
   const ids = hire.employees.map((employee) => employee.id);
   await expect(f.adapter.activate(f.ctx, ids)).rejects.toThrow("ownership conflict");
@@ -3221,4 +3255,34 @@ test("legacy native manager wake, projection and wait guard share deferred inbox
   expect(f.adapter.waitGuard()).toBeNull();
   expect(await f.adapter.projection(f.ctx)).toContain("STARTUP_CUE=null");
   expect(f.adapter.store.snapshot().messages.find((m) => m.id === "deferred-manager-observation")?.status).toBe("pending");
+});
+
+
+test("OMP sampling caches unchanged catalogs and invalidates on model and native identity changes", () => {
+  let at = 1000;
+  let calls = 0;
+  let identity = "session";
+  let model = { provider: "provider", id: "one", name: "One" };
+  const session: NativeSession = {
+    sessionManager: { getSessionId: () => identity, getSessionFile: () => "/session.jsonl" },
+    settings: {}, get model() { return model; }, thinkingLevel: "high", configuredThinkingLevel: () => "high",
+    getAvailableModels: () => { calls += 1; return [model]; }, getAvailableThinkingLevels: () => ["low", "high"],
+    getPlanModeState: () => undefined, getToolByName: () => undefined,
+  };
+  const sample = createOmpSettingsSampler({ read: () => session, nativeSession: "/session.jsonl", agentSessionId: "session", now: () => at, refreshMs: 30000 });
+  const first = sample();
+  for (let index = 0; index < 20; index += 1) { at += 1000; sample(); }
+  expect(calls).toBe(1);
+  const next = sample();
+  if (first.status !== "available" || next.status !== "available") throw new Error("Expected supported native sample");
+  expect(next.availableModels).toBe(first.availableModels);
+  model = { provider: "provider", id: "two", name: "Two" };
+  expect(sample()).toMatchObject({ model: { id: "two" } });
+  expect(calls).toBe(2);
+  at += 30000;
+  sample();
+  expect(calls).toBe(3);
+  identity = "replacement";
+  expect(sample()).toMatchObject({ status: "unavailable" });
+  expect(calls).toBe(3);
 });

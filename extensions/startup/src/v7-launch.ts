@@ -1,14 +1,62 @@
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { realpathSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
-import { runtimePolicySchema } from "./runtime-contracts";
+import { hostname } from "node:os";
+import { openStore, readOwnerControl } from "./store";
+import type { Environment } from "./employee-entry";
+import { encode, scopeSchema, type Scope } from "./contracts";
+import { savedRoleSettingsSchema, runtimePolicySchema, type SavedRoleSettings } from "./runtime-contracts";
+import { assertStartupPath, contains, ensureStartupRoot, ompProfileSchema, StartupBootError } from "./boot";
 
+export function integrationPath(environment: Environment): string {
+  const path: string = realpathSync(z.string().startsWith("/").parse(environment.STARTUP_HERDR_OMP_EXTENSION));
+  const source: string = readFileSync(path, "utf8");
+  if (!/^\/\/ HERDR_INTEGRATION_ID=omp$/m.test(source) || !/^\/\/ HERDR_INTEGRATION_VERSION=[1-9]\d*$/m.test(source))
+    throw new StartupBootError("Startup requires the managed Herdr OMP integration headers; configure STARTUP_HERDR_OMP_EXTENSION with its canonical file");
+  return path;
+}
+const preparedManagerSchema = z.strictObject({ scope: scopeSchema, settings: savedRoleSettingsSchema });
+export function readPreparedManagerSettings(scope: Scope): SavedRoleSettings | null {
+  const path: string = join(scope.startupRoot, "manager-launch.json");
+  assertStartupPath(scope.startupRoot, path, "file");
+  if (!existsSync(path)) return null;
+  const saved = preparedManagerSchema.parse(readPrivateJson(path));
+  if (encode(saved.scope) !== encode(scope) || saved.settings.role !== "manager") throw new StartupBootError("Prepared manager launch belongs to another Startup/native identity");
+  return saved.settings;
+}
+export function prepareManagerLaunch(input: Readonly<{ scope: Scope; harness: "omp" | "claude"; now: () => number; expectedControl: Readonly<{ ownerEpoch: number; revision: number }> | null }>): SavedRoleSettings {
+  const scope: Scope = scopeSchema.parse(input.scope);
+  const lockPath: string = join(scope.startupRoot, "runtime-launch.lock");
+  assertStartupPath(scope.startupRoot, lockPath, "file");
+  const lock: number = openSync(lockPath, "wx", 0o600);
+  try {
+  const existing = readPreparedManagerSettings(scope);
+  if (existing !== null) {
+    const current = readOwnerControl(scope);
+    if (current.archived || current.leaseExpires > input.now()) throw new StartupBootError("Prepared manager launch refuses an archived Startup or live owner");
+    if (input.expectedControl !== null && (current.ownerEpoch !== input.expectedControl.ownerEpoch || current.revision !== input.expectedControl.revision)) throw new StartupBootError("Prepared manager launch snapshot changed");
+    if (existing.requested.harness !== input.harness) throw new StartupBootError("Prepared manager harness differs; reconcile the prior native launch before another launch");
+    return existing;
+  }
+  const store = openStore({ path: join(scope.startupRoot, "staff.sqlite"), scope, owner: { id: randomUUID(), managerGeneration: 1, leaseMs: 60000 }, now: input.now, ...(input.expectedControl === null ? {} : { expectedControl: input.expectedControl }) });
+  try {
+    store.initializeRoleSettings(input.harness);
+    const settings: SavedRoleSettings = store.freezeManagerSettings(input.harness);
+    const path: string = join(scope.startupRoot, "manager-launch.json");
+    assertStartupPath(scope.startupRoot, path, "file");
+    writeFileSync(path, encode({ scope, settings }), { flag: "wx", mode: 0o600 });
+    return settings;
+  } finally { store.close(); }
+  } finally { closeSync(lock); unlinkSync(lockPath); }
+}
 const ompConfigSchema = z.strictObject({
   name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
-  home: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
+  skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
   boundRoot: z.string().startsWith("/"), skillsRoot: z.string().startsWith("/"),
-  socketPath: z.string().startsWith("/"), profile: z.string().min(1),
+  socketPath: z.string().startsWith("/"), profile: ompProfileSchema,
   managerSession: z.string().min(1), managerFile: z.string().startsWith("/"),
   managerPaneId: z.string().min(1), managerCredential: z.string().min(1),
   herdrSession: z.string().min(1), workspaceId: z.string().min(1),
@@ -27,6 +75,21 @@ export const intentSchema = z.discriminatedUnion("state", [
 ]);
 export class RuntimeLaunchError extends Error {}
 class RuntimeStartupError extends RuntimeLaunchError {}
+function validateRuntimePaths(config: RuntimeHostConfig): string {
+  const root: string = ensureStartupRoot(config.startupRoot);
+  if (root !== config.startupRoot || config.stateDirectory !== root || resolve(config.socketPath) !== config.socketPath || !contains(root, config.socketPath))
+    throw new RuntimeLaunchError("Runtime state and coordinator socket must stay inside the canonical Startup root");
+  if (!isAbsolute(config.skillsHome) || resolve(config.skillsHome) !== config.skillsHome || realpathSync(config.skillsHome) !== config.skillsHome ||
+      !isAbsolute(config.boundRoot) || resolve(config.boundRoot) !== config.boundRoot || realpathSync(config.boundRoot) !== config.boundRoot)
+    throw new RuntimeLaunchError("JP_SKILLS_HOME and bound repository must be canonical directories");
+  if (contains(root, config.skillsHome) || contains(root, config.boundRoot) || contains(config.boundRoot, root))
+    throw new RuntimeLaunchError("Startup root may not contain JP_SKILLS_HOME and must stay separate from the bound repository");
+  assertStartupPath(root, config.socketPath, "socket");
+  return root;
+}
+function assertRuntimeFile(config: RuntimeHostConfig, path: string): void {
+  assertStartupPath(config.startupRoot, path, "file");
+}
 export function readPrivateJson(path: string): unknown {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0)
@@ -68,8 +131,10 @@ async function health(socketPath: string): Promise<void> {
 }
 export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<RuntimeHostConfig> {
   const proposed: RuntimeHostConfig = parseRuntimeHostConfig(input);
-  mkdirSync(proposed.stateDirectory, { recursive: true, mode: 0o700 });
+  validateRuntimePaths(proposed);
+  mkdirSync(proposed.startupRoot, { recursive: true, mode: 0o700 });
   const configPath: string = join(proposed.stateDirectory, "runtime-config.json");
+  assertRuntimeFile(proposed, configPath);
   let config: RuntimeHostConfig = proposed;
   if (existsSync(configPath)) {
     config = parseRuntimeHostConfig(readPrivateJson(configPath));
@@ -78,9 +143,11 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
     void savedCredential; void proposedCredential;
     if (JSON.stringify(saved) !== JSON.stringify(requested))
       throw new RuntimeLaunchError("Saved runtime configuration belongs to another manager, profile, source root or Herdr target; explicit recovery required");
-  } else writeFileSync(configPath, JSON.stringify(config), { flag: "wx", mode: 0o600 });
+  }
   const intentPath: string = join(config.stateDirectory, "runtime-launch.json");
   const lockPath: string = join(config.stateDirectory, "runtime-launch.lock");
+  assertRuntimeFile(config, intentPath);
+  assertRuntimeFile(config, lockPath);
   let lock: number;
   try { lock = openSync(lockPath, "wx", 0o600); }
   catch (error: unknown) {
@@ -91,6 +158,9 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
   }
   writeFileSync(lock, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
   try {
+    if (existsSync(join(config.startupRoot, "staff.sqlite")) && readOwnerControl({ skillsHome: config.skillsHome, startupRoot: config.startupRoot, host: hostname(), name: config.name, boundRoot: config.boundRoot, managerSession: config.managerSession }).archived)
+      throw new RuntimeLaunchError("Archived Startup cannot launch an owner");
+    if (!existsSync(configPath)) writeFileSync(configPath, JSON.stringify(config), { flag: "wx", mode: 0o600 });
     if (existsSync(intentPath)) {
       const intent = intentSchema.parse(readPrivateJson(intentPath));
       if (intent.state === "prepared")
@@ -99,6 +169,7 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
     }
     const startedAt: number = Date.now();
     const temporary: string = `${intentPath}.${process.pid}.tmp`;
+    assertRuntimeFile(config, temporary);
     if (existsSync(temporary))
       throw new RuntimeLaunchError("Interrupted coordinator launch intent needs explicit reconciliation");
     writeFileSync(temporary, JSON.stringify({ state: "prepared", startedAt }), { flag: "wx", mode: 0o600 });
@@ -110,11 +181,18 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
     const bun: string | null = Bun.which("bun");
     if (bun === null) throw new RuntimeLaunchError("A Bun executable is required to launch Startup runtime-host.ts");
     const logPath: string = join(config.stateDirectory, "runtime.log");
+    assertRuntimeFile(config, logPath);
     if (existsSync(logPath)) readPrivateLog(logPath);
     const log: number = openSync(logPath, "a", 0o600);
     try {
       const child = spawn(bun, [join(import.meta.dir, "../runtime-host.ts"), configPath], {
-        detached: true, stdio: ["ignore", log, log], env: { ...process.env, OMPCODE: "" },
+        detached: true, stdio: ["ignore", log, log], env: {
+          ...process.env,
+          JP_SKILLS_HOME: config.skillsHome,
+          STARTUP_ROOT: config.startupRoot,
+          OMPCODE: "",
+          ...("harness" in config ? { CLAUDE_CONFIG_DIR: config.startupRoot } : {}),
+        },
       });
       const pid: number = await new Promise<number>((resolve, reject) => {
         child.once("error", reject);

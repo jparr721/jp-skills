@@ -6,10 +6,10 @@ import {
   mkdirSync,
   writeFileSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   linkSync,
-  realpathSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,8 +23,11 @@ afterEach(async () => {
 });
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "startup-duty-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "startup-duty-")));
+  const skillsHome = join(root, "jp-skills");
+  const startupRoot = join(root, "startup-state");
   const boundRoot = join(root, "repo");
+  mkdirSync(skillsHome);
   mkdirSync(boundRoot);
   const target = join(boundRoot, "config.json");
   const health = join(boundRoot, "health.json");
@@ -32,13 +35,14 @@ function fixture() {
   writeFileSync(health, '{"healthy":true}\n');
   let timestamp = 100;
   const scope = {
-    home: join(root, "home"),
+    skillsHome,
+    startupRoot,
     boundRoot,
     host: "fixture",
     name: "duties",
     managerSession: "root",
   };
-  const path = join(scope.home, "startup", scope.name, "staff.sqlite");
+  const path = join(scope.startupRoot, "staff.sqlite");
   let store = openStore({
     path,
     scope,
@@ -200,6 +204,7 @@ function fixture() {
   });
   return {
     root,
+    startupRoot,
     target,
     health,
     first,
@@ -782,7 +787,7 @@ test("unrelated legacy directory non-JSON and missing identities preserve indepe
     [nonJson]: { owner: "old-text" },
     [join(f.root, "missing.json")]: { owner: "old-missing" },
   };
-  const resources = join(f.root, "home", "startup", "duties", "resources.json");
+  const resources = join(f.startupRoot, "resources.json");
   writeFileSync(resources, JSON.stringify({ locks, inventory: ["retained"] }));
   f.scheduler.assign(
     f.store.managerBinding,
@@ -813,7 +818,7 @@ test("same-file legacy alias still blocks canonical JSON repair", () => {
   const alias = join(f.root, "legacy.txt");
   symlinkSync(f.target, alias);
   const locks = { [alias]: { owner: "uncertain" } };
-  const resources = join(f.root, "home", "startup", "duties", "resources.json");
+  const resources = join(f.startupRoot, "resources.json");
   writeFileSync(resources, JSON.stringify({ locks }));
   f.scheduler.assign(
     f.store.managerBinding,

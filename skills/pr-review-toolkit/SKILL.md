@@ -71,9 +71,9 @@ Useful commands when available:
 - `git diff --cached --name-only`
 - `gh pr view --json number,title,headRefName,baseRefName,files` for an existing PR
 
-## Step 1 - Angles (party, parallel)
+## Step 1 - Angles (independent, capacity-batched)
 
-Dispatch one read-only agent per applicable angle as fresh sessions with no shared memory, all in parallel. Each prompt carries the scope, the task source, and this contract: return findings only for this scope with file and line each; every finding needs claim, proof, user impact, and concrete fix; no proof means no finding; never modify files.
+Dispatch one read-only agent per applicable angle as a fresh session with no shared memory. When enough agent slots are available, dispatch all applicable angles in parallel. When slots are fewer than angles, dispatch independent batches no larger than the available capacity, collect each batch, then dispatch the next. Each prompt carries the same scope and task source but no earlier angle reports. Collect every applicable angle result before merging findings or starting the club; a missing or incomplete result is not a no-finding. After a capacity error, refresh live agent state before dispatching again. Capacity changes scheduling, not reviewer coverage or round credit. Each prompt requires findings only for this scope with file and line; every finding needs claim, proof, user impact, and concrete fix; no proof means no finding; never modify files.
 
 | Angle | Covers | Must prove |
 |-------|--------|------------|
@@ -103,7 +103,8 @@ The club attacks the merged findings. Roles mirror the pipeline party's Anti-Con
 
 Protocol:
 
-1. Round 1: angles propose in parallel (Step 1).
+1. Round 1: all required angles return independent proposals; dispatch in capacity-bounded
+   parallel batches as described in Step 1.
 2. Merge: deduplicate overlaps, preserve the finding angle on each survivor.
 3. Club attacks the merged list: Level checks every proof, Splinter challenges consensus and coverage.
 4. Round 2: angle owners defend with stronger proof or concede. Exactly one defense round.

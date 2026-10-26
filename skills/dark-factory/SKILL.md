@@ -178,6 +178,16 @@ to every pane launch; never re-ask per ticket.
 
 Do not start planning until these are confirmed.
 
+For noninteractive fan-out, resolve shared values here and include the resolved parameter
+manifest in every sub-orchestrator brief. Include the target or stack parent, merge ownership,
+verify mode, worktree mode, stack mode, auth disposition, and shared scope decisions. Never pass
+`verify-mode ask` onward or assume a child can recover an answer from this conversation. Ask a
+shared question once, record the answer, and propagate it unchanged. `MAX_PARALLEL` is an upper
+bound, not a promise that the runtime can start that many agents; inspect live agent capacity,
+including supervisors and reviewers, before choosing each wave. This run hit the three-agent cap
+with a supervisor and two workers; the supervisor yielded and resumed after capacity opened.
+Evidence: `ledger.md` and `runrecords/feasibility.md` in the SYT-9093 run record.
+
 ## 3. The Context Firewall (read this twice)
 
 This is the whole point. Violating it is the only way this fails.
@@ -241,23 +251,34 @@ Every sub-orchestrator must end its turn with **exactly** this block and nothing
 ```
 === SUB-ORCHESTRATOR OUTCOME ===
 ticket:          SYT-xxx
-status:          DONE | BLOCKED | NEEDS_DECISION
-pr:              <ready PR URL - REQUIRED; "none" is a protocol violation; draft is a protocol violation>
+status:          DONE | BLOCKED | NEEDS_DECISION | IN_PROGRESS
+pr:              <ready PR URL | none + reason>
 verify-mode:     <local | ci-only>
 herdr:           <inside | outside>
+head:            <exact tested PR head SHA | none + reason>
+checks:          <PASS | FAIL | PENDING + required check state at head>
 rounds:          <n>/5, min 3
 verdict:         <last-round APPROVE | FIX-THEN-SHIP-at-cap + must-fix open=<m> | BLOCK>
-deck:            <absolute copy-out path>
+qa:              <PASS | FAIL | BLOCKED | PENDING + brief evidence or reason>
+deck:            <absolute copy-out path | none + reason>
 followups:       <linear ids filed for out-of-scope work, or none>
 remaining:       <=2 lines: anything not fixed and why
 blocked_on:      <ticket/decision, or none>
 === END ===
 ```
 
-**An outcome without a real PR URL, a QA pass, and a deck path is a protocol violation.**
-`pipeline` guarantees all three; a sub-orchestrator missing any of them did not run the
-pipeline. Discard and re-dispatch with the protocol restated. DONE requires last-round verdict
-APPROVE; FIX-THEN-SHIP-at-cap arrives as stop-and-report with open must-fix, never DONE.
+**DONE requires** a ready PR URL, last-round verdict APPROVE, QA PASS, a delivered deck path,
+and all required checks completed on the reported head. BLOCKED or NEEDS_DECISION outcomes may
+lack a PR, passing QA, or deck; they must name the reason and preserve the pending result. A
+missing artifact is never an inferred pass. At-cap FIX-THEN-SHIP with an open must-fix is
+stop-and-report, never DONE. Evidence: `sidebar/review-r4-verdict.md`,
+`sidebar/pipeline.md`, and `runrecords/pr189-main-metadata-reconcile.md` in the SYT-9093 run
+record.
+
+`IN_PROGRESS` is a nonterminal outcome, not a reason to re-dispatch. Keep the ledger row at
+`PIPELINE_RUNNING`, preserve the same sub-orchestrator, pipeline owner, worktree and exact pending
+evidence, and wait for or resume that owner. Do not start a second pipeline for the ticket. Keep
+the row out of `PR_OPEN` until its existing completion predicate is satisfied.
 
 Reject and re-dispatch anything that does not conform. You read **only** this block.
 
@@ -277,11 +298,26 @@ Reject and re-dispatch anything that does not conform. You read **only** this bl
    allocate -> launch -> prompt -> collect). Prompt it with the planning brief, poll its state,
    and read only the structured DAG block (last 120 lines or the outcome file). Keep the tab
    until cleanup.
+   When using Linear GraphQL directly, read the branch from its actual `branchName` field; do
+   not copy a connector-normalized `gitBranchName` name into a GraphQL query. Verify the active
+   tool schema before issuing metadata queries. Evidence: `syt-9096-run.md` and
+   `sidebar/pipeline.md` in the SYT-9093 run record.
+   Trace acceptance claims to the original user decision or handoff. Treat generated-ticket
+   requirements as assumptions until that trace exists. Before calling an upstream capability
+   missing, inspect the current shipped CLI, API, docs, or runtime; distinguish a supported
+   composition path from the exact owner contract that remains absent. Keep tickets open while
+   evidence is incomplete; mark them blocked only when a required dependency is demonstrated to
+   be unavailable. Evidence: `runrecords/feasibility.md` in the SYT-9093 run record.
 3. Populate the ledger.
 
 ### 5.2 FAN-OUT (one sub-orchestrator per ticket runs `pipeline`)
 
 For each wave, in dependency order:
+- Refresh live agent state before filling a wave. When a capacity error occurs, do not retry
+  against a stale slot count. Have the supervisor yield while workers run, wait for bounded
+  completion notifications, then resume and refresh capacity. Keep status updates short; an idle
+  supervisor must not hold a slot. Evidence: `sidebar/pipeline.md` and
+  `runrecords/feasibility.md` in the SYT-9093 run record.
 - Allocate first, then launch, up to `MAX_PARALLEL` workers per wave. For each ticket: allocate
   its pane by `PANE_LAYOUT`, record the tab/pane id in the ledger, then
   `herdr agent start <worker> --kind "$WORKER_AGENT" --pane <pane-id>` per
@@ -304,9 +340,16 @@ For each wave, in dependency order:
   principal owns merges, and QA then runs pre-merge per pipeline Step 9) + `verify-mode
   {{VERIFY_MODE}}` + `auth token {{AUTH_TOKEN}}` when one was supplied (omit the override
   otherwise; pipelines that need one will bubble up a single shared question).
+- Copy every resolved shared value and decision into the brief. A noninteractive child call must
+  not depend on an earlier interactive gate in the principal's chat. Resolve `ask` values before
+  dispatch and pass only the selected value; keep secrets in the approved environment channel.
 - Same-wave sub-orchestrators run concurrently. Collect outcome blocks. A ticket is not
-  `PR_OPEN` until its outcome shows a real PR URL, `qa: pass`, a deck path, and verdict APPROVE
-  (at-cap must-fix-open parks as stop-and-report, BLOCK parks as BLOCKED).
+  `PR_OPEN` until its outcome shows a real ready PR URL, `checks: PASS` on the exact head,
+  `qa: PASS`, a delivered deck path, and verdict APPROVE (at-cap must-fix-open parks as
+  stop-and-report, BLOCK parks as BLOCKED).
+- `IN_PROGRESS` -> keep the same ledger row `PIPELINE_RUNNING` with its owner and worktree;
+  preserve the exact head and pending check/QA/review/artifact states, then wait for or resume that
+  owner for the next outcome. Never re-dispatch a second pipeline for the ticket.
 - `BLOCKED` / `NEEDS_DECISION` -> park the ticket, surface the one-liner to the user, continue
   with the rest. Shared questions (expired token, scope calls affecting siblings) are answered
   once and recorded, not re-asked per ticket.
@@ -323,10 +366,12 @@ mid-run; pick them up without being told:
 The principal does **not** review code, accumulate findings, or dispatch fix agents. That all
 happened inside each ticket's pipeline. The principal only verifies the outcome:
 
-- Outcome has `pr: <URL>` (real URL, not "none")
-- Outcome has `qa: pass` and a `deck:` path that exists
-- Rounds line present (`<n>/5, min 3`) with `verdict: APPROVE` for DONE (at-cap must-fix-open
-  is stop-and-report, BLOCK is BLOCKED — neither merges)
+- For DONE, require `pr: <ready URL>`, `qa: PASS`, a delivered `deck:` path, all required checks
+  completed successfully on the exact reported PR head (`checks: PASS`), and `<n>/5, min 3`
+  with `verdict: APPROVE`.
+- For BLOCKED or NEEDS_DECISION, require an explicit blocker or decision and the actual PR, QA,
+  check, and deck states. `none` or `PENDING` is valid when explained; it never becomes a pass.
+- At-cap must-fix-open and BLOCK verdicts stop; neither is DONE or mergeable.
 
 Collect from the pane per `references/herdr-panes.md`; a malformed block is re-prompted in the
 same pane, never re-dispatched as a second pipeline.
@@ -386,11 +431,21 @@ Runs only when all ledger rows are `MERGED`, post-merge QA passes are in, and th
 
 ### 5.6 CLEANUP (always, even on partial failure)
 
-- Verify every ticket's deck copy-out path exists (absolute paths from the outcome blocks - they
-  live outside the worktrees by pipeline contract), then remove every **sub-worktree** the
-  pipelines created under `<home>/worktrees/<repo>/` (`git worktree remove <home>/worktrees/<repo>/<branch> --force`, then `git worktree prune`). Do **not** touch the orchestrator checkout - the user manages that.
-- Delete merged ticket branches: `git branch -d <branch>` locally (the remote branch is deleted by `--delete-branch` at merge time).
-- Verify `git worktree list` shows only the orchestrator worktree and the tree is clean.
+- Verify the deck copy-out and its required assets before removing any worktree. Remove only
+  task-owned worktrees for merged tickets after the durable deck is verified. Keep open,
+  unmerged, blocked, and in-progress worktrees so their changes remain recoverable. Delete only
+  the corresponding merged local branch. Preserve source fixtures, screenshots, logs, and
+  receipts that are part of the proof record; clean only task-owned temporary outputs after their
+  durable copy is verified. From outside the tree, use `git worktree remove <path>` followed by
+  `git worktree prune`; use `git branch -d <branch>` only for the corresponding merged branch.
+  Record what was removed and what remains. Evidence:
+  `sidebar/cleanup.json` and `composer/completed-cleanup.json` in the SYT-9093 run record.
+- Do not remove the orchestrator checkout. Do not delete shared caches, another task's worktree,
+  or another task's process. Confirm owned preview servers/listeners are stopped. Measure reclaimed
+  disk where cleanup is material; one verified merged-worktree cleanup in this run reclaimed
+  about 1.02 GiB while preserving its deck and leaving other worktrees and processes untouched.
+- Verify `git worktree list` against the remaining open or active tickets, not a blanket rule that
+  only the orchestrator worktree may remain.
 - Close only the Herdr tabs/workspaces this run created, recorded in the ledger. Keep panes
   open on BLOCKED/failure and name them in the report. Never close the caller's pane/tab or
   another client's panes; never stop the Herdr server or session.
@@ -401,6 +456,8 @@ Runs only when all ledger rows are `MERGED`, post-merge QA passes are in, and th
 
 > You own **{{TICKET}}** end to end. Run the `pipeline` skill on it with exactly these
 > overrides: `target {{TARGET_BRANCH}}`, `don't merge`, `verify-mode {{VERIFY_MODE}}`.
+> Shared parameter manifest: {{SHARED_PARAMETER_MANIFEST}}. These values are resolved; do not
+> ask the user to repeat a shared parameter or inherit it from an earlier chat turn.
 > Open the PR as ready, never draft (`gh pr ready` in the same step if the repo defaults to drafts). The merge decision is unchanged: `AUTO_MERGE=false` still stops at open PRs (now open-ready).
 > {{AUTH_TOKEN_LINE}}Acceptance criteria: {{AC}}. Work branch: the ticket's Linear `gitBranchName`.
 > (`{{AUTH_TOKEN_LINE}}` is `auth token <value>,` when a token was supplied at the gate and empty otherwise.)
@@ -421,9 +478,9 @@ Runs only when all ledger rows are `MERGED`, post-merge QA passes are in, and th
 >    shared question - never invent, borrow, or log a token yourself. Never let your pipeline
 >    stall silently waiting.
 > 3. **Enforce the outcome.** When the pipeline finishes, collect its final report and convert
->    it to the **Outcome Schema** (section 4): real PR URL, verify-mode, rounds, last-round
->    verdict, QA result, absolute deck path, followups. If any of PR / QA-pass / deck-path /
->    verdict is missing, that is a protocol violation - say so, do not paper over it.
+>    it to the **Outcome Schema** (section 4): PR URL, verify-mode, exact PR head, check state,
+>    rounds, last-round verdict, QA result, absolute deck path, and followups. If a DONE outcome
+>    lacks any required value, it is a protocol violation - say so, do not paper over it.
 > 4. **File follow-up work in Linear** for anything the pipeline reports as out of scope (extra
 >    refactors, newly found bugs, prerequisite work) that is not already filed. Use `save_issue`
 >    with `parentId = {{EPIC_ID}}`, `team = {{TEAM}}`, `labels = ["follow-up", <severity>]`, and
@@ -453,8 +510,10 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
 
 ## 8. Guardrails
 
-- **Parallelism:** never exceed `MAX_PARALLEL` live sub-orchestrators; each pipeline manages its
-  own internal agent width beneath that cap.
+- **Parallelism:** never exceed `MAX_PARALLEL` live sub-orchestrators or the actual agent-slot
+  capacity. Refresh live state after a capacity error. Supervisors yield while workers run and
+  resume from short completion notifications; reviewers are scheduled in bounded batches when
+  slots are limited, while preserving every required reviewer angle and round.
 - **One ticket, one pipeline, one worktree.** Never two pipelines on the same ticket or branch.
   Overlap creates conflicts you then pay to resolve.
 - **Token hygiene:** the token travels principal -> sub-orchestrator -> pipeline supervisor via
@@ -468,6 +527,14 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
 - **Shared questions once:** `VERIFY_MODE` and `AUTH_TOKEN` are decided at the gate and
   propagated. Any question whose answer would apply to every ticket is answered once, recorded
   in the ledger, and never re-asked.
+- **Structured Linear writes:** read fresh complete descriptions, prepare and validate full
+  intended payloads before mutation, preserve unrelated criteria and dependency edges, persist
+  each write receipt, then fresh-read and verify every result. If bounded payload preparation
+  fails, start from a fresh read and structured rewrite instead of stacking brittle parser fixes.
+  If a write outcome is uncertain, read to reconcile it; never retry the mutation through another
+  connector. Normalize only observed formatting differences during readback comparison. Evidence:
+  `runrecords/ownership-lesson.md`, `ownership-payloads.json`, `ownership-write-*.json`, and
+  `ownership-verification.json` in the SYT-9093 run record.
 - **Backfill discipline:** re-poll the epic at every phase boundary and on every PR merge;
   schedule new `follow-up`/`qa-found` tickets as fresh waves before epic closure.
 - **No red merges, no force-push to `TARGET_BRANCH`, no permission/settings changes.**
@@ -489,11 +556,13 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
 ## 9. Final Report (to the user)
 
 A single compact summary: epic id, `verify-mode` used for all tickets, `token: provided
-(redacted)` or `token: none`, per-ticket `stack-mode: stacked|flat (+ reason)`, tickets shipped vs blocked, all PR URLs (merged or open),
-per-ticket rounds + QA (pre/post-merge) + deck path, follow-up tickets filed/scheduled, epic
-closed in Linear (y/n), sub-worktrees cleaned (y/n), `herdr: panes used (n) / in-process (m) /
-unavailable / off`, `worker-agent`, panes left open, and any escalations needing a decision. No
-transcripts.
+(redacted)` or `token: none`, per-ticket `stack-mode: stacked|flat (+ reason)`, tickets DONE,
+BLOCKED, NEEDS_DECISION, and still in progress, all PR URLs with their current open/merged state,
+per-ticket rounds + QA (pre/post-merge) + exact-head CI state + deck path, follow-up tickets
+filed/scheduled, epic closed in Linear (y/n), which merged sub-worktrees were cleaned,
+`herdr: panes used (n) / in-process (m) / unavailable / off`, `worker-agent`, panes left open,
+and any escalations needing a decision. No transcripts. Pending checks remain pending; a PR with successful checks is not DONE without its
+required review and QA evidence.
 
 ## Quick Reference
 
@@ -520,7 +589,9 @@ transcripts.
 - **Accepting mockups as workshop proof.** Workshop stories must exercise the actual changed files. A standalone recreation of the look is not verification.
 - **Asking shared questions per ticket.** `VERIFY_MODE` and `AUTH_TOKEN` are decided once at the gate and propagated. Per-ticket repeats burn context and risk divergent answers.
 - **Logging or persisting the token.** It travels via prompt/env and is recorded only as `provided (redacted)`. Any file, log, ledger, or Linear content containing it is a breach - rotate and re-dispatch.
-- **Accepting an outcome without a real PR URL, QA pass, or deck path.** Missing any of the three means the pipeline did not run. Discard, re-dispatch with the protocol restated.
+- **Inferring completion from an incomplete outcome.** DONE requires a ready PR URL, APPROVE,
+  QA PASS, a delivered deck, and completed exact-head checks. BLOCKED and NEEDS_DECISION outcomes
+  may lack these artifacts when they state why; preserve that status instead of inventing a pass.
 - **Manually merging ticket branches into the orchestrator worktree.** Never run `git merge` on a ticket branch. All merges happen via `gh pr merge`. The orchestrator worktree's branch is never modified.
 - **Merging on `AUTO_MERGE=false`.** That mode stops at open PRs plus deck paths. Merging is a different, explicit setting.
 - **Closing the epic before the final re-poll.** Always run one last `list_issues parentId=LINEAR_TASK_ID` and confirm it returns nothing new before calling `save_issue` to close.
@@ -530,7 +601,9 @@ transcripts.
 - **Forgetting to re-poll the epic.** Sub-orchestrators file follow-up tickets mid-run; if the principal does not re-poll, that work is silently dropped and the epic ships incomplete.
 - **Removing worktrees before verifying deck copy-out paths.** Decks live outside the worktrees by pipeline contract - confirm each absolute path first, then remove.
 - **Deleting the orchestrator worktree.** Cleanup only removes pipeline sub-worktrees. The orchestrator worktree is the user's responsibility.
-- **Skipping cleanup on failure.** Cleanup runs always, even on partial failure - leftover worktrees and branches pollute the next run.
+- **Cleaning up unfinished work.** Remove task-owned merged worktrees only after the durable deck
+  is verified. Keep open, blocked, and in-progress worktrees recoverable; clean owned temporary
+  outputs after copying the evidence they support.
 - **Accepting a draft PR as DONE.** Every outcome PR is ready (`gh pr ready` repair when the repo defaults to drafts); draft is a protocol violation like "none".
 - **Merging a stacked child before its parent.** Merge bottom-up; retarget the child (`gh pr edit --base`) + re-green before merging it.
 - **Stacking tickets that share no dep edge.** Independent tickets stay flat on `TARGET_BRANCH`; chains follow hard DAG deps only.

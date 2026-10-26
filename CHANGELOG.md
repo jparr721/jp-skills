@@ -6,11 +6,25 @@
 
 ### Added
 
+- Each of the six Startup roles can select OMP or interactive Claude Code with separately saved model/effort requests. A Startup's root is `<skills home>/startup/<name>`; typed requested, saved and effective values preserve unavailable readback instead of inferring runtime state.
+- A typed owner host-control entrypoint supports list, create, select, resume, safe archive, bounded status/staff/progress/alerts, settings draft/apply/readback and receipt lookup without direct database access or employee impersonation.
+- The OMP extension and Claude Code MCP bridge publish the verified 20-tool `startup_*` employee catalog. The reference documents their published schemas, owner validation, results, errors and role gates separately from host lifecycle control.
+- Employee authority and settings observations are bound to the current native connection epoch. Re-admission, disconnect, shutdown, session change, retirement and owner replacement revoke old authority; uncertain writes are not replayed.
 - Every skill except the terminal `cleanup` tail starts with a Herdr preflight: inside a pane (`HERDR_ENV=1`) it may control panes through the `herdr` CLI; outside one it says so once, recommends `curl -fsSL https://herdr.dev/install.sh | sh`, and continues in-process. `startup` uses a mandatory variant: Herdr absence blocks boot, matching its existing coordinator/PA requirement.
 - `dark-factory` is Herdr-aware: `HERDR` (auto/required/off), `WORKER_AGENT` (same or an explicit `herdr agent` kind such as codex, claude, omp), `PANE_LAYOUT` (tab-per-ticket/run-tab/workspace), `PANE_FOCUS`, and `WORKER_TIMEOUT`. The principal allocates, launches, polls, collects from, and closes one pane per worker (planner, per-ticket sub-orchestrator, stack driver, ephemeral fix/rebase agents) and records ids in the ledger. The context firewall now allows only the outcome block from the pane or an outcome file, and the outcome schema carries a diagnostic `herdr:` line.
 
+### Changed
+
+- Startup runs OMP on OMP's own configuration, with nothing pinned: the default profile shares the same agent directory a regular `omp` uses, and a Startup can run on a named OMP profile instead. A Startup records its profile, every OMP employee launches on the profile in its launch manifest (`OMP_PROFILE` set in its pane), and managed transcripts must live under that profile's OMP agent directory.
+- `install.ts` asks for a named OMP profile (existing or new) or Enter for the default profile; with no terminal it installs into the default profile.
+- `config.ts set` and `config.ts profiles` are removed: a Startup's profile is fixed when it is created, because its manager transcript lives under that profile's OMP agent directory.
+- Name-less Startup discovery, host-control `list` and `config.ts list` skip old-format Startup roots (`binding.json` without `scope`) instead of failing.
+- An OMP employee still launches on the OMP model role bound to its Startup role, unless its saved settings request a model, which replaces the bound role for that launch. Manager boot checks the bound roles only for a fresh admission.
+
 ### Verification
 
+- Scoped Startup typecheck, registration/catalog tests and role-refusal tests are recorded in the SYT-9095 Slice D runrecord. Full merge-gate verification remains CI-only; interactive OMP/Claude and installed-runtime acceptance are not claimed by the local test lane.
+- The merge of 7.3.0 to 7.5.0 into this work was resolved without running the test suite; run the Startup suite before release.
 - All Herdr commands and JSON fields re-checked against herdr 0.9.5 (`herdr --skill`, `herdr agent|pane|tab|workspace`, `herdr status server --json`); launch shape matches `extensions/startup/src/herdr-runtime.ts`.
 - Preflight coverage: `grep -L "## Herdr preflight" skills/*/SKILL.md` returns only `skills/cleanup/SKILL.md`.
 - Live smoke in an isolated named Herdr session (0.9.5): workspace create -> `agent start --kind omp` (ready, correct pane/kind) -> prompt -> `SMOKE-OK` read back -> agent listed -> workspace close -> session stop. Absent-Herdr path exercised from a plain shell. The in-pane path (`HERDR_ENV=1`) uses the same socket commands.

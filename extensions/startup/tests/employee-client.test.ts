@@ -43,7 +43,13 @@ function serverFixture() {
   let rejectPollOnce = false;
   const server = Bun.serve({
     unix: socketPath,
-    async fetch(request: Request): Promise<Response> {
+    websocket: { async message(socket, message): Promise<void> {
+      requests.push({ path: "/admit", auth: null, body: z.json().parse(JSON.parse(String(message))) });
+      if (admitResponse !== null) { socket.send(admitResponse.ok ? await admitResponse.clone().text() : JSON.stringify({ status: admitResponse.status, error: await admitResponse.clone().text() })); if (!admitResponse.ok) socket.close(); }
+      else socket.send(JSON.stringify({ connection: "private-connection" }));
+    } },
+    async fetch(request: Request, server): Promise<Response | undefined> {
+      if (new URL(request.url).pathname === "/admit" && server.upgrade(request)) return;
       const path: string = new URL(request.url).pathname;
       const body: Json = request.method === "POST"
         ? z.json().parse(await request.json())
@@ -564,13 +570,13 @@ test("synthetic context cannot reach a provider when root capacity admission is 
 });
 
 
-test("read-only polling re-admits the same session after coordinator epoch loss without replaying work", async () => {
+test("polling refuses lost authority without replaying work or captured settings", async () => {
   const fixture = serverFixture();
   const client = await connect(fixture);
   await client.request({ kind: "settle", resultId: "saved" });
   fixture.loseEpoch();
-  expect((await client.poll()).pendingMessageIds).toEqual(["own-cue-1"]);
-  expect(fixture.requests.filter((r) => r.path === "/admit")).toHaveLength(2);
+  await expect(client.poll()).rejects.toThrow("403");
+  expect(fixture.requests.filter((r) => r.path === "/admit")).toHaveLength(1);
   expect(fixture.requests.filter((r) => r.path === "/command")).toHaveLength(1);
 });
 
@@ -612,7 +618,7 @@ test("transport errors retain socket, error code and timing without exposing cre
   catch (error: unknown) { caught = error; }
   expect(caught).toBeInstanceOf(Error);
   const detail = caught instanceof Error ? caught.message : "missing error";
-  expect(detail).toContain("POST /admit");
+  expect(detail).toContain("GET /admit");
   expect(detail).toContain(socketPath);
   expect(detail).toMatch(/code=[A-Za-z_]+/);
   expect(detail).toMatch(/elapsedMs=\d+/);
@@ -760,4 +766,13 @@ test("a submitted Claude prompt clears a provider pause like native root input",
   await native.emit("input_submitted", { source: "interactive", text: "Provider repaired" }, native.ctx);
   await bridge.poll();
   expect(native.messages.filter((message) => message.triggerTurn)).toHaveLength(1);
+});
+
+test("ordinary command conflicts leave admission open for correction", async () => {
+  const fixture = serverFixture();
+  const client = await connect(fixture);
+  fixture.commandError(Response.json({ error: "StoreConflictError", message: "settings revision changed" }, { status: 409 }));
+  await expect(client.request({ kind: "hire", requestId: "ordinary", role: "dev", additional: 1 })).rejects.toThrow("409");
+  expect(client.isClosed()).toBe(false);
+  expect(fixture.requests.filter((request) => request.path === "/admit")).toHaveLength(1);
 });

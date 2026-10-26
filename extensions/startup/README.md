@@ -1,65 +1,58 @@
 # Startup V7 companion
 
-The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP or Claude Code root in a directly interactive Herdr pane. One Startup uses one harness, fixed by the manager's first boot. OMP setup follows; Claude Code setup is in [Claude Code](#claude-code). The manager's inference or process can stop while the coordinator continues observing.
+The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP or Claude Code root in a directly interactive Herdr pane. Each of the six roles selects OMP or Claude independently; a prepared launch records that selection immutably. OMP setup follows; Claude Code setup is in [Claude Code](#claude-code). The manager's inference or process can stop while the coordinator continues observing.
 
-V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path. Companion installation remains an explicit named-profile action.
+V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path.
 
-The [manager recovery guide](../../docs/startup-v7/manager-recovery.md) covers automatic reconnection of the original manager transcript, bounded lifecycle alerts, honest connectivity health and finished crew retirement. A resumed manager must use its saved Herdr pane and named OMP profile with the managed Herdr integration loaded.
+The [manager recovery guide](../../docs/startup-v7/manager-recovery.md) covers automatic reconnection of the original manager transcript, bounded lifecycle alerts, honest connectivity health and finished crew retirement. A resumed manager must use its saved Herdr pane, Startup root and OMP profile with the managed Herdr integration loaded.
 
 The 7.0.2 [recovery proof](../../docs/startup-v7/recovery-acceptance.json) and [screenshot deck](../../docs/slides/startup-v7-recovery-2026-10-15.html) record a live local Herdr run with both session variables unset: a forced employee boot error alerted the manager, the original process recovered automatically in the same pane, PA reports continued, and all owned proof processes were shut down. This does not establish remote Linux compatibility or indefinite liveness.
 
 ## Requirements and installation
 
-- Bun and OMP with native root sessions, persistent transcripts, `ctx.abort`, `isIdle()` and `hasPendingMessages()` support.
+- Bun 1.3.13 or newer (Unix WebSocket support) and OMP with native root sessions, persistent transcripts, `ctx.abort`, `isIdle()` and `hasPendingMessages()` support.
 - A running Herdr server reporting client/endpoint compatibility, the required layout and agent APIs, and its managed OMP integration.
 - An existing Herdr pane and socket context. Missing pane/workspace/session variables are resolved with `herdr pane current --current` and `herdr status server --json`; the default server reports a null session. No focused-pane discovery from outside Herdr.
-- Canonical role/loop sources available locally. `OMP_PROFILE` or `PI_PROFILE` identifies the active manager profile; absent profile variables mean OMP's default profile. Employees use their saved launch profile when these variables are absent.
+- Canonical role/loop sources available locally. Managed OMP launches clear `OMPCODE` and select the Startup's recorded OMP profile (see [Profiles](#profiles)): `OMP_PROFILE` is set to it.
 
-Use the existing binaries and the explicitly selected named OMP profile. Versions are diagnostic metadata, not compatibility gates: newer releases, including new major versions, are presumed usable until a required capability fails. OMP 18.8.9 and Herdr 0.9.5/protocol 22/integration v10 are the live-tested baseline, not required versions. Herdr 0.9.4 is accepted when its live APIs satisfy the same checks.
+Use stock OMP and Herdr binaries. Startup does not fork or install either runtime. Select the canonical Startup root with `STARTUP_ROOT` (default: `<skills home>/startup/<name>`, where the skills home is `JP_SKILLS_HOME`, else `${XDG_CONFIG_HOME:-~/.config}/jp-skills`). OMP runs on its own configuration, resolved by OMP itself. The default profile uses the same agent directory a regular `omp` does (`~/.omp/agent`, or wherever `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR` and `XDG_DATA_HOME` move it), so its logins, `config.yml`, `mcp.json` and sessions are shared with your normal OMP. A Startup can instead run on a named OMP profile. Startup pins no agent directory and sets none of those variables. Startup authority remains under `STARTUP_ROOT`, separately from native configuration.
 
-For the explicitly selected `startup-v7` profile, run from this repository:
+Repository development can load the extension directly after root provisioning:
 
 ```sh
 bun install --cwd extensions/startup --frozen-lockfile
-bun extensions/startup/install.ts install startup-v7
-export STARTUP_HERDR_OMP_EXTENSION="$HOME/.omp/agent/extensions/herdr-omp-agent-state.ts"
-OMP_PROFILE=startup-v7 omp --profile startup-v7 --extension "$STARTUP_HERDR_OMP_EXTENSION"
+OMPCODE= omp --extension "$STARTUP_HERDR_OMP_EXTENSION" --extension "$PWD/extensions/startup/v7.ts"
 ```
 
-The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and a positive numeric `HERDR_INTEGRATION_VERSION` header. The revision identifies the managed file; it is not pinned to v10. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. Without it, entry uses `PI_CODING_AGENT_DIR/extensions/herdr-omp-agent-state.ts`, or `~/.omp/agent/extensions/herdr-omp-agent-state.ts`. Custom configuration locations should supply the explicit path. Worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle.
+Add `--profile NAME` to run the manager, and so the Startup, on a named OMP profile.
 
-The installer links the package through native `omp --profile PROFILE plugin link`. `OMP_BINARY` selects the intended executable. Close that profile's sessions before changing installation; use the same profile/environment for installation and execution. `PI_CONFIG_DIR` must be a single directory name beneath the real home. Existing native XDG named-profile storage is respected. Installer checks, mutexes and ownership receipts refuse foreign or changed links/configuration.
+The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and a positive numeric `HERDR_INTEGRATION_VERSION` header. The revision identifies the managed file; it is not pinned to v10. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. It is required for either manager harness, because any role may launch an OMP employee. The Claude hook path is validated separately and is never passed to OMP as an extension. Worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle.
 
-Owned removal restores the saved prior lockfile bytes and retains Startup databases, history and unrelated plugins:
-
-```sh
-bun extensions/startup/install.ts uninstall startup-v7
-```
-
-Repository development does not install into a normal profile or upgrade an existing V6 Startup.
+`install.ts` links the extension into an OMP profile and is not invoked by host control. Root provisioning and installed runtime changes require their own explicit operation.
 
 ## Profiles
 
-`install` and `uninstall` take an optional profile. With no name they use the only saved named OMP profile, or list the saved ones and ask you to pick one (a terminal is required; otherwise pass the name):
+A Startup runs on the OMP default profile or on one named profile. Boot records the manager's profile (`OMP_PROFILE`, else `PI_PROFILE`, else the default, as OMP resolves it) in the Startup's `runtime-config.json`, refuses to resume a saved manager under a different one, and launches every OMP employee on it: `OMP_PROFILE` is set in the pane so an inherited `OMP_PROFILE` or `PI_PROFILE` cannot select another profile. An employee refuses admission when its actual profile differs from that manifest. Native transcripts must live under `sessions/` in that profile's OMP agent directory.
+
+`install` and `uninstall` take an optional profile:
 
 ```sh
 bun extensions/startup/install.ts install [PROFILE]
+bun extensions/startup/install.ts uninstall [PROFILE]
 ```
 
-`config.ts` reads and changes saved Startups, including ones created before this existed:
+With no profile on a terminal, `install` asks for an OMP profile name (existing or new); Enter selects the default profile. It links with `omp plugin link` and `OMP_PROFILE` set to the profile, whether or not a named profile exists yet. The default profile's plugin directory is `~/.omp/plugins` (or `$XDG_DATA_HOME/omp/plugins` once that directory exists), so the extension is installed for your regular OMP. With no terminal and no profile, `install` uses the default profile, so a script or agent that means another profile must pass `PROFILE` (or `default`) explicitly. The ownership receipt records the profile as its name or `default`.
+
+`config.ts` reads saved Startups under `<skills home>/startup`. A Startup saved in the old format (`binding.json` without `scope`) is skipped by `list` and refused by `get`:
 
 ```sh
-bun extensions/startup/config.ts profiles                       # saved OMP profiles
 bun extensions/startup/config.ts list                           # saved Startups, harness and profile
 bun extensions/startup/config.ts get NAME [KEY]                 # runtime config, manager credential redacted
-bun extensions/startup/config.ts set NAME profile [PROFILE]     # switch the Startup's OMP profile
 ```
-
-`set` rewrites only `profile` in the Startup's `runtime-config.json`. It refuses while the coordinator process runs or its launch is uncertain, for a Claude Code Startup, and for a profile that is neither saved nor `default`. It prints the command that resumes the manager in the new profile. Resume by path keeps the original manager transcript, so crews, queue and history are preserved. Each launch keeps the profile recorded in its manifest when the launch was prepared; launches prepared after the switch use the new profile. The new profile must resolve each [model role](#model-roles), or manager boot blocks and names the missing ones.
 
 ## Model roles
 
-OMP employees launch with `--model @ROLE`, so each Startup role runs on one OMP model role from the manager's profile. The binding lives in `src/model-roles.ts`; the manager is launched by you, so it keeps whatever model you start it with:
+OMP employees launch with `--model @ROLE`, so each Startup role runs on one OMP model role from the manager's profile, unless that role's saved settings request a model, which replaces the bound role for that launch. The binding lives in `src/model-roles.ts`; the manager is launched by you, so it keeps whatever model you start it with:
 
 | Startup role | OMP model role |
 | --- | --- |
@@ -75,27 +68,27 @@ Boot refuses to start when the profile cannot resolve a bound role (`ctx.models.
 
 ## Claude Code
 
-Requirements: Claude Code 2.1.302 or newer, Bun, Herdr's managed Claude integration (`~/.claude/hooks/herdr-agent-state.sh` with `# HERDR_INTEGRATION_ID=claude` and a numeric `# HERDR_INTEGRATION_VERSION`, registered as a SessionStart hook in `~/.claude/settings.json`), and `~/.claude/skills/startup`, `startup-*` and `hire` resolving into this checkout.
+Requirements: Claude Code 2.1.302 or newer, Bun, Herdr's managed Claude integration (`$STARTUP_ROOT/hooks/herdr-agent-state.sh` with `# HERDR_INTEGRATION_ID=claude` and a numeric `# HERDR_INTEGRATION_VERSION`, registered as a SessionStart hook in `$STARTUP_ROOT/settings.json`), and root-scoped skills resolving into this checkout. Set `CLAUDE_CONFIG_DIR` to the selected Startup root.
 
 ```sh
 bun install --cwd extensions/startup --frozen-lockfile
 bun extensions/startup/install.ts install-claude
 ```
 
-`install-claude` checks those requirements and writes `~/.local/bin/startup-claude` plus an ownership receipt. `uninstall-claude` removes both only when their bytes still match the receipt. The OMP `install|uninstall PROFILE` paths are unchanged.
+`install-claude` checks those requirements and writes `~/.local/bin/startup-claude` plus an ownership receipt. `uninstall-claude` removes both only when their bytes still match the receipt. The OMP `install|uninstall [PROFILE]` paths are unchanged.
 
-Boot: open a Herdr pane in the bound root, run `startup-claude`, then type `/startup new NAME` (or `select NAME`, `status`, `-- WORK`). The bound root must be trusted in Claude Code (it or an ancestor has `hasTrustDialogAccepted`), and `STARTUP_EXECUTION_LIMIT` is required because Claude Code exposes no native helper concurrency. First boot also writes a managed block in root `CLAUDE.md` that imports `AGENTS.md`. `startup-claude` refuses a Startup bound to OMP.
+Boot: open a Herdr pane in the bound root, run `startup-claude`, then type `/startup new NAME` (or `select NAME`, `status`, `-- WORK`). The bound root must be trusted in Claude Code (it or an ancestor has `hasTrustDialogAccepted`), and `STARTUP_EXECUTION_LIMIT` is required because Claude Code exposes no native helper concurrency. Startup runtime guidance stays under the selected root. Resuming a saved manager with a different harness is refused; new employee launches use each role's saved harness.
 
 `startup-claude` resumes the saved manager session or starts a new one:
 
 ```text
 claude --session-id UUID | --resume MANAGER_SESSION \
-  --append-system-prompt-file <home>/startup/claude/manager.prompt.md \
-  --settings <home>/startup/claude/settings.json \
-  --mcp-config <home>/startup/claude/mcp.json -n startup-manager
+  --append-system-prompt-file <startupRoot>/startup/claude/manager.prompt.md \
+  --settings <startupRoot>/startup/claude/settings.json \
+  --mcp-config <startupRoot>/startup/claude/mcp.json -n startup-manager
 ```
 
-Employees start with `herdr agent start NAME --kind claude --pane PANE -- --session-id LAUNCH_ID --append-system-prompt-file <state>/launches/LAUNCH_ID.prompt.md --settings <home>/startup/claude/settings.json --mcp-config <home>/startup/claude/mcp.json -n NAME`. They keep the user's default Claude setting sources and permission mode.
+Employees start with `herdr agent start NAME --kind claude --pane PANE -- --session-id LAUNCH_ID --append-system-prompt-file <state>/launches/LAUNCH_ID.prompt.md --settings <startupRoot>/startup/claude/settings.json --mcp-config <startupRoot>/startup/claude/mcp.json -n NAME`. They keep the user's default Claude setting sources and permission mode.
 
 | OMP mechanism | Claude Code mechanism |
 | --- | --- |
@@ -135,7 +128,7 @@ In the original manager's Herdr/OMP root:
 
 Names contain letters, digits, underscore or hyphen. `new` binds an existing directory, defaulting to native cwd. `select` reads the saved binding. Current selection discovers exactly one matching ancestor `.startup/config.md` binding or uses `STARTUP_NAME`. Startup home resolves `JP_SKILLS_HOME`, then `XDG_CONFIG_HOME/jp-skills`, then `~/.config/jp-skills`; state must remain outside the bound repository.
 
-Boot verifies the actual OMP version, root identity, unparented transcript/header, canonical source hashes, named profile and Herdr location. It preserves unrelated root AGENTS/configuration bytes, records private runtime configuration and launch intent, then starts or reconnects to the independent runtime. A live or uncertain host is never blindly spawned again. Read-only health checks are bounded; partial PA startup failure keeps the endpoint available and records a manager blocker.
+Boot verifies the actual OMP version, root identity, unparented transcript/header, canonical source hashes, OMP profile and Herdr location. It preserves unrelated root AGENTS/configuration bytes, records private runtime configuration and launch intent, then starts or reconnects to the independent runtime. A live or uncertain host is never blindly spawned again. Read-only health checks are bounded; partial PA startup failure keeps the endpoint available and records a manager blocker.
 
 After a boot attempt, failed or incomplete admission blocks native and Startup tools. Source/turn admission failure invokes native abort; a swallowed extension hook exception does not grant work authority. Boot failure produces one stop reminder and then parks. The `/startup` command remains available for explicit correction/retry.
 
@@ -147,25 +140,42 @@ The hierarchy is manager -> owning architect -> dev/QA. PA and shared DevOps rep
 
 Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md), assigned role and [shared loop](../../skills/startup-loop/SKILL.md). Native `task` remains OMP's bounded-helper tool. It is not overridden with Startup staffing modes. Helpers receive no employee admission and their factories install the employee-tool denial guard before attachment.
 
-| Public tool | Purpose and boundary |
-| --- | --- |
-| `startup_hire {requestId,role,additional}` | Manager reserves additional architect/QA/dev/DevOps identities; stable retries add zero. The single permanent PA is automatic. |
-| `startup_delegate {eventId,developers}` | Manager admits a complete crew for persisted intake; retries retain its original membership. Returns once the crew is durably reserved; pane launches continue serially in the coordinator and report through `startup_staff` runtime state and `layout-uncertain`/`launch-uncertain`/`launch-interrupted` alerts. Non-architect `crew-ready` notices carry no work and settle complete for every result kind. |
-| `startup_activate {employeeIds}` | Manager starts existing prepared identities; uncertain starts require reconciliation. Returns once the launch is queued; the same launch progress and alerts as delegate apply, and a retry while still launching is refused. |
-| `startup_replace {employeeId,evidence}` | Manager replacement after explicit failure/identity evidence and unresolved-work reconciliation. |
-| `startup_route {inputId,disposition,reason,amendItemIds}` | Manager classifies a saved native receipt as work/status/control/conversation/decision. |
-| `startup_intake {eventId,input,amendItemIds}` | Manager saves externally supplied work before delegation. |
-| `startup_claim {}` | Claims only the admitted employee's own ready inbox. |
-| `startup_settle {result}` | Atomically settles the authenticated employee's current claim, result/checkpoint, acknowledgement and outgoing cues. |
-| `startup_send {id,recipient,kind,correlation,payload}` | Persists a role-authorized hierarchical cue. |
-| `startup_input {inputId,offset}` / `startup_image {inputId,index}` | Scoped 4096-character input pages and actual native image blocks; a preview is not the complete input. |
-| `startup_capture {captureId,eventId,rows,receipt}` | Assigned architect captures canonical queue rows/revisions for its event. |
-| `startup_item` | Typed flat item action with `requestId`, `itemId`, `expectedRevision` and action-specific fields. |
-| `startup_staff {}` | Manager roster, crew hierarchy, runtime health, pending intake and unresolved recovery metadata. |
-| `startup_reconcile {claimId,evidence}` / `startup_resolve {assignmentId,evidence}` | Manager evidence-based resolution of uncertain claims/assignments. |
-| `startup_refresh {employeeId,evidence}` | Manager idle canonical-source refresh requiring fresh admission. |
-| `startup_block {key,evidence}` | Manager records supported concrete capacity/dependency evidence. |
-| `startup_finish_team {teamId,evidence}` / `startup_retire {employeeIds,evidence}` | Manager completion/eligible retirement after unresolved work, mail and grants are resolved. |
+### Public employee tools
+
+The V7 OMP extension registers these tools through `HostAPI.registerTool`. Claude Code runs `claude-bridge.ts` as the MCP server `startup`; its `tools/list` publishes the same names, and Claude Code exposes them as `mcp__startup__startup_*` tools loaded with `ToolSearch` and a `select:` query. Both hosts use the shared employee registration and call the same owner commands. Tool visibility does not grant authority: calls require the admitted main/root session, and the coordinator checks role, employee identity, generation, assignment, claim, receipt, approval and review gates again.
+
+This employee catalog is separate from the typed owner host-control lifecycle interface in [Owner host control and connection lifetime](#owner-host-control-and-connection-lifetime). Host lifecycle commands are not employee tools and cannot claim, settle, approve or impersonate an employee.
+
+Every listed argument is required; zero-argument tools take `{}`. `string` and `number` show the published host schema. `JSON` is an unconstrained JSON value in the published schema. The owner applies stricter command validation before dispatch, including non-empty identifiers, positive safe counts, non-negative safe offsets/indexes, and action-specific result/capture validation. The Claude MCP schema builder reports JSON and native number fields coarsely, so callers must follow these owner constraints and inspect refusals. `startup_item` is the six-branch action union shown below.
+
+| Public tool | Published input properties | Authority and result |
+| --- | --- | --- |
+| `startup_claim` | `{}` | Any admitted employee, including manager, claims only its own ready inbox. Returns the claim and message, or the owner's empty-inbox result. |
+| `startup_settle` | `{result: {id, kind, output, checkpoint, outgoing}}`; `kind` is `completed`, `question` or `uncertain`; each outgoing cue is `{id, recipient, kind, correlation, payload}`. | Settles the caller's current claim with its receipt and cues. PA settlement requires a report cue to manager. |
+| `startup_send` | `{id: string, recipient: string, kind: string, correlation: string, payload: JSON}`; `kind` is one of assignment, report, question, answer, alert or duty. | Persists a role-authorized hierarchical cue and returns its saved message record. |
+| `startup_item` | One action: `assign` adds `employeeId,evidence`; `review` adds `resultId,evidence`; `qa_assign` adds `evidence`; `qa` adds `resultId,verdict,proof`; `gate` adds `verdict,evidence`; `decide` adds `status,evidence`. All variants include `requestId,itemId,expectedRevision,action`. `verdict` is `APPROVE` or `REDO`; `status` is one of `BLOCKED`, `NEEDS_DECISION`, `QUEUED`, `REJECTED`, `MERGED` or `DONE`. | Manager and assigned crew roles can make only their allowed action on the assigned item at the expected revision. Returns the durable item transition/result; architect review and manager landing gates remain required. |
+| `startup_capture` | `{captureId: string, eventId: string, rows: JSON[], receipt: JSON}` | The assigned architect records canonical queue rows and revisions for its event. Returns the capture receipt. Owner validation requires each row to include `id`, nullable `expectedRevision` and `fields`. |
+| `startup_staff` | `{}` | Manager only. Returns roster, team hierarchy, runtime/capability state, role settings and unresolved recovery metadata. |
+| `startup_hire` | `{requestId: string, role: string, additional: number}`; `role` is one of architect, qa, dev, devops or pa. | Manager only. Reserves identities and returns the durable hire receipt; the single permanent PA is created automatically. |
+| `startup_delegate` | `{eventId: string, developers: number}` | Manager only, with the required PA supervision gate. Delegates persisted intake and returns the reserved team. Launches continue serially; progress and uncertain launch alerts appear through `startup_staff`. |
+| `startup_activate` | `{employeeIds: string[]}` | Manager only. Queues prepared launches and returns `{activated: employeeIds}`. Uncertain starts require reconciliation; a retry while launching is refused. |
+| `startup_replace` | `{employeeId: string, evidence: JSON}` | Manager only. Reserves a replacement after explicit failure/identity evidence and unresolved-work reconciliation; returns the next generation. |
+| `startup_intake` | `{eventId: string, input: JSON, amendItemIds: string[]}` | Manager only. Saves external work before delegation and returns the intake record. |
+| `startup_route` | `{inputId: string, disposition: string, reason: string, amendItemIds: string[]}`; `disposition` is one of work, status, control, conversation or decision. | Manager only. Classifies a saved native input and returns the routed record. |
+| `startup_input` | `{inputId: string, offset: number}` | Manager or assigned active crew with input scope. Returns a 4096-character page and continuation metadata. |
+| `startup_image` | `{inputId: string, index: number}` | Manager or assigned active crew with input scope. Returns the actual saved image block. |
+| `startup_reconcile` | `{claimId: string, evidence: JSON}` | Manager only. Resolves an uncertain claim and returns `{reconciled: claimId}`. |
+| `startup_resolve` | `{assignmentId: string, evidence: JSON}` | Manager only. Resolves an uncertain assignment and returns `{resolved: assignmentId}`. |
+| `startup_finish_team` | `{teamId: string, evidence: JSON}` | Manager only. Finishes an eligible team and returns the durable team result. |
+| `startup_refresh` | `{employeeId: string, evidence: JSON}` | Manager only. Refreshes an idle employee's canonical role source and returns the new generation. |
+| `startup_block` | `{key: string, evidence: JSON}` | Manager only. Records a supported capacity/dependency blocker and returns its alert record. |
+| `startup_retire` | `{employeeIds: string[], evidence: JSON}` | Manager only. Retires eligible employees after unresolved work, mail and grants are resolved; returns the retirement receipt. |
+
+`startup_item` variants are strict action objects. `startup_settle.result` is strictly `{id, kind, output, checkpoint, outgoing}`; `output`, `checkpoint` and cue payloads are JSON. `startup_capture.rows` is published as an array of JSON values but owner validation requires each row to be `{id, expectedRevision, fields}` with a nullable revision.
+
+OMP success uses its native tool result: canonical JSON appears in `details` and as JSON text in `content`; `startup_image` uses a native image content block. OMP execution errors are thrown to the host. Claude `tools/call` returns `{content, isError:false}` on success: text results contain the command JSON, while image results use MCP image content. A schema, admission, role, generation, receipt, stale-operation or approval refusal becomes `{content:[{type:"text",text:<error>}], isError:true}`. Rejected or uncertain commands are not silently replayed after reconnect.
+
+OMP reports supported live model/effort and cached catalog through the authenticated native-session heartbeat. Claude Code remains an interactive Claude Code process; its model/effort and catalog readback are typed unavailable when the CLI does not report them. Saved selections describe future launches and are not presented as effective live values.
 
 Item assignment delivers its `evidence` verbatim as the current `directive`, separately from the original intake `snapshot`, and identifies the owning architect as `reportTo`. Put executable rework scope and acceptance in that directive. Dev assignment settlement atomically creates a linked `item-result` report to that architect even with `outgoing: []`; receipt replay cannot duplicate it. The dev still submits `startup_item review` with its saved completed result. Own-poll state supplies `STARTUP_ITEM_REVIEW` with the result ID/current revision and a continuation until review or explicit block. Questions and uncertainty retain their existing reconciliation procedures. Automatic reporting changes no approval authority.
 
@@ -252,3 +262,50 @@ python3 extensions/startup/probes/run-v7-guards.py \
 ```
 
 Inspect the artifact's actual status/checks and source hashes before treating it as current proof. [V6 acceptance](probes/v6-acceptance.md) remains historical evidence for the retained V6 implementation. No normal-profile installation, live Herdr control, publication or version change is implied by running repository checks.
+
+## Owner host control and connection lifetime
+
+`bun extensions/startup/host-control.ts` reads one JSON command from stdin (64 KiB maximum) and exits. It is a per-request owner entrypoint, not another daemon. `hostControlCommandSchema` is the authoritative request union. Every successful response is `{operation, result}`, validated by exported `hostControlResponseSchema` and typed as `HostControlResponse`. Receipt lookup returns a typed `found` receipt or `missing` request ID; mutation receipts validate their operation, state, effects and concrete result together. Every selected-root request includes the full canonical `scope` (`skillsHome`, `startupRoot`, `host`, `name`, `boundRoot`, `managerSession`). Ronin invokes this entrypoint and never opens SQLite itself.
+
+A live `settings_apply` whose response is lost throws `HostControlUncertainError`. The CLI exits 1 and includes `outcome`, validated by `hostControlUncertaintySchema`: `{state:"uncertain", kind:"settings_apply", requestId, scope, replay:"forbidden", recovery:{kind:"receipt", requestId, scope}}`. Execute only that read-only recovery command. The uncertainty is not a committed receipt; lookup returns the owner's saved result when available. Pre-dispatch validation and read-only transport failures keep their original error types.
+
+- `list`: configHome, after cursor and limit (1-100); reads `<configHome>/jp-skills/startup/*` (the default skills home; `JP_SKILLS_HOME` is not consulted), skips old-format roots (`binding.json` without `scope`) and works with zero owners.
+- `create`: scope, requestId, skillsRoot, executionLimit, harness, expectedOwnerEpoch=0 and expectedRevision=0. Initializes a cold root; it does not manufacture a manager process.
+- `select`: validates the binding and reads it without a lease or process start.
+- `status`, `staff`, `progress`, `alerts`: optional bounded `query` with limit and queue/staff/team/input cursors. These reuse the typed host status, queue/team progress and supervision reasons. Offline state is explicit unavailable.
+- `associations`: required `after` (null or last employee ID) and `limit` (1-64). Reads the live owner through `GET /host/associations?limit=64`; later pages pass `after`. Offline/archived owners return explicit unavailable.
+- `settings`: saved future-launch selections and current connection-bound observations; optional limit and after launch cursor. Catalog/effective absence is unavailable, never inferred from requested settings.
+- `settings_draft`: validates a selection without writing. `settings_apply`: requestId, expected owner epoch/store revision and baseSettingsRevision; receipt includes saved scope/provenance.
+- `resume`: expected epoch/revision plus requestId. Observes the saved native manager identity before invoking the existing launcher. Missing identity is `missing_session`; a lost result remains `uncertain`. Neither outcome creates a replacement manager or retries an uncertain dispatch.
+- `archive`: expected epoch/revision plus requestId. Preserves history and refuses a live owner, outstanding work or a saved launch intent. Shares the launch exclusion lock; an archived root cannot start an owner.
+- `receipt`: read by requestId after a lost response. Identical replay returns the recorded result, conflicting payloads fail, and receipt lookup never re-executes a mutation.
+
+`associations` exports `hostAssociationQuerySchema`, `hostAssociationRowSchema`, `hostAssociationPageSchema`, `HostAssociationRow` and `HostAssociationPage` from `src/runtime-contracts.ts`; the command/response unions and `executeHostControl` remain in `host-control.ts`. The observed page contains the full canonical scope, owner ID/epoch, store revision, owner-clock observation time, selected Herdr session, lease expiry, connection deadline, total, next cursor and bounded rows. `nextCursor` is the last returned employee ID; pass it unchanged. Unknown cursors fail. Pages are separate snapshots: re-read and compare owner/epoch/revision before using a selection; pagination is not an atomic multi-page snapshot.
+
+A row with `status: "current"` publishes only its employee/role/generation, saved launch ID/harness, actual admitted native session/terminal ID, canonical source and last observation/poll times. It requires an exact connected owner/root/employee/generation/launch/harness/native-session record, matching source, ready/error-free runtime and fresh timestamps within the current owner lease. Other rows have `status: "unavailable"` and a typed reason, with no native target. The read uses one deferred SQLite transaction and does not renew a lease, observe native processes, launch, change settings or expose credentials, digests, connection epochs or bootstrap payloads. A ready admission itself records a native observation; manager rows may have no separate lifecycle state sequence.
+
+This is a bounded persisted association, not a fresh native census or atomic native control. Startup supplies no `hostId`, `remote` or `bootId`. SYT-9099 owns composition with the configured/authenticated Ronin endpoint, comparing canonical scope and Herdr session plus a new native observation matching terminal ID, harness and exact native session. It must preserve the actually reported nullable native `bootId`, never substitute Startup epochs, reject stale/missing/ambiguous results and revalidate owner/generation/launch on selection. SYT-9103 consumes that shared bridge. Opaque native handles, names, pane labels and transcript suffixes are not identity sources.
+
+Owner commands and reports require one current adapter connection epoch tied to owner, launch, generation, harness and native session. Admission is a long-lived Bun Unix WebSocket; existing command HTTP requests are authorized only while that channel remains current. Re-admission revokes the prior epoch. Disconnect/error, shutdown, native identity switch, retirement and owner replacement revoke old authority. Heartbeat expiry bounds undetected channel loss; it does not prove process death. An uncertain mutation is not replayed on reconnection, and committed receipts remain available.
+
+OMP samples cheap model/effort state every heartbeat, caches catalog enumeration for 30 seconds, and invalidates on native identity or selected-model changes. Unchanged reports are not serialized or persisted every second. Reports carry increasing connection-scoped sequence numbers and the owner stamps receipt time; a future client clock cannot supersede another connection. Historical observations survive but are unavailable as current state after revocation.
+
+Claude MCP hooks carry actual `session_id`; a missing or mismatched identity revokes admission. The command waiter supplies initial SessionStart identity because Claude skips MCP hooks before its server context exists. Later SessionStart (clear/compaction) validates identity and transcript; SessionEnd closes authority. Normal Stop/UserPromptSubmit waiter turnover does not revoke the MCP channel. Native hooks and transcript validation do not imply supported model/catalog readback; Claude readback remains explicitly unavailable. See [Claude hook lifecycle](https://code.claude.com/docs/en/hooks#mcp-tool-hook-fields) and [Bun Unix WebSockets](https://bun.com/blog/bun-v1.3.13).
+
+Private root files and 0600 sockets establish the existing same-OS-user boundary. Launch credentials bootstrap admission and are not continuing authority; this does not isolate against a malicious process that can read every private owner file. Host control cannot impersonate manager claim/approval/settlement. Resource invocation delivery and remote endpoint transport belong to SYT-9106. Local fixture tests are not actual interactive OMP/Claude or remote Linux acceptance.
+
+### New manager launch preparation
+
+After cold create and any settings apply, call owner `prepare_manager` with scope, harness, requestId, expectedOwnerEpoch and expectedRevision before starting a new managed OMP manager. Its committed receipt supplies immutable saved manager settings and model/effort argv. Use those argv with the managed OMP launch; do not read mutable settings again. `prepareManagerLaunch` in `src/v7-launch.ts` is the same owner boundary used by `startup-claude`. Preparation freezes settings in the owner store and `manager-launch.json`, refuses a live owner or saved runtime through host control, and never starts a process. A lost preparation response is retrieved by requestId. Resume retains the existing native settings and never applies new model/effort flags. A directly started OMP process without preparation can only boot the unconfigured default manager selection; configured selections require this prelaunch step.
+
+### Native artifact policy
+
+OMP native sessions are the explicit shared-storage exception: managed sessions reside under `sessions/` in the Startup profile's OMP agent directory (`~/.omp/agent` for the default profile, `~/.omp/profiles/NAME/agent` for a named one, or the XDG data directory OMP substitutes for it), with an exact root-session header and current native API identity. This follows stock [OMP 18.11.1 directory resolution](https://github.com/can1357/oh-my-pi/blob/v18.11.1/packages/utils/src/dirs.ts) and [SessionManager](https://github.com/can1357/oh-my-pi/blob/v18.11.1/packages/coding-agent/src/session/session-manager.ts). Startup does not copy native history or equate a transcript path with owner authority.
+
+Claude launches select `CLAUDE_CONFIG_DIR=startupRoot`; transcripts must be under `projects/` there with the exact native session ID as their filename. [Claude's directory documentation](https://code.claude.com/docs/en/claude-directory) specifies this config override and transcript tree. Both harnesses reject foreign trees, noncanonical paths and symlink ancestors/files; resume retains the saved exact native session/file. Hook-provided Claude paths are checked before tailing. These source contracts still require current-version live acceptance.
+
+### Durable input recovery
+
+Each native session keeps an owner-only `input-receipts/<session-hash>.json` under its Startup root. The original event ID and payload are written before dispatch. A lost response leaves `uncertain`; a closed client before dispatch leaves `failed`. Both block further Startup work and preserve the input. `/startup-retry` revalidates native identity and checks the authenticated owner `receive_status` receipt by event ID and payload digest. A matching committed receipt clears the fence without resending. Missing/conflicting receipts remain blocked for explicit reconciliation; never delete the journal and replay an uncertain mutation. This internal read does not add an employee tool or change the 20-tool public catalog.
+
+Repository verification runs frozen dependency installation, owner typecheck, the full extension test suite and Python probe-driver tests in `.github/workflows/startup.yml`. Fixtures are owner-regression evidence, not live native acceptance.

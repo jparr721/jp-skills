@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export type HerdrObservation = Readonly<{
+  harness: "omp" | "claude" | null;
   name: string | null;
   workspaceId: string;
   tabId: string;
@@ -17,7 +18,7 @@ export type HerdrRuntime = Readonly<{
   createCrew: (input: Readonly<{ label: string; cwd: string; env: LayoutEnvironment }>) => Promise<{ tabId: string; rootPaneId: string }>;
   renameCrew: (input: Readonly<{ tabId: string; label: string }>) => Promise<void>;
   split: (input: Readonly<{ paneId: string; cwd: string; env: LayoutEnvironment }>) => Promise<string>;
-  launch: (input: Readonly<{ paneId: string; name: string; args: readonly string[] }>) => Promise<HerdrObservation>;
+  launch: (input: Readonly<{ harness: "omp" | "claude"; paneId: string; name: string; args: readonly string[] }>) => Promise<HerdrObservation>;
   observe: () => Promise<readonly HerdrObservation[]>;
 }>;
 type CommandResult = Readonly<{ exitCode: number; stdout: string; stderr: string }>;
@@ -54,7 +55,7 @@ const environmentSchema = z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
 const createSchema = z.strictObject({ label: textSchema, cwd: textSchema, env: environmentSchema });
 const renameSchema = z.strictObject({ tabId: targetSchema, label: targetSchema });
 const splitSchema = z.strictObject({ paneId: targetSchema, cwd: textSchema, env: environmentSchema });
-const launchSchema = z.strictObject({ paneId: targetSchema, name: z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/), args: z.array(z.string().refine((value) => !value.includes("\0"))) });
+const launchSchema = z.strictObject({ harness: z.enum(["omp", "claude"]), paneId: targetSchema, name: z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/), args: z.array(z.string().refine((value) => !value.includes("\0"))) });
 const locationSchema = z.object({ workspace_id: textSchema, tab_id: textSchema, pane_id: textSchema, terminal_id: textSchema });
 const agentSchema = locationSchema.extend({
   agent: textSchema.nullable().optional(),
@@ -77,7 +78,7 @@ const apiSchema = z.object({ protocol: z.number().int().positive().safe(), schem
 }) }) }) });
 
 function normalize(agent: z.infer<typeof agentSchema>): HerdrObservation {
-  return { name: agent.name ?? null, workspaceId: agent.workspace_id, tabId: agent.tab_id,
+  return { harness: agent.agent === "omp" || agent.agent === "claude" ? agent.agent : null, name: agent.name ?? null, workspaceId: agent.workspace_id, tabId: agent.tab_id,
     paneId: agent.pane_id, terminalId: agent.terminal_id,
     nativeSession: agent.agent_session?.value ?? null,
     state: agent.agent_status, stateSequence: agent.state_change_seq,
@@ -150,16 +151,13 @@ export function createHerdrRuntime(input: Readonly<{
   workspaceId: string;
   binary: string;
   run: (argv: readonly string[]) => Promise<CommandResult>;
-  agent: "omp" | "claude";
 }>): HerdrRuntime {
-  const config = z.object({ session: targetSchema, workspaceId: targetSchema, binary: textSchema, agent: z.enum(["omp", "claude"]) }).safeParse(input);
+  const config = z.object({ session: targetSchema, workspaceId: targetSchema, binary: textSchema }).safeParse(input);
   if (!config.success)
     throw new HerdrRuntimeError({ code: "invalid_request", command: [input.binary], exitCode: null, stdout: "", stderr: "", detail: config.error.message });
   const prefix: readonly string[] = [config.data.binary, "--session", config.data.session];
-  const kind: "omp" | "claude" = config.data.agent;
-  const label: string = kind === "claude" ? "Claude" : "OMP";
-  function foreignSession(session: z.infer<typeof agentSchema>["agent_session"]): boolean {
-    return session !== null && session !== undefined && (session.agent !== kind || (kind === "claude" && session.kind !== "id"));
+  function foreignSession(session: z.infer<typeof agentSchema>["agent_session"], harness: "omp" | "claude"): boolean {
+    return session !== null && session !== undefined && (session.agent !== harness || (harness === "claude" && session.kind !== "id"));
   }
   function fail(code: FailureCode, command: readonly string[], result: CommandResult, detail: string): never {
     throw new HerdrRuntimeError({ code, command, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, detail });
@@ -221,17 +219,17 @@ export function createHerdrRuntime(input: Readonly<{
     },
     launch: async (request): Promise<HerdrObservation> => {
       const parsed = validate(launchSchema, request, [...prefix, "agent", "start"]);
-      const response = await execute(["agent", "start", parsed.name, "--kind", kind, "--pane", parsed.paneId, "--", ...parsed.args], z.object({ id: textSchema, result: launchResultSchema }), "invalid_response");
+      const response = await execute(["agent", "start", parsed.name, "--kind", parsed.harness, "--pane", parsed.paneId, "--", ...parsed.args], z.object({ id: textSchema, result: launchResultSchema }), "invalid_response");
       const agent = response.data.result.agent;
-      if (agent.workspace_id !== config.data.workspaceId || agent.pane_id !== parsed.paneId || agent.name !== parsed.name || agent.agent !== kind || !agent.interactive_ready || agent.launch_pending === true || foreignSession(agent.agent_session))
-        fail("binding_mismatch", response.command, response.result, `Started agent does not match the expected ready ${label} pane identity`);
+      if (agent.workspace_id !== config.data.workspaceId || agent.pane_id !== parsed.paneId || agent.name !== parsed.name || agent.agent !== parsed.harness || !agent.interactive_ready || agent.launch_pending === true || foreignSession(agent.agent_session, parsed.harness))
+        fail("binding_mismatch", response.command, response.result, `Started agent does not match the expected ready ${parsed.harness} pane identity`);
       return normalize(agent);
     },
     observe: async (): Promise<readonly HerdrObservation[]> => {
       const response = await execute(["agent", "list"], z.object({ id: textSchema, result: listResultSchema }), "invalid_response");
-      const agents = response.data.result.agents.filter((agent) => agent.workspace_id === config.data.workspaceId && (agent.launch_pending === true || agent.agent === kind));
-      if (agents.some((agent) => foreignSession(agent.agent_session)))
-        fail("binding_mismatch", response.command, response.result, `${label} native session identity belongs to a different agent kind`);
+      const agents = response.data.result.agents.filter((agent) => agent.workspace_id === config.data.workspaceId && (agent.launch_pending === true || agent.agent === "omp" || agent.agent === "claude"));
+      if (agents.some((agent) => agent.agent === "omp" || agent.agent === "claude" ? foreignSession(agent.agent_session, agent.agent) : false))
+        fail("binding_mismatch", response.command, response.result, "Native session identity belongs to a different agent kind");
       return agents.map(normalize);
     },
   };

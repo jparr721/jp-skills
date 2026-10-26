@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { isClaudeConfig, openCoordinator, serveCoordinator, type Coordinator } from "./src/coordinator";
+import { openCoordinator, serveCoordinator, type Coordinator } from "./src/coordinator";
 import { createHerdrRuntime, runHerdrCommand, type HerdrRuntime } from "./src/herdr-runtime";
 import { openStore, type StartupStore } from "./src/store";
 import { readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
@@ -18,13 +18,12 @@ function report(config: RuntimeHostConfig, operation: string, error: unknown): v
 }
 export async function startRuntimeHost(input: RuntimeHostConfig): Promise<RuntimeHost> {
   const config: RuntimeHostConfig = parseRuntimeHostConfig(input);
-  if (process.env.HERDR_ENV !== "1") throw new Error("Startup runtime requires its inherited Herdr environment");
   const store = openStore({
-    path: join(config.home, "startup", config.name, "staff.sqlite"),
-    scope: { home: config.home, host: `${hostname()}:startup-v7`, name: config.name, boundRoot: config.boundRoot, managerSession: config.managerSession },
+    path: join(config.startupRoot, "staff.sqlite"),
+    scope: { skillsHome: config.skillsHome, startupRoot: config.startupRoot, host: hostname(), name: config.name, boundRoot: config.boundRoot, managerSession: config.managerSession },
     owner: { id: randomUUID(), managerGeneration: config.ownerGeneration, leaseMs: 60000 }, now: Date.now,
   });
-  const herdr = createHerdrRuntime({ session: config.herdrSession, workspaceId: config.workspaceId, binary: config.herdrBinary, run: runHerdrCommand, agent: isClaudeConfig(config) ? "claude" : "omp" });
+  const herdr = createHerdrRuntime({ session: config.herdrSession, workspaceId: config.workspaceId, binary: config.herdrBinary, run: runHerdrCommand });
   return serveRuntimeHost({ config, store, herdr });
 }
 export async function serveRuntimeHost(input: Readonly<{ config: RuntimeHostConfig; store: StartupStore; herdr: HerdrRuntime }>): Promise<RuntimeHost> {

@@ -44,10 +44,11 @@ export const observedRuntimeSchema = z.enum([
 ]);
 export const scopeSchema = z
   .strictObject({
-    home: idSchema,
+    skillsHome: z.string().startsWith("/"),
+    startupRoot: z.string().startsWith("/"),
     host: idSchema,
     name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
-    boundRoot: idSchema,
+    boundRoot: z.string().startsWith("/"),
     managerSession: idSchema,
   })
   .readonly();
@@ -323,7 +324,7 @@ const hostRuntimeFields = {
   lastPoll: timeSchema,
 };
 export const setupReceiptSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("scope"), name: idSchema, host: idSchema, boundRoot: idSchema, home: idSchema }).readonly(),
+  z.strictObject({ kind: z.literal("scope"), name: idSchema, host: idSchema, boundRoot: scopeSchema.unwrap().shape.boundRoot, home: scopeSchema.unwrap().shape.skillsHome }).readonly(),
   z.strictObject({ kind: z.literal("manager-runtime"), employeeId: z.literal("manager"), ...hostRuntimeFields }).readonly(),
   z.strictObject({ kind: z.literal("pa-hire"), requestId: idSchema, employeeIds: z.array(idSchema).readonly() }).readonly(),
   z.strictObject({ kind: z.literal("pa-runtime"), employeeId: idSchema, ...hostRuntimeFields }).readonly(),
@@ -460,7 +461,7 @@ export const hostReasonSchema = z.enum([
 export const hostStateSchema = z.enum(["unsupported", "recovery-required", "missing", "offline", "stale", "live"]);
 export const paBlockerSchema = z.enum(["pa-missing", "pa-not-admitted", "pa-offline", "pa-observer-unavailable", "pa-overdue"]);
 const hostPictureSchema = z.strictObject({
-  binding: z.strictObject({ name: idSchema, boundRoot: idSchema, home: idSchema, host: idSchema }).readonly(),
+  binding: z.strictObject({ name: idSchema, boundRoot: scopeSchema.unwrap().shape.boundRoot, home: scopeSchema.unwrap().shape.skillsHome, host: idSchema }).readonly(),
   storeRevision: timeSchema,
   observedAt: timeSchema,
   freshness: z.strictObject({
@@ -524,3 +525,18 @@ export function encode(value: unknown): string {
   }
   return JSON.stringify(sorted(parsed));
 }
+
+export const ownerControlRequestSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("settings_apply"), requestId: idSchema, scope: scopeSchema, expectedOwnerEpoch: timeSchema, expectedRevision: timeSchema, role: roleSchema, harness: z.enum(["omp", "claude"]), model: z.string().nullable(), effort: z.string().nullable(), baseSettingsRevision: timeSchema }),
+  z.strictObject({ kind: z.literal("archive"), requestId: idSchema, scope: scopeSchema, expectedOwnerEpoch: timeSchema, expectedRevision: timeSchema }),
+]);
+export type OwnerControlRequest = z.infer<typeof ownerControlRequestSchema>;
+export const ownerControlReceiptSchema = z.strictObject({
+  requestId: idSchema, digest: idSchema, scope: scopeSchema,
+  kind: z.enum(["create", "settings_apply", "archive", "resume", "prepare_manager"]),
+  state: z.enum(["committed", "uncertain", "missing_session"]),
+  ownerEpoch: timeSchema, revision: timeSchema,
+  sideEffects: z.enum(["root_initialized", "future_launch_settings", "history_archived", "owner_resumed", "manager_prepared", "none"]),
+  result: jsonSchema,
+});
+export type OwnerControlReceipt = z.infer<typeof ownerControlReceiptSchema>;

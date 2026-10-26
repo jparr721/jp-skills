@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   readFileSync,
   writeFileSync,
@@ -54,7 +55,7 @@ afterEach(() => {
 });
 
 function entryFixture() {
-  const root = mkdtempSync(join(tmpdir(), "startup-entry-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "startup-entry-")));
   directories.push(root);
   for (const name of ["startup-role-manager", "startup-loop"]) {
     const path = join(root, "skills", name);
@@ -63,6 +64,8 @@ function entryFixture() {
   }
   const cwd = join(root, "repo");
   mkdirSync(cwd);
+  const skillsHome = join(root, "home");
+  mkdirSync(skillsHome);
   const file = join(root, "session.jsonl");
   writeFileSync(file, '{"type":"session","id":"same-canonical-session"}\n');
   const ctx: NativeContext = {
@@ -152,7 +155,8 @@ function entryFixture() {
     };
     installStartup(api, {
       name,
-      home: join(root, "home"),
+      skillsHome,
+      startupRoot: null,
       skillsRoot: root,
       employeeLimit: null,
       executionLimit: null,
@@ -292,10 +296,12 @@ test("host execution limit retains guards and rejects invalid input before store
     name: process.env.STARTUP_NAME,
     limit: process.env.STARTUP_EXECUTION_LIMIT,
     home: process.env.JP_SKILLS_HOME,
+    configHome: process.env.XDG_CONFIG_HOME,
   };
   try {
     process.env.STARTUP_NAME = "fixture";
     process.env.JP_SKILLS_HOME = join(root, "home");
+    process.env.XDG_CONFIG_HOME = join(root, "config");
     for (const invalid of [
       "",
       "0",
@@ -333,6 +339,7 @@ test("host execution limit retains guards and rejects invalid input before store
       STARTUP_NAME: old.name,
       STARTUP_EXECUTION_LIMIT: old.limit,
       JP_SKILLS_HOME: old.home,
+      XDG_CONFIG_HOME: old.configHome,
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -391,7 +398,7 @@ test("normal wait honors the authoritative capacity guard with undelegated work"
   }
 });
 
-test("unbound native boot preserves first work and images and gates malformed AGENTS", async () => {
+test("native boot keeps mutable state in the Startup root and ignores repository guidance", async () => {
   const { ctx, factory, root } = entryFixture();
   const host = factory(null);
   await host.handlers.get("session_start")!({}, ctx);
@@ -414,31 +421,20 @@ test("unbound native boot preserves first work and images and gates malformed AG
   expect(
     host.messages.some((text) => text.includes("Saved Startup work event")),
   ).toBe(true);
-  const saved = JSON.parse(
-    readFileSync(join(ctx.cwd, "AGENTS.md"), "utf8")
-      .split("<!-- identity: ")[1]!
-      .split(" -->")[0]!,
-  );
-  expect(saved.name).toBe("first");
+  const firstRoot = join(root, "home", "startup", "first");
+  expect(existsSync(join(firstRoot, "binding.json"))).toBe(true);
+  expect(existsSync(join(firstRoot, "staff.sqlite"))).toBe(true);
+  expect(existsSync(join(ctx.cwd, "AGENTS.md"))).toBe(false);
   await host.handlers.get("session_shutdown")!({}, ctx);
   const broken = factory("broken");
   writeFileSync(join(ctx.cwd, "AGENTS.md"), "<!-- jp-skills-startup:begin -->");
   await broken.handlers.get("session_start")!({}, ctx);
-  expect(
-    await broken.handlers.get("input")!(
-      { text: "work", source: "rpc", images: [] },
-      ctx,
-    ),
-  ).toEqual({ handled: true });
-  expect(
-    broken.handlers.get("tool_call")!({ toolName: "read", input: {} }, ctx),
-  ).toMatchObject({ block: true });
-  expect(broken.handlers.get("session_stop")!({}, ctx)).toMatchObject({
-    continue: true,
-  });
-  expect(
-    existsSync(join(root, "home", "startup", "broken", "staff.sqlite")),
-  ).toBe(false);
+  const staff = await broken.tools.get("startup_staff")!
+    .execute("staff", {}, undefined, undefined, ctx);
+  expect(staff.isError).not.toBe(true);
+  expect(existsSync(join(root, "home", "startup", "broken", "staff.sqlite"))).toBe(true);
+  expect(readFileSync(join(ctx.cwd, "AGENTS.md"), "utf8")).toBe("<!-- jp-skills-startup:begin -->");
+  await expect(broken.handlers.get("session_shutdown")!({}, ctx)).resolves.toBeUndefined();
 });
 
 test("native first-space command split correlates repeated and trailing spaces", async () => {
