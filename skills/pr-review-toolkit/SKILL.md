@@ -149,6 +149,14 @@ One sweep agent covering all five angles in a single pass, then one combined Lev
 - **Answering BLOCK with line fixes.** BLOCK means the design is wrong: escalate.
 - **Skipping the test lens because tests exist.** Existing tests can still miss exactly the behavior that changed.
 - **Skipping failure review because code compiles.** Silent failures are behavioral bugs, not type errors.
+- **Merging while the review is still running.** An in-flight review is not an APPROVE. A print-mode reviewer
+  buffers everything until it exits, so minutes of silence look like "no findings" — that silence has been
+  followed by FIX-THEN-SHIP more than once. Wait for the verdict block, or say plainly that you are merging
+  ahead of it and that the must-fixes become a follow-up change; never let the merge close the gate the
+  review was about to close.
+- **Letting a FIX-THEN-SHIP verdict evaporate once the code is already merged.** Fixes get a new branch and
+  their own PR against the merged baseline, with each must-fix quoted (file, line, proof, fix) and CI green
+  before it is called done. A verdict that only exists in a comment is a finding nobody acted on.
 
 ## Framework tail
 Before finishing, read `../cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/cleanup/SKILL.md`) and follow it.

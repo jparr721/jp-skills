@@ -28,6 +28,47 @@ Naming a file isn't grounding. Produce the traced model. If the design redefines
 
 Skip Phase A only when the work is genuinely greenfield with no surrounding system to integrate.
 
+## Planning-only engagements
+
+When the requested deliverable is a plan rather than implementation, stop after grounding, comparing alternatives, and synthesizing the rollout; do not create scaffolds, edit the repository, or run tests/builds/generators unless separately authorized. Still compare structurally distinct approaches, but use independent delegated candidates only when the task's scope and tools permit; otherwise state the candidates and trade-offs directly rather than implying independent review occurred.
+
+**Answer "how much work is this" with the lift, never a duration.** This owner rejects timeframes outright —
+"stop giving me timeframes, I just want to know what the lift is". Give the change sites, each site's class
+(drop / rewrite / new), the count of them per area, the blockers, and what one vertical slice would prove; a
+week/day estimate in that answer is noise and reads as avoidance. If a schedule is genuinely asked for, say
+what has to be true first and let them do the arithmetic.
+
+**Keep one decision file, and rewrite it in place.** Locked choices go to a single `decisions.md` the lanes
+read (platform, identity, network surface, data encodings, background work, toolchain, delivery, repo shape,
+and an explicit "still open" list). When a decision changes, replace the sentence — never leave a
+"superseded" note beside the old text, because the next agent reads the description as current state and
+inherits the contradiction. Every brief handed to a coding lane points at that file so settled ground cannot
+be re-litigated mid-run.
+
+Ground every status claim in evidence you can actually read. Verify PR metadata through an authenticated GitHub/API read; if only a local branch or `refs/pull/<n>/head` is accessible, report only that ref and head hash, not title, open state, author, base, or CI. Label meeting notes and user-provided statements as such, and separate unverified topology, runtime, traffic, and release assumptions from repository facts. Before handing off a plan, copy it from temporary scratch to a durable path outside the working tree, verify the copy, and confirm the repository remains unchanged.
+
+**Scope from evidence, not from the tracker's state column.** A ticket marked In Progress can have no branch, no
+code and no deployed resource behind it, and its parent epic can be closed Done while none of it exists. Read the
+epic, its spec sibling, its children and its comments for the intended shape, then settle each claimed deliverable
+against the repos (`gh pr list`, branch existence, the files actually on the default branch) and against the
+provider census in `deployment-verification`. Report claimed-but-absent work as its own line: it changes the plan,
+not the prose.
+
+**Settle liveness before you estimate a migration.** One four-layer status census decides whether the work contains
+data motion at all. With no deployed resource there is no backfill, no dual-run, no freeze window and no cutover:
+build the new schema fresh from the domain model and delete those packages outright. This check usually removes the
+largest planned cost, so it runs first, not as a footnote.
+
+**Refresh the checkout before you read it as evidence.** A clone can sit hundreds of commits behind its remote, and
+every grep against it then describes the past: a module that looks like an empty skeleton grows a full route table
+one `git merge --ff-only` later. Check `git status -sb` or `git rev-list --count HEAD..@{u}` first, refresh, re-read,
+and only then say what a repo does or does not contain.
+
+**Shape the breakdown as packages with a lift, not a narrative.** One table: package, lift (S/M/L or change-site
+counts, never durations), dependencies, and what it unblocks. Sequence so the thinnest vertical slice unblocks the
+dependent application first, then parallelize the rest. Close with the decisions only the owner can settle (repo
+shape, MVP surface, what deliberately stays on a different runtime) and the risks that would change the design.
+
 ## Phase B: Sketch
 
 Dispatch at least two parallel `task` subagents (fresh sessions, no shared memory). Each produces one candidate design package shaped per `references/rationale-template.md`, prompted with `references/runner-prompt.md` plus the Phase A grounding artifacts. Give each runner an isolated working directory — a git worktree when available, otherwise a per-runner subdirectory. When prior art could settle a shape decision, run `topic-research` first and feed its verdicts in as candidate-screening input.

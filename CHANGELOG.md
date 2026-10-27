@@ -2,6 +2,51 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.10.0] - 2026-10-27
+
+Salvages the reusable procedure from a set of uncommitted local skill edits that predated 7.9.0 and
+blocked the upgrade, ported onto the released text. Everything tied to one fleet's operational
+machinery was deliberately left out.
+
+### Added
+
+- `dark-factory` guardrails: one writer per repository (repo-level locks, not worktree-level), a parked
+  ticket never ends the run, land what is already green before dispatching, verification sized to the
+  change rather than the monorepo, turn-budget exhaustion as an owner-facing event, wave 1 independent
+  of the planner, and supervision of the principal from outside.
+- `dark-factory` section 8b, recurring-block escalation: park the fan-out, spawn one dedicated unblock
+  lane, amend the principal's brief, register the unblocker with the watchdog; verify an environmental
+  cause before inheriting a lane's blocker; halt the run on an architecture reversal and treat a halt as
+  incomplete until the scheduler is paused and the count re-checked.
+- `dark-factory` section 8c, ship one slice end-to-end before fanning out: prove one unit repo-to-live
+  first, separate "not implemented" from "no delivery path", classify deploy blockers into
+  orchestrator-creatable versus owner-gated, distribute merges where ordering does not matter, report
+  measured counts, and probe the provider instead of parsing outcome text.
+- `dark-factory` final report: report lift and counts, never timeframes.
+- `dark-factory`: resolve an issue UUID in the same step as the mutation (a stale-but-valid UUID writes
+  the wrong record silently); a scoped run leaves a wider epic open with a scope-qualified report.
+- `dark-factory` common mistakes: fanning out before a delivery path exists, counting green CI as
+  delivery, counting a health 200 as a working service, assuming a lane branch inherits the canonical
+  workflow, and a duplicate checkout acting as a second writer.
+- `architect`: planning-only engagements - stop at the plan, answer "how much work" with lift instead of
+  durations, keep one decision file rewritten in place, ground status claims in evidence that can be
+  read, scope from evidence rather than a tracker's state column, settle liveness before estimating a
+  migration, refresh the checkout before reading it as evidence, and shape a breakdown as packages with
+  a lift.
+- `pr-review-toolkit`: merging while a review is still running is not an APPROVE, and a FIX-THEN-SHIP
+  verdict must not evaporate once the code is merged.
+
+### Changed
+
+- Not ported, by intent: pane-launcher/liveness/cron-tick recipes, host-specific disk-saturation and
+  CI-runner isolation guidance, Railway verification, visual-regression sweeps, Tailwind spacing
+  ownership, and customer-specific scope-list handling. They describe one fleet's operational detail
+  rather than reusable procedure, and the local copies were archived out of the checkout.
+
+### Verification
+
+- `pytest tests/` 37 passed, 142 subtests passed.
+
 ## [7.9.0] - 2026-10-27
 
 ### Added

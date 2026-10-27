@@ -516,6 +516,40 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
   slots are limited, while preserving every required reviewer angle and round.
 - **One ticket, one pipeline, one worktree.** Never two pipelines on the same ticket or branch.
   Overlap creates conflicts you then pay to resolve.
+- **One writer per repository.** Separate worktrees do not separate two lanes that both add
+  migrations, regenerate the same clients, or bump the same manifest, so serialize those even when
+  the tickets are unrelated. A lane whose work lives in a *different* repository can run in parallel
+  meanwhile. Record a repo-lock name per lane and start the next one only after the holder finishes,
+  because two concurrent writers on one schema or manifest produce competing PRs and a lane that
+  correctly stops on the conflict.
+- **A parked ticket never ends the run.** An ownership conflict, a missing ACK, or an unavailable
+  dependency parks that ticket only. The principal dispatches other eligible tickets in the same
+  turn. Ending a turn with zero deliverables while unclaimed tickets exist is a stall, not a wait;
+  check the counts (`ready`, `merged`) rather than the pane status before believing a run is busy.
+- **Land what is already green before dispatching anything new.** Every turn starts by listing open
+  PRs across the affected repos and merging each one that is ready, exact-head green and reviewed;
+  a mergeable PR left open while new lanes spin up is the dominant way a factory burns a day and
+  delivers nothing. `merged` is the only number that measures the run; `ready` and `in flight` are
+  inventory, not output. When the run cannot merge a green PR (repo forbids the strategy, base
+  protection, stacked PR), say which PR and why in the same turn instead of leaving it to age.
+- **Size verification to the change, not to the monorepo.** A full-workspace gate is correct for a
+  shared package and wrong for a one-file slice: a monorepo-wide typecheck plus a 15k-test API suite
+  makes every small ticket inherit every unrelated breakage, so lanes finish their work, fail on a
+  gate they cannot fix, and open nothing. Default a ticket lane to the affected workspace's
+  typecheck/tests/builds plus exact-head CI, and keep the full gate for changes that touch shared
+  code, the lockfile, or build config. Prove the specific gate you own and record the full gate's
+  known-red baseline as its own ticket rather than letting it veto every PR.
+- **A turn budget is a silent stop.** A cyclic supervisor that exhausts its allowed turns simply
+  stops producing outcomes; nothing inside the run reports it, so the program looks busy while dead.
+  Size the budget to the program's length, have the watchdog surface exhaustion as an owner-facing
+  event, and never rely on an agent status field or a written outcome to notice the halt.
+- **Wave 1 does not wait on the planner.** If the DAG is missing, incomplete, or the planner session
+  died, derive the initial runnable set from live tracker state and start it; the planner only refines
+  later waves. A planning step that must finish first turns one flaky agent into a whole-run outage.
+- **Supervise the principal from outside.** A single principal turn is not durable: when the process
+  exits or hangs, nothing inside the run starts the next turn, and helper sessions created by that
+  turn die with it. Run a deterministic watchdog that continues the principal while eligible work
+  remains, and reports lanes it cannot revive.
 - **Token hygiene:** the token travels principal -> sub-orchestrator -> pipeline supervisor via
   prompt/env only. It is never written to files, logs, ledger, outcome blocks, or Linear. Any
   agent that prints one is stopped and re-dispatched.
@@ -532,11 +566,18 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
   each write receipt, then fresh-read and verify every result. If bounded payload preparation
   fails, start from a fresh read and structured rewrite instead of stacking brittle parser fixes.
   If a write outcome is uncertain, read to reconcile it; never retry the mutation through another
-  connector. Normalize only observed formatting differences during readback comparison. Evidence:
+  connector. Resolve the target issue's UUID from its identifier in the same step as the mutation;
+  a wrong-but-valid UUID carried from earlier context succeeds silently on the wrong record and the
+  readback looks healthy. Normalize only observed formatting differences during readback comparison. Evidence:
   `runrecords/ownership-lesson.md`, `ownership-payloads.json`, `ownership-write-*.json`, and
   `ownership-verification.json` in the SYT-9093 run record.
 - **Backfill discipline:** re-poll the epic at every phase boundary and on every PR merge;
   schedule new `follow-up`/`qa-found` tickets as fresh waves before epic closure.
+- **A scoped run does not close a wider epic.** When the owner narrows the run (a deferred phase, an
+  excluded product or subsystem, an out-of-scope subtree), name that exclusion in the principal brief so
+  the re-poll does not schedule it as backfill, and treat 5.5 as closing only the delivered tickets: leave
+  the umbrella open with a scope-qualified report. Closing it asserts the excluded work shipped, and the
+  next reader of the epic cannot tell the difference.
 - **No red merges, no force-push to `TARGET_BRANCH`, no permission/settings changes.**
 - **No manual branch merges:** ticket branches land via `gh pr merge` only.
 - **Escalation:** anything `BLOCKED` after re-dispatch, or any structural rebase conflict, stops
@@ -553,7 +594,86 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
 - **A stalled worker is inspected, not duplicated.** Retry once, then fall back in-process for that ticket.
 - **`agent_not_ready` is not failure.** Wait for idle, then prompt; never relaunch.
 
+## 8b. Recurring-block escalation (do not let lanes languish)
+
+When three or more lanes end an outcome with the same gate in different words - a red full local gate,
+a broken shared workflow, an unqualified template - the factory is blocked on its **base**, not on its
+work. Widening the fan-out against a red base produces evidence and no merges.
+
+The response is one move, in the same turn:
+
+1. **Park the fan-out.** Dispatch no new tickets until the base is green.
+2. **Spawn one dedicated unblock lane** with an explicit mission, exclusive paths, and a written
+   definition of green (exact command, exit code, evidence). It owns the base; nobody else edits it.
+3. **Amend the principal's brief** so it cannot dispatch a second baseline lane, and narrow it to
+   collecting and landing what is already green.
+4. **Register the unblock lane with the watchdog** so a dead or hung unblocker is restarted like any
+   other lane, and raise the principal's turn budget if it exhausted.
+
+Check the environmental cause before accepting a lane's blocker: a CI failure reported as "runner disk
+full" or a missing mount is host state, not code, and re-running it after cleanup is often the whole
+fix. Verify the host rather than inheriting the lane's diagnosis.
+
+**An architecture change halts the run before anything else is edited.** When the owner reverses a
+decision every lane depends on - deployment target, runtime, template shape - stop the lanes first,
+keeping worktrees and branches intact. Persist the decision as `STOP-<topic>.md` in the run directory,
+append a superseded banner to every lane brief, and say plainly that lanes were **stopped**, not
+messaged: a running non-interactive agent cannot take a mid-run instruction, so killing the process and
+re-briefing is the only honest way to redirect it. Touch the shared artifact (template, shared CI,
+config schema) only after the halt, or two lanes and the orchestrator will write the old shape into it
+concurrently.
+
+**A halt is not done until the scheduler is paused and the count is re-checked.** Stopping lanes leaves
+whatever cron or watchdog started them alive, and its next tick relaunches work the owner just told you
+to stop - a "stopped" factory that quietly resumed is worse than one that never stopped. In the same
+turn: pause the factory's watchdog and alert jobs, stop the lanes, verify the process count, and
+re-check once after one scheduling interval has passed before reporting the halt as complete.
+
+## 8c. Ship one slice end-to-end before you fan out
+
+A factory distributes work whose path is already known. It cannot discover a delivery path nobody has
+walked, and a run whose definition of done includes *deployed* or *live* will produce evidence and zero
+deliverables if the path is missing: every lane finishes its own code, fails the same missing step, and
+parks.
+
+- **Prove one unit end-to-end first.** One lane, one target: build the artifact, provision whatever
+  resource it needs, deploy through CI, and read the live result back from the provider's API. Write the
+  steps down as a runbook the later lanes copy verbatim, and have the first lane correct the runbook
+  wherever it was wrong so the second unit inherits the fix.
+- **Separate "not implemented" from "no delivery path".** A lane that completes its work and still cannot
+  ship is telling you the path is broken. Answer that by fixing the path - not by dispatching more lanes,
+  and not by another document.
+- **Classify a deploy blocker before relaying it.** When lanes park on missing configuration, sort it into
+  what the orchestrator may create itself (service-internal keys it can generate, per-service bindings,
+  resource ids, a repository that must exist before a lane can stamp it) and what stays owner-gated
+  (third-party API keys, identity-provider decisions, a DNS cutover). Provision the first class in the
+  same turn and report the second as a named list; an unclassified "blocked: needs secrets" reads
+  identically for both and stalls the whole run behind one question.
+- **Distribute merges where ordering does not matter.** Reserving every merge at the principal is right
+  for stacked chains and multiple PRs on one repo/branch, and wrong for N independent repos: it
+  serializes the whole run behind one context. A lane that owns a distinct repo merges its own green PR
+  and reports the merge commit.
+- **Report measured counts, not activity.** Owner-facing status is `deployed`, `live`, `merged` - read
+  from the provider and the VCS by the orchestrator, never inferred from lane self-reports. A CI job that
+  concludes success while its deploy steps were skipped is the standard fake-green; confirm a real
+  version exists and is serving before counting it.
+- **Probe the provider, never parse the outcome for status.** Re-derive every lane's state by hitting its
+  live URL and recording the observed status code. An outcome block is a claim, and a loose substring test
+  (`"deployed:" in text and "none + reason" not in tail`) silently counts `deployed: none; blocked by
+  missing secrets` as a deployment - the count then reads 17 deployed while 9 answer. Keep the probe as
+  the single source of truth and re-derive the whole fleet after any change to the supervisor's parsing.
+- **A stall answered with coordination is this skill's characteristic failure.** When the owner says work
+  is slow, the fix is more execution along the proven path (fan the proven step out wide), not more
+  briefs, ledgers, or supervisors. If the next action cannot be parallelized because the path is
+  unproven, say that in one line and prove the path instead.
+
 ## 9. Final Report (to the user)
+
+**Report lift and counts, never timeframes.** Owners of long runs ask what is left and what it costs in
+work, not when it lands: give sites/files/services and the shape of each remaining step ("N lanes, M
+blocked on X, three steps left: template, migrate, deploy"), and if a schedule is genuinely requested,
+name the dependency instead of a date. An ETA guessed from lane activity is the fastest way to lose
+trust in the rest of the report.
 
 A single compact summary: epic id, `verify-mode` used for all tickets, `token: provided
 (redacted)` or `token: none`, per-ticket `stack-mode: stacked|flat (+ reason)`, tickets DONE,
@@ -607,6 +727,23 @@ required review and QA evidence.
 - **Accepting a draft PR as DONE.** Every outcome PR is ready (`gh pr ready` repair when the repo defaults to drafts); draft is a protocol violation like "none".
 - **Merging a stacked child before its parent.** Merge bottom-up; retarget the child (`gh pr edit --base`) + re-green before merging it.
 - **Stacking tickets that share no dep edge.** Independent tickets stay flat on `TARGET_BRANCH`; chains follow hard DAG deps only.
+- **Fanning out before the delivery path exists.** When the definition of done includes a deploy, prove
+  one unit from repo to live first; otherwise every lane parks on the same missing step and the run
+  reports effort instead of output.
+- **Counting green CI as delivery.** Read a real deployed version back from the provider. A job that
+  skips its deploy steps and concludes success is the most common way a run "ships" nothing.
+- **Counting a health 200 as a working service.** A liveness endpoint proves the process exists, not
+  that it serves its product: an unstamped skeleton answers health checks and 404s every real route.
+  Report health and domain-verified paths as two numbers, and probe a real route taken from that
+  service's own router.
+- **Assuming a lane branch inherits the current shared CI.** A branch cut before a canonical workflow
+  landed still carries the old workflow, so its PR fails on plumbing the lane cannot fix and the
+  failure hides the lane's real work. Push the canonical workflow file onto that branch before
+  diagnosing its code, and close PRs whose only content is superseded plumbing.
+- **Treating a second checkout as harmless.** A stale clone beside the lane worktree is a second
+  writer even though it is not a worktree: two processes editing the same schema file is exactly the
+  conflict the one-writer rule exists to prevent. Park any duplicate directory before relaunching a
+  repository lane, and key repo locks on the repository, not the worktree path.
 - **Spawning panes from outside Herdr.** Check `HERDR_ENV` and recommend the install instead.
 - **Letting workers allocate panes.** One pane per worker, principal-owned; workers never touch layout or emit the install nudge.
 - **Reading a pane's implementation output.** Outcome block or outcome file only.
