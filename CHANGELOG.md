@@ -2,7 +2,7 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
-## [Unreleased]
+## [7.7.0] - 2026-10-26
 
 ### Added
 
@@ -15,6 +15,11 @@
 
 - Maintenance now writes the private JSON ledger rather than local Markdown logs; every new fact, event and receipt has a timezone-qualified timestamp.
 - Included pending maintenance guidance for local disk/Immich assessments, SSH/host pressure and service-sync incidents; pipeline guidance for selected tracker access, publication ownership, exact-source CI evidence, QA and tracker closure; upgrade guidance for explicit Git reconciliation, ownership-safe relinking and runtime/profile selection.
+
+### Verification
+
+- Storage: 16 offline tests pass, including divergent clones, private push destinations, staged-only facts, ignored ledgers and empty-origin initialization. Real private storage creation, 34-file legacy migration and exact remote ledger content/SHA readback verified.
+- Release qualification: Startup TypeScript checking passes; 641 Startup tests (3072 assertions) and 6 Python driver tests pass. No live installed-runtime upgrade or profile/session restart is claimed.
 
 ## [7.6.0] - 2026-10-25
 

@@ -24,3 +24,6 @@ jobs:
       - run: python3 -m unittest discover -s extensions/startup/probes -p 'test_*driver.py'
         env:
           PYTHONDONTWRITEBYTECODE: '1'
+      - run: python3 -m unittest discover -s tests -v
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
