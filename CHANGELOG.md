@@ -2,6 +2,21 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.9.0] - 2026-10-27
+
+### Added
+
+- `filing-agent-tasks`: research requests and existing tickets into self-contained execution contracts, resolve source-retrievable questions, persist human decisions, and map scoped requirements to observable acceptance and independent verification. Uses the user's selected tracker connection (Composio for Linear).
+- A reusable task template covering source evidence, behavior/security/data decisions, question dispositions, dependency outputs, acceptance/proof mapping and readiness review.
+- Hard procedural readiness verdicts (`READY`, `NEEDS_INPUT`, `BLOCKED`, `DRAFT`), a cold-start ambiguity challenge, per-child/batch accounting, durable blocked-work handoffs, conflict-protected updates and exact saved-ticket readback. Unanswered execution decisions or unmet prerequisites cannot be presented as ready.
+- Fourteen offline instruction/template contract tests. These protect the documented workflow, not agent compliance or automatic tracker enforcement.
+
+### Verification
+
+- All 37 Python skill/storage tests, 6 Python Startup driver tests, Startup TypeScript checking and all 641 Startup tests (3072 assertions) pass locally.
+- Independent review findings addressed: concurrent ticket writes require conditional or coordinated exclusive editing; the Herdr preflight uses the host's native environment mechanism rather than requiring a POSIX shell.
+- No live tracker mutations, automatic follow-up scheduler, dispatch interception or installed Startup runtime changes are claimed.
+
 ## [7.8.0] - 2026-10-27
 
 ### Added

@@ -46,6 +46,7 @@ Startup family (roles + procedures):
 |-------|-------------|--------|
 | [`ask`](skills/ask/SKILL.md) | Talk about the codebase: explain behavior, trace flows, compare approaches, and answer follow-up questions. Hand-invoked with `/ask` (OMP: `/skill:ask`); stays in discussion mode until explicitly ended. | Read-only discussion, no edits or execution |
 | [`topic-research`](skills/topic-research/SKILL.md) | Deciding whether prior art, libraries, or battle-tested software already solve a task before committing to a custom plan. | Read-only |
+| [`filing-agent-tasks`](skills/filing-agent-tasks/SKILL.md) | Filing or refining agent tasks: research the actual system, close the question ledger, write self-contained contracts and testable acceptance, challenge cold-start ambiguity, then save and read back every ticket. Unanswered decisions and unmet prerequisites block readiness. | Creates/updates tasks, never implements |
 
 ### Audits & review
 
@@ -84,7 +85,7 @@ Startup family (roles + procedures):
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (7.8.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (7.9.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
