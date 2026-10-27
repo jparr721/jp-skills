@@ -60,7 +60,7 @@ Startup family (roles + procedures):
 
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
-| [`server-maintenance`](skills/server-maintenance/SKILL.md) | Maintenance on a named remote server — updates, reboots, disk/service/log checks. Resolves the server to a stable on-disk record under the canonical home, asks once for connection instructions when missing. Records completed operations to a per-server log. | Mutates remote host |
+| [`server-maintenance`](skills/server-maintenance/SKILL.md) | Maintenance on a named remote server — updates, reboots, disk/service/log checks. Resolves the server to a stable on-disk record under the canonical home, asks once for connection instructions when missing. Stores connection facts and operations in a timestamped ledger in a private GitHub repository (default `jp-skills-storage`); reconciles, commits and pushes through the shared post-run hook. | Mutates remote host |
 
 ### Design & hardening
 
@@ -87,20 +87,34 @@ Startup family (roles + procedures):
 
 ## Stable home
 
-Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (XDG default; Windows `%APPDATA%\jp-skills`): `config.json` (`repo_path`, `installed_version`, `updated_at`), `servers/`, `tmp/<skill>/`, `worktrees/<repo>/<branch>/`. Skills cache state here, never in the repo or cwd. `tmp/` is scratch — the Framework tail (`skills/cleanup/SKILL.md`, appended to every skill except `cleanup` itself) clears your own scratch and persists record corrections at session end. `pipeline` (and `dark-factory` via `pipeline`) creates isolated git worktrees under `worktrees/` grouped by repo, so `git worktree list` stays traceable in one place.
+Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (Windows `%APPDATA%\jp-skills`): `config.json`, `storage.json`, `storage/` (private git clone), legacy `servers/`, `tmp/<skill>/`, `worktrees/<repo>/<branch>/`. Server state now lives in `storage/server-maintenance/ledger/<slug>.json`; each fact/event has a UTC timestamp. The storage repo is separate from this public skills checkout and has room for future skill namespaces. `tmp/` is scratch — the Framework tail (`skills/cleanup/SKILL.md`, appended to every skill except `cleanup` itself) clears your own scratch and persists record corrections at session end. `pipeline` (and `dark-factory` via `pipeline`) creates isolated git worktrees under `worktrees/` grouped by repo, so `git worktree list` stays traceable in one place.
 
 ## Upgrading
 
-Run the [`upgrading-jp-skills`](skills/upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks all five harness registries, stamps `installed_version`.
+Run the [`upgrading-jp-skills`](skills/upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks all five harness registries, stamps `installed_version`. Every upgrade also checks private-storage migration: assume `gh` is installed and authenticated, ask once for the repo name (default `jp-skills-storage`), have the agent create/clone it privately, import and verify legacy records, then commit/reconcile/push. Migration is tracked separately from the installed skill version; legacy files remain recovery copies. See [private storage](skills/server-maintenance/references/private-storage.md).
+
+## Private ledger storage
+
+Assume authenticated `gh`; the agent performs repository creation/cloning rather than asking the user to do it. The user chooses the private repo once, default `jp-skills-storage`. The shared cleanup tail executes `skills/cleanup/scripts/post-run.py` after each run: commit changed ledgers, fetch, merge each fact/event by its timestamp, push and read back the remote SHA. Distinct operations survive concurrent hosts. Failures retain local work and report unsynchronized state; there is no force-push or blanket ours/theirs conflict resolution. This is a portable skill-tail hook, not an automatically installed harness-global hook; hard-killed runs recover on the next sync.
+
+```sh
+python3 skills/cleanup/scripts/storage.py setup --repo <chosen-name-or-owner/repo>
+python3 skills/cleanup/scripts/storage.py migrate
+python3 skills/cleanup/scripts/post-run.py
+python3 -m unittest discover -s tests -v
+```
+
+All new ledger data is timestamped; legacy import times are distinguished from unknown original operation times. Review old records for secrets before migration. Python 3.10+, git and authenticated `gh` are assumed for this storage backend. No extra runtime/profile installation is needed.
 
 ## Dependencies
 
-Most skills are self-contained. Two are not:
+Most skills are self-contained. External/runtime requirements:
 
 | Skill | Requires |
 |-------|----------|
-| `pipeline` | `pr-review-toolkit` and `code-simplifier` (this repo, linked), the `superpowers` plugin for `brainstorming` and `writing-plans` (`claude plugin install superpowers@claude-plugins-official`), `gh`, and Linear MCP when the task is given as a ticket id. |
+| `pipeline` | `pr-review-toolkit` and `code-simplifier` (this repo, linked), the `superpowers` plugin for `brainstorming` and `writing-plans` (`claude plugin install superpowers@claude-plugins-official`), `gh`, and the selected tracker connection when the input is a ticket (Composio for this user). |
 | `dark-factory` | Linear MCP, `gh`, and a worktree or VM pool. |
+| `server-maintenance` / configured storage cleanup | Python 3.10+, git and authenticated `gh`; a user-selected private storage repository. |
 | `dark-factory` (optional panes) | `herdr`. Without it the run recommends the install and fans out in-process. |
 
 ## Install

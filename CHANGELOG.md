@@ -2,6 +2,20 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [Unreleased]
+
+### Added
+
+- Private GitHub state storage, default `jp-skills-storage`, with `server-maintenance/ledger/` and future skill namespaces. Agents assume authenticated `gh`, ask once for the repository choice, create or clone it themselves and verify private visibility.
+- Timestamped per-field facts and UUID-keyed operation events. The shared cleanup post-run hook commits, fetches, reconciles all ledger documents, pushes and reads back the exact remote SHA; independent facts/events survive and overlapping values use the newest timestamp. Offline failures keep local work; there is no force-push.
+- Every upgrade checks storage migration even at the same installed version: import and verify legacy connection/operations Markdown, retain full source text and honest timestamp provenance, deduplicate retries and record completion only after verified sync. Sources remain recovery copies.
+- Offline storage unit/integration tests using real divergent Git clones and bare remotes; GitHub setup tests are offline.
+
+### Changed
+
+- Maintenance now writes the private JSON ledger rather than local Markdown logs; every new fact, event and receipt has a timezone-qualified timestamp.
+- Included pending maintenance guidance for local disk/Immich assessments, SSH/host pressure and service-sync incidents; pipeline guidance for selected tracker access, publication ownership, exact-source CI evidence, QA and tracker closure; upgrade guidance for explicit Git reconciliation, ownership-safe relinking and runtime/profile selection.
+
 ## [7.6.0] - 2026-10-25
 
 ### Added

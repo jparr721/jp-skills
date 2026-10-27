@@ -58,14 +58,27 @@ Stall rule: no user-visible progress within ~2 min of activation → emit the in
    remaining must-fix items, or no merge. In ci-only mode the merge gate is CI
    green on the exact commit plus APPROVE verdicts; nothing claims local proof that never ran.
 6. **Never bypass repository hooks.** No `--no-verify`, no `HUSKY=0`, no `core.hooksPath`
-   change, no equivalent. If a hook fails, stop and report it.
+   change, no equivalent. Record whether CI-only permission explicitly includes the normal
+   lint/format commit hook; that exception never authorizes separate local tests, typechecks,
+   builds or generators. On hook failure, stop the publication sequence and preserve its log,
+   HEAD, index and worktree. Route a bounded source repair to the assigned writer, freeze the
+   repaired wave, then retry the ordinary hook; escalate only when repair needs new authority
+   or cannot proceed. Never suppress the rule, weaken configuration, or treat an authored fix
+   as proof that the retry passed.
 7. **No silent scope creep.** Work that grows past the task's scope becomes a follow-up
    ticket, never an inline expansion of this PR.
 8. **One supervisor, sole user contact.** Step 1 spawns a supervisor agent that owns the ledger
    (slices, waves, verify results, review rounds, QA) for the whole run. Worker agents never
    message you directly; they send questions to the supervisor via `hub`, and the supervisor
    batches them to you. Phase-boundary status lives in the supervisor ledger; it surfaces to
-   you only as batched questions, stop-and-reports, and the final report.
+   you only as batched questions, stop-and-reports, and the final report. Foreground and scheduled
+   management share this ownership: before resuming a queued commit, merge, push or worker
+   continuation, read the current ledger/operation receipt and actual git state, then verify
+   the exact remote target. Acquire sole publication ownership and compare the expected HEAD
+   and allowed paths before writing. If another manager already advanced HEAD, inspect its
+   commits and remote readback instead of replaying the stale request; an empty diff can mean
+   completed publication, not lost work. Reuse the canonical receipt and avoid duplicate queue
+   messages, since concurrent managers can otherwise publish or resume the same wave twice.
 9. **Always prove it with real data and a deck.** Step 9 QA runs on every pipeline, pre- or
    post-merge per Step 9, and produces a slide deck of the change. No pipeline is done without
    the QA block and deck path in the final report.
@@ -139,10 +152,7 @@ digraph pipeline {
 Resolve exactly what is being built and where it lands. Keep this tight.
 
 1. **Classify the input** into ticket / plan-path / free-form.
-2. **If it is a Linear ticket**, fetch it with the Linear MCP `get_issue`
-   (`includeRelations: true`). Read the identifier, title, description body, labels, and
-   `gitBranchName`. If the Linear MCP is unavailable, route via the supervisor (below): it asks
-   you to paste the ticket body rather than guessing at its contents.
+2. **If it is a Linear ticket**, fetch it through the user's selected tracker connection; for this user, use Composio rather than direct Linear MCP. Verify the workspace/team, then read the identifier, title, full acceptance, comments, labels, branch name and both incoming/outgoing relations. Inspect the chosen provider's schema: Linear GraphQL exposes `branchName`, while wrappers may name it `gitBranchName`. If the worker cannot retrieve it, have the authorized supervisor perform the same read and supply the actual response before asking the user to paste retrievable content.
 3. **If it is a plan path**, read the file.
 4. **Establish git state**: `git status --short`, `git branch --show-current`,
    `git log --oneline origin/<target>..HEAD`. A dirty tree unrelated to the task is relayed by
@@ -152,9 +162,7 @@ Resolve exactly what is being built and where it lands. Keep this tight.
    to touch. Extract the merge convention now, and build the **verification surface** per
    Step 4a - what checks exist, and which of them CI actually runs. Steps 4, 7, and 8 all
    depend on it, and 4a needs the CI config in front of you anyway.
-6. **Name the branch.** Use the ticket's `gitBranchName` when there is one; otherwise match
-   the convention visible in `git for-each-ref refs/remotes/origin`. Never work on the target
-   branch itself.
+6. **Name the branch.** Use the exact branch name returned by the ticket provider when present; otherwise match the convention visible in `git for-each-ref refs/remotes/origin`. Never work on the target branch itself.
 7. **Create the worktree** (Step 1b below). Everything after this point - planning artifacts
    included - happens inside it.
 8. **Spawn the supervisor.** Dispatch one `task` subagent as supervisor before any other agent.
@@ -176,7 +184,7 @@ what makes those operations safe. Every worktree lives under the jp-skills home 
 4. **Otherwise** invoke `superpowers:using-git-worktrees`, which handles the native-tool path and the `git worktree add` fallback. Branch from the up-to-date target at the derived path: `git fetch origin && git worktree add -b <work branch> <home>/worktrees/<repo>/<work-branch> origin/<target>`.
 5. **`cd` into it and confirm** before doing anything else: `git rev-parse --show-toplevel`, `git branch --show-current`, and `git status --short` (must be clean). Every later step - verification commands, sub-agent dispatch, `gh` invocations - runs from this directory.
 6. **Already in a worktree?** Reuse it only when it is dedicated to this task and clean. A worktree carrying unrelated changes is a supervisor-relayed question, not a base to build on. A reused tree keeps its own path; new trees always use the derived home path.
-7. **Set up the environment** the repo requires in a fresh checkout - dependency install, env files, per-worktree services - before Step 4 needs them.
+7. **Set up only the environment permitted by the verification mode.** Inspect setup recipes and lifecycle scripts before execution; a convenience setup may invoke migrations, generators or builds forbidden in CI-only mode. Bootstrap the pinned dependencies and normal hook separately when needed. Confirm the configured hook dispatcher and required executables actually exist before committing: a fresh worktree can otherwise make an ordinary commit silently omit its intended hook. Never disable hooks to avoid this prerequisite.
 
 Log the intake block to the supervisor ledger, then continue without waiting (no phase-gate approval):
 
@@ -249,9 +257,7 @@ Parallelize as much as the file graph allows, and not one step further.
    Send the whole wave in a single message so the agents actually run concurrently.
    `superpowers:dispatching-parallel-agents` covers the mechanics. The supervisor tracks each
    wave and batches any questions to you.
-4. **Between waves**, confirm the write sets held: `git status --short` should show nothing
-   outside the wave's declared files. A stray file means a slice exceeded its brief - review it
-   before continuing. Commit each landed wave before dispatching the next (constraint 10: small logical commits, message states decision/why) — never batch the whole implementation into one commit at Step 5.
+4. **Between waves**, confirm the write sets held: `git status --short` should show nothing outside the wave's declared files. Review a stray file before continuing. Before any commit whose normal hook formats the workspace, freeze every writer in that worktree, including file-disjoint workers: a whole-tree formatter can touch their files even when the staged slice is narrow. Record the expected HEAD and permitted paths, run the ordinary commit with the approved hook, then inspect both the full committed diff and remaining index/worktree before releasing writers. An empty worktree alone does not prove scope held because the hook may have staged extra changes. Commit each landed wave before dispatching the next; never batch the whole implementation into one commit at Step 5.
 5. **A single-slice task is a single agent, or just do it yourself.** Do not manufacture
    parallelism that the work does not contain.
 
@@ -337,14 +343,11 @@ none of it locally - push (or wait on the existing PR) and read `gh pr checks` i
 line below is then logged as not-run with reason `ci-only mode`, and "re-verify (Step 4b)"
 everywhere in Steps 5-8 means push plus CI green, not a local run.
 
-Bind every result to a commit SHA. Record local `HEAD`, the pushed PR head, and the head attached
-to each required check. In `ci-only` mode, only completed successful checks for the current PR
-head pass; queued, running, missing, or prior-head checks are pending or stale, never green. A
-rebase or version-only advance requires fresh checks on the resulting SHA. Do not reconcile or
-rewrite a branch while its review is active; wait for reviewers, then reconcile and re-run the
-gate. Evidence: `runrecords/pr189-main-metadata-reconcile.md`,
-`runrecords/pr189-190-reconciliation.md`, and `runrecords/feasibility.md` in the SYT-9093 run
-record.
+Validate evidence completeness before provenance: enumerate the expected artifact classes, role identities, transcripts and screenshots, and assert that each required set is present and nonempty. A successful loop over zero files proves nothing. Reuse a completed acquisition only after these checks; serialize foreground and scheduled artifact downloads by repository/run/attempt rather than extracting concurrently into the same directory.
+
+Bind every result to its actual source revision. Compare local `HEAD`, pushed PR head, Actions run metadata, the checkout's recorded `git rev-parse HEAD`, and each artifact's embedded source SHA; a pull-request workflow can retain the synthetic merge SHA in event metadata after checking out the branch head. Preserve mismatched artifact bytes and explain the distinction rather than silently relabeling them or treating them as exact-head proof. A checksum proves bytes, not which source produced them. In `ci-only` mode, only completed successful checks for the current PR head qualify; queued, running, missing, or prior-head checks remain pending or stale. Require fresh checks after any head advance, and keep the head frozen until an active review finishes.
+
+Record test-case results, process exit, workflow-step result and whole-job conclusion separately. Passing test output does not turn a nonzero process exit green; a passing HTTP fixture does not fail merely because a later publication-budget step in the same job fails. A focused qualification pass does not override a failing full-suite gate: inspect the exact broader-run failure and compare execution context before changing source or baselines. Do not assume a new failure has the previous head's cause, widen ceilings to accommodate an unexplained discrepancy, or push unrelated QA polish while the required failure is still untriaged. Diagnose the failing boundary through the repository's canonical runner before changing workflow handling; never swallow an unexplained exit code. Generated references and measurement baselines must come from genuine execution in the authorized mode, not hand-authored approximations or padding. For artifact acquisition, provenance checks and failure attribution, follow `references/ci-evidence.md`.
 
 In this order, fixing until green:
 
@@ -529,8 +532,15 @@ Auto-merge, gated. Merge when every one of these holds - no separate approval ga
 
 Then merge using **the repository's own convention** - read it from
 `git log --merges --oneline -10` and the repo's contributing guide rather than assuming.
-Squash-merge repos: `gh pr merge <PR> --squash --delete-branch`.
-Merge-commit repos: `gh pr merge <PR> --merge --delete-branch`.
+Guard the write with the exact qualified source head:
+- Squash-merge repos: `gh pr merge <PR> --repo <owner/repo> --squash --match-head-commit <qualified-head>`.
+- Merge-commit repos: `gh pr merge <PR> --repo <owner/repo> --merge --match-head-commit <qualified-head>`.
+
+Inspect rules applicable to the actual target branch, not just the repository's ruleset list;
+a queue rule scoped to a different branch does not gate this merge. Read back `state`,
+`mergedAt` and `mergeCommit`, then verify the merge is on the remote target. Defer branch
+and worktree deletion to Step 9 so merge-time CLI cleanup cannot switch a checkout or remove
+state still owned by QA.
 
 For a PR under active review, freeze the coherent pushed head for the full round. Do not rebase
 merely because unrelated main commits arrive between reviewer batches or rounds. At the merge
@@ -559,9 +569,14 @@ Always runs - merged or left open. It proves the change works with real data and
 deck behind. The supervisor owns scheduling it; a QA agent (or yourself for a trivial change)
 executes it.
 
-1. **Pick the target.** Merged: QA runs post-merge against the merge commit (pull the target
-   first) or the deployed env the repo guides name. Left open ("don't merge"): QA runs against
-   the worktree / preview deploy. State which in one line.
+1. **Pick the target.** Merged: QA runs post-merge against the merge commit (fetch the target
+   first without switching another owner's checkout) or the deployed env the repo guides name.
+   Before dispatching CI qualification, inspect existing runs for the exact merge SHA and reuse
+   the repository's automatic push run; a duplicate dispatch can cancel healthy qualification
+   through the workflow's concurrency group. Follow `references/ci-evidence.md` for acquisition.
+   Left open ("don't merge"): QA runs against the worktree / preview deploy. State which in one
+   line. Keep source QA, image publication and deployed endpoint availability separate; a
+   through-main mandate does not silently authorize deployment repair or new authentication.
 2. **Determine how to prove it - do not guess.** The QA prompt MUST instruct the agent to read
    the task, the consensus slice table, the PR diff, and the repo's guides, then decide the
    smallest real-data proof that exercises the changed path end to end: real requests against a
@@ -614,9 +629,19 @@ executes it.
    work branch still exists and is unmerged, also commit the deck + assets to it and push so it
    rides the PR. Optional: link both paths from the PR or Linear ticket. Only when (a) - and (b)
    where applicable - is done is the deck delivered.
-7. **Then clean up only if merged AND the deck is delivered.** The repo's own recipe when it
+7. **Close tracking only after QA and delivery.** Through the user's selected tracker connection,
+   read the exact issue and verify its acceptance, then publish one deduplicated completion
+   receipt and read back both status and comment. If merge automation marks it Done before
+   required QA/deck delivery, retain a nonterminal status with the actual remaining gates;
+   automated closure is not evidence those gates ran. Record production availability as a
+   separate proven, pending or out-of-scope result rather than reopening completed source work.
+8. **Then clean up only if merged AND the deck is delivered.** The repo's own recipe when it
    has one (warlock: `just delete-worktree <name>`), otherwise `git worktree remove <path> &&
    git worktree prune` from outside the worktree. "Don't merge" always keeps the worktree.
+   Keep the tree while a worker still owns it; report a retained tree explicitly. After the
+   qualified merge and QA/deck delivery are independently verified, remove only this task's
+   scheduled watcher and read back its absence. Request the native supervisor's final report
+   and clean exit separately; stopping a watcher does not prove the runner or workers exited.
 
 ```
 qa:      <target: post-merge <sha/env> | worktree/preview>
@@ -628,6 +653,13 @@ deck:    <absolute copy-out path + worktree-relative path> (assets: <paths>)
 ```
 
 ## Final Report
+
+Keep routine heartbeat and unchanged-check updates in the ledger; internal liveness notices do
+not require a user-facing status message. Give the user a short completion report with the PR,
+merge SHA, verification/QA outcome, deliverable attachment and residual limits. Preserve the
+full block below in a durable handoff and link it when useful rather than replaying the process
+or pasting every receipt into chat. Distinguish completed acceptance from any remaining native
+report/worker housekeeping; do not claim those processes stopped without an exit receipt.
 
 ```
 task:      <ticket id or summary>

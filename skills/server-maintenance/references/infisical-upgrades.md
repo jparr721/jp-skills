@@ -1,0 +1,11 @@
+# Infisical Docker Compose upgrades
+
+- Resolve deployment from container Compose labels; inspect selected fields only. Do not print `docker inspect` environments or resolved Compose configuration wholesale: they contain database passwords and encryption keys.
+- Resolve latest stable through GitHub releases API, then pin that exact image tag. Review official upgrade docs, intervening release notes, and `upgrade-impact/data/index.yaml` plus indexed release YAML. Impact YAML may lag releases or omit changes; cross-check release notes and applicable target source/docs.
+- Preserve `.env`, especially ENCRYPTION_KEY and AUTH_SECRET. Do not rotate keys or upgrade PostgreSQL/Redis as incidental image-maintenance changes.
+- Create a root-only backup directory, copy Compose/.env/proxy configuration with mode 600, and create a PostgreSQL custom-format dump. Validate both TOC and full decompression; test restore into an explicitly named disposable database and remove only that database afterward. Never print secret rows.
+- Pull and inspect the pinned image before interruption. Stop only backend, take a final consistent dump, update only its image tag, validate Compose, then `up -d --no-deps backend`. Preserve dependencies and volumes.
+- Wait for explicit migration completion in startup logs, not merely HTTP readiness. Compare exact core record counts and investigate migration failures/skipped records. Review warnings without exposing request bodies, tokens or environment values.
+- Verify local application health, Redis/Postgres, Caddy/proxy and intended client HTTPS route; verify target frontend assets render. Authenticated login and existing-secret decryption/history access require a genuine user session—never manufacture a session/token or reset credentials for testing.
+- Treat backup removal as a separate conditional action. When user authorizes removal only after everything works, retain backup until authenticated acceptance is established; explain the outstanding check if no session is available. Delete only this run's backup, verify absence, and log deletion.
+- Rollback after migrations requires matching pre-upgrade database restore AND old image, not just reverting image tag.

@@ -2,3 +2,5 @@
 .superpowers/
 node_modules/
 extensions/startup/coverage/
+__pycache__/
+*.py[cod]
