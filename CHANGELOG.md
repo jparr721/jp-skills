@@ -2,6 +2,23 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.8.0] - 2026-10-27
+
+### Added
+
+- `ask`: hand-invoked codebase conversation with source-grounded answers, follow-up discussion, and explicit read-only boundaries. `/ask` (OMP: `/skill:ask`) does not edit files, run builds/tests, create tickets, or start implementation unless the user explicitly leaves discussion mode.
+- Six offline contract checks for Ask's invocation, persistence, evidence requirements, read-only boundaries, catalog entry, and selected-profile Hermes upgrade guidance; an executable regression test checks both documented link commands against existing directories, files, valid/dangling links, repeat runs and a selected Hermes profile.
+
+### Changed
+
+- Upgrades now include the selected Hermes profile alongside the five existing harness registries. Preserve real local skills and other profiles, detect local shadowing of external skills, and verify actual discovery rather than symlink existence alone. Installation documentation includes Hermes.
+- Upgrade preflight distinguishes an installed Herdr binary from an active Herdr session; recommend installation only when the binary is missing.
+
+### Verification
+
+- 23 Python skill/storage tests, 6 Python Startup driver tests, Startup TypeScript checking, and all 641 Startup tests (3072 assertions) pass locally.
+- The installed Hermes skill loader discovers `ask` from the shared checkout and reports it available. Contract tests check instructions, not a technical tool sandbox; no installed Startup runtime changes or session restarts are claimed.
+
 ## [7.7.0] - 2026-10-26
 
 ### Added

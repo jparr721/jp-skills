@@ -44,6 +44,7 @@ Startup family (roles + procedures):
 
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
+| [`ask`](skills/ask/SKILL.md) | Talk about the codebase: explain behavior, trace flows, compare approaches, and answer follow-up questions. Hand-invoked with `/ask` (OMP: `/skill:ask`); stays in discussion mode until explicitly ended. | Read-only discussion, no edits or execution |
 | [`topic-research`](skills/topic-research/SKILL.md) | Deciding whether prior art, libraries, or battle-tested software already solve a task before committing to a custom plan. | Read-only |
 
 ### Audits & review
@@ -83,7 +84,7 @@ Startup family (roles + procedures):
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (7.7.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (7.8.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
@@ -91,7 +92,7 @@ Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.co
 
 ## Upgrading
 
-Run the [`upgrading-jp-skills`](skills/upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks all five harness registries, stamps `installed_version`. Every upgrade also checks private-storage migration: assume `gh` is installed and authenticated, ask once for the repo name (default `jp-skills-storage`), have the agent create/clone it privately, import and verify legacy records, then commit/reconcile/push. Migration is tracked separately from the installed skill version; legacy files remain recovery copies. See [private storage](skills/server-maintenance/references/private-storage.md).
+Run the [`upgrading-jp-skills`](skills/upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks all six harness registries (including the selected Hermes profile), stamps `installed_version`. Every upgrade also checks private-storage migration: assume `gh` is installed and authenticated, ask once for the repo name (default `jp-skills-storage`), have the agent create/clone it privately, import and verify legacy records, then commit/reconcile/push. Migration is tracked separately from the installed skill version; legacy files remain recovery copies. See [private storage](skills/server-maintenance/references/private-storage.md).
 
 ## Private ledger storage
 
@@ -128,15 +129,24 @@ Link a skill directory into the registry for each harness you use. Symlinks keep
 | Codex | `~/.codex/skills/` |
 | Pi | `~/.pi/agent/skills/` |
 | Oh My Pi (`omp`) | `~/.omp/agent/skills/` |
+| Hermes | `${HERMES_HOME:-~/.hermes}/skills/` (selected profile only) |
 
 ## Link A Skill
 
 ```bash
-ln -s "$PWD/skills/<skill-name>" ~/.claude/skills/<skill-name>
-ln -s "$PWD/skills/<skill-name>" ~/.agents/skills/<skill-name>
-ln -s "$PWD/skills/<skill-name>" ~/.codex/skills/<skill-name>
-ln -s "$PWD/skills/<skill-name>" ~/.pi/agent/skills/<skill-name>
-ln -s "$PWD/skills/<skill-name>" ~/.omp/agent/skills/<skill-name>
+skill='<skill-name>'
+[ -f "skills/$skill/SKILL.md" ] || exit 1
+for registry in "$HOME/.claude/skills" "$HOME/.agents/skills" \
+  "$HOME/.codex/skills" "$HOME/.pi/agent/skills" "$HOME/.omp/agent/skills" \
+  "${HERMES_HOME:-$HOME/.hermes}/skills"; do
+  mkdir -p "$registry" || continue
+  dest="$registry/$skill"
+  if [ -e "$dest" ] || [ -L "$dest" ]; then
+    printf 'Preserved existing entry; verify target: %s\n' "$dest"
+  else
+    ln -s "$PWD/skills/$skill" "$dest"
+  fi
+done
 ```
 
 ## Link Everything
@@ -146,15 +156,22 @@ for d in skills/*/; do
   skill="${d%/}"
   skill="${skill#skills/}"
   [ -f "skills/$skill/SKILL.md" ] || continue
-  ln -s "$PWD/skills/$skill" ~/.claude/skills/$skill 2>/dev/null
-  ln -s "$PWD/skills/$skill" ~/.agents/skills/$skill 2>/dev/null
-  ln -s "$PWD/skills/$skill" ~/.codex/skills/$skill 2>/dev/null
-  ln -s "$PWD/skills/$skill" ~/.pi/agent/skills/$skill 2>/dev/null
-  ln -s "$PWD/skills/$skill" ~/.omp/agent/skills/$skill 2>/dev/null
+  for registry in "$HOME/.claude/skills" "$HOME/.agents/skills" \
+    "$HOME/.codex/skills" "$HOME/.pi/agent/skills" "$HOME/.omp/agent/skills" \
+    "${HERMES_HOME:-$HOME/.hermes}/skills"; do
+    mkdir -p "$registry" || continue
+    dest="$registry/$skill"
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+      printf 'Preserved existing entry; verify target: %s\n' "$dest"
+    else
+      ln -s "$PWD/skills/$skill" "$dest"
+    fi
+  done
 done
 ```
 
 Restart `omp` after adding or removing skills so discovery runs again.
+For Hermes, `/reload-skills` refreshes slash commands; a new session discovers the full catalog. Existing `skills.external_dirs` entries are also supported, but same-name local skills take precedence. Preserve real directories rather than overwriting them when linking.
 
 ## Verify A Link
 
@@ -164,6 +181,7 @@ ls -la ~/.agents/skills/<skill-name>
 ls -la ~/.codex/skills/<skill-name>
 ls -la ~/.pi/agent/skills/<skill-name>
 ls -la ~/.omp/agent/skills/<skill-name>
+ls -la "${HERMES_HOME:-$HOME/.hermes}/skills/<skill-name>"
 ```
 
 ## Unlink A Skill
@@ -174,6 +192,7 @@ rm ~/.agents/skills/<skill-name>
 rm ~/.codex/skills/<skill-name>
 rm ~/.pi/agent/skills/<skill-name>
 rm ~/.omp/agent/skills/<skill-name>
+rm "${HERMES_HOME:-$HOME/.hermes}/skills/<skill-name>"
 ```
 
 Removing a symlink does not remove the source skill directory.
