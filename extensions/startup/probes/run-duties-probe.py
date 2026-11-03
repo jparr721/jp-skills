@@ -68,7 +68,7 @@ def main():
         report = json.loads((workspace/'report.json').read_text()) if (workspace/'report.json').exists() else {'status':'MISSING'}
         evidence.update({'events':[json.loads(line) for line in (workspace/'events.jsonl').read_text().splitlines()] if (workspace/'events.jsonl').exists() else [],'transcripts':{str(path):path.read_text() for path in (workspace/'profile').rglob('*.jsonl')},'report':report,'exitCode':exit_code,'stderr':(workspace/'stderr.txt').read_text(),'stdout':(workspace/'stdout.jsonl').read_text()})
         paths = [repo/'extensions/startup/index.ts', *sorted((repo/'extensions/startup/src').glob('*.ts')), Path(__file__), Path(__file__).with_name('native-duties.ts'), Path(__file__).with_name('native-adapter.ts')]
-        paths += [Path(__file__).with_name('probe_workspace.py'), *sorted((repo/'skills').glob('startup*/**/*.md'))]
+        paths += [Path(__file__).with_name('probe_workspace.py'), *sorted((repo/'skills').glob('jp-startup*/**/*.md'))]
         evidence['sourceHashes'] = {str(path.relative_to(repo)):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
         results = report.get('results', [])
         evidence['checks'] = {'complete': report['status']=='COMPLETE' and exit_code==0, 'five_raw_reads':len(results)==5, 'raw_display':len(results)==5 and all(json.loads(result['details']['displayContent']['text'])=={'healthy':True} for result in results), 'complete_metadata':len(results)==5 and all(result['details']['fileSize']==17 and result['details']['totalLines']==2 and result['details']['displayContent']['startLine']==1 for result in results)}
@@ -83,7 +83,7 @@ def main():
                 evidence['checks'].update({'same_root':report['rootSession']==evidence['previous']['rootSession'],'staff_retained':report['employee']['id']==evidence['previous']['employee']['id'],'no_false_initial_health':first['currentHealth']=='unknown','new_owner_observation':last['lastObservation']['ownerEpoch']>=2})
         projections=[message['content'] for row in evidence['events'] if row['kind']=='provider' for message in row['context']['messages'] if message['role']=='developer' and isinstance(message['content'],str) and message['content'].startswith('STARTUP_BINDING=')]
         if args.scenario != 'raw':
-            evidence['checks']['canonicalSources']=bool(projections) and all((repo/'skills/startup-loop/SKILL.md').read_text() in text and any((repo/'skills'/f'startup-role-{role}'/'SKILL.md').read_text() in text for role in ['manager','devops']) for text in projections)
+            evidence['checks']['canonicalSources']=bool(projections) and all((repo/'skills/jp-startup-loop/SKILL.md').read_text() in text and any((repo/'skills'/f'jp-startup-role-{role}'/'SKILL.md').read_text() in text for role in ['manager','devops']) for text in projections)
         evidence['status'] = 'PASS' if all(evidence['checks'].values()) else 'FAIL'
         return 0 if evidence['status']=='PASS' else 1
     except BaseException as error:

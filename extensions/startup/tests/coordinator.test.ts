@@ -463,6 +463,27 @@ test("boot requires a source-bound PA and reserves one permanent PA on retries",
   expect(f.store.snapshot().teams).toHaveLength(0);
 });
 
+test("a saved manager launch is fenced when its canonical source changes without rewriting its receipt", async () => {
+  const f = fixture(8);
+  const skillsRoot = join(f.root, "isolated-skills");
+  for (const name of ["jp-startup-role-manager", "jp-startup-role-pa", "jp-startup-loop"]) {
+    const directory = join(skillsRoot, "skills", name);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, "SKILL.md"), `Canonical ${name}`);
+  }
+  f.config.skillsRoot = skillsRoot;
+  await f.coordinator.start();
+  const before = f.store.runtimeBindings();
+  const manager = before.find((entry) => entry.employeeId === "manager");
+  if (!manager) throw new Error("Missing manager launch");
+  const manifest = join(f.config.stateDirectory, "launches", `${manager.launchId}.json`);
+  const receipt = readFileSync(manifest, "utf8");
+  writeFileSync(manager.source.rolePath, "Unapproved changed manager source");
+  await expect(f.coordinator.start()).rejects.toThrow("Saved launch source differs");
+  expect(f.store.runtimeBindings()).toEqual(before);
+  expect(readFileSync(manifest, "utf8")).toBe(receipt);
+});
+
 test("generated employee bootstrap imports without native OMP package aliases", async () => {
   const f = fixture(8);
   await f.ready();

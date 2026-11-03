@@ -4,7 +4,7 @@ import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = ROOT / 'skills/filing-agent-tasks'
+SKILL = ROOT / 'skills/jp-filing-agent-tasks'
 
 
 class FilingAgentTasksSkillTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class FilingAgentTasksSkillTests(unittest.TestCase):
     def test_frontmatter_and_portability(self):
         self.assertTrue(self.content.startswith('---\n'))
         self.assert_contains_all(self.frontmatter, (
-            '\nname: filing-agent-tasks\n', 'version: 0.1.0',
+            '\nname: jp-filing-agent-tasks\n', 'version: 0.1.0',
             'author: Jarred Parr (jparr721), Hermes Agent',
             'license: MIT', 'platforms: [linux, macos, windows]',
         ))
@@ -39,12 +39,11 @@ class FilingAgentTasksSkillTests(unittest.TestCase):
             '## When to Use', '## Prerequisites',
             '## Procedure', '## Readiness gate', '## Pitfalls',
             '## Verification and handoff', '## Framework tail',
-            '../cleanup/SKILL.md', 'templates/task.md',
-            '/filing-agent-tasks', '/skill:filing-agent-tasks',
+            '../jp-cleanup/SKILL.md', 'templates/task.md',
         ))
-        self.assertTrue((SKILL / '../cleanup/SKILL.md').is_file())
+        self.assertTrue((SKILL / '../jp-cleanup/SKILL.md').is_file())
         self.assertEqual((ROOT / 'README.md').read_text().count(
-            '[`filing-agent-tasks`](skills/filing-agent-tasks/SKILL.md)'), 1)
+            '[`jp-filing-agent-tasks`](skills/jp-filing-agent-tasks/SKILL.md)'), 1)
 
     def test_full_intake_and_batch_accounting(self):
         self.assert_contains_all(self.body, (

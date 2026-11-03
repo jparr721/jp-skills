@@ -150,7 +150,7 @@ After a boot attempt, failed or incomplete admission blocks native and Startup t
 
 The hierarchy is manager -> owning architect -> dev/QA. PA and shared DevOps report to manager. Each event has an immutable team with one architect, one QA and one or more devs, grouped in one tab. Admission must verify every member before work claims become ready. On Herdr, a complete, finished, idle crew can be explicitly reused for another event with a fresh assignment/generation; Tern does not support crew reuse. Membership history is retained.
 
-Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md), assigned role and [shared loop](../../skills/startup-loop/SKILL.md). Native `task` remains OMP's bounded-helper tool. It is not overridden with Startup staffing modes. Helpers receive no employee admission and their factories install the employee-tool denial guard before attachment.
+Load the complete canonical [manager](../../skills/jp-startup-role-manager/SKILL.md), assigned role and [shared loop](../../skills/jp-startup-loop/SKILL.md). Native `task` remains OMP's bounded-helper tool. It is not overridden with Startup staffing modes. Helpers receive no employee admission and their factories install the employee-tool denial guard before attachment.
 
 ### Public employee tools
 
@@ -191,7 +191,7 @@ OMP reports supported live model/effort and cached catalog through the authentic
 
 Item assignment delivers its `evidence` verbatim as the current `directive`, separately from the original intake `snapshot`, and identifies the owning architect as `reportTo`. Put executable rework scope and acceptance in that directive. Dev assignment settlement atomically creates a linked `item-result` report to that architect even with `outgoing: []`; receipt replay cannot duplicate it. The dev still submits `startup_item review` with its saved completed result. Own-poll state supplies `STARTUP_ITEM_REVIEW` with the result ID/current revision and a continuation until review or explicit block. Questions and uncertainty retain their existing reconciliation procedures. Automatic reporting changes no approval authority.
 
-Result shape is `{id,kind,output,checkpoint,outgoing}`, with kind `completed`, `question` or `uncertain`. Outgoing cues use `{id,recipient,kind,correlation,payload}`. A question acknowledges its cue but retains the waiting assignment; an answer is not the original completed result. Follow [queue records](../../skills/startup-intake/references/queue-records.md) for block/decision, reconciliation, explicit resolution and a new attempt.
+Result shape is `{id,kind,output,checkpoint,outgoing}`, with kind `completed`, `question` or `uncertain`. Outgoing cues use `{id,recipient,kind,correlation,payload}`. A question acknowledges its cue but retains the waiting assignment; an answer is not the original completed result. Follow [queue records](../../skills/jp-startup-intake/references/queue-records.md) for block/decision, reconciliation, explicit resolution and a new attempt.
 
 Settlement selects the single outstanding claim inside the store transaction; agents do not copy claim UUIDs. The original result ID and exact payload recover a saved receipt even after another claim is active. Changed payload under the same result ID is rejected. Old clients may still send an explicit claim ID, or the literal `"current"` to select their own claim without copying it; an incorrect explicit ID is never silently corrected.
 
@@ -222,6 +222,14 @@ Employee boot failures are handled inside the native hook, leave the pane intera
 ## State and recovery boundaries
 
 State is under `<home>/startup/NAME/`: `binding.json`, `staff.sqlite`, canonical queue/resource files, private `runtime-config.json`, `runtime-launch.json`, `runtime-launch.lock`, the recovery-only `runtime-rebind.json` journal, generated `launches/` manifests/bootstraps and `runtime.log`. Private runtime files are owner-only. Business history and runtime effects share the fenced store; lifecycle is observation evidence, not an alternate work log.
+
+### V8 skill-name cutover and existing Startups
+
+V8 uses `jp-startup-role-*` and `jp-startup-loop`. Existing V7 launch manifests, source receipts and native generations retain their original absolute source paths and hashes. The runtime does not rewrite those records or treat renamed or changed sources as equivalent; an old manager or employee may therefore be fenced after upgrade. `startup_refresh` is for an idle non-manager and cannot migrate the manager. There is currently no supported in-place V7-to-V8 source-identity migration.
+
+To preserve an existing Startup without editing its database, manifests or binding, first stop and independently reconcile its manager, coordinator and employee processes and any uncertain work; do not run the old and new Startups concurrently against the same work. In a fresh supported manager session, with `STARTUP_ROOT` unset or explicitly set to a **different, unused** root, use `/startup new NEW_NAME --dir "BOUND_DIRECTORY"`. Select that new Startup explicitly by name on later boots. If the old and new bindings share a bound directory, unnamed discovery sees multiple bindings, including archived ones, and refuses to choose. The new root is independent: staff, queue, claims, credentials and history are **not** transferred. Preserve the old root for inspection and reconcile or re-enter work deliberately; this is a fresh start, not a migration.
+
+The separate owner `archive` operation records an archive in the old root; it is not byte-preserving, requires its existing safety checks, and is not necessary merely to leave that root untouched. Neither archiving nor creating a new root proves old native processes are absent.
 
 - V7 uses a distinct store host scope ending in `:startup-v7`. Existing V6 databases are refused even after their owner lease expires. There is no automatic scope rewrite or state import.
 - Configured V6 duties block V7 startup. V7 does not expose V6 duty, filesystem repair, repair-authorization or grant-verification parity. Preserve that state for a separately designed migration.

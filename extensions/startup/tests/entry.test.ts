@@ -57,7 +57,7 @@ afterEach(() => {
 function entryFixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "startup-entry-")));
   directories.push(root);
-  for (const name of ["startup-role-manager", "startup-loop"]) {
+  for (const name of ["jp-startup-role-manager", "jp-startup-loop"]) {
     const path = join(root, "skills", name);
     mkdirSync(path, { recursive: true });
     writeFileSync(join(path, "SKILL.md"), "Complete fixture canonical source");
@@ -625,7 +625,7 @@ test("recovery permits only the admitted native duty verification read through e
       }),
     ).rejects.toThrow("failed assigned acceptance");
     expect(guard(lastRead, ctx)).toMatchObject({ block: true });
-    const loopPath: string = join(root, "skills/startup-loop/SKILL.md");
+    const loopPath: string = join(root, "skills/jp-startup-loop/SKILL.md");
     const original: string = readFileSync(loopPath, "utf8");
     writeFileSync(loopPath, "changed canonical loop");
     await expect(

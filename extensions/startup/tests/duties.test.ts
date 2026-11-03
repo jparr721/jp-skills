@@ -51,9 +51,9 @@ function fixture() {
   });
   function source(role: string) {
     return {
-      rolePath: `/skills/startup-role-${role}/SKILL.md`,
+      rolePath: `/skills/jp-startup-role-${role}/SKILL.md`,
       roleRevision: "rev",
-      loopPath: "/skills/startup-loop/SKILL.md",
+      loopPath: "/skills/jp-startup-loop/SKILL.md",
       loopRevision: "loop",
     };
   }

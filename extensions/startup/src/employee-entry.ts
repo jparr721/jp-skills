@@ -75,7 +75,7 @@ export async function paneEnvironment(environment: Environment, backend: "herdr"
   return { backend: "herdr", ...location, profile };
 }
 function verifyManifest(manifest: LaunchManifest): Profile {
-  const role = roleSchema.parse(basename(dirname(manifest.source.rolePath)).replace(/^startup-role-/, ""));
+  const role = roleSchema.parse(basename(dirname(manifest.source.rolePath)).replace(/^jp-startup-role-/, ""));
   const profile = loadProfile({ skillsRoot: manifest.skillsRoot, role, employeeId: manifest.employeeId, generation: manifest.generation });
   verifyProfile(profile);
   if (encode(profile.source) !== encode(manifest.source)) throw new StartupBootError("Canonical source hashes differ from the launch manifest");

@@ -127,7 +127,7 @@ export default function bootProof(pi: ExtensionAPI): void {
           ? "manager"
           : context.systemPrompt
               .join("\n")
-              .match(/name: startup-role-([a-z]+)/)?.[1];
+              .match(/name: jp-startup-role-([a-z]+)/)?.[1];
       record({
         kind: "provider",
         binding,
@@ -138,7 +138,7 @@ export default function bootProof(pi: ExtensionAPI): void {
                 join(
                   env("STARTUP_BOOT_SOURCES"),
                   "skills",
-                  `startup-role-${role}`,
+                  `jp-startup-role-${role}`,
                   "SKILL.md",
                 ),
                 "utf8",
@@ -147,7 +147,7 @@ export default function bootProof(pi: ExtensionAPI): void {
           : false,
         loopComplete: text.includes(
           readFileSync(
-            join(env("STARTUP_BOOT_SOURCES"), "skills/startup-loop/SKILL.md"),
+            join(env("STARTUP_BOOT_SOURCES"), "skills/jp-startup-loop/SKILL.md"),
             "utf8",
           ),
         ),

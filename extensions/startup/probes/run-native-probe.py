@@ -70,9 +70,9 @@ def main() -> int:
     agents = cwd / ".omp" / "agents"
     agent_dir.mkdir()
     agents.mkdir(parents=True)
-    role_path = repo / "skills/startup-role-devops/SKILL.md"
+    role_path = repo / "skills/jp-startup-role-devops/SKILL.md"
     role = role_path.read_text()
-    loop = (repo / "skills/startup-loop/SKILL.md").read_text()
+    loop = (repo / "skills/jp-startup-loop/SKILL.md").read_text()
     (agents / "startup-probe-devops.md").write_text(
         '---\nname: startup-probe-devops\ndescription: Isolated local health fixture\n'
         'model: startup-probe/offline\ntools: [read]\nblocking: false\nread-summarize: false\n---\n' + role
@@ -126,7 +126,7 @@ def main() -> int:
         "officialSourceCommit": "fa5ff4a3a977a28b93d025f4cf50f046e019f18c",
         "command": command, "exitCode": exit_code, "stderr": (workspace / "stderr.txt").read_text(),
         "report": None, "reportRaw": None, "eventsRaw": None, "events": [], "nativeTranscripts": [],
-        "roleSource": "skills/startup-role-devops/SKILL.md",
+        "roleSource": "skills/jp-startup-role-devops/SKILL.md",
         "roleSha256": hashlib.sha256(role.encode()).hexdigest(), "loopSha256": hashlib.sha256(loop.encode()).hexdigest(),
         "deniedMutationExists": (cwd / "denied-mutation.txt").exists(),
         "healthUnchanged": health_path.read_text() == '{"target":"local-health","healthy":true,"revision":1}\n',

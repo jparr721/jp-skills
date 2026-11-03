@@ -1,0 +1,704 @@
+---
+name: jp-pipeline
+description: Drive one ticket, bug fix or feature end-to-end in a dedicated worktree through review, merge and verified QA.
+---
+
+# Pipeline
+
+
+## Overview
+
+You drive **one** unit of work from intake to proven QA, with a supervisor agent watching the whole way.
+The sequence is **INTAKE -> WORKTREE+CREW -> PARTY PLAN -> IMPLEMENT -> PR -> REVIEW -> SIMPLIFY -> MERGE -> QA+DECK**. A factory may defer review and landing to its final cross-queue review; its ticket pipeline still implements, verifies and proves QA.
+
+### Work hierarchy
+
+Before dispatch, read the shared authority at the installed `jp-pipeline` skill's `references/workflow-policy.md`, or `$JP_SKILLS_REPO/skills/jp-pipeline/references/workflow-policy.md`. Apply its scope, crew and inherited per-change review budget throughout this run.
+
+For a standalone pipeline, the Step 1 supervisor owns the run and is the sole user contact:
+workers route questions to it via `hub`; it batches questions and returns the final report.
+
+Step 2 uses BMAD party deliberation when a detailed plan is absent; Step 3 uses per-slice plans with cross-review and auto-proceeds.
+
+**Activation.** When this skill activates, open with exactly this line as a header, in the same turn as the first Step 1 action (git state + worktree + supervisor spawn) — never end a turn on the line alone: `Oh yeah, it's piping time! 🚀🔧🎉🤖💥`
+Stall rule: no user-visible progress within ~2 min of activation → emit the intake block and continue without waiting.
+
+**Non-negotiable constraints:**
+
+1. **Always work in a dedicated worktree.** Every run gets its own git worktree for this task
+   and no other. Never implement in the user's primary checkout, never reuse a worktree that
+   holds another task's work. Step 1 creates it before any file is touched.
+2. **Honor the shared review budget.** Step 6 runs the full fight on the pushed diff within the inherited per-change cap, at most two for a standalone pipeline. Stop at the first APPROVE; an enclosing factory may defer the review to its cross-queue review.
+3. **Always finish with a simplification pass.** Once the review loop ends, `jp-code-simplifier`
+   runs over the whole PR diff and its proven-equivalent candidates are applied (Step 7).
+   The rounds' shape notes see one round's increment; this pass sees the finished
+   change as a whole. It is re-verified against the Step 4b gate in the chosen mode, not re-reviewed -
+   that would breach the cap.
+4. **Local verification runs only with permission.** CI runs a deliberately trimmed
+   lane. The full local gate (every typecheck, every test suite in every workspace -
+   including the lanes CI skips - and every build) runs locally ONLY if you said so when the
+   supervisor asked. Before the first verification run, the supervisor batches you one question:
+   run the full gate locally, or keep verification to CI only (typechecks, tests, builds, and
+   generators all included in the question). The answer is recorded as `verify-mode: local |
+   ci-only` and governs Steps 4-8. A green PR is a floor, not the bar - in ci-only mode the
+   report says so explicitly instead of implying local proof.
+5. **Never merge red.** The gate in the chosen mode green on the final commit, CI green, and zero
+   remaining must-fix items, or no merge. In ci-only mode the merge gate is CI
+   green on the exact commit plus APPROVE verdicts; nothing claims local proof that never ran.
+6. **Never bypass repository hooks.** No `--no-verify`, no `HUSKY=0`, no `core.hooksPath`
+   change, no equivalent. Record whether CI-only permission explicitly includes the normal
+   lint/format commit hook; that exception never authorizes separate local tests, typechecks,
+   builds or generators. On hook failure, stop the publication sequence and preserve its log,
+   HEAD, index and worktree. Route a bounded source repair to the assigned writer, freeze the
+   repaired wave, then retry the ordinary hook; escalate only when repair needs new authority
+   or cannot proceed. Never suppress the rule, weaken configuration, or treat an authored fix
+   as proof that the retry passed.
+7. **No silent scope creep.** Work that grows past the task's scope becomes a follow-up
+   ticket, never an inline expansion of this PR.
+8. **One supervisor, sole user contact.** Step 1 spawns a supervisor agent that owns the ledger
+   (slices, waves, verify results, review rounds, QA) for the whole run. Worker agents never
+   message you directly; they send questions to the supervisor via `hub`, and the supervisor
+   batches them to you. Phase-boundary status lives in the supervisor ledger; it surfaces to
+   you only as batched questions, stop-and-reports, and the final report. Foreground and scheduled
+   management share this ownership: before resuming a queued commit, merge, push or worker
+   continuation, read the current ledger/operation receipt and actual git state, then verify
+   the exact remote target. Acquire sole publication ownership and compare the expected HEAD
+   and allowed paths before writing. If another manager already advanced HEAD, inspect its
+   commits and remote readback instead of replaying the stale request; an empty diff can mean
+   completed publication, not lost work. Reuse the canonical receipt and avoid duplicate queue
+   messages, since concurrent managers can otherwise publish or resume the same wave twice.
+9. **Always prove it with real data and a deck.** Step 9 QA runs on every pipeline, pre- or
+   post-merge per Step 9, and produces a slide deck of the change. No pipeline is done without
+   the QA block and deck path in the final report.
+10. **Commit early and often; preserve the trail.** Per completed slice/wave, per review-round fix batch, per green gate — small logical commits per repo convention (`git log --oneline -10`), message states decision/why. Step 5 organizes leftover uncommitted work only, never rewrites existing commits. Squash-merge at merge time does not excuse a single-commit branch during the run — branch history is the debug trail (`git log`, `git bisect`).
+11. **Stack when the caller passes a stack parent.** `target <branch>` may name a parent branch, not the repo default — open with `--base <target>` when it does. While the parent is open, on caller instruction after it pushes: `git fetch origin <parent> && git rebase origin/<parent>`, force-push the branch only (base stays `<parent>`). After the parent merges (branch deleted): rebase onto the merge line and `gh pr edit --base <merge-target>` — never retarget onto the deleted parent. Single-task direct use stays flat on the repo default.
+
+## Arguments
+
+The prompt is whatever follows `/pipeline`. It can be:
+
+| Input | Example |
+|-------|---------|
+| A Linear ticket id | `/pipeline SYT-5891` |
+| A path to a plan or spec | `/pipeline implement docs/superpowers/plans/2026-08-28-foo.md` |
+| A free-form task | `/pipeline the vendors page scrolls the body instead of the inner pane` |
+
+Optional overrides, stated in plain language inside the prompt:
+
+| Override | Effect |
+|----------|--------|
+| "don't merge" / "just open the PR" | Stop the code path after the review loop; Step 9 QA then runs against the worktree/preview instead of post-merge. Report the PR URL plus the QA block and deck. |
+| "target `<branch>`" | Base the PR on `<branch>` instead of the repo default. |
+| "skip planning" | Force PARTY PLAN to be skipped. Use only when the plan is genuinely already written (names behavior, affected areas, acceptance criteria). |
+| "N review rounds" | Select up to two, subject to any stricter inherited per-change cap. Record the cap before review; it cannot be raised by a nested run. |
+| "verify-mode `<local\|ci-only>`" | Preset the Step 4 answer instead of asking. `jp-dark-factory` uses this to propagate one shared answer to every ticket pipeline. |
+| "skip the simplify pass" | Skip Step 7. The per-round shape notes still run. |
+| "use worktree `<path>`" | Reuse an existing worktree instead of creating the default `<home>/worktrees/<repo>/<branch>` one (Step 1b). It must be dedicated to this task and clean. |
+| "skip QA" | NEVER honored. Step 9 always runs. If the prompt asks for it, say so and run QA anyway. |
+| "auth token `<cookie\|session>`" | Pre-supply the QA auth token (session cookie, bearer token, authed session value). Held by the supervisor, passed to Step 9 via env, never written to files or logs. Asking is skipped when it works; if it is missing, expired, or lacks scope, the supervisor asks for a fresh one. `jp-dark-factory` propagates one token to every ticket pipeline. |
+
+## Process Flow
+
+```dot
+digraph pipeline {
+  rankdir=LR;
+  intake  [label="Step 1\nINTAKE\nclassify input\n+ spawn supervisor" shape=doublecircle];
+  wt      [label="Step 1b\nWORKTREE\nisolated checkout\n+ work branch" shape=box];
+  planq   [label="Detailed plan\nalready exists?" shape=diamond];
+  plan    [label="Step 2\nPARTY PLAN\nBMAD deliberation\n+ club -> consensus\nslices + todos" shape=box];
+  impl    [label="Step 3\nIMPLEMENT\nfile-disjoint\nparallel agents"];
+  verify  [label="Step 4\nVERIFY\nfull local gate:\nall typechecks, all suites\nincl. CI-skipped lanes,\nall builds" shape=box];
+  pr      [label="Step 5\nPR\ncommit-and-push"];
+  review  [label="Step 6\nREVIEW\nshared budget"];
+  clean   [label="APPROVE or\nbudget exhausted?" shape=diamond];
+  open    [label="Findings still\nopen at the cap?" shape=diamond];
+  simp    [label="Step 7\nSIMPLIFY\ncode-simplifier\nover the whole diff\n(re-verify + push,\nno extra round)"];
+  green   [label="CI green?" shape=diamond];
+  merge   [label="Step 8\nMERGE" shape=box];
+  qa      [label="Step 9\nQA + DECK\nreal-data proof\n+ slide deck" shape=box];
+  done    [label="DONE\nfinal report" shape=doublecircle];
+  stop    [label="ESCALATE\nvia supervisor" shape=box];
+
+  intake -> wt -> planq;
+  planq -> plan   [label="no"];
+  planq -> impl   [label="yes"];
+  plan -> impl;
+  impl -> verify -> pr -> review -> clean;
+  clean -> review [label="no: fix, push,\nre-review within budget"];
+  clean -> open   [label="yes"];
+  open -> stop    [label="yes: fix, verify,\npush, report"];
+  open -> simp    [label="no"];
+  simp -> green;
+  green -> merge  [label="yes"];
+  green -> stop   [label="no"];
+  merge -> qa -> done;
+}
+```
+
+## Step 1 - INTAKE
+
+Resolve exactly what is being built and where it lands. Keep this tight.
+
+1. **Classify the input** into ticket / plan-path / free-form.
+2. **If it is a Linear ticket**, fetch it through the user's selected tracker connection; for this user, use Composio rather than direct Linear MCP. Verify the workspace/team, then read the identifier, title, full acceptance, comments, labels, branch name and both incoming/outgoing relations. Inspect the chosen provider's schema: Linear GraphQL exposes `branchName`, while wrappers may name it `gitBranchName`. If the worker cannot retrieve it, have the authorized supervisor perform the same read and supply the actual response before asking the user to paste retrievable content.
+3. **If it is a plan path**, read the file.
+4. **Establish git state**: `git status --short`, `git branch --show-current`,
+   `git log --oneline origin/<target>..HEAD`. A dirty tree unrelated to the task is relayed by
+   the supervisor as a batched question, not swept into the PR.
+5. **Learn the repo's rules before touching anything**: read `AGENTS.md` / `CLAUDE.md` /
+   `CONTRIBUTING.md`, `TESTING.md`, and any per-directory guide covering the files you expect
+   to touch. Extract the merge convention now, and build the **verification surface** per
+   Step 4a - what checks exist, and which of them CI actually runs. Steps 4, 7, and 8 all
+   depend on it, and 4a needs the CI config in front of you anyway.
+6. **Name the branch.** Use the exact branch name returned by the ticket provider when present; otherwise match the convention visible in `git for-each-ref refs/remotes/origin`. Never work on the target branch itself.
+7. **Create the worktree** (Step 1b below). Everything after this point - planning artifacts
+   included - happens inside it.
+8. **Spawn the task crew.** Dispatch the manager/coordinator supervisor before other agents, then spawn an architect, developer(s), and QA under the shared policy; reuse eligible inherited crew instead of duplicating them. The supervisor owns the ledger (task, target, branch, worktree, slices, waves, verify results, shared review budget, QA and deck), tracks workers via `hub`, and batches their questions to you. It does not implement, review or QA-prove its own work. The architect coordinates technical decomposition, developers implement, and QA independently proves the change. Record their identities and inherited review count/cap in the ledger. All worker prompts name the supervisor and route blockers to it.
+
+### Step 1b - WORKTREE
+
+This step is not optional. The pipeline runs long, dispatches parallel agents, force-pushes on
+rebase, and merges; none of that belongs in a checkout the user is also using. Isolation is
+what makes those operations safe. Every worktree lives under the jp-skills home so trees track by repo in one place.
+
+1. **Resolve the home once** - `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills` (same stable home as `config.json`, `servers/`, `tmp/`).
+2. **Derive the path** - `<home>/worktrees/<repo>/<work-branch>`, where `<repo>` is the basename of `git rev-parse --show-toplevel` of the checkout the pipeline started in and `<work-branch>` is the Step 1 branch (ticket `gitBranchName` or short slug). Example: `~/.config/jp-skills/worktrees/myapp/syt-5891`. `mkdir -p <home>/worktrees/<repo>` first, so `git worktree list` stays readable and a stale tree is identifiable per repo.
+3. **Prefer the repo's own recipe** when one exists - check the `justfile`, `Makefile`, or contributing guide for a worktree command (warlock, for instance, has `just worktree <name>`, which branches from `origin/main` and runs setup). When the recipe accepts a target path, pass the derived path. When it hard-codes its own location, prefer a bare `git worktree add` at the derived path instead so tracking stays central; only use the repo-local location when the recipe cannot work elsewhere, and record why in the intake block. Such a recipe wires up env files, dependencies, and per-worktree services that a bare `git worktree add` would leave missing.
+4. **Otherwise** invoke `superpowers:using-git-worktrees`, which handles the native-tool path and the `git worktree add` fallback. Branch from the up-to-date target at the derived path: `git fetch origin && git worktree add -b <work branch> <home>/worktrees/<repo>/<work-branch> origin/<target>`.
+5. **`cd` into it and confirm** before doing anything else: `git rev-parse --show-toplevel`, `git branch --show-current`, and `git status --short` (must be clean). Every later step - verification commands, sub-agent dispatch, `gh` invocations - runs from this directory.
+6. **Already in a worktree?** Reuse it only when it is dedicated to this task and clean. A worktree carrying unrelated changes is a supervisor-relayed question, not a base to build on. A reused tree keeps its own path; new trees always use the derived home path.
+7. **Set up only the environment permitted by the verification mode.** Inspect setup recipes and lifecycle scripts before execution; a convenience setup may invoke migrations, generators or builds forbidden in CI-only mode. Bootstrap the pinned dependencies and normal hook separately when needed. Confirm the configured hook dispatcher and required executables actually exist before committing: a fresh worktree can otherwise make an ordinary commit silently omit its intended hook. Never disable hooks to avoid this prerequisite.
+
+Log the intake block to the supervisor ledger, then continue without waiting (no phase-gate approval):
+
+```
+task:      <ticket id or one-line summary>
+target:    <branch>
+branch:    <work branch>
+worktree:  <absolute path> (created | reused)
+supervisor: <agent id>
+plan:      party | already-specified (<source>)
+verify-mode: <local | ci-only | pending - supervisor asks before the first gate run>
+surface:   ci runs: <commands CI runs>
+           ci skips: <commands that exist but CI does not run - this pipeline runs them>
+           needs: <services/deps stood up in the worktree so those can execute>
+```
+
+## Step 2 - PARTY PLAN
+
+**Skip deliberation only when a detailed plan already exists.** A plan is detailed enough when it
+names the behavior change, the affected areas, and the acceptance criteria - a well-specified
+Linear ticket usually clears this bar; a one-line bug report never does. When in doubt, convene
+the party. State the call and its reason in one line to the supervisor ledger.
+
+When ticket acceptance was generated from a larger handoff, trace each disputed requirement to
+the original user decision or handoff before treating it as a blocker. Probe the current supported
+owner interface in source, shipped CLI help, API schema, or docs before declaring an upstream gap.
+Separate supported composition from the exact capability that remains unproven. Keep unresolved
+claims open until evidence supports the blocker. Evidence: `runrecords/feasibility.md` in the
+SYT-9093 run record.
+
+Otherwise convene the party. Adapted from BMAD party mode. Goal: super-detailed breakdown with
+consensus, then **start implementing without making anyone step through the insane plan**.
+
+1. **Convene the party in subagent mode.** One agent per persona, each substantive round.
+   Domain voices as needed (PM, Architect, Dev, QA, UX). Anti-Consensus Club always present:
+   Wildcard (alternative problem statements, assumptions, examples), Level (claim checker:
+   support, gaps, confidence), Killjoy (loop stopper: halts repetition, fake disagreement,
+   unsupported speculation), Splinter (consensus challenger: questions easy agreement and
+   ignored tradeoffs). Fresh session, no memory carried in. Not a voting body; it raises
+   objections and returns the decision to the orchestrator (supervisor proposes, human retains
+   final control via batched questions only). Always spawn one `jp-topic-research` agent in Round 1 (fresh session, search tools on); its brief is required input to Round 2 — skip only when the incoming plan already names its prior-art decision.
+2. **Deliberate to a slice table.** At most 2 debate rounds. Round 1: independent slice
+   proposals with exact file sets. Round 2: merge + resolve objections. Killjoy ends loops;
+   Splinter must sign off that consensus is real, not easy agreement. Output: behavior,
+   exact file set, dependencies per slice, plus per-slice detailed todos owned by that
+   slice's agent. The supervisor records the table; it is the contract for Steps 3-9. Round 2 must accept-or-reject each topic-research verdict with a stated reason; the disposition is recorded in the consensus table.
+3. **Cross-review, then auto-proceed.** Each slice agent cross-reviews one other slice's plan
+   for file overlap and missing dependencies. Fix overlaps by re-slicing. Then proceed
+   straight to Step 3 - the supervisor logs the consensus summary but nobody waits for approval
+   of the todo list. Questions the party cannot resolve go to the supervisor, which batches them
+   to you.
+4. **Sources:** [Party Mode](https://docs.bmad-method.org/explanation/party-mode/),
+   [Run Multi-Agent Discussions](https://docs.bmad-method.org/customize/run-multi-agent-discussions/).
+
+## Step 3 - IMPLEMENT
+
+Parallelize as much as the file graph allows, and not one step further.
+
+1. **Take the slice table** from Step 2 (or build it from the already-specified plan the same way:
+   behavior, exact file set, dependencies per slice). The supervisor records it as the contract.
+2. **Group into waves.** Two slices may run concurrently **only if their write sets are
+   disjoint**. Any overlap - even one shared file - puts them in different waves. Read-only
+   overlap is fine.
+3. **Dispatch each wave in parallel**, one sub-agent per slice, all in the Step 1b worktree.
+   Every sub-agent prompt states: that worktree's absolute path (work there - an agent that
+   defaults to the original checkout splits the diff across two trees), the supervisor's agent
+   id with an instruction to send ALL questions, blockers, and scope doubts to the supervisor
+   via `hub` and never message you directly, plus the slice's behavior, its exact file set, the
+   repo conventions that apply, and an explicit instruction to write **only** those files.
+   Send the whole wave in a single message so the agents actually run concurrently.
+   `superpowers:dispatching-parallel-agents` covers the mechanics. The supervisor tracks each
+   wave and batches any questions to you.
+4. **Between waves**, confirm the write sets held: `git status --short` should show nothing outside the wave's declared files. Review a stray file before continuing. Before any commit whose normal hook formats the workspace, freeze every writer in that worktree, including file-disjoint workers: a whole-tree formatter can touch their files even when the staged slice is narrow. Record the expected HEAD and permitted paths, run the ordinary commit with the approved hook, then inspect both the full committed diff and remaining index/worktree before releasing writers. An empty worktree alone does not prove scope held because the hook may have staged extra changes. Commit each landed wave before dispatching the next; never batch the whole implementation into one commit at Step 5.
+5. **A single-slice task is a single agent, or just do it yourself.** Do not manufacture
+   parallelism that the work does not contain.
+
+After repeated source-fidelity misses by a Luna implementation worker, stop the narrow patch loop
+and escalate the next authoring pass to a stronger available model. Use independent reviewers at
+the orchestrator's stronger default model tier when architecture, composition, integration, edge
+cases, or exact visual fidelity need that judgment; do not downgrade review just because the
+implementation used Luna. The stronger authoring pass is a new attempt, not proof that earlier
+misses are resolved. This is a response to the recorded repeated misses, not a general claim about
+every Luna task. Run evidence: SYT-9093 used `gpt-6-luna` at xhigh for implementation and the
+orchestrator's stronger default tier for independent review. Treat this as the recorded run choice,
+not a universal model default. Evidence: `ledger.md`, `sidebar/pipeline.md`,
+`sidebar/review-r2-verdict.md`, and
+`sidebar/review-r3-verdict.md` in the SYT-9093 run record.
+
+Before an executable CLI probe, treat even `--help`, `--version`, and path/config inspection as
+potentially stateful. Prefer direct structured argv with an explicit isolated environment, absolute
+temporary `HOME` and `XDG_CONFIG_HOME`, tool-specific config/profile/session roots, and an isolated
+working directory. Capture the child's exit code and start/end separately from the enclosing shell.
+If a shell is unavoidable, use a single-quoted heredoc and pass data as argv/env/stdin; never place
+backticks or other interpolating text inside a double-quoted shell argument. A command error, old
+file timestamp, or successful outer shell does not prove that no side effect occurred. Evidence:
+`factoryrecords/omp/incident-lessons.md` and `factoryrecords/omp/incident-audit.md` in the
+SYT-9093 run record.
+
+For long or high-uncertainty implementation slices, set a bounded checkpoint and a concrete
+completion signal before dispatch. The supervisor records stage, elapsed time, outputs, and the
+next dependency, then redirects or escalates when a slice churns without reaching its checkpoint;
+do not let a multi-hour worker continue without a meaningful checkpoint. In SYT-9093, vendoring
+S3 ran for about three hours after S2 without a checkpoint, then required a preserved interruption
+and bounded continuation. Evidence: `vendoring/supervisor.md` and
+`vendoring/implementation-interruption.json` in the SYT-9093 run record.
+
+> Ordering hint: schedule slices so shared foundations - schemas, migrations, shared types -
+> land in an early wave alone. Everything that consumes them parallelizes cleanly afterwards.
+
+## Step 4 - VERIFY
+
+**CI is a floor, not the bar - and the local gate is permission-gated.** Repos trim their CI lane
+for wall-clock: the db-free suite, the changed-files subset, no builds, sometimes no typecheck
+at all. The supervisor asks once, batched with any other intake questions, before anything local
+runs: full local gate (`local`) or CI only (`ci-only`). Typechecks, tests, builds, and generator
+runs are all covered by that one answer - never run any of them locally first and ask after.
+In `local` mode this step runs the *whole* verification surface locally so that "clean" means
+the software is clean. In `ci-only` mode nothing below runs locally; the pipeline relies on
+`gh pr checks` and every local line is reported as not-run with reason `ci-only mode`.
+
+### Step 4a - Establish the verification surface
+
+Do this once, during Step 1, while the repo docs are already open. Two lists and their
+difference:
+
+1. **What CI runs.** Read `.github/workflows/*.yml` (or the equivalent CI config) and list
+   every command each job actually invokes.
+2. **What exists.** Read the root `package.json` scripts, `justfile` / `Makefile`, and **every
+   workspace's own scripts**. List every typecheck, lint, test, and build entry point in the
+   repo - including per-workspace lanes that no aggregate script chains together.
+3. **The difference is the whole point.** Anything in list 2 absent from list 1 is a check
+   nobody runs before merge. Those are the ones this pipeline exists to run.
+4. **Note what each un-CI'd check needs** - a database, an object-store emulator, a built app,
+   browsers - and stand those dependencies up inside the worktree (Step 1b item 7) so the
+   check can actually execute rather than being quietly skipped later.
+Report the surface once, in the intake block, so the run has it on record:
+
+```
+surface:   ci runs: <commands>
+           ci skips: <commands>  <- this pipeline runs these too
+           needs: <services/deps to stand up>
+```
+
+> **Worked example - this repo, as of 2026-08.** CI (`.github/workflows/ci.yml`) runs
+> `bun run check` (biome), `bun run palette:codegen --check`, `bun run test:unit`, and the
+> migration replay. It runs **no typecheck**, **no build**, and `test:unit` swaps `apps/api`
+> onto its db-free lane - so the entire API integration suite, the serial lane, and `apps/e2e`
+> never execute on a PR. The local gate therefore must add `bun run typecheck`,
+> `bun run test:all` (the full runner, not `--unit`), and the affected app builds. Re-derive
+> this; do not trust the snapshot.
+
+### Step 4b - Run the gate
+
+`verify-mode` governs this gate. In `local` mode run the list below. In `ci-only` mode run
+none of it locally - push (or wait on the existing PR) and read `gh pr checks` instead; every
+line below is then logged as not-run with reason `ci-only mode`, and "re-verify (Step 4b)"
+everywhere in Steps 5-8 means push plus CI green, not a local run.
+
+Validate evidence completeness before provenance: enumerate the expected artifact classes, role identities, transcripts and screenshots, and assert that each required set is present and nonempty. A successful loop over zero files proves nothing. Reuse a completed acquisition only after these checks; serialize foreground and scheduled artifact downloads by repository/run/attempt rather than extracting concurrently into the same directory.
+
+Bind every result to its actual source revision. Compare local `HEAD`, pushed PR head, Actions run metadata, the checkout's recorded `git rev-parse HEAD`, and each artifact's embedded source SHA; a pull-request workflow can retain the synthetic merge SHA in event metadata after checking out the branch head. Preserve mismatched artifact bytes and explain the distinction rather than silently relabeling them or treating them as exact-head proof. A checksum proves bytes, not which source produced them. In `ci-only` mode, only completed successful checks for the current PR head qualify; queued, running, missing, or prior-head checks remain pending or stale. Require fresh checks after any head advance, and keep the head frozen until an active review finishes.
+
+Record test-case results, process exit, workflow-step result and whole-job conclusion separately. Passing test output does not turn a nonzero process exit green; a passing HTTP fixture does not fail merely because a later publication-budget step in the same job fails. A focused qualification pass does not override a failing full-suite gate: inspect the exact broader-run failure and compare execution context before changing source or baselines. Do not assume a new failure has the previous head's cause, widen ceilings to accommodate an unexplained discrepancy, or push unrelated QA polish while the required failure is still untriaged. Diagnose the failing boundary through the repository's canonical runner before changing workflow handling; never swallow an unexplained exit code. Generated references and measurement baselines must come from genuine execution in the authorized mode, not hand-authored approximations or padding. For artifact acquisition, provenance checks and failure attribution, follow `references/ci-evidence.md`.
+
+In this order, fixing until green:
+
+1. **Typecheck every workspace** - not only the ones you edited. A change to a shared package
+   breaks its consumers' types, and per-workspace typecheck is exactly what CI tends to omit.
+2. **Lint / format.**
+3. **The full test suite, everywhere.** Every workspace, every package, every lane. Not
+   `--changed`, not a path filter, not the "unit" subset when a fuller runner exists. If the
+   repo has both a trimmed runner and a complete one, run the complete one.
+4. **The lanes CI skips explicitly** - integration / db-backed, serial, e2e, anything gated on
+   a service. These are where real regressions hide precisely because nothing else runs them.
+5. **Build every app the change can affect.** A type-clean, test-green change still fails a
+   production build (server/client boundaries, bundler-only resolution, env access at build
+   time).
+6. **Generator idempotency.** Run each generator the repo documents - schema, migrations,
+   codegen, registries - then `git status --short` must be empty.
+7. **Any repo-specific gate** the guides name (migration replay from empty, story coverage,
+   schema snapshots).
+
+**Rules for this gate:**
+
+- **Run to completion.** Do not stop the suite at the first failure and call the rest unknown;
+  collect the whole picture, then fix.
+- **Never narrow the run to make it pass.** No filtering to touched files, no `.skip`, no
+  `.only`, no deleted assertion, no `any` cast or `@ts-expect-error` to clear typecheck, no
+  loosened threshold. Doing any of that is a *failed* verification and gets reported as one.
+- **Flaky is not passing.** Re-run a failure to confirm; if it is genuinely flaky, name the
+  test and the flake in the report rather than shrugging it through.
+- **A check you genuinely cannot run here** (needs a paid service, a secret you do not have,
+  physical hardware) is named explicitly in the report as not run, with the reason. Never drop
+  one silently.
+- **Evidence, not assertion.** Record the exact command and its actual result for each line -
+  `superpowers:verification-before-completion` governs every completion claim in this skill.
+
+Log the gate:
+
+```
+verify:
+  mode:      <local | ci-only>
+  typecheck    <cmd>  pass
+  lint         <cmd>  pass
+  unit         <cmd>  pass (<n> files, <m> tests)
+  integration  <cmd>  pass (<n> files, <m> tests)   [not run by CI]
+  e2e          <cmd>  pass                          [not run by CI]
+  build        <cmd>  pass                          [not run by CI]
+  codegen      <cmd>  clean
+  not-run      <cmd>  <why it cannot run here - in ci-only mode, every skipped local line says ci-only mode>
+```
+
+A red step is a stop. Do not open a PR on red, do not push on red, and never report "done" on
+red.
+
+**Cadence.** In `local` mode the full gate runs before the first push (Step 5) and again on the
+final commit before the merge gate (Step 8). Inside the review loop, each round re-runs at minimum the
+typecheck, the complete test suite, and the builds for anything the round touched - a fix is a
+code change and gets the same treatment as the original implementation. In `ci-only` mode each of
+those points is push-plus-CI-green instead; never run the local gate to "be safe" after being told ci-only.
+
+## Step 5 - PR
+
+Invoke `commit-and-push`. It splits the work into logical commits by architectural layer,
+re-verifies the committed tree, pushes, and opens the PR with a structured body. When `target` names a stack-parent branch (constraint 11), the PR opens with `--base <target>` so the chain is visible to CI and reviewers.
+
+PRs are always opened ready, never --draft; if the repo defaults to drafts, run `gh pr ready` in the same step.
+
+Confirm the PR exists and capture its number:
+`gh pr view --json number,title,baseRefName,headRefName,url`.
+
+## Step 6 - REVIEW LOOP
+
+Each round reviews the pushed diff; fixes are verified and pushed before any next round. Use the shared per-change ledger and cap. When the enclosing factory defers review, record `PENDING_FINAL`, skip Steps 6–8, run Step 9 against the preview, and hand the PR and budget to the factory; never merge or claim review approval.
+
+For each round:
+
+All five independent review angles and the club verdict are required in every round. When the
+available agent slots are fewer than the reviewer count, dispatch bounded batches, collect each
+short result, then dispatch the next batch. The supervisor yields while workers are active and
+resumes from bounded completion notices. After a capacity error, refresh live agent state before
+dispatching again. Capacity changes scheduling, not reviewer coverage or round credit. Evidence:
+`sidebar/pipeline.md` and `runrecords/feasibility.md` in the SYT-9093 run record.
+
+Keep the pushed head unchanged until the round finishes. A missing reviewer result is not a
+no-finding result, and a duplicate or incomplete batch does not count as the round's full fight.
+
+1. **Review.** Invoke the `jp-pr-review-toolkit` full fight scoped to the PR: all five independent
+   angles in capacity-bounded parallel batches as defined by that skill, then the club fight, with
+   a verdict block required. Pass the ticket acceptance plus the consensus slice table as the task
+   source. Review the **pushed diff**, never a stale local one - each round's review must see the
+   previous round's fixes. The supervisor tracks round state.
+   A round without a verdict block is not a round - re-dispatch.
+2. **Enforce** the verdict:
+   - **BLOCK** - stop. Escalate via the supervisor immediately; line fixes are the wrong tool.
+     Do not spend another round.
+   - **FIX-THEN-SHIP must-fix** - fix. Always. Must-fix already survived the club fight, so it
+     is never waived for convenience; a genuine false positive is logged with its reason and
+     counts as dissent, not a waiver.
+   - **Suggestions** - apply when cheap and behavior-preserving; otherwise drop with a note.
+   - **Followups** - anything that reveals work beyond this task becomes a follow-up ticket.
+     Record the id. Do not grow the PR.
+3. **Fix** the accepted findings. Parallelize the fixes under the same file-disjoint rule
+   from Step 3. Fix agents route questions to the supervisor via `hub`, never to you.
+4. **Re-verify** (Step 4b in the chosen mode - in local mode at minimum full typecheck, the
+   complete test suite, and the builds for what the round touched; in ci-only mode push plus CI
+   green), commit the round's green fixes first (constraint 10: small logical commits, message states decision/why — never squash the run into one commit), and **push**.
+5. **Log the round** to the supervisor ledger:
+
+```
+round <n>: verdict=<APPROVE|FIX-THEN-SHIP|BLOCK> must-fix=<m> suggestions=<c> | fixed=<x> dissent=<y> followups=<ids> | remaining=<m'>
+```
+
+**Termination.** Stop on the first APPROVE. After FIX-THEN-SHIP, fix and verify; if budget remains, review the pushed fix. At the cap, report the fixes as unreviewed and stop if a required approval or finding remains unresolved. Do not merge without the Step 8 approval gate or open an extra round.
+
+**Escalate via the supervisor immediately**, without spending another round, on a BLOCK verdict,
+or if a fix would require a design change the consensus plan does not cover. Another review
+round is not the tool for either.
+
+
+## Step 7 - SIMPLIFY
+
+After an APPROVE exit from Step 6, this pass asks whether the finished diff can be simpler. A factory-deferred pipeline skips this step; the factory may arrange equivalent polish within its review and verification gates.
+
+Skip only if the user said "skip the simplify pass".
+
+1. **Invoke `jp-code-simplifier`** with `caller: pipeline`, scope `git diff origin/<target>...HEAD`
+   (the entire PR diff, not the last round's changes), and the recorded `verify-mode` as its
+   gate. It derives the bar from the repo's conventions, proves each candidate equivalent,
+   applies file-disjoint, and reverts any candidate that turns the gate red. Its agents route
+   questions to the supervisor via `hub`, never to you.
+2. **Dropped candidates that are real work** - behavior changes, files outside the PR, refactors -
+   become follow-up tickets; record the ids. This pass is polish inside the existing scope; it is
+   not a second implementation phase.
+3. **If nothing was applied**, log it and go straight to Step 8.
+4. **If anything was applied**, push once the Step 4b gate is green on the survivors (in local mode
+   the full gate, since simplification is exactly the kind of edit that type-checks in isolation and
+   breaks a consumer). **No confirming review round runs**: the round cap covers the whole pipeline,
+   and `jp-code-simplifier` admits only proven-equivalent edits precisely so the mode gate is
+   sufficient evidence for them. If a candidate is large enough that you want it reviewed, it is not
+   a simplification - drop it to a follow-up. Step 7 runs **once** per pipeline.
+
+Log the `SIMPLIFY RESULT` block to the supervisor ledger, condensed:
+
+```
+simplify: candidates=<n> applied=<x> dropped=<y> followups=<ids> | re-verify: <mode gate green | skipped, nothing applied>
+```
+
+## Step 8 - MERGE
+
+Auto-merge, gated. Merge when every one of these holds - no separate approval gate; the supervisor only surfaces batched questions and stop-and-reports:
+
+- the review loop terminated cleanly per Step 6 - the last round verdicts APPROVE with zero
+  must-fix. Terminating at the cap *with* must-fix open is not a clean
+  termination: that path stops and reports instead of merging
+- Step 7 ran (or the user skipped it), and any simplification edits it made were pushed with a
+  green Step 4b gate (ci-only mode: pushed plus CI green)
+- the **Step 4b gate is green on the exact commit being merged** - in local mode re-run the full
+  gate here; a previous gate is not evidence about this commit. In ci-only
+  mode this bullet is CI green on the exact commit.
+- `gh pr checks <PR>` reports every required check green (wait for pending ones). In local mode
+  CI green is necessary and not sufficient: it is the trimmed lane, and the local gate above is
+  the real one. In ci-only mode CI green on the exact commit plus clean reviews IS the merge gate.
+- the PR targets the intended base branch from Step 1
+- the user did not say "don't merge"
+
+Then merge using **the repository's own convention** - read it from
+`git log --merges --oneline -10` and the repo's contributing guide rather than assuming.
+Guard the write with the exact qualified source head:
+- Squash-merge repos: `gh pr merge <PR> --repo <owner/repo> --squash --match-head-commit <qualified-head>`.
+- Merge-commit repos: `gh pr merge <PR> --repo <owner/repo> --merge --match-head-commit <qualified-head>`.
+
+Inspect rules applicable to the actual target branch, not just the repository's ruleset list;
+a queue rule scoped to a different branch does not gate this merge. Read back `state`,
+`mergedAt` and `mergeCommit`, then verify the merge is on the remote target. Defer branch
+and worktree deletion to Step 9 so merge-time CLI cleanup cannot switch a checkout or remove
+state still owned by QA.
+
+For a PR under active review, freeze the coherent pushed head for the full round. Do not rebase
+merely because unrelated main commits arrive between reviewer batches or rounds. At the merge
+boundary, inspect the current target and changed-file overlap; reconcile only when required to
+resolve conflict or preserve correctness, then run the chosen gate and require fresh checks on the
+resulting exact head. Record why reconciliation was needed and any reviewed-versus-reconciled delta.
+Evidence: `sidebar/pipeline.md`, `runrecords/pr189-main-metadata-reconcile.md`, and
+`runrecords/pr189-190-reconciliation.md` in the SYT-9093 run record.
+
+**On conflict**, rebase the work branch on the target, re-verify (Step 4b in the chosen mode - in
+local mode the full gate, since the target moved underneath you, which is precisely when a
+cross-workspace type or test breakage appears; in ci-only mode push plus CI green), force-push the
+*work branch only*, and retry the merge. A rebase does not buy an extra review round; the mode gate
+on the rebased commit is the evidence. Never force-push the target branch.
+
+**If CI is red**, do not merge. Dispatch a targeted fix for the specific failure, re-verify
+(Step 4b), push, and re-check. Fixing red CI does not open a new review round either. If it
+stays red, escalate via the supervisor with the failing check name and log location.
+
+**Do not clean up yet.** Step 9 QA still needs the worktree (and the deck is written there).
+Leave cleanup to Step 9. Never remove a worktree that still has uncommitted or unpushed
+work; report the path via the supervisor and leave it in place instead.
+
+## Step 9 - QA + DECK
+Always runs - merged or left open. It proves the change works with real data and leaves a slide
+deck behind. The supervisor owns scheduling it; the crew's independent QA agent
+executes it.
+
+1. **Pick the target.** Merged: QA runs post-merge against the merge commit (fetch the target
+   first without switching another owner's checkout) or the deployed env the repo guides name.
+   Before dispatching CI qualification, inspect existing runs for the exact merge SHA and reuse
+   the repository's automatic push run; a duplicate dispatch can cancel healthy qualification
+   through the workflow's concurrency group. Follow `references/ci-evidence.md` for acquisition.
+   Left open ("don't merge"): QA runs against the worktree / preview deploy. State which in one
+   line. Keep source QA, image publication and deployed endpoint availability separate; a
+   through-main mandate does not silently authorize deployment repair or new authentication.
+2. **Determine how to prove it - do not guess.** The QA prompt MUST instruct the agent to read
+   the task, the consensus slice table, the PR diff, and the repo's guides, then decide the
+   smallest real-data proof that exercises the changed path end to end: real requests against a
+   running app/services, a browser-driven pass for UI changes (screenshots/screencast saved as
+   evidence), seeded production-like data where writes are unsafe. Unit/green-gate output alone
+   is NEVER sufficient proof here. Fabricated responses, mocked UI, or "would work" reasoning fail
+   this step. **Unreachable-in-production states use the component workshop instead.** Error
+   states, destructive paths, and other edge cases that cannot be triggered against a live env
+   are proven in the repo's component workshop (Storybook, Ladle, or equivalent): the agent
+   writes or extends stories exercising the actual changed files/components in those states and
+   captures the rendered output as evidence. Workshop proof renders the real changed code, so it
+   counts as verification - standalone mockups of what the change "would look like" do not.
+   For source-fidelity work, compare the actual changed components to the authoritative source
+   during authoring and after accepted fixes, using matching data, theme, and viewport. Inspect
+   the paired captures and correct visible differences. Structural or count assertions do not
+   prove fidelity. Keep expected semantics independent of the implementation under test: neutral
+   fixture inputs may be shared, but identity, status, warning, attention, and animation
+   expectations must come from the source contract. A fixture that derives expected colors or
+   motion from implementation output can become a false oracle. Check normal, calm, and
+   reduced-motion behavior on the actual components.
+   Label source-expanded references as references, not as runs of the original product runtime.
+   Storybook proves the changed components with its stated fixtures; it does not prove live data,
+   native runtime behavior, or mocked callbacks. State those limits when the original runtime or
+   a real integration path is unavailable. Evidence: `sidebar/pipeline.md`,
+   `sidebar/review-r4-proof.md`, `sidebar/review-r4-verdict.md`, and
+   `sidebar/qa/integration-independent/result.md` in the SYT-9093 run record.
+3. **Auth token: pre-supplied first, asked for only if needed.** If an `auth token` override came
+   with the prompt, the supervisor holds it and hands it to QA via env - QA tries it before asking
+   for anything. If QA needs authenticated access it does not have (staging/production session,
+   OAuth user, paid sandbox, post-merge/post-deploy env), the supervisor asks you for exactly
+   that: what token, what scope/expiry, where to paste it. A supplied token may be pre-merge or
+   post-merge; post-merge QA against a deployed env routinely needs one. Pass it via env, never
+   bake it into files; never print it in logs or the report - record only `token: provided (redacted)`.
+   QA waits for a working token rather than faking the authenticated path.
+4. **Run it, record evidence.** Commands run, data used, what was observed, what passed/failed.
+   A QA failure is a stop-and-report via the supervisor with the failing proof attached - not a
+   silent re-implementation. Small fixes for QA-found bugs ride the Step 4b gate; anything
+   larger becomes a follow-up ticket.
+5. **Write the slide deck.** Prefer the repo's existing deck convention when one exists;
+   otherwise write markdown slides to `qa/<branch-slug>-deck.md` in the worktree (one
+   `#`-titled slide per `---` separator): context, what changed, real-data proof (commands +
+   observed output + screenshots), residual risk / follow-ups. Every visual in the deck is captured
+   evidence - live-env screenshots where reachable, component-workshop renders for states that are
+   not (item 2) - each labeled with its source. Save screenshots/assets next to
+   it under `qa/assets/`.
+6. **Deliver the deck before any cleanup - "delivered" is defined, not assumed.** Delivered means
+   the deck + assets survive worktree removal via at least the copy-out, plus the branch commit
+   when one still exists: (a) copy `qa/<branch-slug>-deck.md` + `qa/assets/` to
+   `<checkout-pipeline-started-in>/qa-decks/<slug>/` and record that absolute path; (b) when the
+   work branch still exists and is unmerged, also commit the deck + assets to it and push so it
+   rides the PR. Optional: link both paths from the PR or Linear ticket. Only when (a) - and (b)
+   where applicable - is done is the deck delivered.
+7. **Close tracking only after QA and delivery.** Through the user's selected tracker connection,
+   read the exact issue and verify its acceptance, then publish one deduplicated completion
+   receipt and read back both status and comment. If merge automation marks it Done before
+   required QA/deck delivery, retain a nonterminal status with the actual remaining gates;
+   automated closure is not evidence those gates ran. Record production availability as a
+   separate proven, pending or out-of-scope result rather than reopening completed source work.
+8. **Then clean up only if merged AND the deck is delivered.** The repo's own recipe when it
+   has one (warlock: `just delete-worktree <name>`), otherwise `git worktree remove <path> &&
+   git worktree prune` from outside the worktree. "Don't merge" always keeps the worktree.
+   Keep the tree while a worker still owns it; report a retained tree explicitly. After the
+   qualified merge and QA/deck delivery are independently verified, remove only this task's
+   scheduled watcher and read back its absence. Request the native supervisor's final report
+   and clean exit separately; stopping a watcher does not prove the runner or workers exited.
+
+```
+qa:      <target: post-merge <sha/env> | worktree/preview>
+         method: <what real-data proof ran>
+         result: PASS | FAIL | BLOCKED | PENDING (<evidence or reason>)
+         head: <exact commit SHA, or none + reason>
+         token: provided (redacted) | not needed
+deck:    <absolute copy-out path + worktree-relative path> (assets: <paths>)
+```
+
+## Final Report
+
+Keep routine heartbeat and unchanged-check updates in the ledger; internal liveness notices do
+not require a user-facing status message. Give the user a short completion report with the PR,
+merge SHA, verification/QA outcome, deliverable attachment and residual limits. Preserve the
+full block below in a durable handoff and link it when useful rather than replaying the process
+or pasting every receipt into chat. Distinguish completed acceptance from any remaining native
+report/worker housekeeping; do not claim those processes stopped without an exit receipt.
+
+```
+task:      <ticket id or summary>
+supervisor: <agent id>
+worktree:  <path> (<removed | kept: reason>)
+status:    <DONE | BLOCKED | NEEDS_DECISION | IN_PROGRESS>
+pr:        <url> (<merged | open>)
+head:      <exact PR SHA for the reported checks, or none + reason>
+rounds:    <consumed>/<inherited cap> (must-fix fixed=<a>, dissent=<b>, still open=<c>, last verdict=<APPROVE | FIX-THEN-SHIP | BLOCK | PENDING_FINAL>)
+simplify:  applied=<x> dropped=<y> (<or: skipped - reason>)
+unreviewed: <what was pushed after the last review round: post-last-review fixes, simplify edits, or none>
+followups: <linear ids, or none>
+verify:    <the Step 4b gate block in the chosen mode: each command and its actual result,
+            with CI-skipped lanes marked, plus anything that could not be run - in ci-only mode every local line says ci-only mode>
+qa:        <the Step 9 QA block: target, method, result, token line>
+deck:      <absolute copy-out path + worktree-relative path and assets, or missing-reason>
+risk:      <=2 lines of residual risk, or none
+```
+
+## Common Mistakes
+
+- **Implementing in the user's primary checkout because the task "is quick."** The worktree is
+  a constraint, not an optimization. Parallel agents, force-pushes, and rebases all land in
+  whatever tree you are standing in.
+- **Creating the worktree but dispatching agents without its path.** They will write into the
+  original checkout and the diff will silently split across two trees.
+- **Removing a worktree that still holds unpushed commits.** Check `git status` and
+  `git log origin/<branch>..HEAD` first; report and keep it when in doubt.
+- **Skipping the party because the task "looks small."** A one-line bug report is not a
+  plan. Small tasks are where unexamined assumptions cost the most. The party always runs.
+- **Skipping deliberation for a ticket that is already a spec.** The gate cuts both ways; a well-specified
+  ticket goes straight to implementation - state the call and reason.
+- **Running round 2 against the round-1 diff.** Push first. An unpushed fix is an unreviewed fix.
+- **Repeating an APPROVE or exceeding the inherited cap.** Stop at the first APPROVE; report unreviewed final fixes instead of inventing another round.
+- **Smuggling extra rounds in under another name.** The Step 7 confirming round, the post-rebase
+  round, the "quick re-check after fixing CI" - all of these were review rounds, and all of them
+  are now the Step 4b gate in the chosen mode instead.
+- **Parallelizing slices that share a file.** Concurrent writes to one file lose work silently.
+  Disjoint write sets or different waves - there is no third option.
+- **Letting simplify-pass candidates turn into a refactor.** Candidates are polish inside
+  the existing scope. Anything larger is a follow-up ticket.
+- **Treating per-round shape notes as the Step 7 pass.** The angles see one round's
+  increment; Step 7 sees the whole diff. Both run.
+- **Letting Step 7 apply something that needs a review to be safe.** Under the cap, the
+  simplify pass merges on the strength of the mode gate alone, so anything beyond a
+  behavior-preserving edit must be dropped to a follow-up rather than applied.
+- **Treating a green CI as a verified change in local mode.** CI runs the lane someone optimized for
+  wall-clock. Typecheck, builds, and the db-backed suites are the usual casualties, and they
+  are where the regressions are. (In ci-only mode CI green is the chosen gate - but the report must say so.)
+- **Running only the tests near the code you touched.** The point of a shared package is that
+  its consumers break. Whole suite, every workspace.
+- **Reaching for the trimmed runner because the full one is slow.** `--unit`, `--changed`, and
+  a path filter are CI's compromise, not yours.
+- **Skipping a failing test, loosening an assertion, or casting to `any` to get green.** That
+  is a failed verification wearing a green hat. Fix it or report it red.
+- **Forgetting the build.** Type-clean and test-green code still fails a production build.
+- **Putting mockups in the deck.** Every visual is captured evidence: live-env screenshots where reachable, component-workshop renders of the actual changed files where not. A drawing of what the change "would look like" fails QA.
+- **Letting a check silently not run** because its database or emulator was never stood up in
+  the worktree. Not-run is a reported line, never an assumed pass.
+- **Verifying once before the first push and never again.** Every round's fixes and the
+  simplify pass are code changes; they get the same gate.
+- **Merging on "checks passed" without waiting for pending checks.** Pending is not green.
+- **Convening the party without the Anti-Consensus Club.** Without Wildcard/Level/Killjoy/Splinter the party converges on the first plausible plan. The club is the point.
+- **Letting the party vote.** The party is not a voting body. It raises objections; the orchestrator decides and auto-proceeds to implement.
+- **Making anyone step through the party's todo list.** The supervisor logs the consensus summary and work starts. Walkthroughs defeat the variant.
+- **Letting workers message you directly.** Every worker prompt names the supervisor and routes questions via `hub`. You only ever hear batched supervisor questions, stop-and-reports, and the final report.
+- **Skipping QA or accepting gate-green as proof.** Step 9 always runs with real data against the changed path. Suite output is the floor; the recorded proof is the bar.
+- **Faking the authenticated QA path.** If QA needs a session token you do not have, the supervisor asks for it and QA waits. Never mock what should be a logged-in pass, never bake the token into files, never print it.
+- **Cleaning up the worktree before the deck is delivered.** Step 8 never removes it; Step 9 keeps it until the deck is copied out (always on "don't merge"). A deck that only exists inside a removed worktree was never delivered.
+- **Running typechecks, tests, builds, or generators locally without asking.** The supervisor asks local-vs-CI once before the first gate run; one answer covers all of them. Running any of them first and asking after breaches permission.
+- **Claiming local proof in ci-only mode.** In ci-only mode every unrun local line says `ci-only mode`, the merge rides on CI green plus APPROVE verdicts, and nothing implies a local run happened.
+- **Treating an unrelated dirty working tree as part of the task.** The supervisor relays it as a batched question. Ask through it first.
+- **Opening a draft PR or ending a turn on the activation line alone.** PRs are always ready (`gh pr ready` repair when the repo defaults to drafts); the activation line ships with the first Step 1 action.
+
+$ARGUMENTS
+
+## Framework tail
+Before finishing, read `../jp-cleanup/SKILL.md` (relative to this skill's repo directory; fallback `$JP_SKILLS_REPO/skills/jp-cleanup/SKILL.md`) and follow it.

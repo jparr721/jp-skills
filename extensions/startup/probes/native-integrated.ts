@@ -75,7 +75,7 @@ export default function nativeIntegrated(pi: ExtensionAPI): void {
     if (
       existsSync(blocked) &&
       existsSync(profile) &&
-      readFileSync(profile, "utf8").includes("name: startup-role-qa")
+      readFileSync(profile, "utf8").includes("name: jp-startup-role-qa")
     ) {
       record({ kind: "integrated-partial-refusal", agent: event.agent });
       return {
@@ -162,7 +162,7 @@ export default function nativeIntegrated(pi: ExtensionAPI): void {
           unlinkSync(profiles);
           renameSync(oldProfiles, profiles);
           const architect = staff().find((employee) => employee.role === "architect")!;
-          const rolePath = join(env("STARTUP_ADAPTER_SOURCES"), "skills/startup-role-architect/SKILL.md");
+          const rolePath = join(env("STARTUP_ADAPTER_SOURCES"), "skills/jp-startup-role-architect/SKILL.md");
           writeFileSync(rolePath, readFileSync(rolePath, "utf8") + "\nIsolated canonical source revision proof.\n");
           await invoke("startup_intake", { eventId: "PREFLIGHT", input: "Preserve original event", amendItemIds: [] });
           let sourceRefused = false;

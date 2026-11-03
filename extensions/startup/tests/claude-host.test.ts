@@ -44,11 +44,11 @@ function coordinatorFixture() {
   mkdirSync(startupRoot, { mode: 0o700 });
   mkdirSync(configHome, { mode: 0o700 });
   for (const role of ["manager", "dev", "pa"]) {
-    mkdirSync(join(skillsRoot, "skills", `startup-role-${role}`), { recursive: true });
-    writeFileSync(join(skillsRoot, "skills", `startup-role-${role}`, "SKILL.md"), `Complete canonical ${role} persona`);
+    mkdirSync(join(skillsRoot, "skills", `jp-startup-role-${role}`), { recursive: true });
+    writeFileSync(join(skillsRoot, "skills", `jp-startup-role-${role}`, "SKILL.md"), `Complete canonical ${role} persona`);
   }
-  mkdirSync(join(skillsRoot, "skills", "startup-loop"));
-  writeFileSync(join(skillsRoot, "skills", "startup-loop", "SKILL.md"), "Complete canonical shared loop");
+  mkdirSync(join(skillsRoot, "skills", "jp-startup-loop"));
+  writeFileSync(join(skillsRoot, "skills", "jp-startup-loop", "SKILL.md"), "Complete canonical shared loop");
   const socketPath: string = join(startupRoot, "coordinator.sock");
   const commands: Json[] = [];
   const admissions: Json[] = [];

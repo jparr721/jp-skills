@@ -1435,9 +1435,9 @@ export function openStore(args: {
         const current: Employee = employee(binding.employeeId);
         if (
           !binding.source.rolePath.endsWith(
-            `/startup-role-${current.role}/SKILL.md`,
+            `/jp-startup-role-${current.role}/SKILL.md`,
           ) ||
-          !binding.source.loopPath.endsWith("/startup-loop/SKILL.md") ||
+          !binding.source.loopPath.endsWith("/jp-startup-loop/SKILL.md") ||
           (current.canonicalRevision !== null &&
             binding.source.roleRevision !== current.canonicalRevision)
         )
@@ -1606,8 +1606,8 @@ export function openStore(args: {
             "Canonical refresh requires an employed non-manager; manager refresh requires a newer native owner context",
           );
         if (
-          !source.rolePath.endsWith(`/startup-role-${current.role}/SKILL.md`) ||
-          !source.loopPath.endsWith("/startup-loop/SKILL.md") ||
+          !source.rolePath.endsWith(`/jp-startup-role-${current.role}/SKILL.md`) ||
+          !source.loopPath.endsWith("/jp-startup-loop/SKILL.md") ||
           input.evidence === null
         )
           throw new StoreAuthorityError(
@@ -3265,7 +3265,7 @@ export function openStore(args: {
           throw new StoreConflictError("Role settings changed while the launch was being prepared; reserve a new launch with the current revision");
         if (runtime.generation !== (current.role === "manager" ? current.generation : current.generation + 1))
           throw new StoreFenceError("Runtime launch must match the next reserved employee generation");
-        if (!runtime.source.rolePath.endsWith(`/startup-role-${current.role}/SKILL.md`) || (current.canonicalRevision !== null && runtime.source.roleRevision !== current.canonicalRevision))
+        if (!runtime.source.rolePath.endsWith(`/jp-startup-role-${current.role}/SKILL.md`) || !runtime.source.loopPath.endsWith("/jp-startup-loop/SKILL.md") || (current.canonicalRevision !== null && runtime.source.roleRevision !== current.canonicalRevision))
           throw new StoreAuthorityError("Runtime source does not match the reserved employee role");
         put("runtimeBinding", key, runtime);
         return runtime;

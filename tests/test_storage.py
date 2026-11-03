@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'skills/cleanup/scripts/storage.py'
+SCRIPT = Path(__file__).resolve().parents[1] / 'skills/jp-cleanup/scripts/storage.py'
 
 
 def load_storage():

@@ -33,8 +33,8 @@ def run_stage(omp: str, repo: Path, workspace: Path, stage: str, module: Path) -
         "PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM", "SHELL", "USER", "LOGNAME"
     }}
     env.update({"PI_CODING_AGENT_DIR": str(agent_dir), "STARTUP_GUARD_STAGE": stage,
-                "STARTUP_GUARD_MODULE": str(module), "STARTUP_GUARD_ROLE": str(repo / "skills/startup-role-dev/SKILL.md"),
-                "STARTUP_GUARD_LOOP": str(repo / "skills/startup-loop/SKILL.md"),
+                "STARTUP_GUARD_MODULE": str(module), "STARTUP_GUARD_ROLE": str(repo / "skills/jp-startup-role-dev/SKILL.md"),
+                "STARTUP_GUARD_LOOP": str(repo / "skills/jp-startup-loop/SKILL.md"),
                 "STARTUP_GUARD_EVENTS": str(work / "events.jsonl"), "STARTUP_GUARD_REPORT": str(work / "report.json"),
                 "STARTUP_GUARD_WRITE": str(cwd / "denied-write.txt"), "STARTUP_GUARD_BASH": str(cwd / "denied-bash.txt")})
     command = [omp, "--mode", "rpc", "--no-ui", "--cwd", str(cwd), "--config", str(config),
@@ -92,7 +92,7 @@ def main() -> int:
     evidence = {"status": "FAIL", "workspace": str(workspace), "executable": omp, "executableSha256": sha(Path(omp)),
                 "installedVersion": version, "network": "none; deterministic in-process provider", "normalProfileUsed": False,
                 "sourceHashes": {str(path): sha(path) for path in [source, Path(__file__), Path(__file__).with_name("native-v7-guards.ts"),
-                    repo / "skills/startup-role-dev/SKILL.md", repo / "skills/startup-loop/SKILL.md", args.omp_source]},
+                    repo / "skills/jp-startup-role-dev/SKILL.md", repo / "skills/jp-startup-loop/SKILL.md", args.omp_source]},
                 "negativeControl": {"change": "Removed only employee bridge tool_call handler in owned temporary copy", "sourceSha256": sha(negative / source.name)},
                 "stages": [], "checks": {}}
     args.evidence.parent.mkdir(parents=True, exist_ok=True)

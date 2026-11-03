@@ -397,7 +397,7 @@ test("association command reads the owner socket and refuses offline state witho
     expect(hostControlResponseSchema.safeParse(result).success).toBe(true);
     expect(JSON.stringify(result)).not.toMatch(/private-fixture|managerCredential|credentialDigest|bootId/);
     expect(readOwnerControl(scope)).toEqual(before);
-    const source = { rolePath: "/fixture/startup-role-manager/SKILL.md", roleRevision: "fixture-role", loopPath: "/fixture/startup-loop/SKILL.md", loopRevision: "fixture-loop" };
+    const source = { rolePath: "/fixture/jp-startup-role-manager/SKILL.md", roleRevision: "fixture-role", loopPath: "/fixture/jp-startup-loop/SKILL.md", loopRevision: "fixture-loop" };
     store.prepareRuntime({ employeeId: "manager", generation: 1, launchId: "fixture-launch", credentialDigest: "private-fixture-digest", source, settings: store.roleSettings("manager"), paneId: "actual-fixture-pane", terminalId: "actual-fixture-terminal", tabId: null, nativeSession: config.managerFile, state: "ready", error: null, lastSeen: 1000, lastPoll: 1000, lastProgress: 1000, turnActive: false, stateSequence: null, observedState: null });
     store.bindEmployee({ manager: store.managerBinding, binding: { ...store.managerBinding, source, assignment: null } });
     store.admitRuntimeConnection({ startupRoot: scope.startupRoot, harness: "omp", ownerId: store.ownerId, ownerEpoch: store.ownerEpoch, employeeId: "manager", generation: 1, launchId: "fixture-launch", nativeSession: config.managerFile, agentSessionId: null, connectionEpoch: "private-fixture-connection" });

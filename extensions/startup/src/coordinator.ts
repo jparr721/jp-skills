@@ -175,6 +175,8 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
     const generation = current.role === "manager" ? current.generation : current.generation + 1;
     const existing = store.runtimeBindings().find((r) => r.employeeId === id && r.generation === generation);
     if (existing) {
+      if (encode(profile(current, generation).source) !== encode(existing.source))
+        throw new StoreFenceError("Saved launch source differs from the current canonical source; preserve the existing Startup and reconcile the native generation before reuse. No source receipt was rewritten.");
       const manifestPath = join(launchDirectory, `${existing.launchId}.json`);
       const bootstrapPath = launchArtifact(existing);
       if (!existsSync(manifestPath) || !existsSync(bootstrapPath)) throw new StoreConflictError("Prepared launch artifacts are missing; reconcile this employee before activation");

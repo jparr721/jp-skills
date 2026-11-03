@@ -71,10 +71,10 @@ export function loadProfile(
 ): Profile {
   const role: Employee["role"] = roleSchema.parse(input.role);
   const rolePath: string = realpathSync(
-    join(input.skillsRoot, "skills", `startup-role-${role}`, "SKILL.md"),
+    join(input.skillsRoot, "skills", `jp-startup-role-${role}`, "SKILL.md"),
   );
   const loopPath: string = realpathSync(
-    join(input.skillsRoot, "skills", "startup-loop", "SKILL.md"),
+    join(input.skillsRoot, "skills", "jp-startup-loop", "SKILL.md"),
   );
   const roleText: string = readFileSync(rolePath, "utf8");
   const loop: string = readFileSync(loopPath, "utf8");

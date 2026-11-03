@@ -49,20 +49,20 @@ def run(args, evidence) -> int:
     cwd.mkdir()
     sources = workspace / 'fixture-canonical'
     for role in ['manager', 'devops', 'architect', 'qa', 'dev', 'pa']:
-        path = sources / 'skills' / f'startup-role-{role}' / 'SKILL.md'
+        path = sources / 'skills' / f'jp-startup-role-{role}' / 'SKILL.md'
         path.parent.mkdir(parents=True)
-        path.write_text(f'---\nname: startup-role-{role}\n---\nComplete isolated canonical {role} fixture source.\n')
-    loop = sources / 'skills/startup-loop/SKILL.md'
+        path.write_text(f'---\nname: jp-startup-role-{role}\n---\nComplete isolated canonical {role} fixture source.\n')
+    loop = sources / 'skills/jp-startup-loop/SKILL.md'
     loop.parent.mkdir(parents=True)
-    loop.write_text('---\nname: startup-loop\n---\nComplete isolated canonical shared loop fixture. Remain employed and accept later durable inbox cues.\n')
+    loop.write_text('---\nname: jp-startup-loop\n---\nComplete isolated canonical shared loop fixture. Remain employed and accept later durable inbox cues.\n')
     if args.sources == 'product':
         if args.scenario in {'refresh','preflight'}:
             for path in sources.glob('skills/*/SKILL.md'):
                 path.write_bytes((repo/path.relative_to(sources)).read_bytes())
         else:
             sources = repo
-        loop = sources/'skills/startup-loop/SKILL.md'
-        evidence['canonicalSourceHashes'] = {str(path.relative_to(repo)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted((repo/'skills').glob('startup*/**/*.md'))}
+        loop = sources/'skills/jp-startup-loop/SKILL.md'
+        evidence['canonicalSourceHashes'] = {str(path.relative_to(repo)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted((repo/'skills').glob('jp-startup*/**/*.md'))}
     config = workspace / 'config.yml'
     config.write_text('task:\n  batch: true\n  agentIdleTtlMs: 0\n  speculativeLaunch: false\n  enableEffort: true\n  isolation:\n    enabled: true\nasync:\n  enabled: true\nproviders:\n  cacheWarming: false\nmemories:\n  enabled: false\nmcp:\n  enableProjectConfig: false\n')
     if args.scenario in {'single','final-single'}:

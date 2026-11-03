@@ -28,7 +28,7 @@ const directories: string[] = [];
 function sources(): string {
   const root: string = realpathSync(mkdtempSync(join(tmpdir(), "startup-adapter-")));
   directories.push(root);
-  for (const name of ["startup-role-devops", "startup-loop"]) {
+  for (const name of ["jp-startup-role-devops", "jp-startup-loop"]) {
     mkdirSync(join(root, "skills", name), { recursive: true });
     writeFileSync(
       join(root, "skills", name, "SKILL.md"),
@@ -57,8 +57,8 @@ test("profiles load full role and loop, fence modified sources and isolate check
     cue: { id: "own" },
     team: null,
   });
-  expect(content).toContain("Full canonical startup-role-devops source.");
-  expect(content).toContain("Full canonical startup-loop source.");
+  expect(content).toContain("Full canonical jp-startup-role-devops source.");
+  expect(content).toContain("Full canonical jp-startup-loop source.");
   expect(content).toContain("first");
   writeFileSync(profile.source.loopPath, "modified");
   expect(() => verifyProfile(profile)).toThrow("source changed");
@@ -121,7 +121,7 @@ function configuredFixture(
 }> {
   const root: string = sources();
   for (const role of ["manager", "architect", "qa", "dev", "pa"]) {
-    const directory: string = join(root, "skills", `startup-role-${role}`);
+    const directory: string = join(root, "skills", `jp-startup-role-${role}`);
     mkdirSync(directory, { recursive: true });
     writeFileSync(
       join(directory, "SKILL.md"),
@@ -838,7 +838,7 @@ test("failed manager reopens through current-root reconciliation before source a
   const root = f.refs.get("Main")!;
   f.refs.set("Main", { ...root, createdAt: 2 });
   writeFileSync(
-    join(f.root, "skills", "startup-role-manager", "SKILL.md"),
+    join(f.root, "skills", "jp-startup-role-manager", "SKILL.md"),
     "Fresh native manager canonical source.\n",
   );
   const next = createAdapter({
@@ -1279,13 +1279,13 @@ for (const mutation of [
         break;
       case "source":
         writeFileSync(
-          join(a.f.root, "skills/startup-role-manager/SKILL.md"),
+          join(a.f.root, "skills/jp-startup-role-manager/SKILL.md"),
           "changed",
         );
         break;
       case "employee-source":
         writeFileSync(
-          join(a.f.root, "skills/startup-role-devops/SKILL.md"),
+          join(a.f.root, "skills/jp-startup-role-devops/SKILL.md"),
           "changed",
         );
         break;
@@ -1550,7 +1550,7 @@ for (const fence of ["owner", "session", "source", "running"]) {
       });
     if (fence === "source")
       writeFileSync(
-        join(a.f.root, "skills/startup-role-manager/SKILL.md"),
+        join(a.f.root, "skills/jp-startup-role-manager/SKILL.md"),
         "changed",
       );
     if (fence === "running") a.job.status = "running";
@@ -2987,7 +2987,7 @@ test("native duty read admission is async-scoped, single-use and root source/lea
     const root = f.refs.get("Main");
     if (!root?.session) throw new Error("Fixture root absent");
     const originalLoop: string = readFileSync(
-      join(f.root, "skills/startup-loop/SKILL.md"),
+      join(f.root, "skills/jp-startup-loop/SKILL.md"),
       "utf8",
     );
     f.refs.set("Main", {
@@ -3016,7 +3016,7 @@ test("native duty read admission is async-scoped, single-use and root source/lea
             ).toBe(false);
             if (ending === "source")
               writeFileSync(
-                join(f.root, "skills/startup-loop/SKILL.md"),
+                join(f.root, "skills/jp-startup-loop/SKILL.md"),
                 "changed while native read awaited",
               );
             if (ending === "lease") f.adapter.store.close();
@@ -3067,7 +3067,7 @@ test("native duty read admission is async-scoped, single-use and root source/lea
     } finally {
       const diagnostics = diagnostic.mock.calls.map((call) => String(call[0]));
       diagnostic.mockRestore();
-      writeFileSync(join(f.root, "skills/startup-loop/SKILL.md"), originalLoop);
+      writeFileSync(join(f.root, "skills/jp-startup-loop/SKILL.md"), originalLoop);
       expect(diagnostics).toHaveLength(ending === "success" ? 0 : 1);
       for (const line of diagnostics) expect(JSON.parse(line)).toMatchObject({ level: "warning", component: "startup-duty", operation: "saved-grant-reconcile", attempt: 1, error: ending === "source" ? "Canonical source changed for manager; explicit source reconciliation required" : "Cannot use a closed database" });
     }
@@ -3094,7 +3094,7 @@ test("saved idle hire source update is rejected before team reservation and perm
   const f = fixture();
   const hire = f.adapter.reserve(f.ctx, { startup: "hire", requestId: "saved-architect", role: "architect", additional: 1 });
   const employee = hire.employees[0]!;
-  const path = join(f.root, "skills", "startup-role-architect", "SKILL.md");
+  const path = join(f.root, "skills", "jp-startup-role-architect", "SKILL.md");
   writeFileSync(path, readFileSync(path, "utf8") + "Updated canonical procedure.\n");
   f.adapter.recordIntake(f.ctx, { eventId: "source-preflight", input: "original event", amendItemIds: [] });
   const request = { startup: "delegate", eventId: "source-preflight", developers: 1 };

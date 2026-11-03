@@ -61,7 +61,7 @@ try:
     absent=subprocess.run(absent_command,env=env,cwd=cwd,input=json.dumps({'type':'prompt','id':'missing-companion','message':'/startup-boot-inspect'})+'\n',text=True,capture_output=True,timeout=20)
     absent_events=[json.loads(line) for line in (workspace/'events.jsonl').read_text().splitlines()]
     absent_inspect=next(row for row in absent_events if row['kind']=='inspect')
-    guidance=(repo/'skills/startup/references/role-dispatch.md').read_text()
+    guidance=(repo/'skills/jp-startup/references/role-dispatch.md').read_text()
     evidence['missingCompanion']={'argv':absent_command,'exit':absent.returncode,'events':absent_events,'guidance':guidance,'disposition':'BLOCKED: positively identified OMP without companion; install the named profile and boot Startup before dispatch.'}
     evidence['checks']['knownOmpMissingCompanion']=absent.returncode==0 and absent_inspect['version']=='18.8.9' and absent_inspect['staff'] is None and not any(name.startswith('startup_') for name in absent_inspect['tools']) and 'Known OMP with absent/failed companion is blocked until installed/booted' in guidance
     (workspace/'events.jsonl').write_text('')
@@ -155,7 +155,7 @@ finally:
         run(['bun',str(repo/'extensions/startup/install.ts'),'uninstall',profile])
     evidence['events']=[json.loads(line) for line in (workspace/'events.jsonl').read_text().splitlines()] if (workspace/'events.jsonl').exists() else []
     evidence['stderr']=(workspace/'stderr.txt').read_text() if (workspace/'stderr.txt').exists() else ''
-    sources=[repo/'extensions/startup/index.ts',repo/'extensions/startup/install.ts',repo/'extensions/startup/package.json',*sorted((repo/'extensions/startup/src').glob('*.ts')),*sorted((repo/'skills').glob('startup*/**/*.md')),repo/'skills/hire/SKILL.md',Path(__file__),Path(__file__).with_name('native-boot.ts')]
+    sources=[repo/'extensions/startup/index.ts',repo/'extensions/startup/install.ts',repo/'extensions/startup/package.json',*sorted((repo/'extensions/startup/src').glob('*.ts')),*sorted((repo/'skills').glob('jp-startup*/**/*.md')),repo/'skills/jp-hire/SKILL.md',Path(__file__),Path(__file__).with_name('native-boot.ts')]
     evidence['sourceHashes']={str(path.relative_to(repo)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
     save()
     print(json.dumps({key:evidence[key] for key in ['status','checks']}))

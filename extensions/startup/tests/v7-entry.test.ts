@@ -106,11 +106,11 @@ function fixtureFor(ompProfile: string) {
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const skillsRoot: string = join(root, "skills-repo");
   for (const role of ["manager", "architect", "qa", "dev", "devops", "pa"]) {
-    mkdirSync(join(skillsRoot, "skills", `startup-role-${role}`), { recursive: true });
-    writeFileSync(join(skillsRoot, "skills", `startup-role-${role}`, "SKILL.md"), `Complete canonical ${role} persona`);
+    mkdirSync(join(skillsRoot, "skills", `jp-startup-role-${role}`), { recursive: true });
+    writeFileSync(join(skillsRoot, "skills", `jp-startup-role-${role}`, "SKILL.md"), `Complete canonical ${role} persona`);
   }
-  mkdirSync(join(skillsRoot, "skills", "startup-loop"));
-  writeFileSync(join(skillsRoot, "skills", "startup-loop", "SKILL.md"), "Complete canonical shared loop");
+  mkdirSync(join(skillsRoot, "skills", "jp-startup-loop"));
+  writeFileSync(join(skillsRoot, "skills", "jp-startup-loop", "SKILL.md"), "Complete canonical shared loop");
   const skillsHome: string = join(root, "home");
   mkdirSync(skillsHome, { mode: 0o700 });
   const configHome: string = join(root, "xdg");
@@ -377,7 +377,7 @@ test("employee admission does not require unused session, workspace or profile e
 test("employee boot errors are contained and retry admission on the next native session start", async () => {
   const f = fixture(); f.useEnvironment();
   const path = f.manifest("dev");
-  const source = join(f.skillsRoot, "skills/startup-role-dev/SKILL.md");
+  const source = join(f.skillsRoot, "skills/jp-startup-role-dev/SKILL.md");
   const original = readFileSync(source, "utf8");
   writeFileSync(source, "changed source");
   installLaunchedEmployee(f.host, path);
@@ -589,7 +589,7 @@ test("modified canonical source and parented transcript fail before any credenti
   for (const kind of ["source", "parent"]) {
     const f = fixture(); f.useEnvironment();
     const manifest = f.manifest("dev");
-    if (kind === "source") writeFileSync(join(f.skillsRoot, "skills/startup-role-dev/SKILL.md"), "changed source");
+    if (kind === "source") writeFileSync(join(f.skillsRoot, "skills/jp-startup-role-dev/SKILL.md"), "changed source");
     else writeFileSync(f.file, JSON.stringify({ type: "session", id: "native-root", parentSession: "/other-root.jsonl" }) + "\n");
     installLaunchedEmployee(f.host, manifest);
     await expect(f.emit("session_start", {}, f.ctx)).resolves.toBeUndefined();
@@ -903,7 +903,7 @@ test("handled native session-start failure still aborts and blocks unadmitted ro
   const manifest: string = f.manifest("dev");
   installLaunchedEmployee(f.host, manifest);
   expect(await f.emit("tool_call", { toolName: "bash", input: { command: "before admission" } }, f.ctx)).toMatchObject({ block: true });
-  writeFileSync(join(f.skillsRoot, "skills/startup-role-dev/SKILL.md"), "modified source");
+  writeFileSync(join(f.skillsRoot, "skills/jp-startup-role-dev/SKILL.md"), "modified source");
   await expect(f.emit("session_start", {}, f.ctx)).resolves.toBeUndefined();
   expect(f.getAborts()).toBeGreaterThan(0);
   expect(f.messages.join("\n")).toContain("blocked");

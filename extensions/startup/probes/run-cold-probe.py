@@ -47,7 +47,7 @@ def main() -> int:
         (cwd / 'AGENTS.md').write_text('Existing fixture instructions.\n')
         config = workspace / 'config.yml'
         config.write_text('task:\n  batch: true\n  agentIdleTtlMs: 0\n  speculativeLaunch: false\nasync:\n  enabled: true\nproviders:\n  cacheWarming: false\nmemories:\n  enabled: false\nmcp:\n  enableProjectConfig: false\n')
-        paths = [repo / 'extensions/startup/index.ts', repo / 'extensions/startup/install.ts', repo / 'extensions/startup/package.json', *sorted((repo / 'extensions/startup/src').glob('*.ts')), *sorted((repo / 'skills').glob('startup*/**/*.md')), repo / 'skills/hire/SKILL.md', Path(__file__), Path(__file__).with_name('native-cold.ts'), Path(__file__).with_name('native-adapter.ts')]
+        paths = [repo / 'extensions/startup/index.ts', repo / 'extensions/startup/install.ts', repo / 'extensions/startup/package.json', *sorted((repo / 'extensions/startup/src').glob('*.ts')), *sorted((repo / 'skills').glob('jp-startup*/**/*.md')), repo / 'skills/jp-hire/SKILL.md', Path(__file__), Path(__file__).with_name('native-cold.ts'), Path(__file__).with_name('native-adapter.ts')]
         evidence['sourceHashes'] = {str(path.relative_to(repo)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
         evidence['environment'] = {key: value for key, value in env.items() if key not in {'PATH', 'HOME', 'TMPDIR', 'LANG', 'TERM', 'SHELL', 'USER', 'LOGNAME'}}
         omp = shutil.which('omp')

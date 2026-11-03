@@ -34,11 +34,11 @@ function shortRoot(): string {
 function skills(root: string): string {
   const skillsRoot: string = join(root, "s");
   for (const role of ["manager", "dev"]) {
-    mkdirSync(join(skillsRoot, "skills", `startup-role-${role}`), { recursive: true });
-    writeFileSync(join(skillsRoot, "skills", `startup-role-${role}`, "SKILL.md"), `Complete canonical ${role} persona`);
+    mkdirSync(join(skillsRoot, "skills", `jp-startup-role-${role}`), { recursive: true });
+    writeFileSync(join(skillsRoot, "skills", `jp-startup-role-${role}`, "SKILL.md"), `Complete canonical ${role} persona`);
   }
-  mkdirSync(join(skillsRoot, "skills", "startup-loop"));
-  writeFileSync(join(skillsRoot, "skills", "startup-loop", "SKILL.md"), "Complete canonical shared loop");
+  mkdirSync(join(skillsRoot, "skills", "jp-startup-loop"));
+  writeFileSync(join(skillsRoot, "skills", "jp-startup-loop", "SKILL.md"), "Complete canonical shared loop");
   return skillsRoot;
 }
 async function lines(stream: ReadableStream<Uint8Array>, sink: string[]): Promise<void> {

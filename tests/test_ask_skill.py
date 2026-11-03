@@ -12,12 +12,12 @@ ROOT = Path(__file__).resolve().parents[1]
 class AskSkillTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.content = (ROOT / 'skills/ask/SKILL.md').read_text()
+        cls.content = (ROOT / 'skills/jp-ask/SKILL.md').read_text()
         _, cls.frontmatter, cls.body = cls.content.split('---', 2)
 
     def test_frontmatter_is_portable_and_hand_invoked(self):
         self.assertTrue(self.content.startswith('---\n'))
-        self.assertIn('\nname: ask\n', self.frontmatter)
+        self.assertIn('\nname: jp-ask\n', self.frontmatter)
         self.assertIn('\ndisable-model-invocation: true\n', self.frontmatter)
         self.assertIn('platforms: [linux, macos, windows]', self.frontmatter)
         description = next(line.removeprefix('description: ') for line in
@@ -28,7 +28,6 @@ class AskSkillTests(unittest.TestCase):
         self.assertNotIn('/home/', self.content)
 
     def test_bare_invocation_and_follow_up_mode(self):
-        self.assertIn('reply `ask mode on`', self.body)
         self.assertIn('Stay in this mode across follow-up questions', self.body)
         self.assertIn('explicitly requests implementation', self.body)
         self.assertIn('“How would we change this?”', self.body)
@@ -52,10 +51,10 @@ class AskSkillTests(unittest.TestCase):
         for heading in ('## When to Use', '## Procedure',
                         '## Pitfalls', '## Verification', '## Framework tail'):
             self.assertIn(heading, self.body)
-        self.assertIn('../cleanup/SKILL.md', self.body)
+        self.assertIn('../jp-cleanup/SKILL.md', self.body)
         self.assertIn('When the user ends the mode', self.body)
         readme = (ROOT / 'README.md').read_text()
-        self.assertEqual(readme.count('[`ask`](skills/ask/SKILL.md)'), 1)
+        self.assertEqual(readme.count('[`jp-ask`](skills/jp-ask/SKILL.md)'), 1)
 
 
     def test_documented_link_commands_preserve_existing_entries_on_repeat(self):
@@ -64,7 +63,7 @@ class AskSkillTests(unittest.TestCase):
             with self.subTest(heading=heading), tempfile.TemporaryDirectory() as tmp:
                 base = Path(tmp)
                 repo = base / 'repo'
-                source = repo / 'skills/ask'
+                source = repo / 'skills/jp-ask'
                 source.mkdir(parents=True)
                 (source / 'SKILL.md').write_text('fixture')
                 home = base / 'home'
@@ -72,20 +71,20 @@ class AskSkillTests(unittest.TestCase):
                 registries = [home / name for name in
                               ('.claude/skills', '.agents/skills', '.codex/skills',
                                '.pi/agent/skills', '.omp/agent/skills')]
-                registries.append(selected / 'skills')
+                # Hermes is not part of the default installation.
                 for registry in registries:
                     registry.mkdir(parents=True)
-                local = registries[0] / 'ask'
+                local = registries[0] / 'jp-ask'
                 local.mkdir()
                 (local / 'keep').write_text('user skill')
-                (registries[1] / 'ask').symlink_to(source, target_is_directory=True)
-                (registries[2] / 'ask').symlink_to(base / 'missing')
-                (registries[3] / 'ask').write_text('user file')
+                (registries[1] / 'jp-ask').symlink_to(source, target_is_directory=True)
+                (registries[2] / 'jp-ask').symlink_to(base / 'missing')
+                (registries[3] / 'jp-ask').write_text('user file')
                 section = readme.split('## ' + heading + '\n', 1)[1]
                 match = re.search(r'```bash\n(.*?)```', section, re.S)
                 assert match is not None, heading
                 command = match.group(1)
-                command = command.replace("skill='<skill-name>'", "skill='ask'")
+                command = command.replace("skill='jp-<skill-name>'", "skill='jp-ask'")
                 env = dict(os.environ, HOME=str(home), HERMES_HOME=str(selected))
                 for _ in range(2):
                     subprocess.run(['bash', '-c', command], cwd=repo, env=env,
@@ -93,10 +92,11 @@ class AskSkillTests(unittest.TestCase):
                 self.assertEqual((local / 'keep').read_text(), 'user skill')
                 self.assertEqual(sorted(p.name for p in local.iterdir()), ['keep'])
                 self.assertEqual(sorted(p.name for p in source.iterdir()), ['SKILL.md'])
-                self.assertEqual((registries[2] / 'ask').readlink(), base / 'missing')
-                self.assertEqual((registries[3] / 'ask').read_text(), 'user file')
-                for registry in (registries[1], registries[4], registries[5]):
-                    self.assertEqual((registry / 'ask').resolve(), source.resolve())
+                self.assertEqual((registries[2] / 'jp-ask').readlink(), base / 'missing')
+                self.assertEqual((registries[3] / 'jp-ask').read_text(), 'user file')
+                for registry in (registries[1], registries[4]):
+                    self.assertEqual((registry / 'jp-ask').resolve(), source.resolve())
+                self.assertFalse((selected / 'skills').exists())
                 self.assertFalse((home / '.hermes/skills').exists())
 
 

@@ -81,6 +81,25 @@ test("new and current selection keep the Startup root under the skills home", ()
   expect(existsSync(join(selected.startupRoot, "binding.json"))).toBe(true);
 });
 
+test("a separately named Startup preserves the old root but requires explicit selection for a shared bound directory", () => {
+  const f = fixture();
+  const old = bootSelection({ ...f, command: parseBootCommand("new old"), explicitName: null, executionLimit: null });
+  if (!old) throw new Error("Missing old selection");
+  persistBinding(old);
+  const oldBinding = readFileSync(join(old.startupRoot, "binding.json"));
+  const history = join(old.startupRoot, "history");
+  writeFileSync(history, "old source receipts and work", { mode: 0o600 });
+  const fresh = { ...f, managerSession: "manager-session-new" };
+  const selected = bootSelection({ ...fresh, command: parseBootCommand(`new fresh --dir ${JSON.stringify(f.boundRoot)}`), explicitName: null, executionLimit: null });
+  if (!selected) throw new Error("Missing fresh selection");
+  persistBinding(selected);
+  expect(selected.startupRoot).not.toBe(old.startupRoot);
+  expect(readFileSync(join(old.startupRoot, "binding.json"))).toEqual(oldBinding);
+  expect(readFileSync(history, "utf8")).toBe("old source receipts and work");
+  expect(() => bootSelection({ ...fresh, command: null, explicitName: null, executionLimit: null })).toThrow("multiple Startup bindings");
+  expect(bootSelection({ ...fresh, command: parseBootCommand("select fresh"), explicitName: null, executionLimit: null })).toMatchObject({ startupRoot: selected.startupRoot, managerSession: fresh.managerSession });
+});
+
 test("current selection skips an old-format Startup root beside a current one", () => {
   const f = fixture();
   const selected = bootSelection({ ...f, command: parseBootCommand("new alpha"), explicitName: null, executionLimit: null });

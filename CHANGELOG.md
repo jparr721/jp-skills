@@ -2,6 +2,14 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [8.0.0] - 2026-11-03
+
+- Prefix the installed skill names and directories with `jp-`; migrate repository-owned links in the five supported registries without touching foreign entries.
+- Share a workflow hierarchy and role vocabulary: Startup manages an open queue, Dark Factory a fixed queue, Pipeline a single task, and Hotfix a narrow in-place fix.
+- Dark Factory and Pipeline use the shared crew; Hotfix does not start a full crew. Startup retains its persistent manager and employees.
+- Cap reviews per change, including nested workflows: Hotfix uses one round, Pipeline up to two, Dark Factory up to three, and Startup's manager chooses one to three.
+- Existing Startup source identities are not migrated: preserve old roots and use the documented independent-root recovery if a manager is fenced. Queues and staff are not transferred.
+
 ## [7.11.0] - 2026-11-02
 
 - Remove generic Herdr preflights; Dark Factory can use Tern, Herdr or in-process workers.

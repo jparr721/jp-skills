@@ -6,7 +6,7 @@ import { loadProfile, ompSettingsArgs, validateRoleSettings, writeProfile } from
 test("generated profile preserves foreign content, symlinks and exact replay", () => {
  const root=realpathSync(mkdtempSync(join(tmpdir(),"startup-profile-")));
  try {
-  for(const name of ["startup-role-dev","startup-role-pa","startup-loop"]){mkdirSync(join(root,"skills",name),{recursive:true});writeFileSync(join(root,"skills",name,"SKILL.md"),`Complete canonical ${name}`);}
+  for(const name of ["jp-startup-role-dev","jp-startup-role-pa","jp-startup-loop"]){mkdirSync(join(root,"skills",name),{recursive:true});writeFileSync(join(root,"skills",name,"SKILL.md"),`Complete canonical ${name}`);}
   const profile=loadProfile({skillsRoot:root,role:"dev",employeeId:"owned",generation:1});
   const startupRoot=join(root,"startup-root");mkdirSync(startupRoot,{mode:0o700});
   const path=writeProfile({root:startupRoot,profile});const before=readFileSync(path);
@@ -20,7 +20,7 @@ test("generated profile preserves foreign content, symlinks and exact replay", (
 test("canonical generated employees admit bounded native procedure helpers", () => {
  const root=realpathSync(mkdtempSync(join(tmpdir(),"startup-helper-profile-")));
  try {
-  for(const name of ["startup-role-dev","startup-role-pa","startup-loop"]){mkdirSync(join(root,"skills",name),{recursive:true});writeFileSync(join(root,"skills",name,"SKILL.md"),`Complete canonical ${name}`);}
+  for(const name of ["jp-startup-role-dev","jp-startup-role-pa","jp-startup-loop"]){mkdirSync(join(root,"skills",name),{recursive:true});writeFileSync(join(root,"skills",name,"SKILL.md"),`Complete canonical ${name}`);}
   const profile=loadProfile({skillsRoot:root,role:"dev",employeeId:"developer",generation:1});
   const startupRoot=join(root,"startup-root");mkdirSync(startupRoot,{mode:0o700});
   expect(readFileSync(writeProfile({root:startupRoot,profile}),"utf8")).toContain("spawns: [task]");

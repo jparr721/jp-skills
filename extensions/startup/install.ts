@@ -320,8 +320,12 @@ function requireClaudeVersion(claude: string, env: NodeJS.ProcessEnv): void {
 }
 function requireCheckoutSkills(skillsRoot: string, claudeDirectory: string): void {
   const names: readonly string[] = readdirSync(join(skillsRoot, "skills")).filter(
-    (name) => name === "startup" || name === "hire" || name.startsWith("startup-"),
+    (name) => name === "jp-startup" || name === "jp-hire" || name.startsWith("jp-startup-"),
   );
+  for (const required of ["jp-startup", "jp-hire"]) {
+    if (!names.includes(required))
+      throw new StartupInstallError(`Required checkout skill is missing: skills/${required}`);
+  }
   for (const name of names) {
     const installed = join(claudeDirectory, "skills", name);
     const expected = realpathSync(join(skillsRoot, "skills", name));
