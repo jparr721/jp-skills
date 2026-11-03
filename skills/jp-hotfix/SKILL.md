@@ -15,6 +15,8 @@ No phase is skipped otherwise.
 
 Before dispatch, read the shared authority at the installed `jp-pipeline` skill's `references/workflow-policy.md`, or `$JP_SKILLS_REPO/skills/jp-pipeline/references/workflow-policy.md`. Use the inherited per-change budget (hotfix maximum one); do not spawn a full task crew. Use this skill for a small, knowable bug on the current branch.
 
+Start or inherit a single-item hotfix scope through the bounded host in that policy before dispatch. Route its narrow assignments, single review and completion through the host; never create a separate scope to escape an inherited budget. Follow the host's exact human approval requirement before completion.
+
 **Non-negotiable constraints:**
 
 1. **Never leave the current branch.** No worktree, no new branch, no checkout change.
@@ -96,10 +98,10 @@ reproduce the bug are left untouched and reported as checked-clean.
 1. **Review.** Run the `jp-pr-review-toolkit` light variant once over the scoped diff: one sweep
    agent across all five angles, one combined Level plus Splinter challenge, verdict block
    required. Pass the confirmed pin as the task source. The canonical review, lighter than the
-   pipeline full fight: no defense round, no second attempt. A missing verdict block means no
-   review happened — re-dispatch, never guess.
+   pipeline full fight: no defense round, no second completed review. A missing verdict block leaves
+   the attempt unresolved; reconcile it with the same owner and never guess or start a duplicate.
 2. **Enforce** the verdict: FIX-THEN-SHIP must-fix clears here like any other scoped site;
-   BLOCK stops SHIP and hands the work to `jp-pipeline` with the verdict attached.
+   BLOCK stops SHIP and hands the work to `jp-pipeline` with the verdict and inherited budget attached. The handoff does not grant a new review round.
 3. Repro after: show the same observation passing where it failed before.
 4. Run typecheck/lint scoped to touched files only. No full suite, no review loop,
    no QA deck. A regression test is added only on request.

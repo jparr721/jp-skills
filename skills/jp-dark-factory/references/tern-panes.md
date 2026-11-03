@@ -19,48 +19,11 @@ schema and one-pipeline-per-ticket rule are unchanged.
   If a worker needs a token and no verified secure environment channel exists, use in-process
   with an approved channel or report the QA blocker.
 
-## Allocate and launch
+## Launch and collect
 
-For each planner, worker, driver or repair agent, create a separate tab in the selected session:
+The bounded host owns allocation, dispatch identity and the private inherited manifest. Use `bounded_launch` with `backend: "tern"` and the inherited scope; the child uses `bounded_attach`. Tern is not an agent supervisor. Do not independently launch or prompt a worker as a substitute for the coordinator. Follow the shared workflow policy's cross-root receipt requirements; a pane outcome alone is not completion.
 
-```sh
-tern new tab "$SESSION" --cwd "$ORCHESTRATOR_CWD" --keep-open --json -- omp "<non-secret brief>"
-```
-Use the `--json` option in the position accepted by the installed CLI (`tern new --help`);
-record the returned block identity and selected window/session before continuing. If the result
-is ambiguous, reconcile with `tern ls --json` and `tern inspect --json`; never guess or retry an
-uncertain creation. Use an absolute cwd and distinct names/briefs. `omp` accepts an initial
-interactive prompt; its own skills/config must be available, including `jp-pipeline`. Include the
-resolved manifest, the backend `tern`, and the outcome-file path in the brief. Do not embed a
-secret. Launch all workers of a wave before waiting so they execute concurrently.
-- When resolved Startup mode is standalone or `off`, launch OMP with `--no-extensions`:
-  `tern new tab "$SESSION" --cwd "$ORCHESTRATOR_CWD" --keep-open --json -- omp --no-extensions "<non-secret brief>"`.
-  This prevents an installed Startup extension from auto-attaching in the worker; it also
-  disables other auto-discovered extensions. If the run needs one, explicitly load the
-  required non-Startup extension with `--extension` after checking its path. Skills, including
-  `jp-pipeline`, must remain discoverable. If the current principal is already Startup-bound and
-  the user opts out, use a separate non-Startup root; never change the bound root's authority.
-
-## Communicate and collect
-
-- Request that each worker writes only its bounded outcome block to its own absolute file under
-  `<home>/tmp/dark-factory/<epic>/`, and writes a short question there when blocked. The planner
-  and driver use their own bounded structured result files. These are non-secret coordination
-  artifacts, not a substitute for a durable proof record. Poll only these files; Tern's process
-  state is not an agent completion signal.
-- Send a non-secret follow-up to the same interactive worker using
-  `tern send <block-id> paste "<message>"`, then `tern send <block-id> keys Enter`. For blocked
-  questions, answer only after reading the bounded question; surface shared decisions once.
-  The stack driver receives handle-only check-ins through the same mechanism. Do not assume
-  `hub` links independent Tern-launched agents.
-- `tern process <block-id> --json` and `tern wait <block-id> --until exit --timeout <seconds>`
-  help inspect process state; timeout is seconds, whereas `WORKER_TIMEOUT` is milliseconds.
-  An interactive agent may stay alive after an outcome, so do not wait for exit as the completion
-  criterion. Never use `tern capture --scrollback` to collect implementation output.
-- A malformed or `IN_PROGRESS` outcome goes back to the same owner. On launch failure or timeout,
-  inspect the recorded block and process; if state is uncertain or still running, keep it and
-  escalate instead of launching a duplicate. Fall back in-process only after confirming the
-  original worker is not running and its ownership is resolved.
+Use Tern inspection only to reconcile the recorded launch and read a bounded outcome. Preserve uncertain ownership and never repeat an uncertain launch. Never place tokens in terminal input, commands or outcome files.
 
 ## Cleanup
 

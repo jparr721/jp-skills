@@ -6,9 +6,7 @@ description: Use when driving an entire Linear epic or multi-ticket task to merg
 # Dark Factory
 
 ## Execution backend
-Choose an optional pane backend at Step 0: Herdr inside a compatible Herdr session, Tern in a
-reachable Tern session, or the built-in in-process fan-out. Neither terminal is required. Only
-the principal controls run-owned panes; read the selected backend reference before using it.
+Use the bounded host and its real dispatch, nesting and review tools as specified in the shared workflow policy. The coordinator owns the frozen queue and assignment state; the ledger below is only a reporting view. Its documented capability blockers take precedence over any later pane or fan-out instruction. Herdr and Tern are optional presentation backends, not substitutes for coordinator receipts.
 
 Startup is optional and independent of the pane backend. Use an already selected Startup only
 when the user wants it; never create, select, install, boot, or hire a Startup to run the
@@ -21,8 +19,8 @@ Before dispatch, read the shared authority at the installed `jp-pipeline` skill'
 
 ## Overview
 
-One **principal orchestrator** freezes the selected ticket queue and fans out one
-**sub-orchestrator** per ticket; each runs `jp-pipeline` and reports a bounded outcome.
+One **principal orchestrator** freezes the selected ticket queue in the bounded host and dispatches one
+**sub-orchestrator** per ticket; each runs `jp-pipeline` within its inherited scope and reports a bounded outcome.
 The principal merges in topological order and closes the epic only when its whole scope is complete.
 
 Scale rule: run ticket implementation and verification in parallel. Defer ticket reviews to cross-queue review before any merge. Each review round consumes one from each covered change's shared budget; honor any stricter inherited cap. Fix actionable findings and verify; re-review updated changes when budget remains, stopping on APPROVE.
@@ -134,7 +132,7 @@ digraph dark_factory {
 4. **Fetch the task** with the Linear MCP: `get_issue` with `id = LINEAR_TASK_ID`,
    `includeRelations: true`. Read **only** identifier + title (truncate to <=6 words) into the
    ledger. Do **not** read the description body - that is the Planner agent's job (section 5.1).
-5. **Spawn the factory task crew** under the shared policy: manager/coordinator, architect, developer(s), and QA, reusing eligible inherited roles. The principal coordinates the queue; the crew plans, implements and independently proves work through ticket pipelines. Add PA/DevOps only when needed. Record identities and the inherited per-change review budget.
+5. **Plan the factory task crew** under the shared policy: manager/coordinator, architect, developer(s), and QA, reusing eligible inherited roles. After the queue is frozen in Step 5.1, reserve and dispatch through the host. Add PA/DevOps only when needed.
 6. **Confirm** to the user: resolved task identifier + title, current branch, selected backend
    and worker agent where applicable, and that the `jp-pipeline` precondition passed.
    Then proceed to the parameter gate.
@@ -203,10 +201,8 @@ This is the whole point. Violating it is the only way this fails.
 **You MUST:**
 - Delegate *all* heavy reading to pipeline runs. Even epic decomposition's deep dive goes to a
   Planner agent - you keep only the DAG.
-- Require every sub-orchestrator to return the **bounded outcome schema** (section 4). A prose
-  dump is a protocol violation: discard and re-dispatch with the schema restated.
-- Keep your entire working state in one **Ledger** (section 4 table). When it grows, compress
-  merged rows to `[done] <ticket>`.
+- Require every sub-orchestrator to return the **bounded outcome schema** (section 4). A malformed result goes back to the same owner for correction; it is not permission to start another pipeline.
+- Keep a concise operational view (section 4 table) of ticket handles and decisions; it does not authorize dispatch or replace coordinator state.
 - Refer to everything large by **handle**: branch name, worktree id, Linear ticket id, PR
   number, deck path, or a Linear comment URL. Never by content. The token is never a handle -
   it is never written down anywhere except the ask itself.
@@ -216,9 +212,9 @@ to a ticket's pipeline, not to you.
 
 ## 4. The Ledger and outcome schema
 
-### The Ledger (your only memory)
+### Operational view
 
-Maintain this table verbatim. One row per ticket. Update in place; do not append narrative.
+Maintain this table for reporting. One row per ticket; coordinator state remains authoritative for admission, reservations, completion and review budgets.
 
 | Ticket | Title (<=6 words) | Wave | Sub-orchestrator | Pane | Pipeline | PR | Deck | Deps | Status | Residual risk (<=12 words) |
 |--------|-------------------|------|------------------|------|----------|----|------|------|--------|----------------------------|
@@ -271,23 +267,20 @@ name the reason and preserve the pending result. A missing artifact is never an 
 evidence, and wait for or resume that owner. Do not start a second pipeline for the ticket. Keep
 the row out of `PR_OPEN` until its existing completion predicate is satisfied.
 
-Reject and re-dispatch anything that does not conform. You read **only** this block.
+Request correction from the same owner for any nonconforming outcome. You read **only** the corrected block.
 
 ## 5. Phase details
 
 ### 5.1 INTAKE + PLAN
 
-1. **Fetch children** with `list_issues` using `parentId = LINEAR_TASK_ID`. Freeze the selected ticket IDs as this run's fixed queue before dispatch; record exclusions. Keep only metadata in the ledger (ids, titles, labels). If the task has **no children**, it is a single work unit: dispatch one sub-orchestrator running `jp-pipeline` on it and skip to COLLECT (the rest of the factory is unchanged).
-2. **Dispatch one Planner agent.** Planning is extraction and topological sorting, not synthesis; a missed soft dep degrades to a rebase conflict the factory already recovers from. The Planner agent deep-reads each child (via `get_issue` per child for body + `gitBranchName` + relations) and the relevant code, and returns:
+1. **Fetch children** with the selected tracker connection. Freeze the selected ticket IDs as this run's fixed queue with `bounded_begin` before dispatch; in OMP omit dependencies for Planner registration. Record exclusions in the reporting view. If the task has **no children**, use the parent as the sole item and retain the same graph and review gates.
+2. **Dispatch one Planner agent** through the selected host as specified in the shared policy: OMP uses bounded `task` with `planner: true`; Claude uses `bounded_plan` and one foreground `Agent` with its marker. Planning is extraction and topological sorting, not synthesis; a missed soft dep degrades to a rebase conflict the factory already recovers from. The Planner deep-reads each child, including its body, work branch and relations, and the relevant code, and returns:
    - per-ticket acceptance criteria distilled to <=3 bullets,
    - per-ticket `gitBranchName` (the work branch for that ticket),
    - a **dependency DAG** (hard deps from Linear `blocks`/`blockedBy` + soft deps from predicted shared-file contention),
    - a **wave assignment** (topological layers) honoring `MAX_PARALLEL`,
    - a **stack chain** along hard deps (same repo): each blocked ticket's work branch bases on its blocker parent's branch; independent tickets stay flat on `TARGET_BRANCH`. Record per-ticket `stack-mode: stacked|flat (+ reason)` in the ledger.
-   The Planner returns this as a compact structured block - not prose. You ingest **only** the DAG + waves + branch names.
-   In pane mode, the Planner gets its own run-owned pane using the selected backend reference;
-   otherwise dispatch it in-process. Collect only its structured DAG block, not implementation
-   output. Keep the pane until cleanup.
+   Its correlated terminal result must include `dependencies` and `targets` maps for every frozen ticket, alongside the compact DAG, waves and branch names. The host validates and freezes those maps; wait for `bounded_status` to show `graphFrozen` before ticket dispatch. Collect only its structured planning result, not implementation output.
    When using Linear GraphQL directly, read the branch from its actual `branchName` field; do
    not copy a connector-normalized `gitBranchName` name into a GraphQL query. Verify the active
    tool schema before issuing metadata queries. Evidence: `syt-9096-run.md` and
@@ -328,6 +321,7 @@ For each wave, in dependency order:
   `PR_OPEN` until its outcome shows a real ready PR URL, `checks: PASS` on the exact head,
   `qa: PASS`, and a delivered deck path. Review is pending until all implementation
   is ready for the factory-wide review.
+- Register each genuinely QA-backed ready PR with `bounded_ready` before scheduling dependents. Final completion and cross-queue review remain separate.
 - `IN_PROGRESS` -> keep the same ledger row `PIPELINE_RUNNING` with its owner and worktree;
   preserve the exact head and pending check/QA/review/artifact states, then wait for or resume that
   owner for the next outcome. Never re-dispatch a second pipeline for the ticket.
@@ -551,7 +545,7 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
 - **No manual branch merges:** ticket branches land via `gh pr merge` only.
 - **Escalation:** anything `BLOCKED` after re-dispatch, or any structural rebase conflict, stops
   and pings the user with a one-line summary - do not grind.
-- **Context:** if any outcome block exceeds the schema, discard and re-dispatch. Protect your context.
+- **Context:** if any outcome block exceeds the schema, ask its existing owner to correct it. Protect your context.
 - **Stack driver owns stack traffic, principal owns merges.** The driver retargets, rebases, and re-greens; it never runs `gh pr merge` itself. No second driver per run.
 - **Flat is always a valid fallback.** Stacking failure records a reason and continues flat — never a stall, never a silent unstacked merge of a chained child (retarget first, then merge).
 - **Backend isolation:** Herdr pane commands require `HERDR_ENV=1`; Tern uses only recorded

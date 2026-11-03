@@ -105,6 +105,58 @@ import {
   type ItemExecution,
   type ItemTransition,
 } from "./items";
+import { dispatchWorkflow, executeWorkflow, type WorkflowRequest, type WorkflowView } from "./workflow-engine";
+import type { WorkflowBridgeAuthority, WorkflowRoleAssignment, WorkflowRunHandoff } from "./workflow-bridge";
+type WorkflowRoleReceipt = Parameters<NonNullable<WorkflowBridgeAuthority["settleRole"]>>[2];
+const workflowReviewSchema = z.strictObject({
+  changeId: idSchema, reservationId: idSchema, head: z.string().trim().min(1),
+  reviewerId: idSchema, messageId: idSchema, limit: z.number().int().min(1).max(3),
+  state: z.enum(["active", "completed", "uncertain"]),
+  verdict: z.enum(["approve", "changes-requested", "block"]).nullable(),
+  resultId: idSchema.nullable(),
+}).readonly();
+const workflowScopeSchema = z.strictObject({
+  id: idSchema, parentId: idSchema.nullable(), itemId: idSchema, claimId: idSchema,
+  employeeId: idSchema, generation: timeSchema, ownerEpoch: timeSchema,
+  workflow: z.enum(["factory", "pipeline", "hotfix"]), limit: z.number().int().min(1).max(3),
+}).readonly();
+const workflowFactoryScopeSchema = z.strictObject({
+  id: idSchema, parentId: idSchema.nullable(), managerId: idSchema, generation: timeSchema, ownerEpoch: timeSchema,
+  workflow: z.enum(["factory", "pipeline", "hotfix"]), limit: z.number().int().min(1).max(3),
+  items: z.array(z.strictObject({ itemId: idSchema, claimId: idSchema, employeeId: idSchema, generation: timeSchema, teamId: idSchema, limit: z.number().int().min(1).max(3) })).min(1),
+}).readonly();
+const workflowPlanSchema = z.strictObject({
+  reservationId: idSchema, state: z.enum(["active", "completed", "failed", "uncertain"]),
+  frozen: z.boolean(), dependencies: z.record(idSchema, z.array(idSchema)), targets: z.record(idSchema, z.array(idSchema)),
+}).readonly();
+const workflowReadySchema = z.strictObject({
+  itemId: idSchema, worktree: z.string().startsWith("/"), head: z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/), prNumber: z.number().int().positive().safe(),
+}).readonly();
+const workflowChildSchema = z.strictObject({
+  id: idSchema, scopeId: idSchema, claimId: idSchema, itemId: idSchema,
+  assignmentKey: idSchema, state: z.enum(["active", "completed", "failed", "uncertain"]),
+  role: z.strictObject({ kind: z.enum(["architect", "dev", "qa"]), worktree: z.string().startsWith("/") }).optional(),
+  proof: z.strictObject({ itemId: idSchema, role: z.enum(["architect", "dev", "qa"]), agentId: idSchema, head: z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/), evidence: z.record(z.string().min(1), z.string().min(1)) }).optional(),
+}).readonly();
+const workflowLaunchSchema = z.strictObject({
+  launchKey: idSchema, scopeId: idSchema, claimId: idSchema, employeeId: idSchema,
+  generation: timeSchema, ownerEpoch: timeSchema,
+  state: z.enum(["starting", "accepted", "uncertain", "closed"]), location: jsonSchema.nullable(),
+  handoff: z.strictObject({ items: z.array(z.strictObject({ itemId: idSchema, worktree: z.string().startsWith("/"), head: z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/), prNumber: z.number().int().positive().safe() })).min(1) }).optional(),
+}).readonly();
+function requireWorkflowHandoff(children: readonly z.infer<typeof workflowChildSchema>[], workflow: "factory" | "pipeline" | "hotfix", handoff: WorkflowRunHandoff["items"][number]): void {
+  if (children.some((child) => child.state === "active" || child.state === "uncertain"))
+    throw new StoreRecoveryError("Handoff has active or uncertain child effects");
+  const proof = (role: "architect" | "dev" | "qa") => children.find((child) =>
+    child.state === "completed" && child.role?.kind === role && child.role.worktree === handoff.worktree &&
+    child.proof?.role === role && child.proof.head === handoff.head)?.proof;
+  const dev = proof("dev");
+  const architect = proof("architect");
+  const qa = proof("qa");
+  if (!dev || (workflow !== "hotfix" && (!architect || !qa || new Set([dev.agentId, architect.agentId, qa.agentId]).size !== 3)))
+    throw new StoreAuthorityError("Handoff requires distinct correlated role proofs for the exact worktree and head");
+}
+const workflowRunClaimSchema = z.strictObject({ launchKey: idSchema, claimId: idSchema }).readonly();
 const storedSchema = z.strictObject({ payload: z.string() });
 type QueueDocument = Readonly<{ before: string | null; rows: readonly z.infer<typeof rowSchema>[] }> & (
   Readonly<{ container: null; key: null }> |
@@ -325,6 +377,11 @@ export function openStore(args: {
     CREATE INDEX IF NOT EXISTS records_message_recipient_status ON records(json_extract(payload,'$.recipient'),json_extract(payload,'$.status')) WHERE kind='message';
     CREATE INDEX IF NOT EXISTS records_message_delivery ON records(json_extract(payload,'$.recipient'),json_extract(payload,'$.status'),json_extract(payload,'$.kind'),json_extract(payload,'$.sender')) WHERE kind='message';
     CREATE INDEX IF NOT EXISTS records_claim_employee_status ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.status')) WHERE kind='claim';
+    CREATE INDEX IF NOT EXISTS records_claim_message ON records(json_extract(payload,'$.messageId')) WHERE kind='claim';
+    CREATE INDEX IF NOT EXISTS records_workflow_review_change ON records(json_extract(payload,'$.changeId')) WHERE kind='workflowReview';
+    CREATE INDEX IF NOT EXISTS records_workflow_child_claim ON records(json_extract(payload,'$.claimId')) WHERE kind='workflowChild';
+    CREATE INDEX IF NOT EXISTS records_workflow_launch_employee ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.generation')) WHERE kind='workflowLaunch';
+    CREATE INDEX IF NOT EXISTS records_workflow_run_claim ON records(json_extract(payload,'$.claimId')) WHERE kind='workflowRunClaim';
     CREATE INDEX IF NOT EXISTS records_grant_employee_state ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.state')) WHERE kind='grant';
     CREATE INDEX IF NOT EXISTS records_item_execution_employee_generation ON records(json_extract(payload,'$.employeeId'),json_extract(payload,'$.generation')) WHERE kind='itemExecution';
     CREATE INDEX IF NOT EXISTS records_result_claim ON records(json_extract(payload,'$.claimId')) WHERE kind='result';
@@ -537,6 +594,13 @@ export function openStore(args: {
           (entry): boolean => entry.status === "active",
         ))
           put("claim", claim.id, { ...claim, status: "reconciliation" });
+        for (const child of selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.state')='active'", [], workflowChildSchema))
+          put("workflowChild", child.id, { ...child, state: "uncertain" });
+        for (const launch of selected("SELECT payload FROM records WHERE kind='workflowLaunch' AND json_extract(payload,'$.state') IN ('starting','accepted')", [], workflowLaunchSchema)) {
+          put("workflowLaunch", launch.launchKey, { ...launch, state: "uncertain" });
+          const plan = read("workflowPlan", launch.scopeId, workflowPlanSchema);
+          if (plan?.state === "active") put("workflowPlan", launch.scopeId, { ...plan, state: "uncertain" });
+        }
         for (const grant of all("grant", grantSchema).filter(
           (entry): boolean => entry.state === "held",
         ))
@@ -631,6 +695,44 @@ export function openStore(args: {
   }
   function members(current: Team): readonly string[] {
     return [current.architect, current.qa, ...current.devs];
+  }
+  // The caller already holds the fenced SQLite transaction.
+  function workflow<T>(request: WorkflowRequest, apply: () => T, reviewLimit = 3): T {
+    return executeWorkflow(request, {
+      transaction: (run) => run(),
+      read: (): WorkflowView => {
+        const claimOperation = request.kind === "reconcile" || ((request.kind === "reserve" || request.kind === "settle") && request.purpose === "claim");
+        const itemIds = request.kind === "admit" || request.kind === "reserve" ? request.itemIds : [];
+        const admitted = itemIds.filter((id) => claimOperation
+          ? read("message", id, messageSchema) !== null
+          : read("intake", id, intakeRecordSchema) !== null);
+        const reservations: WorkflowView["reservations"][number][] = [];
+        if (claimOperation) {
+          const claims = request.kind === "reserve"
+            ? itemIds.flatMap((id) => selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.messageId')=?", [id], claimSchema))
+            : request.kind === "settle" || request.kind === "reconcile"
+              ? [read("claim", request.reservationId, claimSchema)].filter((entry): entry is Claim => entry !== null)
+              : [];
+          for (const entry of claims) reservations.push({ id: entry.id, itemIds: [entry.messageId], state: entry.status === "settled" ? "completed" : entry.status === "reconciliation" ? "uncertain" : "active" });
+        } else if (request.kind === "reserve" || request.kind === "settle") {
+          const teams = request.kind === "settle"
+            ? [read("team", request.reservationId, teamSchema)]
+            : itemIds.map((id) => {
+                const intake = read("intake", id, intakeRecordSchema);
+                return intake?.teamId ? read("team", intake.teamId, teamSchema) : null;
+              });
+          for (const entry of teams) if (entry !== null)
+            reservations.push({ id: entry.id, itemIds: [entry.eventId], state: entry.state === "finished" ? "completed" : "active" });
+        }
+        const reviewId = request.kind === "review" || request.kind === "review-settle" ? request.reservationId : null;
+        const byId = reviewId === null ? null : read("workflowReview", reviewId, workflowReviewSchema);
+        const changeId = request.kind === "review" ? request.changeId : byId?.changeId;
+        const reviews = changeId === undefined ? [] : [...selected("SELECT payload FROM records WHERE kind='workflowReview' AND json_extract(payload,'$.changeId')=?", [changeId], workflowReviewSchema)];
+        if (byId !== null && !reviews.some((entry) => entry.reservationId === byId.reservationId)) reviews.push(byId);
+        return { scope: { kind: "startup" }, admitted, reservations, reviews, reviewLimit, workflow: "startup" };
+      },
+      apply,
+    });
   }
   // A non-architect member's team reservation cue only announces readiness; it carries no work to pause.
   function readinessNotice(message: Message): boolean {
@@ -1764,7 +1866,7 @@ export function openStore(args: {
           });
           const previous = read("intake", id, intakeRecordSchema);
           if (previous !== null) assertReplay(previous.request, event, id);
-          else put("intake", id, { request: event, teamId: null });
+          else workflow({ kind: "admit", role: "manager", itemIds: [id] }, () => put("intake", id, { request: event, teamId: null }));
         }
         const routed: ReceivedInput = { ...received, disposition };
         put("receivedInput", id, routed);
@@ -1783,7 +1885,7 @@ export function openStore(args: {
           assertReplay(previous.request, event, event.eventId);
         else {
           assertHostOpen(event.eventId);
-          put("intake", event.eventId, { request: event, teamId: null });
+          workflow({ kind: "admit", role: "manager", itemIds: [event.eventId] }, () => put("intake", event.eventId, { request: event, teamId: null }));
         }
         return event;
       });
@@ -1912,20 +2014,17 @@ export function openStore(args: {
           state: "reserved",
           items: [],
         });
-        put("team", id, reserved);
-        for (const member of staff)
-          put("employee", member.id, {
-            ...member,
-            assignment: id,
-            nativeHandle: null,
-            source: null,
-            error: null,
-            checkpoint: null,
-          });
-        for (const cue of request.cues) saveCue(leader, cue, id);
-        put("teamRequest", request.eventId, request);
-        put("intake", request.eventId, { ...event, teamId: id });
-        return reserved;
+        return workflow({ kind: "reserve", role: leader.role, itemIds: [request.eventId], reservationId: id }, () => {
+          put("team", id, reserved);
+          for (const member of staff)
+            put("employee", member.id, {
+              ...member, assignment: id, nativeHandle: null, source: null, error: null, checkpoint: null,
+            });
+          for (const cue of request.cues) saveCue(leader, cue, id);
+          put("teamRequest", request.eventId, request);
+          put("intake", request.eventId, { ...event, teamId: id });
+          return reserved;
+        });
       });
     },
     captureIntake(input: {
@@ -2410,6 +2509,13 @@ export function openStore(args: {
               throw new StoreAuthorityError(
                 "Completion requires READY_TO_LAND review gates",
               );
+            if ((request.status === "MERGED" || request.status === "DONE") && row.kind === "code") {
+              const proof = z.object({ reviewReservationId: idSchema, head: z.string().trim().min(1) }).parse(request.evidence);
+              const review = read("workflowReview", proof.reviewReservationId, workflowReviewSchema);
+              if (review === null || review.changeId !== request.itemId || review.head !== proof.head ||
+                  review.state !== "completed" || review.verdict !== "approve" || execution?.employeeId === review.reviewerId)
+                throw new StoreAuthorityError("Landing requires an approved review for this change and exact head");
+            }
             if (
               request.status === "QUEUED" &&
               !["BLOCKED", "NEEDS_DECISION"].includes(status)
@@ -2511,6 +2617,7 @@ export function openStore(args: {
           throw new StoreConflictError(
             "Team has currently owned nonterminal canonical items",
           );
+        return workflow({ kind: "settle", role: "manager", reservationId: current.id, outcome: "completed" }, () => {
         for (const id of members(current)) {
           if (
             all("grant", grantSchema).some(
@@ -2540,6 +2647,455 @@ export function openStore(args: {
         const finished: Team = { ...current, state: "finished" };
         put("team", current.id, finished);
         return finished;
+        });
+      });
+    },
+    workflowContext(input: { readonly employee: Binding; readonly itemId: string }): Readonly<{ itemId: string; claimId: string; teamId: string; employeeId: string; generation: number; ownerEpoch: number; assignment: Json }> {
+      return tx(() => {
+        const current = actor(input.employee);
+        const itemId = idSchema.parse(input.itemId);
+        const execution = read("itemExecution", itemId, itemExecutionSchema);
+        const ownership = read("queueOwner", itemId, queueOwnerSchema);
+        if (execution === null || ownership === null || execution.employeeId !== current.id ||
+            execution.generation !== current.generation || current.assignment !== execution.teamId ||
+            ownership.eventId !== execution.eventId)
+          throw new StoreAuthorityError("Bounded context requires the current assigned item execution");
+        const claim = selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.status')='active'", [current.id], claimSchema)
+          .find((entry) => entry.messageId === execution.messageId && entry.generation === current.generation && entry.ownerEpoch === epoch);
+        if (claim === undefined) throw new StoreAuthorityError("Bounded context requires the active current-epoch item claim");
+        const message = read("message", claim.messageId, messageSchema);
+        if (message === null || message.status !== "claimed" || message.recipient !== current.id)
+          throw new StoreFenceError("Claimed item assignment is unavailable");
+        return { itemId, claimId: claim.id, teamId: execution.teamId, employeeId: current.id, generation: current.generation, ownerEpoch: epoch, assignment: message.payload };
+      });
+    },
+    invalidateWorkflowEmployee(input: { readonly employeeId: string; readonly generation: number }): void {
+      tx(() => {
+        const claims = selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.status')='active'", [input.employeeId], claimSchema)
+          .filter((claim) => claim.generation === input.generation && claim.ownerEpoch === epoch);
+        for (const claim of claims) {
+          const children = selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.claimId')=?", [claim.id], workflowChildSchema);
+          for (const child of children) if (child.state === "active") put("workflowChild", child.id, { ...child, state: "uncertain" });
+        }
+        const launches = selected("SELECT payload FROM records WHERE kind='workflowLaunch' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.generation')=?", [input.employeeId, input.generation], workflowLaunchSchema);
+        for (const launch of launches) if (launch.ownerEpoch === epoch && (launch.state === "starting" || launch.state === "accepted")) {
+          put("workflowLaunch", launch.launchKey, { ...launch, state: "uncertain" });
+          const factory = read("workflowFactoryScope", launch.scopeId, workflowFactoryScopeSchema);
+          const plan = read("workflowPlan", launch.scopeId, workflowPlanSchema);
+          if (plan?.state === "active") put("workflowPlan", launch.scopeId, { ...plan, state: "uncertain" });
+          for (const item of factory?.items ?? []) {
+            const children = selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.claimId')=?", [item.claimId], workflowChildSchema);
+            for (const child of children) if (child.state === "active") put("workflowChild", child.id, { ...child, state: "uncertain" });
+          }
+        }
+      });
+    },
+    setWorkflowLimit(input: { readonly manager: Binding; readonly itemId: string; readonly limit: number; readonly target: string }): number {
+      return tx(() => {
+        manager(input.manager);
+        const itemId = idSchema.parse(input.itemId);
+        const limit = z.number().int().min(1).max(3).parse(input.limit);
+        const target = z.string().trim().min(1).max(512).parse(input.target);
+        const previousTarget = read("workflowTarget", itemId, z.string().min(1));
+        if (previousTarget !== null && previousTarget !== target) throw new StoreConflictError("The manager-selected landing target is immutable");
+        if (read("queueOwner", itemId, queueOwnerSchema) === null) throw new StoreAuthorityError("Review limit requires a canonical item");
+        const previous = read("workflowLimit", itemId, z.number().int().min(1).max(3));
+        const reviews = selected("SELECT payload FROM records WHERE kind='workflowReview' AND json_extract(payload,'$.changeId')=?", [itemId], workflowReviewSchema);
+        if ((previous !== null && previous !== limit) || reviews.some((entry) => entry.limit !== limit))
+          throw new StoreConflictError("The manager-selected review limit is immutable");
+        if (previous === null) put("workflowLimit", itemId, limit);
+        if (previousTarget === null) put("workflowTarget", itemId, target);
+        return limit;
+      });
+    },
+    createWorkflowAuthority(input: {
+      readonly employee: Binding; readonly itemId: string; readonly claimId: string;
+      readonly workflow: "pipeline" | "hotfix"; readonly limit: number; readonly launchKey: string;
+      readonly assertConnection: () => void;
+    }) {
+      const validate = () => {
+        input.assertConnection();
+        const current = actor(input.employee);
+        const claim = read("claim", input.claimId, claimSchema);
+        const execution = read("itemExecution", input.itemId, itemExecutionSchema);
+        const owner = read("queueOwner", input.itemId, queueOwnerSchema);
+        if (claim === null || claim.status !== "active" || claim.ownerEpoch !== epoch ||
+            claim.employeeId !== current.id || claim.generation !== current.generation ||
+            execution === null || execution.messageId !== claim.messageId ||
+            execution.employeeId !== current.id || execution.generation !== current.generation ||
+            current.assignment !== execution.teamId || owner?.eventId !== execution.eventId)
+          throw new StoreFenceError("Bounded authority requires its original active item claim and employee generation");
+      };
+      const rootId = tx(() => {
+        validate();
+        const cap = read("workflowLimit", input.itemId, z.number().int().min(1).max(3));
+        const modeCap = input.workflow === "hotfix" ? 1 : 2;
+        if (cap === null || read("workflowTarget", input.itemId, z.string().min(1)) === null || !Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > cap || input.limit > modeCap)
+          throw new StoreAuthorityError("Bounded scope requires a manager-selected inherited review limit within its workflow cap");
+        const launchKey = idSchema.parse(input.launchKey);
+        if (read("workflowLaunch", launchKey, workflowLaunchSchema) !== null)
+          throw new StoreConflictError("Workflow launch key was already attempted; reconcile before retrying");
+        const id = randomUUID();
+        put("workflowScope", id, workflowScopeSchema.parse({ id, parentId: null, itemId: input.itemId, claimId: input.claimId, employeeId: input.employee.employeeId, generation: input.employee.generation, ownerEpoch: epoch, workflow: input.workflow, limit: input.limit }));
+        put("workflowLaunch", launchKey, workflowLaunchSchema.parse({ launchKey, scopeId: id, claimId: input.claimId, employeeId: input.employee.employeeId, generation: input.employee.generation, ownerEpoch: epoch, state: "starting", location: null }));
+        put("workflowRunClaim", `${launchKey}/${input.claimId}`, { launchKey, claimId: input.claimId });
+        return id;
+      });
+      const scope = (id: string) => {
+        validate();
+        const saved = read("workflowScope", id, workflowScopeSchema);
+        if (saved === null || saved.claimId !== input.claimId || saved.itemId !== input.itemId ||
+            saved.employeeId !== input.employee.employeeId || saved.generation !== input.employee.generation || saved.ownerEpoch !== epoch)
+          throw new StoreAuthorityError("Bounded scope does not belong to the active claim");
+        return saved;
+      };
+      const view = (id: string): WorkflowView => {
+        const saved = scope(id);
+        const children = selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.claimId')=?", [input.claimId], workflowChildSchema);
+        return { scope: { kind: "bounded", itemIds: [saved.itemId] }, admitted: [saved.itemId],
+          reservations: children.map((child) => ({ id: child.id, itemIds: [child.itemId], state: child.state, purpose: "assignment" as const, assignmentKey: child.assignmentKey })),
+          completedItemIds: [], graphFrozen: true,
+          reviews: selected("SELECT payload FROM records WHERE kind='workflowReview' AND json_extract(payload,'$.changeId')=?", [saved.itemId], workflowReviewSchema), reviewLimit: saved.limit, workflow: saved.workflow };
+      };
+      return {
+        launchState: (state: "accepted" | "uncertain", location: Json | null): void => tx(() => {
+          validate();
+          const saved = read("workflowLaunch", input.launchKey, workflowLaunchSchema);
+          if (saved === null || saved.scopeId !== rootId || saved.state !== "starting")
+            throw new StoreFenceError("Workflow launch intent is no longer pending");
+          put("workflowLaunch", input.launchKey, { ...saved, state, location });
+        }),
+        rootId,
+        finishRun: (scopeId: string, handoff: WorkflowRunHandoff): void => tx(() => {
+          if (scopeId !== rootId) throw new StoreAuthorityError("Only the root run may hand off");
+          scope(rootId);
+          const launch = read("workflowLaunch", input.launchKey, workflowLaunchSchema);
+          if (launch === null || launch.scopeId !== rootId || launch.state !== "accepted") throw new StoreFenceError("Bounded run is not eligible for handoff");
+          const children = selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.claimId')=?", [input.claimId], workflowChildSchema).filter((child) => {
+            let cursor: string | null = child.scopeId;
+            while (cursor !== null && cursor !== rootId) cursor = read("workflowScope", cursor, workflowScopeSchema)?.parentId ?? null;
+            return cursor === rootId;
+          });
+          if (handoff.items.length !== 1 || handoff.items[0]?.itemId !== input.itemId) throw new StoreAuthorityError("Handoff must cover exactly the frozen item");
+          requireWorkflowHandoff(children, input.workflow, handoff.items[0]);
+          put("workflowLaunch", input.launchKey, workflowLaunchSchema.parse({ ...launch, state: "closed", handoff }));
+        }),
+        finishTarget: (scopeId: string, itemId: string): string | null => tx(() => {
+          const saved = scope(scopeId);
+          return saved.itemId === itemId ? read("workflowTarget", saved.itemId, z.string().min(1)) : null;
+        }),
+        view: (id: string): WorkflowView => tx(() => view(id)),
+        nest: (parentId: string, childWorkflow: "factory" | "pipeline" | "hotfix", itemIds: readonly string[], limit: number): string => tx(() => {
+          const parent = scope(parentId);
+          if (itemIds.length !== 1 || itemIds[0] !== parent.itemId) throw new StoreAuthorityError("Nested scope must retain the parent item");
+          const id = randomUUID();
+          return executeWorkflow({ kind: "nest", role: "owner", runId: id, workflow: childWorkflow, limit }, {
+            transaction: (run) => run(), read: () => view(parentId),
+            apply: () => { put("workflowScope", id, workflowScopeSchema.parse({ ...parent, id, parentId, workflow: childWorkflow, limit })); return id; },
+          });
+        }),
+        reserve: (scopeId: string, itemId: string, assignmentKey: string, role?: WorkflowRoleAssignment): string => tx(() => {
+          const parent = scope(scopeId);
+          if (itemId !== parent.itemId) throw new StoreAuthorityError("Child work is outside the parent item");
+          const id = randomUUID();
+          return executeWorkflow({ kind: "reserve", role: "owner", itemIds: [itemId], reservationId: id, purpose: "assignment", assignmentKey }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", id, workflowChildSchema.parse({ id, scopeId, claimId: input.claimId, itemId, assignmentKey, state: "active", ...(role === undefined ? {} : { role }) })); return id; },
+          });
+        }),
+        settle: (scopeId: string, reservationId: string, outcome: "completed" | "failed" | "uncertain"): void => tx(() => {
+          scope(scopeId);
+          const child = read("workflowChild", reservationId, workflowChildSchema);
+          if (child === null || child.scopeId !== scopeId || child.claimId !== input.claimId) throw new StoreAuthorityError("Child reservation is outside the parent scope");
+          if (child.role !== undefined && outcome === "completed") throw new StoreAuthorityError("Role assignments require a correlated role proof");
+          executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", reservationId, { ...child, state: outcome }); },
+          });
+        }),
+        settleRole: (scopeId: string, reservationId: string, proof: WorkflowRoleReceipt): void => tx(() => {
+          scope(scopeId);
+          const child = read("workflowChild", reservationId, workflowChildSchema);
+          if (child === null || child.scopeId !== scopeId || child.claimId !== input.claimId || child.itemId !== proof.itemId || child.role?.kind !== proof.role)
+            throw new StoreAuthorityError("Role proof is outside its reserved item and role");
+          executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome: "completed" }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed", proof })); },
+          });
+        }),
+      };
+    },
+    createFactoryAuthority(input: { readonly manager: Binding; readonly itemIds: readonly string[]; readonly limit: number; readonly launchKey: string; readonly assertConnection: () => void }) {
+      const root = tx(() => {
+        input.assertConnection();
+        const leader = manager(input.manager);
+        const itemIds = input.itemIds.map((id) => idSchema.parse(id));
+        const limit = z.number().int().min(1).max(3).parse(input.limit);
+        if (itemIds.length === 0 || new Set(itemIds).size !== itemIds.length) throw new StoreAuthorityError("Factory requires distinct canonical items");
+        const launchKey = idSchema.parse(input.launchKey);
+        if (read("workflowLaunch", launchKey, workflowLaunchSchema) !== null) throw new StoreConflictError("Workflow launch key was already attempted; reconcile before retrying");
+        const assignments: Json[] = [];
+        const items = itemIds.map((itemId) => {
+          const owner = read("queueOwner", itemId, queueOwnerSchema);
+          const execution = read("itemExecution", itemId, itemExecutionSchema);
+          const cap = read("workflowLimit", itemId, z.number().int().min(1).max(3));
+          if (owner === null || execution === null || owner.eventId !== execution.eventId || cap === null || read("workflowTarget", itemId, z.string().min(1)) === null || limit > cap)
+            throw new StoreAuthorityError("Factory items require a current execution and manager-selected inherited cap");
+          const worker = employee(execution.employeeId);
+          if (worker.generation !== execution.generation || worker.assignment !== execution.teamId)
+            throw new StoreFenceError("Factory item worker is no longer assigned");
+          const claim = selected("SELECT payload FROM records WHERE kind='claim' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.status')='active'", [worker.id], claimSchema)
+            .find((entry) => entry.messageId === execution.messageId && entry.generation === worker.generation && entry.ownerEpoch === epoch);
+          const message = claim === undefined ? null : read("message", claim.messageId, messageSchema);
+          if (claim === undefined || message === null || message.status !== "claimed") throw new StoreAuthorityError("Factory requires each item's active authenticated claim");
+          assignments.push({ itemId, assignment: message.payload });
+          return { itemId, claimId: claim.id, employeeId: worker.id, generation: worker.generation, teamId: execution.teamId, limit: cap };
+        });
+        const id = randomUUID();
+        put("workflowFactoryScope", id, workflowFactoryScopeSchema.parse({ id, parentId: null, managerId: leader.id, generation: leader.generation, ownerEpoch: epoch, workflow: "factory", limit, items }));
+        put("workflowLaunch", launchKey, workflowLaunchSchema.parse({ launchKey, scopeId: id, claimId: id, employeeId: leader.id, generation: leader.generation, ownerEpoch: epoch, state: "starting", location: null }));
+        for (const item of items) put("workflowRunClaim", `${launchKey}/${item.claimId}`, { launchKey, claimId: item.claimId });
+        return { id, assignments };
+      });
+      const scope = (id: string) => {
+        input.assertConnection();
+        const leader = manager(input.manager);
+        const saved = read("workflowFactoryScope", id, workflowFactoryScopeSchema);
+        if (saved === null || saved.managerId !== leader.id || saved.generation !== leader.generation || saved.ownerEpoch !== epoch)
+          throw new StoreFenceError("Factory scope no longer belongs to its manager generation");
+        for (const item of saved.items) {
+          const claim = read("claim", item.claimId, claimSchema);
+          const execution = read("itemExecution", item.itemId, itemExecutionSchema);
+          const owner = read("queueOwner", item.itemId, queueOwnerSchema);
+          const worker = employee(item.employeeId);
+          if (claim?.status !== "active" || claim.ownerEpoch !== epoch || claim.employeeId !== item.employeeId || claim.generation !== item.generation ||
+              execution?.messageId !== claim.messageId || execution.teamId !== item.teamId || execution.generation !== item.generation ||
+              execution.employeeId !== item.employeeId || owner?.eventId !== execution.eventId || worker.generation !== item.generation || worker.assignment !== item.teamId)
+            throw new StoreFenceError("Factory item claim or team changed; reconcile the frozen scope");
+        }
+        return saved;
+      };
+      const view = (id: string): WorkflowView => {
+        const saved = scope(id);
+        const children = saved.items.flatMap((item) => selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.claimId')=?", [item.claimId], workflowChildSchema));
+        const reviews = saved.items.flatMap((item) => selected("SELECT payload FROM records WHERE kind='workflowReview' AND json_extract(payload,'$.changeId')=?", [item.itemId], workflowReviewSchema));
+        const plan = read("workflowPlan", root.id, workflowPlanSchema);
+        const rootScope = read("workflowFactoryScope", root.id, workflowFactoryScopeSchema);
+        if (rootScope === null) throw new StoreFenceError("Factory root scope is unavailable");
+        const dependencyReadyItemIds = rootScope.items.filter((item) => read("workflowReady", `${root.id}/${item.itemId}`, workflowReadySchema) !== null).map((item) => item.itemId);
+        return { scope: { kind: "bounded", itemIds: saved.items.map((item) => item.itemId) }, admitted: saved.items.map((item) => item.itemId),
+          reservations: children.map((child) => ({ id: child.id, itemIds: [child.itemId], state: child.state, purpose: "assignment" as const, assignmentKey: child.assignmentKey })),
+          reviews, completedItemIds: [], dependencyReadyItemIds, graphFrozen: plan?.frozen === true,
+          planner: plan === null ? null : { reservationId: plan.reservationId, state: plan.state },
+          ...(plan?.frozen ? { dependencies: plan.dependencies } : {}),
+          reviewLimit: saved.limit, reviewLimits: Object.fromEntries(saved.items.map((item) => [item.itemId, Math.min(item.limit, saved.limit)])), workflow: saved.workflow };
+      };
+      return {
+        rootId: root.id, assignments: root.assignments,
+        reservePlan: (scopeId: string): string => tx(() => {
+          if (scopeId !== root.id) throw new StoreAuthorityError("Only the root factory scope may plan");
+          scope(root.id);
+          const reservationId = randomUUID();
+          return executeWorkflow({ kind: "plan", role: "owner", reservationId }, {
+            transaction: (run) => run(), read: () => view(root.id),
+            apply: () => { put("workflowPlan", root.id, workflowPlanSchema.parse({ reservationId, state: "active", frozen: false, dependencies: {}, targets: {} })); return reservationId; },
+          });
+        }),
+        settlePlan: (scopeId: string, reservationId: string, outcome: "failed" | "uncertain"): void => tx(() => {
+          if (scopeId !== root.id) throw new StoreAuthorityError("Only the root factory scope may settle its planner");
+          const plan = read("workflowPlan", root.id, workflowPlanSchema);
+          if (plan === null || plan.reservationId !== reservationId) throw new StoreFenceError("Planner reservation does not match");
+          executeWorkflow({ kind: "plan-settle", role: "owner", reservationId, outcome }, {
+            transaction: (run) => run(), read: () => view(root.id),
+            apply: () => { put("workflowPlan", root.id, { ...plan, state: outcome }); },
+          });
+        }),
+        completePlan: (scopeId: string, reservationId: string, plan: { readonly dependencies: Readonly<Record<string, readonly string[]>>; readonly targets: Readonly<Record<string, readonly string[]>> }): void => tx(() => {
+          if (scopeId !== root.id) throw new StoreAuthorityError("Only the root factory scope may freeze its planner");
+          const saved = scope(root.id);
+          const prior = read("workflowPlan", root.id, workflowPlanSchema);
+          if (prior === null || prior.reservationId !== reservationId) throw new StoreFenceError("Planner reservation does not match");
+          for (const item of saved.items) {
+            const target = read("workflowTarget", item.itemId, z.string().min(1));
+            if (target === null || plan.targets[item.itemId]?.length !== 1 || plan.targets[item.itemId]?.[0] !== target)
+              throw new StoreAuthorityError("Planner targets must match each manager-frozen item target");
+          }
+          executeWorkflow({ kind: "plan-settle", role: "owner", reservationId, outcome: "completed" }, {
+            transaction: (run) => run(), read: () => view(root.id),
+            apply: () => { put("workflowPlan", root.id, { ...prior, state: "completed" }); },
+          });
+          executeWorkflow({ kind: "freeze", role: "owner", reservationId, dependencies: plan.dependencies, targets: plan.targets }, {
+            transaction: (run) => run(), read: () => view(root.id),
+            apply: () => { put("workflowPlan", root.id, workflowPlanSchema.parse({ reservationId, state: "completed", frozen: true, dependencies: plan.dependencies, targets: plan.targets })); },
+          });
+        }),
+        readyItem: (scopeId: string, itemId: string, evidence: { readonly worktree: string; readonly head: string; readonly prNumber: number }): void => tx(() => {
+          if (scopeId !== root.id) throw new StoreAuthorityError("Only the root factory scope may mark an item ready");
+          const saved = scope(root.id);
+          const item = saved.items.find((entry) => entry.itemId === itemId);
+          if (!item || read("workflowPlan", root.id, workflowPlanSchema)?.frozen !== true) throw new StoreAuthorityError("Readiness requires a frozen factory item");
+          const children = selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.claimId')=?", [item.claimId], workflowChildSchema).filter((child) => {
+            let cursor: string | null = child.scopeId;
+            while (cursor !== null && cursor !== root.id) cursor = read("workflowFactoryScope", cursor, workflowFactoryScopeSchema)?.parentId ?? null;
+            return cursor === root.id;
+          });
+          const receipt = workflowReadySchema.parse({ itemId, ...evidence });
+          requireWorkflowHandoff(children, "factory", receipt);
+          executeWorkflow({ kind: "ready-item", role: "owner", itemId }, {
+            transaction: (run) => run(), read: () => ({ ...view(root.id), readyableItemIds: [itemId] }),
+            apply: () => { put("workflowReady", `${root.id}/${itemId}`, receipt); },
+          });
+        }),
+        finishRun: (scopeId: string, handoff: WorkflowRunHandoff): void => tx(() => {
+          if (scopeId !== root.id) throw new StoreAuthorityError("Only the root factory run may hand off");
+          const saved = scope(root.id);
+          const launch = read("workflowLaunch", input.launchKey, workflowLaunchSchema);
+          if (launch === null || launch.scopeId !== root.id || launch.state !== "accepted") throw new StoreFenceError("Factory run is not eligible for handoff");
+          if (handoff.items.length !== saved.items.length || new Set(handoff.items.map((entry) => entry.itemId)).size !== saved.items.length || handoff.items.some((entry) => !saved.items.some((item) => item.itemId === entry.itemId)))
+            throw new StoreAuthorityError("Factory handoff must cover every frozen item exactly once");
+          if (read("workflowPlan", root.id, workflowPlanSchema)?.frozen !== true) throw new StoreAuthorityError("Factory plan is not frozen");
+          for (const item of saved.items) {
+            const children = selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.claimId')=?", [item.claimId], workflowChildSchema).filter((child) => {
+              let cursor: string | null = child.scopeId;
+              while (cursor !== null && cursor !== root.id) cursor = read("workflowFactoryScope", cursor, workflowFactoryScopeSchema)?.parentId ?? null;
+              return cursor === root.id;
+            });
+            const proof = handoff.items.find((entry) => entry.itemId === item.itemId);
+            if (!proof) throw new StoreAuthorityError("Factory item handoff is missing");
+            requireWorkflowHandoff(children, "factory", proof);
+            const ready = read("workflowReady", `${root.id}/${item.itemId}`, workflowReadySchema);
+            if (ready === null || !sameDocument(ready, proof)) throw new StoreAuthorityError("Factory item handoff must match its verified PR-ready evidence");
+          }
+          put("workflowLaunch", input.launchKey, workflowLaunchSchema.parse({ ...launch, state: "closed", handoff }));
+        }),
+        finishTarget: (scopeId: string, itemId: string): string | null => tx(() => {
+          const saved = scope(scopeId);
+          return saved.items.some((item) => item.itemId === itemId) ? read("workflowTarget", itemId, z.string().min(1)) : null;
+        }),
+        launchState: (state: "accepted" | "uncertain", location: Json | null): void => tx(() => {
+          scope(root.id);
+          const launch = read("workflowLaunch", input.launchKey, workflowLaunchSchema);
+          if (launch === null || launch.scopeId !== root.id || launch.state !== "starting") throw new StoreFenceError("Factory launch intent is no longer pending");
+          put("workflowLaunch", input.launchKey, { ...launch, state, location });
+        }),
+        view: (id: string): WorkflowView => tx(() => view(id)),
+        nest: (parentId: string, workflow: "factory" | "pipeline" | "hotfix", itemIds: readonly string[], limit: number): string => tx(() => {
+          const parent = scope(parentId);
+          if (itemIds.length === 0 || new Set(itemIds).size !== itemIds.length || itemIds.some((id) => !parent.items.some((item) => item.itemId === id)) || (workflow !== "factory" && itemIds.length !== 1))
+            throw new StoreAuthorityError("Nested factory scope must be a nonempty subset of its frozen items");
+          const id = randomUUID();
+          return executeWorkflow({ kind: "nest", role: "owner", runId: id, workflow, limit }, {
+            transaction: (run) => run(), read: () => view(parentId),
+            apply: () => { put("workflowFactoryScope", id, workflowFactoryScopeSchema.parse({ ...parent, id, parentId, workflow, limit, items: parent.items.filter((item) => itemIds.includes(item.itemId)) })); return id; },
+          });
+        }),
+        reserve: (scopeId: string, itemId: string, assignmentKey: string, role?: WorkflowRoleAssignment): string => tx(() => {
+          const saved = scope(scopeId);
+          const item = saved.items.find((entry) => entry.itemId === itemId);
+          if (!item) throw new StoreAuthorityError("Child work is outside the frozen factory scope");
+          const id = randomUUID();
+          return executeWorkflow({ kind: "reserve", role: "owner", itemIds: [itemId], reservationId: id, purpose: "assignment", assignmentKey }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", id, workflowChildSchema.parse({ id, scopeId, claimId: item.claimId, itemId, assignmentKey, state: "active", ...(role === undefined ? {} : { role }) })); return id; },
+          });
+        }),
+        settle: (scopeId: string, reservationId: string, outcome: "completed" | "failed" | "uncertain"): void => tx(() => {
+          const saved = scope(scopeId);
+          const child = read("workflowChild", reservationId, workflowChildSchema);
+          if (child === null || child.scopeId !== scopeId || !saved.items.some((item) => item.claimId === child.claimId && item.itemId === child.itemId))
+            throw new StoreAuthorityError("Child reservation is outside the frozen factory scope");
+          if (child.role !== undefined && outcome === "completed") throw new StoreAuthorityError("Role assignments require a correlated role proof");
+          executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", reservationId, { ...child, state: outcome }); },
+          });
+        }),
+        settleRole: (scopeId: string, reservationId: string, proof: WorkflowRoleReceipt): void => tx(() => {
+          const saved = scope(scopeId);
+          const child = read("workflowChild", reservationId, workflowChildSchema);
+          if (child === null || child.scopeId !== scopeId || child.itemId !== proof.itemId || child.role?.kind !== proof.role ||
+              !saved.items.some((item) => item.claimId === child.claimId && item.itemId === child.itemId))
+            throw new StoreAuthorityError("Role proof is outside its frozen item and role");
+          executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome: "completed" }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed", proof })); },
+          });
+        }),
+      };
+    },
+    workflowReview(input: {
+      readonly employee: Binding;
+      readonly request:
+        | { readonly action: "reserve"; readonly changeId: string; readonly reservationId: string; readonly head: string; readonly limit: number; readonly reviewerId: string }
+        | { readonly action: "settle"; readonly reservationId: string; readonly resultId: string };
+    }): z.infer<typeof workflowReviewSchema> {
+      return tx(() => {
+        const sender = actor(input.employee);
+        const request = input.request;
+        const reservationId = idSchema.parse(request.reservationId);
+        const existing = read("workflowReview", reservationId, workflowReviewSchema);
+        if (request.action === "reserve") {
+          const changeId = idSchema.parse(request.changeId);
+          const head = z.string().trim().min(1).parse(request.head);
+          const limit = z.number().int().min(1).max(3).parse(request.limit);
+          const reviewerId = idSchema.parse(request.reviewerId);
+          const owner = read("queueOwner", changeId, queueOwnerSchema);
+          const intake = owner === null ? null : read("intake", owner.eventId, intakeRecordSchema);
+          if (intake?.teamId == null) throw new StoreAuthorityError("Review change has no owning team");
+          const current = team(intake.teamId);
+          if (sender.role !== "manager" && (sender.id !== current.architect || sender.assignment !== current.id))
+            throw new StoreAuthorityError("Only the manager or owning architect may reserve a review");
+          if (!ready(current) || current.state === "finished" || !members(current).includes(reviewerId) || reviewerId === current.architect)
+            throw new StoreAuthorityError("Review requires a ready owning-team reviewer distinct from the architect");
+          const execution = read("itemExecution", changeId, itemExecutionSchema);
+          if (execution?.employeeId === reviewerId)
+            throw new StoreAuthorityError("The item implementer cannot independently review their own change");
+          if (existing !== null) {
+            if (existing.changeId !== changeId || existing.head !== head || existing.limit !== limit || existing.reviewerId !== reviewerId)
+              throw new StoreConflictError("Review reservation replay differs from saved request");
+            return existing;
+          }
+          const prior = selected("SELECT payload FROM records WHERE kind='workflowReview' AND json_extract(payload,'$.changeId')=?", [changeId], workflowReviewSchema);
+          const savedLimit = read("workflowLimit", changeId, z.number().int().min(1).max(3));
+          if (savedLimit === null && prior.length === 0 && sender.role !== "manager")
+            throw new StoreAuthorityError("The manager must select the review limit for this change");
+          if ((savedLimit !== null && savedLimit !== limit) || prior.some((entry) => entry.limit !== limit))
+            throw new StoreConflictError("The manager-selected review limit is immutable");
+          assertNoUnresolvedWork(reviewerId, "Reviewer");
+          const messageId = `workflow-review-${reservationId}`;
+          return workflow({ kind: "review", role: sender.role, changeId, reservationId, head }, () => {
+            if (savedLimit === null) put("workflowLimit", changeId, limit);
+            const review = workflowReviewSchema.parse({ changeId, reservationId, head, reviewerId, messageId, limit, state: "active", verdict: null, resultId: null });
+            saveCue(sender, { id: messageId, recipient: reviewerId, kind: "assignment", correlation: changeId, payload: { kind: "workflow-review", changeId, reservationId, head, instruction: "Review the exact head. Settle the claim with output {kind:'workflow-review', reservationId, head, verdict} where verdict is approve, changes-requested, or block." } }, current.id);
+            put("workflowReview", reservationId, review);
+            return review;
+          }, limit);
+        }
+        if (existing === null) throw new StoreConflictError("Review reservation does not exist");
+        const owner = read("queueOwner", existing.changeId, queueOwnerSchema);
+        const intake = owner === null ? null : read("intake", owner.eventId, intakeRecordSchema);
+        if (intake?.teamId == null) throw new StoreAuthorityError("Review change has no owning team");
+        const current = team(intake.teamId);
+        if (sender.role !== "manager" && (sender.id !== current.architect || sender.assignment !== current.id))
+          throw new StoreAuthorityError("Only the manager or owning architect may settle a review");
+        const resultId = idSchema.parse(request.resultId);
+        if (existing.state === "completed") {
+          if (existing.resultId !== resultId) throw new StoreConflictError("Review already settled with another result");
+          return existing;
+        }
+        const saved = read("result", resultId, resultRecordSchema);
+        const claim = saved === null ? null : read("claim", saved.claimId, claimSchema);
+        if (saved === null || saved.result.kind !== "completed" || claim?.status !== "settled" ||
+            claim.messageId !== existing.messageId || claim.employeeId !== existing.reviewerId)
+          throw new StoreAuthorityError("Review requires its reviewer's completed, settled assignment result");
+        const receipt = z.strictObject({ kind: z.literal("workflow-review"), reservationId: idSchema, head: z.string().trim().min(1), verdict: z.enum(["approve", "changes-requested", "block"]) }).parse(saved.result.output);
+        if (receipt.reservationId !== reservationId || receipt.head !== existing.head)
+          throw new StoreConflictError("Review result does not match its reservation and exact head");
+        return workflow({ kind: "review-settle", role: sender.role, reservationId, head: receipt.head, verdict: receipt.verdict }, () => {
+          const review = { ...existing, state: "completed" as const, verdict: receipt.verdict, resultId };
+          put("workflowReview", reservationId, review);
+          return review;
+        }, existing.limit);
       });
     },
     sendCue(input: { readonly sender: Binding; readonly cue: Cue }): Message {
@@ -2589,9 +3145,11 @@ export function openStore(args: {
           status: "active",
         });
         const claimed: Message = { ...message, status: "claimed" };
-        put("claim", claim.id, claim);
-        put("message", message.id, claimed);
-        return { claim, message: claimed };
+        return workflow({ kind: "reserve", purpose: "claim", role: current.role, itemIds: [message.id], reservationId: claim.id }, () => {
+          put("claim", claim.id, claim);
+          put("message", message.id, claimed);
+          return { claim, message: claimed };
+        });
       });
     },
     settleClaim(input: {
@@ -2622,6 +3180,11 @@ export function openStore(args: {
         }
         if (claim.ownerEpoch !== epoch || claim.status === "reconciliation") reject("claim_requires_reconciliation", "The saved claim requires explicit manager reconciliation with evidence through startup_reconcile. Do not retry settlement or replay the work.", claim.id);
         if (claim.status === "settled" || all("result", resultRecordSchema).some((entry): boolean => entry.claimId === claim.id)) reject("claim_already_settled", "This claim already has a result. Reuse the original result ID and exact payload to recover its receipt; do not create another result.", claim.id);
+        if (result.kind !== "uncertain" && selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.claimId')=?", [claim.id], workflowChildSchema).some((child) => child.state === "active" || child.state === "uncertain"))
+          throw new StoreRecoveryError("The parent claim has active or uncertain bounded child effects; reconcile them before settling");
+        if (result.kind !== "uncertain" && selected("SELECT payload FROM records WHERE kind='workflowRunClaim' AND json_extract(payload,'$.claimId')=?", [claim.id], workflowRunClaimSchema)
+          .some((link) => read("workflowLaunch", link.launchKey, workflowLaunchSchema)?.state !== "closed"))
+          throw new StoreRecoveryError("The parent claim has a bounded run without an authenticated completed handoff");
         const incoming: Message | null = read(
           "message",
           claim.messageId,
@@ -2651,6 +3214,7 @@ export function openStore(args: {
               },
             }]
           : [];
+        return workflow({ kind: "settle", purpose: "claim", role: current.role, reservationId: claim.id, outcome: result.kind === "completed" ? "completed" : result.kind === "uncertain" ? "uncertain" : "failed" }, () => {
         const messages: readonly Message[] = [...result.outgoing, ...handoff].map(
           (cue): Message => saveCue(current, cue, current.assignment),
         );
@@ -2682,6 +3246,7 @@ export function openStore(args: {
             state: result.kind === "question" ? "waiting" : "reconciliation",
           });
         return settlement;
+        });
       });
     },
     resolveAssignment(input: {
@@ -2719,15 +3284,17 @@ export function openStore(args: {
         if (evidence === null)
           throw new StoreRecoveryError("Claim reconciliation requires recorded evidence");
         const prior = read("claimReconciliation", saved.id, jsonSchema);
-        if (saved.status === "settled" && prior !== null)
+        if (saved.status === "settled" && prior !== null) {
           assertReplay(prior, evidence, `claim reconciliation ${saved.id}`);
-        else if (saved.status !== "reconciliation")
+          return;
+        } else if (saved.status !== "reconciliation")
           throw new StoreConflictError("Claim is not awaiting reconciliation");
         const message = read("message", saved.messageId, messageSchema);
         if (message === null)
           throw new StoreRecoveryError(
             "Reconciliation claim lost incoming message",
           );
+        workflow({ kind: "reconcile", role: "manager", reservationId: saved.id, outcome: "completed", evidence: encode(evidence) }, () => {
         put("claimReconciliation", saved.id, evidence);
         put("claim", saved.id, { ...saved, status: "settled" });
         put("message", message.id, { ...message, status: "acknowledged" });
@@ -2743,6 +3310,7 @@ export function openStore(args: {
             !all("grant", grantSchema).some((grant) => ids.includes(grant.employeeId) && grant.state === "reconciliation"))
             put("team", assigned.id, { ...assigned, state: "waiting" });
         }
+        });
       });
     },
     setDuty(input: { readonly manager: Binding; readonly duty: Duty }): Duty {
@@ -3291,6 +3859,52 @@ export function openStore(args: {
         put("runtimeBinding", key, runtime);
         return runtime;
       });
+    },
+    async dispatchRuntimeAllocation(
+      input: RuntimeBinding,
+      effect: () => Promise<Readonly<{ tabId: string; paneId: string }>>,
+    ): Promise<Readonly<{ tabId: string; paneId: string }>> {
+      const key = `${input.employeeId}/${input.generation}`;
+      let location: Readonly<{ tabId: string; paneId: string }> | null = null;
+      const adapter = {
+        transaction: <T>(run: () => T): T => tx(run),
+        read: (): WorkflowView => {
+          const current = read("runtimeBinding", key, runtimeBindingSchema);
+          if (current === null || current.launchId !== input.launchId || current.credentialDigest !== input.credentialDigest ||
+              !sameDocument(current.source, input.source) || !sameDocument(current.settings, input.settings))
+            throw new StoreFenceError("Launch allocation no longer matches its reserved identity");
+          return {
+            scope: { kind: "startup" }, admitted: [current.launchId],
+            reservations: current.state === "prepared" ? [] : [{
+              id: current.launchId, itemIds: [current.launchId],
+              state: current.state === "uncertain" || current.state === "abandoned" ? "uncertain" : "active",
+            }],
+            reviews: [], reviewLimit: 3, workflow: "startup",
+          };
+        },
+        apply: (decision: WorkflowRequest): void => {
+          const current = read("runtimeBinding", key, runtimeBindingSchema);
+          if (current === null || current.launchId !== input.launchId)
+            throw new StoreFenceError("Launch allocation was superseded");
+          if (decision.kind === "reserve") {
+            if (current.state !== "prepared") throw new StoreFenceError("Launch is no longer prepared");
+            put("runtimeBinding", key, runtimeBindingSchema.parse({ ...current, state: "starting", lastSeen: timeSchema.parse(now()) }));
+          } else if (decision.kind === "settle" && decision.outcome === "uncertain") {
+            if (current.state !== "ready")
+              put("runtimeBinding", key, runtimeBindingSchema.parse({ ...current, state: "uncertain", error: "Native allocation outcome requires reconciliation" }));
+          } else throw new StoreConflictError("Unsupported launch lifecycle transition");
+        },
+      };
+      await dispatchWorkflow({
+        request: { kind: "reserve", role: "manager", itemIds: [input.launchId], reservationId: input.launchId },
+        adapter,
+        effect: async (reservationId) => {
+          location = await effect();
+          return { reservationId, status: "accepted" };
+        },
+      });
+      if (location === null) throw new StoreRecoveryError("Native allocation returned no location");
+      return location;
     },
     hostAssociations(input: Readonly<{ after: string | null; limit: number; herdrSession: string; connectionDeadlineMs: number }>): HostAssociationPage {
       const query = hostAssociationQuerySchema.parse({ after: input.after, limit: input.limit });

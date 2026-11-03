@@ -608,6 +608,145 @@ function queuePath(f: ReturnType<typeof fixture>): string {
   return join(f.startupRoot, "queue.json");
 }
 
+test("workflow reviews use an owned settled reviewer claim and enforce the manager budget", (): void => {
+  const f = fixture();
+  const t = active(f, "review-event", []);
+  f.store.captureIntake({ architect: t.architectBinding, capture: {
+    captureId: "review-capture", eventId: "review-event",
+    rows: [{ id: "review-item", expectedRevision: null, fields: fields("Review this change") }], receipt: "captured",
+  } });
+  for (const binding of [t.architectBinding, t.qaBinding, t.devBinding]) {
+    const notice = f.store.claimNext({ employee: binding });
+    if (!notice) throw new Error("Missing readiness notice");
+    f.store.settleClaim({ employee: binding, claimId: notice.claim.id, result: completed(`notice-${binding.employeeId}`) });
+  }
+  const request = { action: "reserve", changeId: "review-item", reservationId: "review-1", head: "commit-one", limit: 1, reviewerId: t.qa } as const;
+  expect(() => f.store.workflowReview({ employee: t.architectBinding, request })).toThrow();
+  const reservedReview = f.store.workflowReview({ employee: f.store.managerBinding, request });
+  expect(reservedReview.state).toBe("active");
+  expect(f.store.workflowReview({ employee: f.store.managerBinding, request })).toEqual(reservedReview);
+  expect(() => f.store.workflowReview({ employee: f.store.managerBinding, request: { action: "settle", reservationId: "review-1", resultId: "missing" } })).toThrow();
+  const claim = f.store.claimNext({ employee: t.qaBinding });
+  if (!claim) throw new Error("Missing review assignment");
+  expect(claim.message.id).toBe("workflow-review-review-1");
+  f.store.settleClaim({ employee: t.qaBinding, claimId: claim.claim.id, result: {
+    ...completed("review-result"), output: { kind: "workflow-review", reservationId: "review-1", head: "commit-one", verdict: "changes-requested" },
+  } });
+  expect(f.store.workflowReview({ employee: t.architectBinding, request: { action: "settle", reservationId: "review-1", resultId: "review-result" } }).verdict).toBe("changes-requested");
+  expect(() => f.store.workflowReview({ employee: f.store.managerBinding, request: { ...request, reservationId: "review-2", head: "commit-two" } })).toThrow();
+  f.store.close();
+});
+
+test.each(["code", "research"])("completion respects review scope for %s items", (kind: string): void => {
+  const f = fixture();
+  const t = active(f, `completion-${kind}`, []);
+  f.store.captureIntake({ architect: t.architectBinding, capture: {
+    captureId: `capture-${kind}`, eventId: `completion-${kind}`,
+    rows: [{ id: `item-${kind}`, expectedRevision: null, fields: { ...fields("Work"), kind } }], receipt: "captured",
+  } });
+  for (const binding of [t.architectBinding, t.qaBinding, t.devBinding]) {
+    const claim = f.store.claimNext({ employee: binding });
+    if (!claim) throw new Error("Missing readiness assignment");
+    f.store.settleClaim({ employee: binding, claimId: claim.claim.id, result: completed(`bootstrap-${binding.employeeId}`) });
+  }
+  const itemId = `item-${kind}`;
+  f.store.transitionItem({ employee: t.architectBinding, request: { action: "assign", requestId: "assign", itemId, expectedRevision: 1, employeeId: t.dev, evidence: {} } });
+  const devClaim = f.store.claimNext({ employee: t.devBinding });
+  if (!devClaim) throw new Error("Missing dev assignment");
+  expect(f.store.workflowContext({ employee: t.devBinding, itemId })).toMatchObject({ itemId, claimId: devClaim.claim.id, teamId: t.team.id, employeeId: t.dev });
+  expect(() => f.store.workflowContext({ employee: t.qaBinding, itemId })).toThrow();
+  f.store.setWorkflowLimit({ manager: f.store.managerBinding, itemId, limit: 2, target: "main" });
+  const authority = f.store.createWorkflowAuthority({ employee: t.devBinding, itemId, claimId: devClaim.claim.id, workflow: "pipeline", limit: 2, launchKey: `launch-${kind}`, assertConnection: () => {} });
+  expect(authority.view(authority.rootId).scope).toEqual({ kind: "bounded", itemIds: [itemId] });
+  const child = authority.reserve(authority.rootId, itemId, "worker");
+  expect(() => authority.reserve(authority.rootId, itemId, "worker")).toThrow();
+  authority.settle(authority.rootId, child, "completed");
+  expect(() => authority.reserve(authority.rootId, itemId, "worker")).toThrow();
+  expect(() => authority.nest(authority.rootId, "hotfix", [itemId], 2)).toThrow();
+  authority.launchState("accepted", { paneId: "pane" });
+  expect(() => f.store.createWorkflowAuthority({ employee: t.devBinding, itemId, claimId: devClaim.claim.id, workflow: "pipeline", limit: 2, launchKey: `launch-${kind}`, assertConnection: () => {} })).toThrow();
+  const factory = f.store.createFactoryAuthority({ manager: f.store.managerBinding, itemIds: [itemId], limit: 2, launchKey: `factory-${kind}`, assertConnection: () => {} });
+  expect(factory.view(factory.rootId).scope).toEqual({ kind: "bounded", itemIds: [itemId] });
+  expect(() => factory.reserve(factory.rootId, itemId, "before-plan")).toThrow();
+  const planner = factory.reservePlan(factory.rootId);
+  expect(() => factory.completePlan(factory.rootId, planner, { dependencies: { [itemId]: [] }, targets: { [itemId]: ["foreign"] } })).toThrow();
+  factory.completePlan(factory.rootId, planner, { dependencies: { [itemId]: [] }, targets: { [itemId]: ["main"] } });
+  expect(() => factory.nest(factory.rootId, "pipeline", ["foreign-item"], 2)).toThrow();
+  const nested = factory.nest(factory.rootId, "pipeline", [itemId], 2);
+  const factoryChild = factory.reserve(nested, itemId, "factory-worker");
+  factory.settle(nested, factoryChild, "completed");
+  expect(() => factory.reserve(nested, itemId, "factory-worker")).toThrow();
+  factory.launchState("accepted", { paneId: "factory-pane" });
+  expect(() => f.store.settleClaim({ employee: t.devBinding, claimId: devClaim.claim.id, result: completed("dev-result") })).toThrow();
+  const itemHandoff = { itemId, worktree: f.scope.boundRoot, head: "a".repeat(40), prNumber: 123 };
+  const handoff = { items: [itemHandoff] };
+  expect(() => authority.finishRun(authority.rootId, handoff)).toThrow();
+  for (const role of ["architect", "dev", "qa"] as const) {
+    const reservation = authority.reserve(authority.rootId, itemId, `pipeline-${role}`, { kind: role, worktree: itemHandoff.worktree });
+    authority.settleRole(authority.rootId, reservation, { itemId, role, agentId: `pipeline-${role}`, head: itemHandoff.head, evidence: { verified: "yes" } });
+    const factoryReservation = factory.reserve(nested, itemId, `factory-${role}`, { kind: role, worktree: itemHandoff.worktree });
+    factory.settleRole(nested, factoryReservation, { itemId, role, agentId: `factory-${role}`, head: itemHandoff.head, evidence: { verified: "yes" } });
+  }
+  authority.finishRun(authority.rootId, handoff);
+  factory.readyItem(factory.rootId, itemId, { worktree: itemHandoff.worktree, head: itemHandoff.head, prNumber: itemHandoff.prNumber });
+  factory.finishRun(factory.rootId, handoff);
+  f.store.settleClaim({ employee: t.devBinding, claimId: devClaim.claim.id, result: completed("dev-result") });
+  expect(() => f.store.workflowContext({ employee: t.devBinding, itemId })).toThrow();
+  f.store.transitionItem({ employee: t.devBinding, request: { action: "review", requestId: "submit", itemId, expectedRevision: 2, resultId: "dev-result", evidence: {} } });
+  f.store.transitionItem({ employee: t.architectBinding, request: { action: "qa_assign", requestId: "qa-assign", itemId, expectedRevision: 3, evidence: {} } });
+  const qaClaim = f.store.claimNext({ employee: t.qaBinding });
+  if (!qaClaim) throw new Error("Missing QA assignment");
+  f.store.settleClaim({ employee: t.qaBinding, claimId: qaClaim.claim.id, result: completed("qa-result") });
+  f.store.transitionItem({ employee: t.qaBinding, request: { action: "qa", requestId: "qa", itemId, expectedRevision: 4, resultId: "qa-result", verdict: "APPROVE", proof: "done" } });
+  f.store.transitionItem({ employee: t.architectBinding, request: { action: "gate", requestId: "gate", itemId, expectedRevision: 5, verdict: "APPROVE", evidence: {} } });
+  const completion = { action: "decide", requestId: "done", itemId, expectedRevision: 6, status: "DONE", evidence: {} } as const;
+  if (kind === "code") {
+    expect(() => f.store.transitionItem({ employee: f.store.managerBinding, request: completion })).toThrow();
+    f.store.workflowReview({ employee: f.store.managerBinding, request: { action: "reserve", changeId: itemId, reservationId: "approval", head: "exact-head", limit: 2, reviewerId: t.qa } });
+    const reviewClaim = f.store.claimNext({ employee: t.qaBinding });
+    if (!reviewClaim) throw new Error("Missing formal review assignment");
+    f.store.settleClaim({ employee: t.qaBinding, claimId: reviewClaim.claim.id, result: { ...completed("formal-result"), output: { kind: "workflow-review", reservationId: "approval", head: "exact-head", verdict: "approve" } } });
+    f.store.workflowReview({ employee: f.store.managerBinding, request: { action: "settle", reservationId: "approval", resultId: "formal-result" } });
+    expect(f.store.transitionItem({ employee: f.store.managerBinding, request: { ...completion, evidence: { reviewReservationId: "approval", head: "exact-head" } } }).status).toBe("DONE");
+  } else {
+    expect(f.store.transitionItem({ employee: f.store.managerBinding, request: completion }).status).toBe("DONE");
+  }
+  f.store.close();
+});
+
+test("factory freezes manager targets and waits for independently ready prerequisites", (): void => {
+  const f = fixture();
+  for (const name of ["first", "second"]) {
+    const t = active(f, `event-${name}`, []);
+    f.store.captureIntake({ architect: t.architectBinding, capture: {
+      captureId: `capture-${name}`, eventId: `event-${name}`,
+      rows: [{ id: name, expectedRevision: null, fields: { ...fields(name), kind: "code" } }], receipt: "captured",
+    } });
+    for (const binding of [t.architectBinding, t.qaBinding, t.devBinding]) {
+      const notice = f.store.claimNext({ employee: binding });
+      if (!notice) throw new Error("Missing readiness notice");
+      f.store.settleClaim({ employee: binding, claimId: notice.claim.id, result: completed(`notice-${name}-${binding.employeeId}`) });
+    }
+    f.store.transitionItem({ employee: t.architectBinding, request: { action: "assign", requestId: `assign-${name}`, itemId: name, expectedRevision: 1, employeeId: t.dev, evidence: {} } });
+    if (!f.store.claimNext({ employee: t.devBinding })) throw new Error("Missing item claim");
+    f.store.setWorkflowLimit({ manager: f.store.managerBinding, itemId: name, limit: 2, target: name === "first" ? "main" : "release" });
+  }
+  const factory = f.store.createFactoryAuthority({ manager: f.store.managerBinding, itemIds: ["first", "second"], limit: 2, launchKey: "factory-graph", assertConnection: () => {} });
+  expect(() => factory.reserve(factory.rootId, "first", "early")).toThrow();
+  const planner = factory.reservePlan(factory.rootId);
+  expect(() => factory.completePlan(factory.rootId, planner, { dependencies: { first: [], second: ["first"] }, targets: { first: ["main"], second: ["wrong"] } })).toThrow();
+  factory.completePlan(factory.rootId, planner, { dependencies: { first: [], second: ["first"] }, targets: { first: ["main"], second: ["release"] } });
+  expect(() => factory.reserve(factory.rootId, "second", "blocked")).toThrow();
+  const proof = { itemId: "first", worktree: f.scope.boundRoot, head: "b".repeat(40), prNumber: 42 };
+  for (const role of ["architect", "dev", "qa"] as const) {
+    const reservation = factory.reserve(factory.rootId, "first", `first-${role}`, { kind: role, worktree: proof.worktree });
+    factory.settleRole(factory.rootId, reservation, { itemId: "first", role, agentId: `agent-${role}`, head: proof.head, evidence: { verified: "yes" } });
+  }
+  factory.readyItem(factory.rootId, "first", proof);
+  expect(factory.reserve(factory.rootId, "second", "unblocked")).toBeTruthy();
+  f.store.close();
+});
+
 test.each(["rows", "items"])("canonical %s queues preserve their container through capture and item transitions", (key: string) => {
   const f = fixture();
   const t = active(f, "shape-event", []);

@@ -45,6 +45,26 @@ test("launch reservations are durable, replay-safe and reject another credential
   expect(reopened.runtimeBindings()).toEqual([f.launch]);
 });
 
+test("allocation reserves the canonical launch before the host effect and fences uncertain retries", async () => {
+  const f = fixture();
+  const prepared = { ...f.launch, state: "prepared" as const, paneId: null, tabId: null, terminalId: null, nativeSession: null };
+  f.store.prepareRuntime(prepared);
+  const location = await f.store.dispatchRuntimeAllocation(prepared, async () => {
+    expect(f.store.runtimeBindings()[0]?.state).toBe("starting");
+    return { tabId: "tab", paneId: "pane" };
+  });
+  expect(location).toEqual({ tabId: "tab", paneId: "pane" });
+  expect(f.store.runtimeBindings()[0]?.state).toBe("starting");
+  await expect(f.store.dispatchRuntimeAllocation(prepared, async () => ({ tabId: "other", paneId: "other" }))).rejects.toThrow();
+
+  const other = fixture();
+  const pending = { ...other.launch, state: "prepared" as const, paneId: null, tabId: null, terminalId: null, nativeSession: null };
+  other.store.prepareRuntime(pending);
+  await expect(other.store.dispatchRuntimeAllocation(pending, async () => { throw new Error("host timeout"); })).rejects.toThrow("host timeout");
+  expect(other.store.runtimeBindings()[0]?.state).toBe("uncertain");
+  await expect(other.store.dispatchRuntimeAllocation(pending, async () => ({ tabId: "other", paneId: "other" }))).rejects.toThrow();
+});
+
 test("new reservations reject legacy or mismatched role and loop paths without changing saved history", () => {
   const f = fixture();
   const source = f.launch.source;

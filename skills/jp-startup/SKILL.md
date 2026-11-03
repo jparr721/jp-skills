@@ -10,7 +10,9 @@ Use a supported pane and the coordinator: OMP can use Herdr or Tern; Claude Code
 
 One selected Startup has one canonical manager, a permanently supervised PA and persistent employees. Read `references/role-dispatch.md` before role binding. The manager handles high-level intake disposition; an event-scoped architect-led crew performs every distinct technical intake invocation.
 
-Shared workflow hierarchy, crew and review budget: `../jp-pipeline/references/workflow-policy.md`.
+Shared workflow hierarchy, crew and review budget: the installed `jp-pipeline` skill's `references/workflow-policy.md`, or `$JP_SKILLS_REPO/skills/jp-pipeline/references/workflow-policy.md`.
+
+For code review and landing use the authenticated `startup_workflow_review` protocol in `$JP_SKILLS_REPO/extensions/startup/README.md` and the shared policy. The native coordinator owns the reservation and budget; verify the actual git head before landing. Keep native intake, delegation, employee admission and fencing in this Startup root.
 
 ## Boot and selection
 

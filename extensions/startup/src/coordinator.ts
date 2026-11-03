@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 import { assertStartupPath, ensureStartupRoot, StartupBootError } from "./boot";
 import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, sourceSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, ClaimSettlementError, type Binding, type Employee, type HostReceipt, type HostStatus, ownerControlRequestSchema, type OwnerControlRequest, type OwnerControlReceipt, type Json, type Source } from "./contracts";
@@ -15,6 +16,8 @@ import type { HerdrObservation, HerdrRuntime } from "./herdr-runtime";
 import type { TernRuntime } from "./tern-runtime";
 import { readPreparedManagerSettings } from "./v7-launch";
 import { claudeEmployeeArgs, claudeIntegrationPath, requireClaudeTrust, writeClaudeFiles } from "./claude-launch";
+import { startWorkflowBridge, type WorkflowBridge } from "./workflow-bridge";
+import { createWorkflowBridgeLauncher, WorkflowLaunchUncertainError } from "./workflow-bridge-launch";
 
 type CommonCoordinatorConfig = Readonly<{
   name: string; stateDirectory: string; startupRoot: string; skillsHome: string; boundRoot: string; skillsRoot: string;
@@ -29,8 +32,12 @@ export type CoordinatorConfig = OmpCoordinatorConfig | TernCoordinatorConfig | C
 export function isClaudeConfig(config: CoordinatorConfig): config is ClaudeCoordinatorConfig {
   return "harness" in config && config.harness === "claude";
 }
-const commandSchema = z.discriminatedUnion("kind", [
+const commandSchema = z.union([
   z.strictObject({ kind: z.literal("claim") }),
+  z.strictObject({ kind: z.literal("workflow_context"), itemId: idSchema }),
+  z.strictObject({ kind: z.literal("workflow_limit"), itemId: idSchema, limit: z.number().int().min(1).max(3), target: z.string().min(1).max(512) }),
+  z.strictObject({ kind: z.literal("workflow_start"), itemId: idSchema, workflow: z.enum(["pipeline", "hotfix"]), limit: z.number().int().min(1).max(3), launchKey: idSchema }),
+  z.strictObject({ kind: z.literal("workflow_factory_start"), itemIds: z.array(idSchema).min(1), limit: z.number().int().min(1).max(3), launchKey: idSchema }),
   z.strictObject({ kind: z.literal("begin_turn") }),
   z.strictObject({ kind: z.literal("end_turn") }),
   z.strictObject({ kind: z.literal("staff") }),
@@ -51,6 +58,8 @@ const commandSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("reconcile"), claimId: idSchema, evidence: jsonSchema }),
   z.strictObject({ kind: z.literal("resolve"), assignmentId: idSchema, evidence: jsonSchema }),
   z.strictObject({ kind: z.literal("finish"), teamId: idSchema, evidence: jsonSchema }),
+  z.strictObject({ kind: z.literal("workflow_review"), action: z.literal("reserve"), changeId: idSchema, reservationId: idSchema, head: z.string().trim().min(1), limit: z.number().int().min(1).max(3), reviewerId: idSchema }),
+  z.strictObject({ kind: z.literal("workflow_review"), action: z.literal("settle"), reservationId: idSchema, resultId: idSchema }),
   z.strictObject({ kind: z.literal("refresh"), employeeId: idSchema, evidence: jsonSchema }),
   z.strictObject({ kind: z.literal("retire"), employeeIds: z.array(idSchema).min(1), evidence: jsonSchema }),
   z.strictObject({ kind: z.literal("block"), key: idSchema, evidence: jsonSchema }),
@@ -103,12 +112,19 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
   let claudeFiles: ReturnType<typeof writeClaudeFiles> | null = null;
   const policy = runtimePolicySchema.parse(config.policy);
   const connections = new Map<string, Readonly<{ employeeId: string; generation: number; epoch: number; launchId: string; nativeSession: string; connectionEpoch: string; agentSessionId: string | null; pid: number | null; paneId: string }>>();
+  const workflowBridges = new Map<string, Set<WorkflowBridge>>();
   const admissionAttempts = new Map<string, string>();
   function revoke(connection: string): void {
     const current = connections.get(connection);
     connections.delete(connection);
+    const bridges = workflowBridges.get(connection);
+    workflowBridges.delete(connection);
+    if (bridges) for (const bridge of bridges) void bridge.close();
     if (current !== undefined) {
-      try { store.revokeRuntimeConnection(current.launchId, current.connectionEpoch); }
+      try {
+        store.invalidateWorkflowEmployee({ employeeId: current.employeeId, generation: current.generation });
+        store.revokeRuntimeConnection(current.launchId, current.connectionEpoch);
+      }
       catch (error: unknown) {
         if (!(error instanceof StoreFenceError)) throw error;
         process.stderr.write(JSON.stringify({ level: "warn", component: "startup-connection-revocation", reason: "owner-already-fenced", error: error.message }) + "\n");
@@ -290,11 +306,12 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
     const saved = runtime(id);
     if (saved.state !== "prepared") throw new StoreAuthorityError("Existing launch requires identity reconciliation; never blindly create another pane");
     assertLaunchReadiness(saved.settings);
-    store.updateRuntime({ ...saved, state: "starting", lastSeen: now() });
     try {
-      const location = await effect();
-      store.updateRuntime({ ...runtime(id), ...location });
-      return location;
+      return await store.dispatchRuntimeAllocation(saved, async () => {
+        const location = await effect();
+        store.updateRuntime({ ...runtime(id), ...location });
+        return location;
+      });
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : String(error);
       store.updateRuntime({ ...runtime(id), state: "uncertain", error: reason });
@@ -451,11 +468,73 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
     if (raw === undefined) throw new StoreAuthorityError("Saved input is unavailable");
     return jsonSchema.parse(raw);
   }
+  function workflowBridgeOptions(authority: Parameters<typeof startWorkflowBridge>[0] & { finishTarget(scopeId: string, itemId: string): string | null }): Parameters<typeof startWorkflowBridge>[1] {
+    const evidence = {
+      architect: z.strictObject({ findings: z.string().min(1), decision: z.string().min(1) }),
+      dev: z.strictObject({ implementation: z.string().min(1), artifact: z.string().min(1) }),
+      qa: z.strictObject({ method: z.string().min(1), result: z.string().min(1), artifact: z.string().min(1) }),
+    };
+    const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+    const canonicalWorktree = (path: string): string => {
+      const cwd = realpathSync(path);
+      if (realpathSync(git(cwd, "rev-parse", "--show-toplevel")) !== cwd ||
+          realpathSync(resolve(cwd, git(cwd, "rev-parse", "--git-common-dir"))) !== realpathSync(resolve(config.boundRoot, git(config.boundRoot, "rev-parse", "--git-common-dir"))))
+        throw new StoreAuthorityError("Workflow worktree is outside the bound repository");
+      return cwd;
+    };
+    const verifyReady = (scopeId: string, item: { itemId: string; worktree: string; head: string; prNumber: number }): boolean => {
+      const target = authority.finishTarget(scopeId, item.itemId);
+      const cwd = canonicalWorktree(item.worktree);
+      if (target === null || cwd !== item.worktree || git(cwd, "rev-parse", "HEAD") !== item.head || git(cwd, "status", "--porcelain") !== "") return false;
+      const pr = z.object({ headRefOid: z.string(), baseRefName: z.string(), state: z.string(), isDraft: z.boolean() }).parse(JSON.parse(execFileSync("gh", ["pr", "view", String(item.prNumber), "--json", "headRefOid,baseRefName,state,isDraft"], { cwd, encoding: "utf8" })));
+      return pr.headRefOid === item.head && pr.baseRefName === target && pr.state === "OPEN" && !pr.isDraft;
+    };
+    return {
+      acceptBoundHostReceipts: true,
+      validateRoleAssignment: async ({ scopeId, itemId, role }) => {
+        try {
+          const view = authority.view(scopeId);
+          return view.scope.kind === "bounded" && view.scope.itemIds.includes(itemId) &&
+            (view.workflow !== "hotfix" || role.kind === "dev") && canonicalWorktree(role.worktree) === role.worktree;
+        } catch { return false; }
+      },
+      validateRole: async ({ itemId, proof }) => {
+        try {
+          if (proof.itemId !== itemId || canonicalWorktree(proof.worktree) !== proof.worktree || !evidence[proof.role].safeParse(proof.evidence).success) return false;
+          return git(proof.worktree, "rev-parse", "HEAD") === proof.head;
+        } catch { return false; }
+      },
+      validatePlan: async ({ scopeId, plan }) => {
+        try {
+          const view = authority.view(scopeId);
+          return view.scope.kind === "bounded" && Object.keys(plan.targets).length === view.scope.itemIds.length &&
+            view.scope.itemIds.every((itemId) => {
+              const target = authority.finishTarget(scopeId, itemId);
+              return target !== null && plan.targets[itemId]?.length === 1 && plan.targets[itemId]?.[0] === target;
+            });
+        } catch { return false; }
+      },
+      validateReady: async (scopeId, item) => {
+        try { return verifyReady(scopeId, item); } catch { return false; }
+      },
+      nestScope: (parentId, workflow, itemIds, limit, target) => {
+        if (target !== undefined && itemIds.some((id) => authority.finishTarget(parentId, id) !== target))
+          throw new StoreAuthorityError("Nested target differs from manager-frozen item target");
+        return authority.nest(parentId, workflow, itemIds, limit);
+      },
+      validateFinish: async (scopeId, handoff) => {
+        try {
+          return handoff.items.every((item) => verifyReady(scopeId, item));
+        } catch { return false; }
+      },
+    };
+  }
   function progress(id: string): void { const current = runtime(id); store.updateRuntime({ ...current, lastProgress: now() }); }
   async function execute(connection: string, value: Json): Promise<Json> {
     const request = commandSchema.parse(value);
     const current = tern === undefined ? actor(connection) : await verifiedActor(connection);
-    const before = request.kind === "begin_turn" || request.kind === "end_turn" ? null : encode(store.snapshot());
+    const workflowCommand = request.kind === "workflow_context" || request.kind === "workflow_limit" || request.kind === "workflow_start" || request.kind === "workflow_factory_start" || request.kind === "workflow_review";
+    const before = request.kind === "begin_turn" || request.kind === "end_turn" || workflowCommand ? null : encode(store.snapshot());
     let output: unknown;
     switch (request.kind) {
       case "begin_turn": {
@@ -463,6 +542,88 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
         if (blocker !== null) throw new StoreAuthorityError(blocker);
         if (!turnAvailable(current.employee)) throw new StoreAuthorityError("Root execution capacity is reserved for other employees; manager and PA slots remain available");
         store.updateRuntime({ ...current.runtime, turnActive: true }); output = { admitted: true }; break;
+      }
+      case "workflow_context": {
+        if (tern === undefined) {
+          const observed = await herdr!.observe();
+          const admitted = connections.get(connection);
+          if (!admitted || !observed.some((entry) => entry.paneId === admitted.paneId && entry.nativeSession === admitted.nativeSession && entry.harness === current.runtime.settings.requested.harness))
+            throw new StoreFenceError("Bounded context requires the current observed native pane and session");
+          actor(connection);
+        }
+        output = { ...store.workflowContext({ employee: current.binding, itemId: request.itemId }), launchId: current.runtime.launchId, nativeSession: current.runtime.nativeSession };
+        break;
+      }
+      case "workflow_limit":
+        manager(connection);
+        execFileSync("git", ["check-ref-format", "--branch", request.target], { cwd: config.boundRoot, stdio: "ignore" });
+        output = { itemId: request.itemId, limit: store.setWorkflowLimit({ manager: current.binding, itemId: request.itemId, limit: request.limit, target: request.target }), target: request.target };
+        break;
+      case "workflow_start": {
+        if (current.runtime.paneId === null) throw new StoreFenceError("Parent native pane is unavailable");
+        if (tern === undefined) {
+          const observed = await herdr!.observe();
+          const admitted = connections.get(connection);
+          if (!admitted || !observed.some((entry) => entry.paneId === admitted.paneId && entry.nativeSession === admitted.nativeSession && entry.harness === current.runtime.settings.requested.harness))
+            throw new StoreFenceError("Bounded launch requires the observed owning native pane and session");
+          actor(connection);
+        }
+        const context = store.workflowContext({ employee: current.binding, itemId: request.itemId });
+        const authority = store.createWorkflowAuthority({ employee: current.binding, itemId: context.itemId, claimId: context.claimId, workflow: request.workflow, limit: request.limit, launchKey: request.launchKey, assertConnection: () => { actor(connection); } });
+        let bridge: WorkflowBridge | undefined;
+        try {
+          bridge = await startWorkflowBridge(authority, workflowBridgeOptions(authority));
+          const bridges = workflowBridges.get(connection) ?? new Set<WorkflowBridge>();
+          bridges.add(bridge);
+          workflowBridges.set(connection, bridges);
+          const launcher = createWorkflowBridgeLauncher({ bridge });
+          const extension = join(config.skillsRoot, "extensions", "startup", "bounded-entry.ts");
+          const directive = `Attach the inherited scope with bounded_attach. Review and landing authority remain with Startup. Execute the authenticated item assignment: ${encode(context.assignment)}`;
+          const args = ["--no-extensions", "--extension", extension, "--cwd", config.boundRoot, "--profile", config.profile, ...ompModelArgs(current.employee.role)];
+          const receipt = tern !== undefined
+            ? await launcher.launch({ kind: "tern", runtime: tern, parentBlockId: current.runtime.paneId, scopeId: authority.rootId, launchKey: request.launchKey, cwd: config.boundRoot, argv: ["omp", ...args, directive] })
+            : await launcher.launch({ kind: "herdr", runtime: herdr!, parentPaneId: current.runtime.paneId, scopeId: authority.rootId, launchKey: request.launchKey, cwd: config.boundRoot, name: `w-${digest(request.launchKey).slice(0, 20)}`, harness: "omp", args: [...args, "--extension", ("herdrIntegration" in config ? config.herdrIntegration : ""), directive] });
+          authority.launchState("accepted", jsonSchema.parse(receipt));
+          output = { scopeId: authority.rootId, receipt, reviewAuthority: "startup", parentClaimId: context.claimId };
+        } catch (error: unknown) {
+          try { authority.launchState("uncertain", error instanceof WorkflowLaunchUncertainError ? jsonSchema.parse(error.location) : null); } catch { /* A stale owner cannot update the saved intent. */ }
+          if (bridge) { workflowBridges.get(connection)?.delete(bridge); await bridge.close(); }
+          throw error;
+        }
+        break;
+      }
+      case "workflow_factory_start": {
+        manager(connection);
+        if (current.runtime.paneId === null) throw new StoreFenceError("Manager native pane is unavailable");
+        if (tern === undefined) {
+          const observed = await herdr!.observe();
+          const admitted = connections.get(connection);
+          if (!admitted || !observed.some((entry) => entry.paneId === admitted.paneId && entry.nativeSession === admitted.nativeSession && entry.harness === current.runtime.settings.requested.harness))
+            throw new StoreFenceError("Factory launch requires the observed manager pane and session");
+          actor(connection);
+        }
+        const authority = store.createFactoryAuthority({ manager: current.binding, itemIds: request.itemIds, limit: request.limit, launchKey: request.launchKey, assertConnection: () => { manager(connection); } });
+        let bridge: WorkflowBridge | undefined;
+        try {
+          bridge = await startWorkflowBridge(authority, workflowBridgeOptions(authority));
+          const bridges = workflowBridges.get(connection) ?? new Set<WorkflowBridge>();
+          bridges.add(bridge);
+          workflowBridges.set(connection, bridges);
+          const launcher = createWorkflowBridgeLauncher({ bridge });
+          const extension = join(config.skillsRoot, "extensions", "startup", "bounded-entry.ts");
+          const directive = `Attach the inherited factory scope with bounded_attach. Dispatch its native planner and freeze the validated graph before item work; observe dependency readiness. Reviews and landing remain with Startup. Execute only these authenticated item assignments: ${encode(authority.assignments)}`;
+          const args = ["--no-extensions", "--extension", extension, "--cwd", config.boundRoot, "--profile", config.profile, ...ompModelArgs("dev")];
+          const receipt = tern !== undefined
+            ? await launcher.launch({ kind: "tern", runtime: tern, parentBlockId: current.runtime.paneId, scopeId: authority.rootId, launchKey: request.launchKey, cwd: config.boundRoot, argv: ["omp", ...args, directive] })
+            : await launcher.launch({ kind: "herdr", runtime: herdr!, parentPaneId: current.runtime.paneId, scopeId: authority.rootId, launchKey: request.launchKey, cwd: config.boundRoot, name: `f-${digest(request.launchKey).slice(0, 20)}`, harness: "omp", args: [...args, "--extension", ("herdrIntegration" in config ? config.herdrIntegration : ""), directive] });
+          authority.launchState("accepted", jsonSchema.parse(receipt));
+          output = { scopeId: authority.rootId, receipt, reviewAuthority: "startup" };
+        } catch (error: unknown) {
+          try { authority.launchState("uncertain", error instanceof WorkflowLaunchUncertainError ? jsonSchema.parse(error.location) : null); } catch { /* A stale owner cannot update the saved intent. */ }
+          if (bridge) { workflowBridges.get(connection)?.delete(bridge); await bridge.close(); }
+          throw error;
+        }
+        break;
       }
       case "end_turn":
         store.updateRuntime({ ...current.runtime, turnActive: false }); output = { released: true }; break;
@@ -632,10 +793,12 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
       case "reconcile": manager(connection); store.reconcileClaim({ manager: current.binding, claimId: request.claimId, evidence: request.evidence }); output = { reconciled: request.claimId }; break;
       case "resolve": manager(connection); store.resolveAssignment({ manager: current.binding, assignmentId: request.assignmentId, evidence: request.evidence }); output = { resolved: request.assignmentId }; break;
       case "finish": manager(connection); output = store.finishTeam({ manager: current.binding, teamId: request.teamId, evidence: request.evidence }); break;
+      case "workflow_review": output = store.workflowReview({ employee: current.binding, request }); break;
       case "retire": manager(connection); output = store.retireEmployees({ manager: current.binding, employeeIds: request.employeeIds, evidence: request.evidence }); break;
       case "block": manager(connection); output = store.runtimeAlert({ id: `block-${request.key}-${digest(encode(request.evidence)).slice(0, 12)}`, correlation: request.key, payload: { kind: "reported-blocker", evidence: request.evidence } }); break;
     }
     if (before !== null && before !== encode(store.snapshot())) progress(current.employee.id);
+    if (workflowCommand && request.kind !== "workflow_context") progress(current.employee.id);
     return output === undefined ? null : json(output);
   }
   function waitReason(current: Employee, view: ReturnType<StartupStore["employeeView"]>): string | null {

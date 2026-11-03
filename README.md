@@ -24,6 +24,8 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 
 Review budgets are per change and inherited across nested workflows: `jp-hotfix` allows at most one round, `jp-pipeline` at most two, and `jp-dark-factory` at most three; the stricter inherited or nested cap applies. Stop on the first APPROVE. A round is a completed review with a verdict, not an individual review angle or debate. Startup is optional for all three workflows; when used, its manager chooses a cap of at most three and passes it down.
 
+These workflows use the same coordinator transition engine for scoped assignments, dependency readiness and inherited review budgets. Startup persists its authority; standalone OMP and Claude Code hosts keep their authority for the lifetime of their root process. A selected Startup can delegate bounded work without handing off its queue or landing authority. See the [runtime instructions](extensions/startup/README.md#shared-bounded-workflows).
+
 Startup family (roles + procedures):
 
 | Skill | Use it when |
@@ -87,7 +89,7 @@ Startup family (roles + procedures):
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (8.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (8.1.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 

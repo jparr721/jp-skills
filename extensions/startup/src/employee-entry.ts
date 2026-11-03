@@ -200,6 +200,26 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
       return execute(current, ctx, { kind: "item", request: itemActionSchema.parse(params) });
     },
   });
+  const reviewRequestSchema = z.discriminatedUnion("action", [
+    z.strictObject({ action: z.literal("reserve"), changeId: idSchema, reservationId: idSchema, head: idSchema, limit: z.number().int().min(1).max(3), reviewerId: idSchema }),
+    z.strictObject({ action: z.literal("settle"), reservationId: idSchema, resultId: idSchema }),
+  ]);
+  const reviewParameters = b.object({ action: b.literal("reserve"), changeId: b.string(), reservationId: b.string(), head: b.string(), limit: b.number(), reviewerId: b.string() })
+    .or(b.object({ action: b.literal("settle"), reservationId: b.string(), resultId: b.string() }));
+  host.registerTool({
+    name: "startup_workflow_review", label: "Startup workflow review", description: "Reserve or settle an authenticated, budgeted code review.",
+    parameters: reviewParameters,
+    execute: async (_id, params, _signal, _update, ctx) => {
+      const current = admission();
+      if (current === null || !sameRoot(current, ctx)) throw new StartupBootError("Startup review requires the admitted native root session");
+      const blocked = inputBlock(current);
+      if (blocked !== null) throw new StartupBootError(blocked);
+      return execute(current, ctx, { kind: "workflow_review", ...reviewRequestSchema.parse(params) });
+    },
+  });
+  register("startup_workflow_limit", { itemId: text, limit: { native: b.number(), schema: z.number().int().min(1).max(3) }, target: text }, direct("workflow_limit"));
+  register("startup_workflow_start", { itemId: text, workflow: { native: b.enum(["pipeline", "hotfix"]), schema: z.enum(["pipeline", "hotfix"]) }, limit: { native: b.number(), schema: z.number().int().min(1).max(3) }, launchKey: text }, direct("workflow_start"));
+  register("startup_workflow_factory_start", { itemIds: strings, limit: { native: b.number(), schema: z.number().int().min(1).max(3) }, launchKey: text }, direct("workflow_factory_start"));
   register("startup_capture", { captureId: text, eventId: text, rows: { native: b.array(b.unknown()), schema: captureSchema.unwrap().shape.rows }, receipt: json }, (params) => ({ kind: "capture", capture: captureSchema.parse(params) }));
   register("startup_staff", {}, direct("staff"));
   register("startup_hire", { requestId: text, role: { native: b.enum(["architect", "qa", "dev", "devops", "pa"]), schema: roleSchema.exclude(["manager"]) }, additional: count }, direct("hire"));

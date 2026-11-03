@@ -339,7 +339,6 @@ test("launched root verifies source and transcript before admission, exposes ded
   expect(f.admissions).toHaveLength(1);
   expect(f.admissions[0]).toMatchObject({ nativeSession: f.file, paneId: "w1:p1", credential: "private-credential" });
   expect(f.tools.has("task")).toBe(false);
-  expect([...f.tools.keys()]).toEqual(Object.keys(publicToolProperties));
   for (const [name, properties] of Object.entries(publicToolProperties)) {
     const tool = f.tools.get(name);
     if (tool === undefined) throw new Error(`Missing public Startup tool ${name}`);

@@ -15,6 +15,8 @@ The sequence is **INTAKE -> WORKTREE+CREW -> PARTY PLAN -> IMPLEMENT -> PR -> RE
 
 Before dispatch, read the shared authority at the installed `jp-pipeline` skill's `references/workflow-policy.md`, or `$JP_SKILLS_REPO/skills/jp-pipeline/references/workflow-policy.md`. Apply its scope, crew and inherited per-change review budget throughout this run.
 
+Start or inherit the bounded scope by the policy's host procedure before dispatch. A standalone run freezes its one item with `bounded_begin`; a nested run keeps the parent's scope and uses `bounded_nest`. Route assignments, review and completion through that host, and stop on any documented missing inherited capability instead of starting a separate ledger.
+
 For a standalone pipeline, the Step 1 supervisor owns the run and is the sole user contact:
 workers route questions to it via `hub`; it batches questions and returns the final report.
 
@@ -55,13 +57,11 @@ Stall rule: no user-visible progress within ~2 min of activation → emit the in
    as proof that the retry passed.
 7. **No silent scope creep.** Work that grows past the task's scope becomes a follow-up
    ticket, never an inline expansion of this PR.
-8. **One supervisor, sole user contact.** Step 1 spawns a supervisor agent that owns the ledger
-   (slices, waves, verify results, review rounds, QA) for the whole run. Worker agents never
-   message you directly; they send questions to the supervisor via `hub`, and the supervisor
-   batches them to you. Phase-boundary status lives in the supervisor ledger; it surfaces to
-   you only as batched questions, stop-and-reports, and the final report. Foreground and scheduled
-   management share this ownership: before resuming a queued commit, merge, push or worker
-   continuation, read the current ledger/operation receipt and actual git state, then verify
+8. **One supervisor, sole user contact.** Step 1 arranges a supervisor that maintains a reporting view
+   of slices, waves, verification and QA; coordinator state owns reservations and review rounds.
+   Worker agents route questions to the supervisor via the supported host channel; it batches them
+   to you. Before resuming a queued commit, merge, push or worker continuation, read the current
+   coordinator state and operation receipt and actual git state, then verify
    the exact remote target. Acquire sole publication ownership and compare the expected HEAD
    and allowed paths before writing. If another manager already advanced HEAD, inspect its
    commits and remote readback instead of replaying the stale request; an empty diff can mean
@@ -153,7 +153,7 @@ Resolve exactly what is being built and where it lands. Keep this tight.
 6. **Name the branch.** Use the exact branch name returned by the ticket provider when present; otherwise match the convention visible in `git for-each-ref refs/remotes/origin`. Never work on the target branch itself.
 7. **Create the worktree** (Step 1b below). Everything after this point - planning artifacts
    included - happens inside it.
-8. **Spawn the task crew.** Dispatch the manager/coordinator supervisor before other agents, then spawn an architect, developer(s), and QA under the shared policy; reuse eligible inherited crew instead of duplicating them. The supervisor owns the ledger (task, target, branch, worktree, slices, waves, verify results, shared review budget, QA and deck), tracks workers via `hub`, and batches their questions to you. It does not implement, review or QA-prove its own work. The architect coordinates technical decomposition, developers implement, and QA independently proves the change. Record their identities and inherited review count/cap in the ledger. All worker prompts name the supervisor and route blockers to it.
+8. **Arrange the task crew.** Reserve the manager/coordinator supervisor before other agents, then reserve an architect, developer(s), and QA under the shared policy; reuse eligible inherited crew instead of duplicating them. Dispatch through the supported coordinator host and correlate each result. The supervisor keeps task, target, branch, worktree, slices, waves, verification, QA and deck as a reporting view, and batches worker questions; the coordinator owns assignments and review state. It does not implement, review or QA-prove its own work. The architect coordinates technical decomposition, developers implement, and QA independently proves the change. All worker prompts name the supervisor and route blockers to it.
 
 ### Step 1b - WORKTREE
 
@@ -401,7 +401,7 @@ Confirm the PR exists and capture its number:
 
 ## Step 6 - REVIEW LOOP
 
-Each round reviews the pushed diff; fixes are verified and pushed before any next round. Use the shared per-change ledger and cap. When the enclosing factory defers review, record `PENDING_FINAL`, skip Steps 6–8, run Step 9 against the preview, and hand the PR and budget to the factory; never merge or claim review approval.
+Each round reviews the pushed diff; fixes are verified and pushed before any next round. Reserve and settle each round in the shared coordinator against the change and reviewed head. When the enclosing factory defers review, record `PENDING_FINAL`, skip Steps 6–8, run Step 9 against the preview, and hand the PR and coordinator context to the factory; never merge or claim review approval.
 
 For each round:
 
@@ -419,8 +419,8 @@ no-finding result, and a duplicate or incomplete batch does not count as the rou
    angles in capacity-bounded parallel batches as defined by that skill, then the club fight, with
    a verdict block required. Pass the ticket acceptance plus the consensus slice table as the task
    source. Review the **pushed diff**, never a stale local one - each round's review must see the
-   previous round's fixes. The supervisor tracks round state.
-   A round without a verdict block is not a round - re-dispatch.
+   previous round's fixes. The supervisor reads round state from the coordinator.
+   A round without a verdict remains unresolved; reconcile it with the same owner before proceeding.
 2. **Enforce** the verdict:
    - **BLOCK** - stop. Escalate via the supervisor immediately; line fixes are the wrong tool.
      Do not spend another round.

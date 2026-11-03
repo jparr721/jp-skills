@@ -2,6 +2,13 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [8.1.0] - 2026-11-03
+
+- Unify Startup, Dark Factory, Pipeline and Hotfix on one coordinator transition engine for scoped work, dependency readiness, native assignment receipts and inherited review limits. Startup retains its persisted queue and authority; standalone runs do not require Startup.
+- Add bounded OMP and Claude Code hosts, plus scoped Tern/Herdr pane handoffs. Factory planning freezes its dependency graph before dispatch; uncertain launches and assignments are not silently retried.
+- Keep per-change review caps across nested scopes, and require fresh dev and QA evidence when a ready PR's head changes.
+- Expose Startup workflow limits, scoped child launches and correlated reviews without replacing existing Startup identities or queues.
+
 ## [8.0.0] - 2026-11-03
 
 - Prefix the installed skill names and directories with `jp-`; migrate repository-owned links in the five supported registries without touching foreign entries.
