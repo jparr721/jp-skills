@@ -484,7 +484,7 @@ const hostPictureSchema = z.strictObject({
     lastCompletedAt: timeSchema.nullable(),
     lastSuccessAt: timeSchema.nullable(),
     errors: z.array(z.strictObject({
-      component: z.enum(["herdr", "observation", "queue"]),
+      component: z.enum(["herdr", "tern", "observation", "queue"]),
       employeeId: idSchema.nullable(),
       error: z.string().max(256),
     }).readonly()).max(8).readonly(),

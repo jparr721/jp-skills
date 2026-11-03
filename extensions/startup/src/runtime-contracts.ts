@@ -74,6 +74,17 @@ export const ompSessionSettingsReportSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("unavailable"), reason: z.literal("omp_session_api_unavailable"), ...ompSessionSettingsIdentityShape }).readonly(),
 ]);
 export const settingsSampleSchema = z.strictObject({ sequence: z.number().int().positive().safe(), report: ompSessionSettingsReportSchema });
+export const nativeRootSchema = z.strictObject({
+  backend: z.literal("tern"), paneId: idSchema, pid: z.number().int().positive().safe(),
+  sessionId: idSchema, sequence: z.number().int().positive().safe(),
+  phase: z.enum(["working", "idle"]), pendingMessages: z.boolean(),
+});
+export type NativeRoot = z.infer<typeof nativeRootSchema>;
+export const coordinatorPollSchema = z.strictObject({
+  sequence: z.number().int().positive().safe().optional(),
+  report: ompSessionSettingsReportSchema.optional(),
+  nativeRoot: nativeRootSchema.optional(),
+}).refine((value) => (value.sequence === undefined) === (value.report === undefined));
 export type OmpSessionSettingsReport = z.infer<typeof ompSessionSettingsReportSchema>;
 
 export const runtimeCapabilitySchema = z.discriminatedUnion("status", [
@@ -146,6 +157,7 @@ export const runtimeBindingSchema = z.strictObject({
   turnActive: z.boolean(),
   stateSequence: timeSchema.nullable(),
   observedState: observedRuntimeSchema.nullable(),
+  ternObservation: nativeRootSchema.optional(),
 }).readonly();
 export type RuntimeBinding = z.infer<typeof runtimeBindingSchema>;
 

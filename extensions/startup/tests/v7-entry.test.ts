@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { afterEach, expect, test, mock, spyOn } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync, statSync, chmodSync, realpathSync, symlinkSync } from "node:fs";
 import { tmpdir, hostname } from "node:os";
@@ -21,7 +21,7 @@ const { installLaunchedEmployee, installStartupV7, integrationPath } = await imp
 const { assertNativeTranscript, nativeRoot } = await import("../src/employee-entry");
 const { installLaunchedEmployeeWith } = await import("../src/employee-entry");
 const omp = { harness: "omp", root: nativeRoot, integration: integrationPath } as const;
-import { launchRuntimeHost, parseRuntimeHostConfig, type RuntimeHostConfig } from "../src/v7-launch";
+import { launchRuntimeHost, managerProcessInstance, parseRuntimeHostConfig, type RuntimeHostConfig } from "../src/v7-launch";
 
 type TestNativeSchema = ReturnType<HostAPI["zod"]["object"]>;
 const publicToolProperties = {
@@ -459,6 +459,111 @@ test.each([null, "fixture"])("manager resolves absent Herdr environment from the
   expect(f.messages.some((message) => message.includes("boot blocked"))).toBe(false);
   expect(launched[0]).toMatchObject({ managerPaneId: "w1:p1", workspaceId: "w1", herdrSession: session ?? "default" });
   expect(f.admissions).toHaveLength(1);
+});
+
+function useTern(f: ReturnType<typeof fixture>): string {
+  const binary = join(f.root, "tern");
+  writeFileSync(binary, `#!${process.execPath}
+const args = process.argv.slice(2);
+if (args[0] !== "inspect" || !args.includes("--window") || !args.includes("--json")) process.exit(2);
+console.log(JSON.stringify({ sessions: [{ id: 12, tabs: [{ id: 13, blocks: [{ id: 14, live: true }] }] }] }));
+`, { mode: 0o700 });
+  f.environment.TERN_PANE = "14";
+  f.environment.TERN_WINDOW_KEY = "";
+  f.environment.TERN_PANE_SOCKET = join(f.root, "tern.sock");
+  f.environment.TERN_BIN_PATH = binary;
+  f.environment.STARTUP_HERDR_OMP_EXTENSION = undefined;
+  return binary;
+}
+
+test("Tern manager selects its verified pane without Herdr integration", async () => {
+  const f = fixture();
+  const binary = useTern(f);
+  const launched: RuntimeHostConfig[] = [];
+  installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, integration: () => { throw new Error("Herdr integration must not be read"); }, launch: async (config) => { launched.push(config); return { ...config, socketPath: f.socketPath }; } });
+  await f.emit("input", { text: "/startup new ternco", source: "interactive", images: [] }, f.ctx);
+  expect(f.messages.join("\n")).not.toContain("boot blocked");
+  expect(launched).toHaveLength(1);
+  expect(launched[0]).toMatchObject({ backend: "tern", ternSession: "12", ternWindow: "", ternSocket: join(f.root, "tern.sock"), ternBinary: binary, managerPaneId: "14", managerPid: process.pid, managerSession: "native-root", profile: "default" });
+  expect(f.admissions[0]).toMatchObject({ paneId: "14" });
+});
+
+test("Tern rejects Claude before mutating Startup state", async () => {
+  const f = fixture();
+  useTern(f);
+  let launched = false;
+  installStartupV7(f.host, { ...claudeEntry(f), ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched = true; return config; } });
+  await f.emit("input", { text: "/startup new ternclaude", source: "interactive", images: [] }, f.ctx);
+  expect(f.messages.join("\n")).toContain("Tern Startup currently requires the native OMP root lifecycle");
+  expect(launched).toBe(false);
+  expect(f.admissions).toHaveLength(0);
+  expect(existsSync(join(f.environment.STARTUP_ROOT!, "runtime-config.json"))).toBe(false);
+});
+
+test("Tern manager reconnects the saved same-process identity and credential", async () => {
+  const f = fixture();
+  const binary = useTern(f);
+  const { config: legacy } = runtimeFixture(f);
+  if ("backend" in legacy) throw new Error("Expected legacy Herdr fixture");
+  const { herdrSession, workspaceId, herdrBinary, herdrIntegration, ...common } = legacy;
+  void herdrSession; void workspaceId; void herdrBinary; void herdrIntegration;
+  const config = parseRuntimeHostConfig({ ...common, socketPath: f.socketPath, managerPaneId: "14", backend: "tern", ternSession: "12", ternWindow: "", ternSocket: join(f.root, "tern.sock"), ternBinary: binary, managerPid: process.pid, managerInstance: managerProcessInstance });
+  mkdirSync(config.stateDirectory, { recursive: true, mode: 0o700 });
+  bindRuntimeFixture(f, config);
+  writeFileSync(join(config.stateDirectory, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  const launched: RuntimeHostConfig[] = [];
+  installStartupV7(f.host, { ...omp, ...entryRoots(f, config.startupRoot), nativeLimit: () => 6, environment: f.environment, integration: () => { throw new Error("Herdr integration must not be read"); }, launch: async (saved) => { launched.push(saved); return saved; } });
+  await f.emit("session_start", {}, f.ctx);
+  expect(launched).toEqual([config]);
+  expect(f.admissions[0]).toMatchObject({ paneId: "14", credential: config.managerCredential });
+});
+
+test("Tern manager restart requires explicit retry authorization even when PID is reused", async () => {
+  const f = fixture();
+  const { config: legacy } = runtimeFixture(f);
+  const binary = useTern(f);
+  if ("backend" in legacy) throw new Error("Expected legacy Herdr fixture");
+  const { herdrSession, workspaceId, herdrBinary, herdrIntegration, ...common } = legacy;
+  void herdrSession; void workspaceId; void herdrBinary; void herdrIntegration;
+  const config = parseRuntimeHostConfig({ ...common, socketPath: f.socketPath, managerPaneId: "14", backend: "tern", ternSession: "12", ternWindow: "", ternSocket: join(f.root, "tern.sock"), ternBinary: binary, managerPid: process.pid, managerInstance: randomUUID() });
+  mkdirSync(config.stateDirectory, { recursive: true, mode: 0o700 });
+  bindRuntimeFixture(f, config);
+  writeFileSync(join(config.stateDirectory, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  const calls: boolean[] = [];
+  installStartupV7(f.host, { ...omp, ...entryRoots(f, config.startupRoot), nativeLimit: () => 6, environment: f.environment, launch: async (requested, options) => { calls.push(options?.allowManagerRebind === true); return requested; } });
+  await f.emit("session_start", {}, f.ctx);
+  expect(calls).toEqual([]);
+  expect(f.messages.join("\n")).toContain("use /startup-retry");
+  const retry = f.commands.get("startup-retry");
+  if (!retry) throw new Error("Missing retry command");
+  await retry.handler("", f.ctx);
+  expect(calls).toEqual([true]);
+});
+
+test.each(["session", "window", "socket", "pane", "backend"] as const)("Tern manager resume refuses changed %s identity", async (changed) => {
+  const f = fixture();
+  const { config: legacy } = runtimeFixture(f);
+  const binary = useTern(f);
+  if ("backend" in legacy) throw new Error("Expected legacy Herdr fixture");
+  const { herdrSession, workspaceId, herdrBinary, herdrIntegration, ...common } = legacy;
+  void herdrSession; void workspaceId; void herdrBinary; void herdrIntegration;
+  const base = { ...common, socketPath: f.socketPath, boundRoot: realpathSync(f.cwd), skillsRoot: realpathSync(f.skillsRoot), managerPaneId: "14", backend: "tern", ternSession: "12", ternWindow: "", ternSocket: join(f.root, "tern.sock"), ternBinary: binary, managerPid: process.pid, managerInstance: managerProcessInstance };
+  const config = changed === "backend" ? { ...legacy, socketPath: f.socketPath } : {
+    ...base,
+    ...(changed === "session" ? { ternSession: "15" } : {}),
+    ...(changed === "window" ? { ternWindow: "other" } : {}),
+    ...(changed === "socket" ? { ternSocket: join(f.root, "other.sock") } : {}),
+    ...(changed === "pane" ? { managerPaneId: "15" } : {}),
+  };
+  mkdirSync(config.stateDirectory, { recursive: true, mode: 0o700 });
+  bindRuntimeFixture(f, parseRuntimeHostConfig(config));
+  writeFileSync(join(config.stateDirectory, "runtime-config.json"), JSON.stringify(config), { mode: 0o600 });
+  let launched = false;
+  installStartupV7(f.host, { ...omp, ...entryRoots(f, config.startupRoot), nativeLimit: () => 6, environment: f.environment, launch: async (saved) => { launched = true; return saved; } });
+  await f.emit("session_start", {}, f.ctx);
+  expect(launched).toBe(false);
+  expect(f.admissions).toHaveLength(0);
+  expect(f.messages.join("\n")).toContain("saved manager");
 });
 
 test.each(["exit", "json", "shape"])("Herdr CLI %s failure is handled and a corrected boot can retry in the same pane", async (kind: string) => {
@@ -964,6 +1069,20 @@ test("runtime config parses saved OMP bytes unchanged, accepts Claude and reject
   for (const harness of ["omp", "codex", null]) expect(() => parseRuntimeHostConfig({ ...config, harness })).toThrow(z.ZodError);
   expect(parseRuntimeHostConfig({ ...config, profile: "work" }).profile).toBe("work");
   for (const profile of ["../escape", "Upper", "work."]) expect(() => parseRuntimeHostConfig({ ...config, profile })).toThrow(z.ZodError);
+});
+
+test("Tern runtime config is separate from legacy Herdr and retains its daemon and manager identity", () => {
+  const f = fixture();
+  const { config } = runtimeFixture(f);
+  if ("backend" in config) throw new Error("Expected legacy Herdr fixture");
+  const { herdrSession, workspaceId, herdrBinary, herdrIntegration, ...common } = config;
+  void herdrSession; void workspaceId; void herdrBinary; void herdrIntegration;
+  const tern = { ...common, backend: "tern", ternSession: "12", ternWindow: "", ternBinary: "/bin/tern", ternSocket: "/tmp/tern.sock", managerPid: 123, managerInstance: managerProcessInstance };
+  expect(parseRuntimeHostConfig(tern)).toMatchObject(tern);
+  expect(parseRuntimeHostConfig({ ...tern, harness: "claude" })).toMatchObject({ ...tern, harness: "claude" });
+  expect(() => parseRuntimeHostConfig({ ...tern, herdrIntegration: "/unused" })).toThrow(z.ZodError);
+  expect(() => parseRuntimeHostConfig({ ...tern, ternSocket: "relative" })).toThrow(z.ZodError);
+  expect(() => parseRuntimeHostConfig({ ...tern, managerPid: 0 })).toThrow(z.ZodError);
 });
 
 test("an invalid OMP runtime config reports only the OMP schema issues", () => {

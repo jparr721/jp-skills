@@ -1,12 +1,10 @@
 ---
 name: pipeline
-description: Use when you want one unit of work - a Linear ticket, a bug fix, a feature request - driven end to end from idea to merged PR plus proven QA with a slide deck. Always runs in a dedicated git worktree under a spawned supervisor agent that tracks all work and batches questions to you. Always runs BMAD party deliberation with the Anti-Consensus Club to a consensus slice table, per-slice plans with cross-review, parallel file-disjoint implementation, the full local gate (every workspace typecheck, every test suite including CI-skipped lanes, every build), PR, pr-review-toolkit adversarial fight to ship verdict (min 3 / cap 5 review rounds), a final code-simplifier pass, gated merge, then real-data QA proving the change with a slide deck. Changes application code and merges to the target branch.
+description: Drive one ticket, bug fix or feature end-to-end in a dedicated worktree through review, merge and verified QA.
 ---
 
 # Pipeline
 
-## Herdr preflight
-Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
 
 ## Overview
 
@@ -14,14 +12,15 @@ You drive **one** unit of work from intake to proven QA, with a supervisor agent
 The sequence is fixed: **INTAKE -> WORKTREE+SUPERVISOR -> PARTY PLAN -> IMPLEMENT -> PR -> REVIEW LOOP -> SIMPLIFY -> MERGE -> QA+DECK**.
 No phase is skipped except PARTY PLAN, and only under the explicit condition in Step 2.
 
-`pipeline` is the unsupervised single-task sibling of `dark-factory`. Reach for `dark-factory`
-when you want a whole Linear epic shipped as one coordinated run - it fans out one `pipeline`
-run per ticket under a principal orchestrator, so everything below applies per ticket. Reach for
-`pipeline` when one task should be done thoroughly without you reviewing the plan or code closely. A supervisor
-agent is spawned in Step 1 and owns the run: it tracks slices, waves, verification, review
-rounds, and QA, and it is the only agent that ever asks you anything - worker agents route
-their questions to it via `hub`, and it batches them to you. You answer batched questions and
-read the final report; you do not watch phase boundaries.
+### Work hierarchy
+
+`startup` manages an open-ended queue; `dark-factory` runs one fixed queue; `pipeline` delivers
+one task; `hotfix` is the narrower in-place alternative for a small bug. A broader workflow may
+delegate to a narrower one, but none requires a broader workflow, a Startup, or a particular
+terminal. Queue scope stays fixed for a factory run; new follow-ups are separate work.
+
+For a standalone pipeline, the Step 1 supervisor owns the run and is the sole user contact:
+workers route questions to it via `hub`; it batches questions and returns the final report.
 
 **Always overdrive.** There is no lean path and no opt-in keyword. Step 2 is always BMAD party
 deliberation with the Anti-Consensus Club to consensus, Step 3 is always per-slice plans with

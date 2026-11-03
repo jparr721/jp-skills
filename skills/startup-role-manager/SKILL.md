@@ -5,16 +5,14 @@ description: Use as the bound Startup manager for human input, staffing, high-le
 
 # Startup role: manager
 
-## Herdr preflight
-Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
 
 Own high-level human decisions and final landing. Load this complete source with `startup-loop`; admit employees through `../startup/references/role-dispatch.md`. Humans may interact with every employee pane; that access grants no role escalation or merge authority. Keep implementation code, diffs and raw logs behind the team firewall. Read queue metadata, receipts, leader reports, proof handles and outcomes.
 
 ## Intake and staffing
 
-Classify saved human input with `startup_route`. Work becomes an exact durable event; explicit intake uses `startup_intake`. Use `startup_delegate {eventId,developers}` for each distinct event: one architect leader, one QA, one or more devs. Each is an admitted OMP or Claude Code root in its own Herdr pane. The architect performs `startup-intake` and owns technical decomposition. Never run that procedure or core implementation yourself.
+Classify saved human input with `startup_route`. Work becomes an exact durable event; explicit intake uses `startup_intake`. Use `startup_delegate {eventId,developers}` for each distinct event: one architect leader, one QA, one or more devs. Each is an admitted OMP or Claude Code root in its own pane. The architect performs `startup-intake` and owns technical decomposition. Never run that procedure or core implementation yourself.
 
-Delegate independent crews within coordinator root-turn slots, budgets, target grants, dependencies and explicit limits. Reuse only a complete finished crew under `../hire/SKILL.md`; delegation otherwise reserves new crew employees. Harness-local helper capacity is separate from root slots and is not globally aggregated. Membership and developer count are immutable per event. Retry pending employees with `startup_activate {employeeIds}`; a retry is not another hire/team. Reconcile ambiguous process state; use `startup_replace {employeeId,evidence}` for proven failed processes. Dispatch each ready team while other teams continue lookup/clarification. Sweep ready work before wait/final and after outcomes.
+Delegate independent crews within coordinator root-turn slots, budgets, target grants, dependencies and explicit limits. On Herdr, reuse only a complete finished crew under `../hire/SKILL.md`; Tern does not support reuse. Delegation otherwise reserves new crew employees. Harness-local helper capacity is separate from root slots and is not globally aggregated. Membership and developer count are immutable per event. Retry pending employees with `startup_activate {employeeIds}`; a retry is not another hire/team. Reconcile ambiguous process state; use `startup_replace {employeeId,evidence}` for proven failed processes, subject to backend-specific absence checks. Dispatch each ready team while other teams continue lookup/clarification. Sweep ready work before wait/final and after outcomes.
 
 ## Authority and hierarchy
 
@@ -34,7 +32,7 @@ After actual authorized landing, manager records `startup_item decide` MERGED; a
 
 Read `../../extensions/startup/README.md` for exact duty/repair contracts. Only manager assigns/authorizes/ends duties or reads all-duty/staff snapshots. Coordinator startup automatically reserves the singleton permanent PA; never hire an additional PA. Require that PA's source admission and supervision before new delegation/landing. The independent coordinator supplies bounded factual PA summaries and deadline checks; PA scheduled idle is healthy, but process loss or missed supervision degrades Startup and blocks those admissions until recovery. Independent existing safe work may continue.
 
-Consume durable system messages for observed Herdr idle/done transitions and semantic-progress alerts. Lifecycle never settles assignments or proves completion. Resolve stale work, unclassified input and missed deadlines with evidence; unchanged heartbeats/working state cannot dismiss a blocker. Unknown/offline health stays unknown. Follow `../startup-intake/references/queue-records.md` for question/uncertain assignment resolution and new attempts. On drain remain logically waiting under the shared loop; no live spin or automatic staff retirement. Run the bounded sprint/retro obligation every five merges without making unrelated work wait.
+Consume durable system messages for observed idle/done transitions and semantic-progress alerts. Lifecycle never settles assignments or proves completion. Resolve stale work, unclassified input and missed deadlines with evidence; unchanged heartbeats/working state cannot dismiss a blocker. Unknown/offline health stays unknown. Follow `../startup-intake/references/queue-records.md` for question/uncertain assignment resolution and new attempts. On drain remain logically waiting under the shared loop; no live spin or automatic staff retirement. Run the bounded sprint/retro obligation every five merges without making unrelated work wait.
 
 ## Framework tail
 

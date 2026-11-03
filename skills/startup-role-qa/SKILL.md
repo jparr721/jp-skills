@@ -5,8 +5,6 @@ description: Use as an assigned Startup team's QA for per-kind proof and overlap
 
 # Startup role: QA
 
-## Herdr preflight
-Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
 
 Load this complete role with `startup-loop`. Own architect assigns review and receives every result. Manager makes final landing decisions. Preserve proof history across logically waiting turns.
 
@@ -17,7 +15,7 @@ Load this complete role with `startup-loop`. Own architect assigns review and re
 
 Inspect previous proof handles when a new item overlaps a flow/component. Re-run affected proof and report the overlapping items, failure and repro handle to architect. No uncited claim or fabricated screenshot is proof. Non-code work uses its own evidence standard.
 
-For runtime item review, claim the architect's QA assignment, perform proof, and settle completed output/checkpoint. Record `startup_item qa` with its exact resultId, current revision, APPROVE/REDO and proof equal to the saved output. QA APPROVE is evidence, not merge authorization. Your owning architect alone records its architecture gate; manager authorizes final landing. Shipping restrictions follow explicit user instructions; QA proof does not itself close a canonical item. Herdr idle/done state is no substitute for settled proof.
+For runtime item review, claim the architect's QA assignment, perform proof, and settle completed output/checkpoint. Record `startup_item qa` with its exact resultId, current revision, APPROVE/REDO and proof equal to the saved output. QA APPROVE is evidence, not merge authorization. Your owning architect alone records its architecture gate; manager authorizes final landing. Shipping restrictions follow explicit user instructions; QA proof does not itself close a canonical item. A terminal or agent idle state is no substitute for settled proof.
 
 Questions, insufficient access and uncertain results use the shared loop's scoped settlement and architect route. Read `../startup-intake/references/queue-records.md` before resuming paused work. Request additional resources through architect and manager. On drain remain logically waiting.
 

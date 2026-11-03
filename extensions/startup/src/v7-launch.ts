@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
@@ -10,6 +10,8 @@ import type { Environment } from "./employee-entry";
 import { encode, scopeSchema, type Scope } from "./contracts";
 import { savedRoleSettingsSchema, runtimePolicySchema, type SavedRoleSettings } from "./runtime-contracts";
 import { assertStartupPath, contains, ensureStartupRoot, ompProfileSchema, StartupBootError } from "./boot";
+import { createTernCommandRunner, createTernRuntime, ternParentPid } from "./tern-runtime";
+export const managerProcessInstance = randomUUID();
 
 export function integrationPath(environment: Environment): string {
   const path: string = realpathSync(z.string().startsWith("/").parse(environment.STARTUP_HERDR_OMP_EXTENSION));
@@ -52,27 +54,45 @@ export function prepareManagerLaunch(input: Readonly<{ scope: Scope; harness: "o
   } finally { store.close(); }
   } finally { closeSync(lock); unlinkSync(lockPath); }
 }
-const ompConfigSchema = z.strictObject({
+const commonConfigShape = {
   name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
   skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"), stateDirectory: z.string().startsWith("/"),
   boundRoot: z.string().startsWith("/"), skillsRoot: z.string().startsWith("/"),
   socketPath: z.string().startsWith("/"), profile: ompProfileSchema,
   managerSession: z.string().min(1), managerFile: z.string().startsWith("/"),
   managerPaneId: z.string().min(1), managerCredential: z.string().min(1),
+};
+const herdrConfigShape = {
+  ...commonConfigShape,
   herdrSession: z.string().min(1), workspaceId: z.string().min(1),
   herdrBinary: z.string().min(1), herdrIntegration: z.string().startsWith("/"),
   ownerGeneration: z.number().int().nonnegative().safe(), policy: runtimePolicySchema,
-});
-const claudeConfigSchema = ompConfigSchema.extend({ harness: z.literal("claude") });
-export type RuntimeHostConfig = Readonly<z.infer<typeof ompConfigSchema> | z.infer<typeof claudeConfigSchema>>;
-// The harness key selects one schema, so an invalid OMP config reports exactly the OMP schema's issues.
+};
+const ternConfigShape = {
+  ...commonConfigShape,
+  backend: z.literal("tern"), ternSession: z.string().min(1), ternWindow: z.string(),
+  ternBinary: z.string().min(1), ternSocket: z.string().startsWith("/"), managerPid: z.number().int().positive().safe(), managerInstance: z.uuid(),
+  ownerGeneration: z.number().int().nonnegative().safe(), policy: runtimePolicySchema,
+};
+const herdrOmpConfigSchema = z.strictObject(herdrConfigShape);
+const herdrClaudeConfigSchema = z.strictObject({ ...herdrConfigShape, harness: z.literal("claude") });
+const ternOmpConfigSchema = z.strictObject(ternConfigShape);
+const ternClaudeConfigSchema = z.strictObject({ ...ternConfigShape, harness: z.literal("claude") });
+export type RuntimeHostConfig = Readonly<z.infer<typeof herdrOmpConfigSchema> | z.infer<typeof herdrClaudeConfigSchema> | z.infer<typeof ternOmpConfigSchema> | z.infer<typeof ternClaudeConfigSchema>>;
 export function parseRuntimeHostConfig(value: unknown): RuntimeHostConfig {
-  return typeof value === "object" && value !== null && "harness" in value ? claudeConfigSchema.parse(value) : ompConfigSchema.parse(value);
+  const object = typeof value === "object" && value !== null ? value : {};
+  const claude = "harness" in object;
+  if ("backend" in object) return claude ? ternClaudeConfigSchema.parse(value) : ternOmpConfigSchema.parse(value);
+  return claude ? herdrClaudeConfigSchema.parse(value) : herdrOmpConfigSchema.parse(value);
 }
 export const intentSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("prepared"), startedAt: z.number().int().nonnegative() }),
   z.strictObject({ state: z.literal("spawned"), startedAt: z.number().int().nonnegative(), pid: z.number().int().positive() }),
 ]);
+export const rebindSchema = z.strictObject({
+  state: z.literal("prepared"), oldPid: z.number().int().positive().safe(), newPid: z.number().int().positive().safe(), oldInstance: z.uuid(), newInstance: z.uuid(),
+  ownerEpoch: z.number().int().nonnegative().safe(), revision: z.number().int().nonnegative().safe(),
+});
 export class RuntimeLaunchError extends Error {}
 class RuntimeStartupError extends RuntimeLaunchError {}
 function validateRuntimePaths(config: RuntimeHostConfig): string {
@@ -129,25 +149,19 @@ async function health(socketPath: string): Promise<void> {
   }
   throw new RuntimeLaunchError(`Coordinator health deadline 10000ms exceeded: ${lastError instanceof Error ? lastError.message : String(lastError)}; inspect runtime.log and preserve launch intent before recovery`);
 }
-export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<RuntimeHostConfig> {
+export async function launchRuntimeHost(input: RuntimeHostConfig, options?: Readonly<{ allowManagerRebind: boolean }>): Promise<RuntimeHostConfig> {
   const proposed: RuntimeHostConfig = parseRuntimeHostConfig(input);
   validateRuntimePaths(proposed);
   mkdirSync(proposed.startupRoot, { recursive: true, mode: 0o700 });
   const configPath: string = join(proposed.stateDirectory, "runtime-config.json");
   assertRuntimeFile(proposed, configPath);
   let config: RuntimeHostConfig = proposed;
-  if (existsSync(configPath)) {
-    config = parseRuntimeHostConfig(readPrivateJson(configPath));
-    const { managerCredential: savedCredential, ...saved } = config;
-    const { managerCredential: proposedCredential, ...requested } = proposed;
-    void savedCredential; void proposedCredential;
-    if (JSON.stringify(saved) !== JSON.stringify(requested))
-      throw new RuntimeLaunchError("Saved runtime configuration belongs to another manager, profile, source root or Herdr target; explicit recovery required");
-  }
-  const intentPath: string = join(config.stateDirectory, "runtime-launch.json");
-  const lockPath: string = join(config.stateDirectory, "runtime-launch.lock");
-  assertRuntimeFile(config, intentPath);
-  assertRuntimeFile(config, lockPath);
+  const intentPath: string = join(proposed.stateDirectory, "runtime-launch.json");
+  const lockPath: string = join(proposed.stateDirectory, "runtime-launch.lock");
+  const rebindPath: string = join(proposed.stateDirectory, "runtime-rebind.json");
+  assertRuntimeFile(proposed, intentPath);
+  assertRuntimeFile(proposed, lockPath);
+  assertRuntimeFile(proposed, rebindPath);
   let lock: number;
   try { lock = openSync(lockPath, "wx", 0o600); }
   catch (error: unknown) {
@@ -158,6 +172,51 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
   }
   writeFileSync(lock, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
   try {
+    if (existsSync(rebindPath))
+      throw new RuntimeLaunchError("Interrupted manager rebind needs explicit reconciliation; preserve its journal");
+    let rebinding = false;
+    if (existsSync(configPath)) {
+      config = parseRuntimeHostConfig(readPrivateJson(configPath));
+      const { managerCredential: savedCredential, ...saved } = config;
+      const { managerCredential: proposedCredential, ...requested } = proposed;
+      void savedCredential; void proposedCredential;
+      if (JSON.stringify(saved) !== JSON.stringify(requested)) {
+        if (!("backend" in config) || !("backend" in proposed) ||
+            JSON.stringify({ ...saved, managerPid: proposed.managerPid, managerInstance: proposed.managerInstance }) !== JSON.stringify(requested))
+          throw new RuntimeLaunchError("Saved runtime configuration belongs to another manager, profile, source root or terminal target; explicit recovery required");
+        if (options?.allowManagerRebind !== true)
+          throw new RuntimeLaunchError("Manager process changed; explicit rebind authorization is required");
+        if (proposed.managerPid !== process.pid || proposed.managerInstance !== managerProcessInstance || processAlive(config.managerPid))
+          throw new RuntimeLaunchError("Prior manager process is live or the proposed process is not the current manager; explicit recovery required");
+        if (!existsSync(intentPath))
+          throw new RuntimeLaunchError("Prior coordinator launch evidence is missing; explicit recovery required");
+        const intent = intentSchema.parse(readPrivateJson(intentPath));
+        if (intent.state !== "spawned" || processAlive(intent.pid))
+          throw new RuntimeLaunchError("Prior coordinator is live or its launch outcome is uncertain; explicit recovery required");
+        const scope = { skillsHome: config.skillsHome, startupRoot: config.startupRoot, host: hostname(), name: config.name, boundRoot: config.boundRoot, managerSession: config.managerSession };
+        const control = readOwnerControl(scope);
+        if (control.archived || control.leaseExpires > Date.now())
+          throw new RuntimeLaunchError("Prior owner lease is live or archived; explicit recovery required");
+        const tern = createTernRuntime({ binary: config.ternBinary, window: config.ternWindow, sessionId: config.ternSession, run: createTernCommandRunner({ socket: config.ternSocket, timeoutMs: 35000 }), parentPid: ternParentPid });
+        if (!await tern.ownsProcess({ blockId: config.managerPaneId, pid: proposed.managerPid }))
+          throw new RuntimeLaunchError("New manager process is not verified in the saved Tern block");
+        if (processAlive(config.managerPid) || processAlive(intent.pid))
+          throw new RuntimeLaunchError("Prior manager or coordinator process became live during rebind");
+        const current = readOwnerControl(scope);
+        if (current.archived || current.leaseExpires > Date.now() || current.ownerEpoch !== control.ownerEpoch || current.revision !== control.revision)
+          throw new RuntimeLaunchError("Owner control changed during manager rebind; explicit recovery required");
+        const journal = rebindSchema.parse({ state: "prepared", oldPid: config.managerPid, newPid: proposed.managerPid, oldInstance: config.managerInstance, newInstance: proposed.managerInstance, ownerEpoch: control.ownerEpoch, revision: control.revision });
+        const journalFd = openSync(rebindPath, "wx", 0o600);
+        try { writeFileSync(journalFd, JSON.stringify(journal)); fsyncSync(journalFd); } finally { closeSync(journalFd); }
+        const replacement = `${configPath}.${process.pid}.tmp`;
+        assertRuntimeFile(config, replacement);
+        const fd = openSync(replacement, "wx", 0o600);
+        try { writeFileSync(fd, JSON.stringify({ ...proposed, managerCredential: config.managerCredential })); fsyncSync(fd); } finally { closeSync(fd); }
+        renameSync(replacement, configPath);
+        config = { ...proposed, managerCredential: config.managerCredential };
+        rebinding = true;
+      }
+    }
     if (existsSync(join(config.startupRoot, "staff.sqlite")) && readOwnerControl({ skillsHome: config.skillsHome, startupRoot: config.startupRoot, host: hostname(), name: config.name, boundRoot: config.boundRoot, managerSession: config.managerSession }).archived)
       throw new RuntimeLaunchError("Archived Startup cannot launch an owner");
     if (!existsSync(configPath)) writeFileSync(configPath, JSON.stringify(config), { flag: "wx", mode: 0o600 });
@@ -206,6 +265,7 @@ export async function launchRuntimeHost(input: RuntimeHostConfig): Promise<Runti
       child.unref();
     } finally { closeSync(log); }
     await health(config.socketPath);
+    if (rebinding) unlinkSync(rebindPath);
     return config;
   } finally { closeSync(lock); unlinkSync(lockPath); }
 }

@@ -5,8 +5,8 @@ description: Use when doing server maintenance, patching, rebooting, or debuggin
 
 # Server Maintenance
 
-## Herdr preflight
-Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, check `command -v herdr`: an installed binary does not mean this session is inside Herdr. Say once that this session is outside Herdr, then continue with this skill's in-process path. Recommend installation (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/) only when the binary is actually missing. If the environment check passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr or set HERDR_ENV manually to bypass the check. Never block work that does not need panes on Herdr.
+## Pane access
+Pane orchestration is optional for server maintenance. Use an available authorized environment integration, including Tern or Herdr, only when pane work is needed; otherwise continue in-process. Remote pane work requires the user's explicit host and session scope.
 
 ## Overview
 Named server maps to one stable on-disk record. Ask once, persist, never re-ask.

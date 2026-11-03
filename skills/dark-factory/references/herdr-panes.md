@@ -4,7 +4,7 @@ Herdr is the layout owner. The principal allocates and closes; workers never tou
 Read `herdr --skill` (or the linked `herdr` skill) before the first command. Verify syntax with `herdr agent`, `herdr pane`, `herdr tab`, `herdr workspace` if any command rejects its arguments.
 
 ## Preflight
-- `test "${HERDR_ENV:-}" = 1` - outside Herdr, stop pane work; the principal alone gives the one install recommendation.
+- `test "${HERDR_ENV:-}" = 1` - outside Herdr, do not run pane commands; select Tern or in-process.
 - `herdr status server --json` - require `running`, `compatible`, `endpoint_compatible`.
 - `herdr pane current --current` - read `HERDR_PANE_ID`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`; never retarget the user's focused pane.
 - `herdr agent` - authoritative kind list; require `command -v <kind>` for the chosen `WORKER_AGENT`.
@@ -26,7 +26,12 @@ Record every id in the ledger before launching. Never reuse another run's id.
 
 ## Launch
 - `herdr agent start <name> --kind "$WORKER_AGENT" --pane <pane-id> --timeout 120000`
-- Launch bare: no `-- <agent-args>`, no `--profile`/`--extension`/`--session-id`/prompt-file arguments. Those are startup-runtime arguments and are not reproduced here; the worker loads its own global skills and config.
+- In resolved standalone or `STARTUP_MODE=off`, when `WORKER_AGENT=omp`, append
+  `-- --no-extensions` to prevent automatic Startup extension loading. This also disables
+  other auto-discovered extensions; explicitly load required non-Startup extensions only.
+  For another agent kind, use its documented equivalent after verifying it; otherwise use
+  Tern with OMP or a genuinely independent in-process root. Never boot or select a Startup.
+  In Startup mode, follow the selected Startup's admission and launch contracts instead.
 - `<name>`: ticket id lowercased plus suffix (`SYT-987` -> `syt-987-w`, planner -> `df-planner`, driver -> `df-stack-driver`, fix -> `df-fix-<pr>`); max 32 chars; append `-2` if the name is live.
 - Verify the launch binding from the `agent_started` result (or `herdr agent get <name>`): `agent == <kind>`, `pane_id == <pane-id>`, `name == <name>`, `interactive_ready == true`, `launch_pending != true`. Mismatch -> reconcile with `agent list` before prompting; never start a second agent in that pane.
 - `agent_not_ready` means the agent blocked during startup: inspect with `herdr agent get <name>` and `herdr agent read <name> --lines 60`, wait for idle, then prompt. Never relaunch.
@@ -44,7 +49,7 @@ Record every id in the ledger before launching. Never reuse another run's id.
 
 ## Collect (context firewall)
 1. `herdr agent read <name> --source recent-unwrapped --lines 120`
-2. Extract only between `=== SUB-ORCHESTRATOR OUTCOME ===` and `=== END ===`; the block carries `herdr: inside|outside` for diagnostics.
+2. Extract only between `=== SUB-ORCHESTRATOR OUTCOME ===` and `=== END ===`; the block carries `backend: herdr`.
 3. Block absent or truncated: prompt `Write your Outcome block to <home>/tmp/dark-factory/<epic>/<ticket>-outcome.md and reply with the path only.`, then read that file only.
 4. Never read earlier scrollback, diffs, or logs. Outcome block or file only.
 
@@ -56,5 +61,6 @@ Record every id in the ledger before launching. Never reuse another run's id.
 
 ## Failure handling
 - Command exit 1 with JSON stderr: retry once with the same arguments; a timeout or lost response is uncertain, so inspect state (`agent list`, `pane list`) before retrying a write.
-- `dependency_unavailable`/incompatible server/API: treat Herdr as absent for the run, record `herdr: incompatible`, use the in-process fan-out.
-- Per-ticket pane failure: mark `pane: failed` in the ledger, run that ticket in-process, never run both.
+- `dependency_unavailable`/incompatible server/API: record the reason and use in-process.
+- Per-ticket pane failure: reconcile the agent state first; use in-process only after confirming
+  the original worker is no longer running and its ownership is resolved.

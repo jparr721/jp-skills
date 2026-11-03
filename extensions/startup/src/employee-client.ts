@@ -16,17 +16,19 @@ const admissionSchema = z.strictObject({
   nativeSession: z.string().min(1),
   agentSessionId: z.string().min(1).optional(),
   paneId: z.string().min(1),
+  pid: z.number().int().positive().safe().optional(),
   source: sourceSchema,
 });
-const connectionSchema = z.strictObject({ connection: z.string().min(1) });
+const connectionSchema = z.strictObject({ connection: z.string().min(1), lifecycleSequence: z.number().int().nonnegative().safe().optional() });
 const beforeStartSchema = z.object({ systemPrompt: z.array(z.string()) });
 const contextSchema = z.object({ messages: z.array(z.unknown()) });
 const toolSchema = z.object({ toolName: z.string(), input: z.unknown() });
 
 export type EmployeePoll = z.infer<typeof pollSchema>;
+export type NativeRootSample = Readonly<{ backend: "tern"; paneId: string; pid: number; sessionId: string; phase: "working" | "idle"; pendingMessages: boolean }>;
 export type EmployeeClient = Readonly<{
   request: (command: Json) => Promise<Json>;
-  poll: (settingsReport?: OmpSessionSettingsReport) => Promise<EmployeePoll>;
+  poll: (settingsReport?: OmpSessionSettingsReport, nativeRoot?: NativeRootSample) => Promise<EmployeePoll>;
   close: () => void;
   disconnect: () => Promise<void>;
   settlementBlock: () => string | null;
@@ -109,6 +111,7 @@ export async function connectEmployee(input: Readonly<{
   nativeSession: string;
   agentSessionId?: string;
   paneId: string;
+  pid?: number;
   source: Source;
 }>): Promise<EmployeeClient> {
   const admitted = admissionSchema.parse(input);
@@ -117,6 +120,9 @@ export async function connectEmployee(input: Readonly<{
   let lifetime: WebSocket | null = null;
   let previousReport: OmpSessionSettingsReport | undefined;
   let sampleSequence: number = 0;
+  let lifecycleSequence: number = 0;
+  let previousNativeRoot: NativeRootSample | undefined;
+  let pendingNativeRoot: Readonly<{ sample: NativeRootSample; sequence: number }> | undefined;
   let claimState: string | null = null;
   let settlementBlocked: EmployeeSettlementError | null = null;
   let commandBlocked: EmployeeCommandError | null = null;
@@ -181,24 +187,25 @@ export async function connectEmployee(input: Readonly<{
     const admissionStartedAt = Date.now();
     const socket = new WebSocket(`ws+unix://${admitted.socketPath}:/admit`);
     lifetime = socket;
-    const receipt = await new Promise<string>((resolve, reject) => {
+    const receipt = await new Promise<z.infer<typeof connectionSchema>>((resolve, reject) => {
       const timeout = setTimeout(() => { reject(new EmployeeClientError("Admission channel timed out")); socket.close(); }, 10000);
       socket.onopen = (): void => { socket.send(JSON.stringify({ credential: admitted.credential, nativeSession: admitted.nativeSession,
-        ...(admitted.agentSessionId === undefined ? {} : { agentSessionId: admitted.agentSessionId }), paneId: admitted.paneId, source: admitted.source })); };
+        ...(admitted.agentSessionId === undefined ? {} : { agentSessionId: admitted.agentSessionId }), ...(admitted.pid === undefined ? {} : { pid: admitted.pid }), paneId: admitted.paneId, source: admitted.source })); };
       socket.onmessage = (event): void => {
         clearTimeout(timeout);
         try {
           const value: unknown = JSON.parse(String(event.data));
           const failure = z.object({ status: z.number(), error: z.string() }).safeParse(value);
           if (failure.success) { reject(new EmployeeHttpError(failure.data.status, `Admission /admit ${failure.data.status}: ${redact(failure.data.error)}`, null)); return; }
-          resolve(connectionSchema.parse(value).connection);
+          resolve(connectionSchema.parse(value));
         } catch (error: unknown) { reject(new EmployeeClientError(`Invalid /admit receipt: ${redact(error instanceof Error ? error.message : String(error))}`)); socket.close(); }
       };
       socket.onerror = (): void => { clearTimeout(timeout); reject(new EmployeeTransportError({ method: "GET", path: "/admit", socketPath: admitted.socketPath, code: "CHANNEL_CONNECT_FAILED", causeCode: null, elapsedMs: Date.now() - admissionStartedAt, timeoutMs: 10000, reason: "Unix WebSocket admission connection failed" })); };
       socket.onclose = (): void => { clearTimeout(timeout); reject(new EmployeeClientError("Admission channel closed before receipt")); };
     });
     if (closed || socket.readyState !== WebSocket.OPEN) { socket.close(); throw new EmployeeClientError("Admission channel closed before activation"); }
-    connection = receipt;
+    connection = receipt.connection;
+    lifecycleSequence = receipt.lifecycleSequence ?? 0;
     socket.onclose = (): void => { closed = true; shutdown.abort(); };
     socket.onerror = (): void => { closed = true; shutdown.abort(); socket.close(); };
     rejectedCommands.clear();
@@ -260,13 +267,47 @@ export async function connectEmployee(input: Readonly<{
     },
     isClosed: () => closed,
     settlementBlock: () => settlementBlocked?.message ?? commandBlocked?.message ?? null,
-    async poll(settingsReport?: OmpSessionSettingsReport): Promise<EmployeePoll> {
+    async poll(settingsReport?: OmpSessionSettingsReport, nativeRoot?: NativeRootSample): Promise<EmployeePoll> {
       const unchanged = settingsReport !== undefined && previousReport !== undefined && settingsReport.nativeSession === previousReport.nativeSession && settingsReport.agentSessionId === previousReport.agentSessionId && (
         settingsReport.status === "unavailable" && previousReport.status === "unavailable" && settingsReport.reason === previousReport.reason ||
         settingsReport.status === "available" && previousReport.status === "available" && settingsReport.availableModels === previousReport.availableModels && settingsReport.availableEfforts === previousReport.availableEfforts && encode(settingsReport.model) === encode(previousReport.model) && settingsReport.configuredEffort === previousReport.configuredEffort && settingsReport.effectiveEffort === previousReport.effectiveEffort);
       const report: Json | null = settingsReport === undefined || unchanged ? null : jsonSchema.parse(ompSessionSettingsReportSchema.parse(settingsReport));
-      const pollRequest = (): Promise<Json> => report === null ? exchange("GET", "/poll", null) : exchange("POST", "/poll", { sequence: ++sampleSequence, report });
-      const body: Json = await pollRequest();
+      if (nativeRoot !== undefined) {
+        if (admitted.pid === undefined || nativeRoot.pid !== admitted.pid || nativeRoot.paneId !== admitted.paneId ||
+          (admitted.agentSessionId !== undefined && nativeRoot.sessionId !== admitted.agentSessionId) ||
+          (previousNativeRoot !== undefined && nativeRoot.sessionId !== previousNativeRoot.sessionId))
+          throw new EmployeeClientError("Native lifecycle identity differs from authenticated admission");
+      } else if (admitted.pid !== undefined) throw new EmployeeClientError("Tern poll requires a native lifecycle sample");
+      const send = async (sample: typeof pendingNativeRoot, includeReport: boolean): Promise<Json> => {
+        const body = sample !== undefined
+          ? await exchange("POST", "/poll", { ...(includeReport && report !== null ? { sequence: ++sampleSequence, report } : {}), nativeRoot: { ...sample.sample, sequence: sample.sequence } })
+          : report === null ? await exchange("GET", "/poll", null) : await exchange("POST", "/poll", { sequence: ++sampleSequence, report });
+        const parsed = pollSchema.safeParse(body);
+        if (!parsed.success)
+          throw new EmployeeClientError(`Startup GET /poll HTTP 200 returned an invalid employee projection: ${redact(parsed.error.message)}`);
+        if (sample !== undefined) {
+          previousNativeRoot = sample.sample;
+          pendingNativeRoot = undefined;
+        }
+        return body;
+      };
+      let body: Json | undefined;
+      if (nativeRoot === undefined) body = await send(undefined, true);
+      else {
+        if (pendingNativeRoot !== undefined) {
+          const same = encode(pendingNativeRoot.sample) === encode(nativeRoot);
+          const acknowledged = await send(pendingNativeRoot, same);
+          if (same) body = acknowledged;
+        }
+        if (body === undefined) {
+          if (previousNativeRoot === undefined || encode(previousNativeRoot) !== encode(nativeRoot)) {
+            lifecycleSequence += 1;
+            if (!Number.isSafeInteger(lifecycleSequence)) throw new EmployeeClientError("Native lifecycle sequence exhausted");
+          }
+          pendingNativeRoot = { sample: nativeRoot, sequence: lifecycleSequence };
+          body = await send(pendingNativeRoot, true);
+        }
+      }
       previousReport = settingsReport;
       const parsed = pollSchema.safeParse(body);
       if (!parsed.success)
@@ -301,6 +342,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   intervalMs: number;
   instructions: string;
   settingsReport?: () => OmpSessionSettingsReport;
+  tern?: Readonly<{ paneId: string; nativeSession: string }>;
   lastAssistant?: unknown;
 }>): Readonly<{ poll: () => Promise<void>; close: () => void }> {
   z.number().int().positive().parse(input.intervalMs);
@@ -328,8 +370,11 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   let continuedReason: string | null = null;
   let releasePending: boolean = false;
   let turnHeld: boolean = true;
+  let nativeTurnActive = false;
   let turnBlocked: string | null = null;
   const rootFile = input.ctx.sessionManager.getSessionFile();
+  if (input.tern !== undefined && input.tern.nativeSession !== rootFile)
+    throw new EmployeeClientError("Tern lifecycle root does not match the admitted native transcript");
   function isRoot(ctx: NativeContext): boolean {
     return ctx.agent.kind === "main" && ctx.agent.id === rootId && ctx.sessionManager.getSessionFile() === rootFile &&
       ctx.sessionManager.getSessionId() === rootSession;
@@ -344,7 +389,11 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   async function refresh(): Promise<void> {
     try {
       if (!isRoot(input.ctx)) { close(); throw new EmployeeClientError("Native session changed before heartbeat"); }
-      const next: EmployeePoll = await input.client.poll(input.settingsReport?.());
+      const hasPending = input.tern === undefined ? false : nativePending();
+      const next: EmployeePoll = await input.client.poll(input.settingsReport?.(), input.tern === undefined ? undefined : {
+        backend: "tern", paneId: input.tern.paneId, pid: process.pid, sessionId: rootSession,
+        phase: !nativeTurnActive && nativeIdle() && !hasPending ? "idle" : "working", pendingMessages: hasPending,
+      });
       if (!isRoot(input.ctx)) { close(); throw new EmployeeClientError("Native session changed during heartbeat"); }
       if (turnHeld && nativeIdle() && !nativePending()) releasePending = true;
       if (releasePending) { await input.client.request({ kind: "end_turn" }); releasePending = false; turnHeld = false; }
@@ -429,6 +478,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   host.on("before_agent_start", async (event, ctx) => {
     if (closed || !isRoot(ctx)) return;
     const parsed = beforeStartSchema.parse(event);
+    nativeTurnActive = true;
     wakeQueued = true;
     try { await admitTurn(); } finally { wakeQueued = false; }
     return { systemPrompt: [...parsed.systemPrompt, input.instructions] };
@@ -436,6 +486,7 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
   host.on("context", async (event, ctx) => {
     if (closed || !isRoot(ctx)) return;
     const parsed = contextSchema.parse(event);
+    nativeTurnActive = true;
     wakeQueued = true;
     try { await admitTurn(); } finally { wakeQueued = false; }
     const state: string = projectedState();
@@ -481,12 +532,14 @@ export function installEmployeeBridge(host: EmployeeBridgeHost, input: Readonly<
     const parsed = z.object({ willContinue: z.boolean().optional() }).passthrough().parse(event);
     if (parsed.willContinue !== true) {
       releasePending = true;
+      nativeTurnActive = false;
       try { await input.client.request({ kind: "end_turn" }); releasePending = false; turnHeld = false; }
       catch (error: unknown) {
         host.sendMessage({ customType: "startup-capacity-release", content: "Startup capacity release is pending; the control connection will reconcile it on recovery.", display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
         throw error;
       }
     }
+    if (input.tern !== undefined) await poll();
   });
   host.on("session_stop", async (_event, ctx) => {
     if (closed || !isRoot(ctx)) return;

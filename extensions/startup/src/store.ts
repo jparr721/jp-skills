@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
-import { hostAssociationQuerySchema, hostAssociationPageSchema, type HostAssociationPage, type HostAssociationRow, runtimeConnectionSchema, runtimeIdentitySchema, type RuntimeIdentity, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
+import { hostAssociationQuerySchema, hostAssociationPageSchema, nativeRootSchema, type NativeRoot, type HostAssociationPage, type HostAssociationRow, runtimeConnectionSchema, runtimeIdentitySchema, type RuntimeIdentity, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, roleSettingsInputSchema, roleSettingsProvenanceSchema, runtimeAbandonmentSchema, runtimeBindingSchema, runtimeCapabilitySchema, runtimeHarnessSchema, savedRoleSettingsSchema, type EffectiveRoleSettings, type RequestedRoleSettings, type RuntimeAbandonment, type RuntimeBinding, type RuntimeCapability, type SavedRoleSettings } from "./runtime-contracts";
 import { assertStartupPath, contains, ensureStartupRoot } from "./boot";
 import { validateRoleSettings } from "./profiles";
 import {
@@ -3392,7 +3392,7 @@ export function openStore(args: {
     employeeRuntime(employeeId: string, minimumGeneration: number): RuntimeBinding | null {
       return selected("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId')=? AND json_extract(payload,'$.generation')>=? ORDER BY json_extract(payload,'$.generation') DESC LIMIT 1", [employeeId, minimumGeneration], runtimeBindingSchema)[0] ?? null;
     },
-    observeRuntime(input: Readonly<{ employeeId: string; generation: number; nativeSession: string; state: NonNullable<RuntimeBinding["observedState"]>; sequence: number; observedAt: number }>): void {
+    observeRuntime(input: Readonly<{ employeeId: string; generation: number; nativeSession: string; state: NonNullable<RuntimeBinding["observedState"]>; sequence: number; observedAt: number; ternObservation?: NativeRoot }>): void {
       tx(() => {
         const key = `${input.employeeId}/${input.generation}`;
         const runtime = read("runtimeBinding", key, runtimeBindingSchema);
@@ -3400,6 +3400,15 @@ export function openStore(args: {
           throw new StoreFenceError("Observation does not match the bound native session");
         if (runtime.state === "abandoned") throw new StoreFenceError("Runtime generation was abandoned by manager recovery");
         const sequence = timeSchema.parse(input.sequence);
+        const ternObservation = input.ternObservation === undefined ? undefined : nativeRootSchema.parse(input.ternObservation);
+        if (ternObservation !== undefined) {
+          if (ternObservation.paneId !== runtime.paneId || ternObservation.sequence !== sequence || ternObservation.phase !== input.state)
+            throw new StoreFenceError("Tern lifecycle observation does not match the reserved runtime");
+          const checkpoint = runtime.stateSequence ?? 0;
+          if (sequence < checkpoint || sequence > checkpoint + 1 ||
+              (sequence === checkpoint && (runtime.ternObservation === undefined || encode(runtime.ternObservation) !== encode(ternObservation))))
+            throw new StoreFenceError("Tern lifecycle sequence regressed, skipped, or conflicts with its saved observation");
+        }
         if (runtime.stateSequence !== null && sequence < runtime.stateSequence)
           throw new StoreFenceError("Lifecycle observation sequence regressed");
         const seenCompletion = ["done", "idle"].includes(runtime.observedState ?? "") && ["done", "idle"].includes(input.state);
@@ -3421,7 +3430,7 @@ export function openStore(args: {
           }, null);
           compactObservations(selected("SELECT payload FROM records WHERE kind='message' AND json_extract(payload,'$.recipient')='manager' AND json_extract(payload,'$.status')='pending' AND json_extract(payload,'$.correlation')=? AND json_extract(payload,'$.payload.kind')='runtime-observation' ORDER BY json_extract(payload,'$.sequence') DESC", [runtime.launchId], messageSchema));
         }
-        put("runtimeBinding", key, { ...runtime, stateSequence: sequence, observedState: input.state, lastSeen: observedAt });
+        put("runtimeBinding", key, { ...runtime, stateSequence: sequence, observedState: input.state, lastSeen: observedAt, ...(ternObservation === undefined ? {} : { ternObservation }) });
       });
     },
     compactRuntimeObservations(): Readonly<{ acknowledged: number }> {

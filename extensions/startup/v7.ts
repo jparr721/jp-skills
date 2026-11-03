@@ -11,7 +11,7 @@ import { assertNativeTranscript, attach, inputBlock, reconcileInput, inputSchema
 import { requireOmpModelRoles } from "./src/model-roles";
 import type { NativeContext } from "./src/omp-adapter";
 import { loadProfile, verifyProfile } from "./src/profiles";
-import { integrationPath, launchRuntimeHost, readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
+import { integrationPath, launchRuntimeHost, managerProcessInstance, readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
 
 export { integrationPath } from "./src/v7-launch";
 export { installLaunchedEmployee } from "./src/employee-entry";
@@ -20,7 +20,7 @@ export type EntryConfig = Readonly<{
   startupRoot: string | null;
   skillsRoot: string;
   environment: Environment;
-  launch: (config: RuntimeHostConfig) => Promise<RuntimeHostConfig>;
+  launch: (config: RuntimeHostConfig, options?: Readonly<{ allowManagerRebind: boolean }>) => Promise<RuntimeHostConfig>;
   nativeLimit: (ctx: NativeContext) => number;
   harness: "omp" | "claude";
   root: NativeRootFn;
@@ -48,11 +48,13 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     if (attempted && ctx.agent.kind === "main" && (failure !== null || admitted === null || admitted.client.isClosed())) ctx.abort?.();
   });
   registerTools(host, () => failure === null ? admitted : null);
-  async function initialize(ctx: NativeContext, command: BootCommand | null): Promise<void> {
+  async function initialize(ctx: NativeContext, command: BootCommand | null, allowManagerRebind: boolean): Promise<void> {
     const nativeSession = ctx.sessionManager.getSessionId();
     const nativeFile: string = (await input.root(host, ctx)).file;
     const contextFile = ctx.sessionManager.getSessionFile();
     const location = await paneEnvironment(input.environment);
+    if (location.backend === "tern" && input.harness !== "omp")
+      throw new StartupBootError("Tern Startup currently requires the native OMP root lifecycle; Claude remains supported with Herdr");
     if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager native identity changed during startup discovery");
     const next: Selection | null = bootSelection({ cwd: ctx.cwd, skillsHome: input.skillsHome, startupRoot: input.environment.STARTUP_ROOT ?? input.startupRoot, skillsRoot: input.skillsRoot, host: hostname(), managerSession: ctx.sessionManager.getSessionId(), command, explicitName: input.environment.STARTUP_NAME ?? null, executionLimit: input.environment.STARTUP_EXECUTION_LIMIT === undefined ? null : z.coerce.number().int().positive().parse(input.environment.STARTUP_EXECUTION_LIMIT) });
     if (next === null) return;
@@ -71,26 +73,33 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     if (saved !== null && (("harness" in saved ? saved.harness : "omp") !== input.harness || saved.name !== next.name || saved.skillsHome !== next.skillsHome || saved.startupRoot !== next.startupRoot || saved.stateDirectory !== next.startupRoot ||
       saved.boundRoot !== next.boundRoot || saved.skillsRoot !== next.skillsRoot || saved.managerSession !== ctx.sessionManager.getSessionId() ||
       (input.harness === "omp" && realpathSync(saved.managerFile) !== realpathSync(nativeFile)) || saved.managerPaneId !== location.paneId || saved.profile !== location.profile ||
-      saved.workspaceId !== location.workspaceId || saved.herdrSession !== location.session))
-      throw new StartupBootError("Resume requires the saved manager transcript, Herdr pane, profile and Startup root. Reopen that manager session; do not create another crew or replace its state.");
+      (location.backend === "tern"
+        ? !("backend" in saved) || saved.ternSession !== location.session || saved.ternWindow !== location.window || saved.ternSocket !== location.socketPath || saved.ternBinary !== location.binary
+        : "backend" in saved || saved.workspaceId !== location.workspaceId || saved.herdrSession !== location.session)))
+      throw new StartupBootError("Resume requires the saved manager transcript, terminal pane, session, profile and Startup root. Reopen that manager session; do not create another crew or replace its state.");
+    if (saved !== null && "backend" in saved && (saved.managerPid !== process.pid || saved.managerInstance !== managerProcessInstance) && !allowManagerRebind)
+      throw new StartupBootError("Manager process changed; use /startup-retry in the saved Tern pane to authorize fenced recovery");
     const executionLimit: number = saved?.policy.executionLimit ?? next.executionLimit ?? (z.number().int().positive().safe().parse(input.nativeLimit(ctx)) + 2);
     if (executionLimit < 3) throw new StartupBootError("Startup V7 requires at least three root slots for manager, PA and employee work");
     const profile = loadProfile({ skillsRoot: next.skillsRoot, role: "manager", employeeId: "manager", generation: 1 });
     verifyProfile(profile);
     persistBinding(next);
     const stateDirectory: string = next.startupRoot;
-    const fresh: RuntimeHostConfig = {
+    const common = {
       name: next.name, stateDirectory, boundRoot: next.boundRoot, skillsRoot: next.skillsRoot,
       socketPath: join(stateDirectory, "runtime.sock"), profile: location.profile,
       managerSession: ctx.sessionManager.getSessionId(), managerFile: nativeFile, managerPaneId: location.paneId,
       managerCredential: randomUUID(), policy: { tickMs: 1000, paCadenceMs: 60000, progressDeadlineMs: 300000, connectionDeadlineMs: 30000, executionLimit },
-      skillsHome: next.skillsHome, startupRoot: next.startupRoot, herdrSession: location.session, workspaceId: location.workspaceId,
-      herdrBinary: input.environment.HERDR_BIN_PATH ?? "herdr", herdrIntegration: input.integration(input.environment), ownerGeneration: 1,
+      skillsHome: next.skillsHome, startupRoot: next.startupRoot, ownerGeneration: 1,
     };
-    const config: RuntimeHostConfig = await input.launch(saved ?? (input.harness === "claude" ? { ...fresh, harness: "claude" } : fresh));
+    const fresh: RuntimeHostConfig = location.backend === "tern"
+      ? { ...common, backend: "tern", ternSession: location.session, ternWindow: location.window, ternSocket: location.socketPath, ternBinary: location.binary, managerPid: process.pid, managerInstance: managerProcessInstance }
+      : { ...common, herdrSession: location.session, workspaceId: location.workspaceId, herdrBinary: input.environment.HERDR_BIN_PATH ?? "herdr", herdrIntegration: input.integration(input.environment) };
+    const requested = saved !== null && "backend" in saved ? { ...saved, managerPid: process.pid, managerInstance: managerProcessInstance } : saved;
+    const config: RuntimeHostConfig = await input.launch(requested ?? (input.harness === "claude" ? { ...fresh, harness: "claude" } : fresh), { allowManagerRebind });
     runtimeConfig = config;
     if (stopped || ctx.sessionManager.getSessionId() !== nativeSession || ctx.sessionManager.getSessionFile() !== contextFile) throw new StartupBootError("Manager identity changed during owner launch; preserve launch evidence and reconcile before retry");
-    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, harness: input.harness, skillsHome: next.skillsHome, startupRoot: next.startupRoot, skillsRoot: next.skillsRoot }, { ...input.environment, STARTUP_ROOT: next.startupRoot, JP_SKILLS_HOME: next.skillsHome }, input.root);
+    const connected = await attach(host, ctx, { socketPath: config.socketPath, credential: config.managerCredential, source: profile.source, employeeId: "manager", generation: 1, profile: location.profile, harness: input.harness, skillsHome: next.skillsHome, startupRoot: next.startupRoot, skillsRoot: next.skillsRoot, ...(location.backend === "tern" ? { backend: "tern" as const } : {}) }, { ...input.environment, STARTUP_ROOT: next.startupRoot, JP_SKILLS_HOME: next.skillsHome }, input.root);
     if (stopped) { await connected.close(); return; }
     admitted = connected;
     await reconcileInput(connected);
@@ -99,10 +108,10 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     failureTurnPending = false;
     if (saved !== null) host.sendMessage({ customType: "startup-manager-reconnected", content: `Startup ${next.name} manager reconnected in its saved pane; polling resumed. Existing crews, PA, claims and history are preserved. Reconcile interrupted claims before advancing work.`, display: true }, { triggerTurn: false, deliverAs: "nextTurn" });
   }
-  async function boot(ctx: NativeContext, command: BootCommand | null): Promise<void> {
+  async function boot(ctx: NativeContext, command: BootCommand | null, allowManagerRebind = false): Promise<void> {
     attempted = true;
     if (initializing !== null) await initializing;
-    const operation: Promise<void> = initialize(ctx, command);
+    const operation: Promise<void> = initialize(ctx, command, allowManagerRebind);
     initializing = operation;
     try {
       await operation;
@@ -117,9 +126,9 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     failureTurnPending = true;
     if (!stopped && retryTimer === null) retryTimer = ctx.setInterval(() => { void retry(ctx); }, 5000);
   }
-  async function retry(ctx: NativeContext): Promise<void> {
+  async function retry(ctx: NativeContext, allowManagerRebind = false): Promise<void> {
     if (stopped || initializing !== null || ctx.agent.kind !== "main") return;
-    try { await boot(ctx, null); }
+    try { await boot(ctx, null, allowManagerRebind); }
     catch (error: unknown) { report(error, ctx); ctx.abort?.(); }
   }
   host.on("session_start", async (_event, ctx) => {
@@ -138,7 +147,7 @@ export function installStartupV7(host: HostAPI, input: EntryConfig): void {
     if (retryTimer !== null) { ctx.clearTimer(retryTimer); retryTimer = null; }
     await admitted?.close();
   });
-  host.registerCommand("startup-retry", { description: "Reconnect the saved Startup manager in its existing pane.", handler: async (_args, ctx) => { await retry(ctx); } });
+  host.registerCommand("startup-retry", { description: "Reconnect the saved Startup manager in its existing pane.", handler: async (_args, ctx) => { await retry(ctx, true); } });
   host.on("input", async (event, ctx) => {
     if (ctx.agent.kind !== "main") return;
     const parsed = inputSchema.parse(event);

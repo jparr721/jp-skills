@@ -77,6 +77,7 @@ function serverFixture() {
     commandError(value: Response): void { commandResponse = value; },
     admitError(value: Response): void { admitResponse = value; },
     pollError(value: Response): void { pollResponse = value; },
+    clearPollError(): void { pollResponse = null; },
     delayPoll(value: Promise<Response>): void { pollPending = value; },
   };
 }
@@ -129,6 +130,76 @@ function nativeFixture() {
   }
   return { host, ctx, messages, timers, emit, setRunState: (nextIdle: boolean, nextPendingMessages: boolean): void => { idle = nextIdle; pendingMessages = nextPendingMessages; } };
 }
+
+test("Tern lifecycle samples authenticated native state and resumes sequence after reconnect", async () => {
+  const fixture = serverFixture();
+  fixture.admitError(Response.json({ connection: "private-connection", lifecycleSequence: 12 }));
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: [], waitReason: null, toolBlockReason: null });
+  const client = await connectEmployee({ socketPath: fixture.socketPath, credential: "private-credential", nativeSession: "/fixture/session.jsonl", agentSessionId: "employee-session", paneId: "1", pid: process.pid, source });
+  cleanup.push(client.close);
+  const native = nativeFixture();
+  native.setRunState(true, false);
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000, tern: { paneId: "1", nativeSession: "/fixture/session.jsonl" } });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  await bridge.poll();
+  native.setRunState(true, true);
+  fixture.pollError(Response.json({ error: "offline" }, { status: 503 }));
+  await expect(bridge.poll()).rejects.toThrow("503");
+  fixture.clearPollError();
+  await bridge.poll();
+  const admission = fixture.requests.find((request) => request.path === "/admit");
+  expect(admission?.body).toMatchObject({ pid: process.pid, paneId: "1" });
+  const polls = fixture.requests.filter((request) => request.path === "/poll");
+  expect(polls.map((request) => request.auth)).toEqual(Array(4).fill("Bearer private-connection"));
+  const roots = polls.map((request) => z.object({ nativeRoot: z.object({ backend: z.literal("tern"), paneId: z.string(), pid: z.number(), sessionId: z.string(), sequence: z.number(), phase: z.string(), pendingMessages: z.boolean() }) }).parse(request.body).nativeRoot);
+  expect(roots).toEqual([
+    { backend: "tern", paneId: "1", pid: process.pid, sessionId: "employee-session", sequence: 13, phase: "idle", pendingMessages: false },
+    { backend: "tern", paneId: "1", pid: process.pid, sessionId: "employee-session", sequence: 13, phase: "idle", pendingMessages: false },
+    { backend: "tern", paneId: "1", pid: process.pid, sessionId: "employee-session", sequence: 14, phase: "working", pendingMessages: true },
+    { backend: "tern", paneId: "1", pid: process.pid, sessionId: "employee-session", sequence: 14, phase: "working", pendingMessages: true },
+  ]);
+});
+
+test("Tern lifecycle retries an unacknowledged state before publishing a newer state", async () => {
+  const fixture = serverFixture();
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: [], waitReason: null, toolBlockReason: null });
+  const client = await connectEmployee({ socketPath: fixture.socketPath, credential: "private-credential", nativeSession: "/fixture/session.jsonl", agentSessionId: "employee-session", paneId: "1", pid: process.pid, source });
+  cleanup.push(client.close);
+  const idle = { backend: "tern" as const, paneId: "1", pid: process.pid, sessionId: "employee-session", phase: "idle" as const, pendingMessages: false };
+  const working = { ...idle, phase: "working" as const, pendingMessages: true };
+  await client.poll(undefined, idle);
+  fixture.pollError(Response.json({ error: "offline" }, { status: 503 }));
+  await expect(client.poll(undefined, working)).rejects.toThrow("503");
+  fixture.clearPollError();
+  await client.poll(undefined, idle);
+  const roots = fixture.requests.filter((request) => request.path === "/poll").map((request) =>
+    z.object({ nativeRoot: z.object({ phase: z.string(), sequence: z.number() }) }).parse(request.body).nativeRoot);
+  expect(roots).toEqual([
+    { phase: "idle", sequence: 1 },
+    { phase: "working", sequence: 2 },
+    { phase: "working", sequence: 2 },
+    { phase: "idle", sequence: 3 },
+  ]);
+});
+
+test("Tern hook activity cannot attest idle and changed native roots fail closed", async () => {
+  const fixture = serverFixture();
+  fixture.setPoll({ projection: "canonical", pendingMessageIds: [], waitReason: null, toolBlockReason: null });
+  const client = await connectEmployee({ socketPath: fixture.socketPath, credential: "private-credential", nativeSession: "/fixture/session.jsonl", agentSessionId: "employee-session", paneId: "1", pid: process.pid, source });
+  cleanup.push(client.close);
+  const native = nativeFixture();
+  native.setRunState(true, false);
+  const bridge = installEmployeeBridge(native.host, { instructions, client, ctx: native.ctx, intervalMs: 60000, tern: { paneId: "1", nativeSession: "/fixture/session.jsonl" } });
+  cleanup.push(bridge.close);
+  await bridge.poll();
+  await native.emit("before_agent_start", { systemPrompt: [] }, native.ctx);
+  const polls = fixture.requests.filter((request) => request.path === "/poll");
+  expect(polls[1]?.body).toMatchObject({ nativeRoot: { phase: "working", sequence: 2 } });
+  await expect(client.poll(undefined, { backend: "tern", paneId: "other", pid: process.pid, sessionId: "employee-session", phase: "idle", pendingMessages: false })).rejects.toThrow("identity");
+  await native.emit("session_start", {}, { ...native.ctx, sessionManager: { ...native.ctx.sessionManager, getSessionId: () => "different" } });
+  await expect(bridge.poll()).rejects.toThrow("closed");
+});
 
 test("native idle reconciliation releases capacity held by a context-only side request", async () => {
   const fixture = serverFixture();

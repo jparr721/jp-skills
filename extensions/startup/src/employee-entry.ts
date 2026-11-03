@@ -8,6 +8,7 @@ import { captureSchema, cueSchema, encode, idSchema, jsonSchema, resultSchema, r
 import { connectEmployee, EmployeeCommandError, EmployeeSettlementError, installEmployeeBridge, installEmployeeToolGuard, reportLaunchFailure, type EmployeeClient } from "./employee-client";
 import { itemActionSchema } from "./items";
 import { herdrContext } from "./herdr-runtime";
+import { createTernCommandRunner, ternContext } from "./tern-runtime";
 import { createOmpSettingsSampler, type NativeContext, type NativeResult } from "./omp-adapter";
 import { loadProfile, profileText, verifyProfile, type Profile } from "./profiles";
 import { readPrivateJson } from "./v7-launch";
@@ -16,6 +17,7 @@ const manifestSchema = z.strictObject({
   socketPath: z.string().startsWith("/"), credential: z.string().min(1), source: sourceSchema,
   employeeId: idSchema, generation: z.number().int().nonnegative().safe(), skillsHome: z.string().startsWith("/"), startupRoot: z.string().startsWith("/"),
   profile: ompProfileSchema, harness: z.enum(["omp", "claude"]), skillsRoot: z.string().startsWith("/"),
+  backend: z.literal("tern").optional(),
 });
 export type LaunchManifest = z.infer<typeof manifestSchema>;
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -48,13 +50,29 @@ export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<Nat
   });
   return { nativeSession: file, file, lastAssistant: lastAssistant === undefined ? undefined : assistant.parse(lastAssistant).message };
 }
-export async function paneEnvironment(environment: Environment): Promise<Readonly<{ paneId: string; workspaceId: string; session: string; profile: string }>> {
+export async function paneEnvironment(environment: Environment, backend: "herdr" | "tern" = environment.TERN_PANE !== undefined ? "tern" : "herdr"): Promise<
+  | Readonly<{ backend: "herdr"; paneId: string; workspaceId: string; session: string; profile: string }>
+  | Readonly<{ backend: "tern"; paneId: string; window: string; session: string; socketPath: string; binary: string; profile: string }>
+> {
+  const profile = ompProfileFromEnvironment(environment);
+  if (backend === "tern") {
+    const paneId = environment.TERN_PANE?.trim();
+    const paneSocket = environment.TERN_PANE_SOCKET?.trim();
+    const configuredSocket = environment.TERN_DAEMON_SOCKET?.trim();
+    if (paneSocket && configuredSocket && paneSocket !== configuredSocket) throw new StartupBootError("Tern pane socket differs from configured daemon socket");
+    const socketPath = paneSocket || configuredSocket;
+    if (!paneId || !socketPath || !socketPath.startsWith("/")) throw new StartupBootError("Tern requires TERN_PANE and an explicit absolute daemon socket");
+    const binary = environment.TERN_BIN_PATH?.trim() || environment.TERN_EXE?.trim() || "tern";
+    const window = environment.TERN_WINDOW_KEY ?? "";
+    const location = await ternContext({ binary, window, blockId: paneId, run: createTernCommandRunner({ socket: socketPath, timeoutMs: 35000 }) });
+    return { backend: "tern", paneId: location.blockId, window: location.window, session: location.sessionId, socketPath, binary, profile };
+  }
   const session = environment.STARTUP_HERDR_SESSION?.trim() || environment.HERDR_SESSION?.trim() || null;
   const paneId = environment.HERDR_PANE_ID?.trim();
   const workspaceId = environment.HERDR_WORKSPACE_ID?.trim();
   const location = paneId && workspaceId && session ? { paneId, workspaceId, session } :
     await herdrContext({ binary: environment.HERDR_BIN_PATH?.trim() || "herdr", session });
-  return { ...location, profile: ompProfileFromEnvironment(environment) };
+  return { backend: "herdr", ...location, profile };
 }
 function verifyManifest(manifest: LaunchManifest): Profile {
   const role = roleSchema.parse(basename(dirname(manifest.source.rolePath)).replace(/^startup-role-/, ""));
@@ -79,6 +97,8 @@ export function assertNativeTranscript(input: Readonly<{ harness: "omp" | "claud
   else assertStartupPath(input.root, input.file, "file");
 }
 export async function attach(host: HostAPI, ctx: NativeContext, manifest: LaunchManifest, environment: Environment, nativeRootOf: NativeRootFn): Promise<Admission> {
+  if (manifest.backend === "tern" && manifest.harness !== "omp")
+    throw new StartupBootError("Tern lifecycle attestation requires an OMP native root");
   const sessionId = ctx.sessionManager.getSessionId();
   const profile: Profile = verifyManifest(manifest);
   if ((environment.STARTUP_ROOT === undefined || resolve(environment.STARTUP_ROOT) !== manifest.startupRoot) || (environment.JP_SKILLS_HOME === undefined || resolve(environment.JP_SKILLS_HOME) !== manifest.skillsHome) ||
@@ -91,9 +111,11 @@ export async function attach(host: HostAPI, ctx: NativeContext, manifest: Launch
   const sessionFile = ctx.sessionManager.getSessionFile();
   if (ctx.sessionManager.getSessionId() !== sessionId) throw new StartupBootError("Native session changed while resolving admission identity");
   const nativeSession: string = root.nativeSession;
-  const paneId: string = environment.HERDR_PANE_ID?.trim() || (await paneEnvironment(environment)).paneId;
+  const paneId = manifest.backend === "tern"
+    ? (await paneEnvironment(environment, "tern")).paneId
+    : environment.HERDR_PANE_ID?.trim() || (await paneEnvironment(environment, "herdr")).paneId;
   const agentSessionId: string | null = manifest.harness === "omp" ? ctx.sessionManager.getSessionId() : null;
-  const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId, ...(agentSessionId === null ? {} : { agentSessionId }) });
+  const client: EmployeeClient = await connectEmployee({ socketPath: manifest.socketPath, credential: manifest.credential, source: manifest.source, nativeSession, paneId, ...(manifest.backend === "tern" ? { pid: process.pid } : {}), ...(agentSessionId === null ? {} : { agentSessionId }) });
   if (ctx.sessionManager.getSessionId() !== sessionId || ctx.sessionManager.getSessionFile() !== sessionFile) { client.close(); throw new StartupBootError("Native session changed during admission"); }
   const settingsReport = manifest.harness === "omp" && agentSessionId !== null ? createOmpSettingsSampler({ nativeSession, agentSessionId, now: Date.now, refreshMs: 30000, read: () => {
       const current = host.pi.AgentRegistry.global().get(ctx.agent.id);
@@ -101,7 +123,7 @@ export async function attach(host: HostAPI, ctx: NativeContext, manifest: Launch
         { client.close(); throw new StartupBootError("OMP settings observation no longer matches the admitted native root session"); }
       return current.session;
     } }) : undefined;
-  const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000, instructions: profileText(profile), lastAssistant: root.lastAssistant, ...(settingsReport === undefined ? {} : { settingsReport }) });
+  const bridge = installEmployeeBridge(host, { client, ctx, intervalMs: 1000, instructions: profileText(profile), lastAssistant: root.lastAssistant, ...(manifest.backend === "tern" ? { tern: { paneId, nativeSession } } : {}), ...(settingsReport === undefined ? {} : { settingsReport }) });
   try { await bridge.poll(); }
   catch (error: unknown) { bridge.close(); throw error; }
   const directory: string = join(manifest.startupRoot, "input-receipts");

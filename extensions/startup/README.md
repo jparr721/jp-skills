@@ -1,32 +1,44 @@
 # Startup V7 companion
 
-The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP or Claude Code root in a directly interactive Herdr pane. Each of the six roles selects OMP or Claude independently; a prepared launch records that selection immutably. OMP setup follows; Claude Code setup is in [Claude Code](#claude-code). The manager's inference or process can stop while the coordinator continues observing.
+The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP or Claude Code root in a directly interactive pane. OMP supports Herdr or Tern; Claude Code requires Herdr. Each of the six roles selects a compatible harness independently; a prepared launch records that selection immutably. OMP setup follows; Claude Code setup is in [Claude Code](#claude-code). The manager's inference or process can stop while the coordinator continues observing.
 
 V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path.
 
-The [manager recovery guide](../../docs/startup-v7/manager-recovery.md) covers automatic reconnection of the original manager transcript, bounded lifecycle alerts, honest connectivity health and finished crew retirement. A resumed manager must use its saved Herdr pane, Startup root and OMP profile with the managed Herdr integration loaded.
+The [manager recovery guide](../../docs/startup-v7/manager-recovery.md) describes Herdr recovery, bounded lifecycle alerts, honest connectivity health and finished crew retirement. A resumed manager must use its saved pane, Startup root and OMP profile; Herdr also requires its managed integration. Tern binds the manager process identity: same-process reconnect is supported, while a new manager process requires explicit `/startup-retry` and the rebind safeguards below.
 
 The 7.0.2 [recovery proof](../../docs/startup-v7/recovery-acceptance.json) and [screenshot deck](../../docs/slides/startup-v7-recovery-2026-10-15.html) record a live local Herdr run with both session variables unset: a forced employee boot error alerted the manager, the original process recovered automatically in the same pane, PA reports continued, and all owned proof processes were shut down. This does not establish remote Linux compatibility or indefinite liveness.
 
 ## Requirements and installation
 
 - Bun 1.3.13 or newer (Unix WebSocket support) and OMP with native root sessions, persistent transcripts, `ctx.abort`, `isIdle()` and `hasPendingMessages()` support.
-- A running Herdr server reporting client/endpoint compatibility, the required layout and agent APIs, and its managed OMP integration.
-- An existing Herdr pane and socket context. Missing pane/workspace/session variables are resolved with `herdr pane current --current` and `herdr status server --json`; the default server reports a null session. No focused-pane discovery from outside Herdr.
+- For Herdr: a running server reporting client/endpoint compatibility, the required layout and agent APIs, its managed OMP integration, and an existing pane and socket context. Missing pane/workspace/session variables are resolved with `herdr pane current --current` and `herdr status server --json`; the default server reports a null session. No focused-pane discovery from outside Herdr.
+- For Tern: an existing Tern pane, selected session, window and daemon socket, with the Tern CLI available. Tern supports OMP only; Claude employees and managers require Herdr.
 - Canonical role/loop sources available locally. Managed OMP launches clear `OMPCODE` and select the Startup's recorded OMP profile (see [Profiles](#profiles)): `OMP_PROFILE` is set to it.
 
-Use stock OMP and Herdr binaries. Startup does not fork or install either runtime. Select the canonical Startup root with `STARTUP_ROOT` (default: `<skills home>/startup/<name>`, where the skills home is `JP_SKILLS_HOME`, else `${XDG_CONFIG_HOME:-~/.config}/jp-skills`). OMP runs on its own configuration, resolved by OMP itself. The default profile uses the same agent directory a regular `omp` does (`~/.omp/agent`, or wherever `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR` and `XDG_DATA_HOME` move it), so its logins, `config.yml`, `mcp.json` and sessions are shared with your normal OMP. A Startup can instead run on a named OMP profile. Startup pins no agent directory and sets none of those variables. Startup authority remains under `STARTUP_ROOT`, separately from native configuration.
+Use stock OMP and Herdr or Tern binaries. Startup does not fork or install either pane runtime. Select the canonical Startup root with `STARTUP_ROOT` (default: `<skills home>/startup/<name>`, where the skills home is `JP_SKILLS_HOME`, else `${XDG_CONFIG_HOME:-~/.config}/jp-skills`). OMP runs on its own configuration, resolved by OMP itself. The default profile uses the same agent directory a regular `omp` does (`~/.omp/agent`, or wherever `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR` and `XDG_DATA_HOME` move it), so its logins, `config.yml`, `mcp.json` and sessions are shared with your normal OMP. A Startup can instead run on a named OMP profile. Startup pins no agent directory and sets none of those variables. Startup authority remains under `STARTUP_ROOT`, separately from native configuration.
 
-Repository development can load the extension directly after root provisioning:
+Repository development can load the extension directly after root provisioning. In Herdr:
 
 ```sh
 bun install --cwd extensions/startup --frozen-lockfile
 OMPCODE= omp --extension "$STARTUP_HERDR_OMP_EXTENSION" --extension "$PWD/extensions/startup/v7.ts"
 ```
 
+In a Tern pane, load Startup without the Herdr extension:
+
+```sh
+OMPCODE= omp --extension "$PWD/extensions/startup/v7.ts"
+```
+
 Add `--profile NAME` to run the manager, and so the Startup, on a named OMP profile.
 
-The integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and a positive numeric `HERDR_INTEGRATION_VERSION` header. The revision identifies the managed file; it is not pinned to v10. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. It is required for either manager harness, because any role may launch an OMP employee. The Claude hook path is validated separately and is never passed to OMP as an extension. Worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle.
+For Herdr, the integration path must be the actual managed file, with `HERDR_INTEGRATION_ID=omp` and a positive numeric `HERDR_INTEGRATION_VERSION` header. The revision identifies the managed file; it is not pinned to v10. `STARTUP_HERDR_OMP_EXTENSION` selects an explicit canonical path. It is required for either manager harness on Herdr, because any role may launch an OMP employee. The Claude hook path is validated separately and is never passed to OMP as an extension. Herdr worker launches load this integration before their generated Startup bootstrap and clear inherited `OMPCODE` so independent roots report their own lifecycle. Tern does not require the Herdr integration.
+
+Tern selection uses the current `TERN_PANE`, `TERN_PANE_SOCKET` (daemon socket), `TERN_WINDOW_KEY` (the empty key is valid), and `TERN_EXE`. `TERN_DAEMON_SOCKET` is also supported when consistent with the pane socket. The saved configuration binds the daemon socket, window, session and manager pane; discovery uses `tern inspect --window KEY --json`. Tern creates panes and starts their commands atomically. The native OMP bridge reports authenticated process, session and lifecycle information; the adapter separately checks the live pane and process ancestry rather than treating a pane title or command line as proof of admission. Allocation can race admission, so pending admission may retry after the reserved location is saved. An uncertain launch must be reconciled before another launch, never blindly retried. Tern CLI process metadata alone does not establish native session or lifecycle identity.
+
+Tern currently does not support finished-crew reuse or the Herdr-specific host associations projection. Tern replacement requires explicit recovery evidence, a saved pane and attested process ID, expired presence deadline, positive confirmation that the block is absent, and an OS `ESRCH` result for the process. Unknown allocations, ambiguous results and daemon errors remain blocked.
+
+To recover a Tern manager in a new OS process, reopen the same saved native transcript in the same pane and use `/startup-retry`. Automatic startup and timer retries do not authorize a PID rebind. Under the runtime launch lock, rebind requires the same saved session, window, block, socket, binary, profile and native transcript/session; the prior manager and coordinator processes must be proven absent, the non-archived owner lease must have expired, and the new manager PID must belong to the saved block. A process-instance nonce fences PID reuse. The runtime writes and fsyncs an owner-private `runtime-rebind.json` journal, atomically updates configuration, and the new host acquires the observed owner epoch/revision with compare-and-swap. The launcher removes the journal only after the host passes its startup health gate, which also accepts degraded-but-admission-ready status. A remaining journal blocks retries: preserve it and explicitly reconcile the uncertain recovery; do not delete it blindly. This is fail-closed process-crash handling, not a guarantee of write ordering or durability across power loss.
 
 `install.ts` links the extension into an OMP profile and is not invoked by host control. Root provisioning and installed runtime changes require their own explicit operation.
 
@@ -117,7 +129,7 @@ Known limits:
 
 ## Boot and input
 
-In the original manager's Herdr/OMP root:
+In the original manager's supported pane and OMP root:
 
 ```text
 /startup new NAME [--dir "absolute-or-relative-existing-path"] [-- WORK]
@@ -128,7 +140,7 @@ In the original manager's Herdr/OMP root:
 
 Names contain letters, digits, underscore or hyphen. `new` binds an existing directory, defaulting to native cwd. `select` reads the saved binding. Current selection discovers exactly one matching ancestor `.startup/config.md` binding or uses `STARTUP_NAME`. Startup home resolves `JP_SKILLS_HOME`, then `XDG_CONFIG_HOME/jp-skills`, then `~/.config/jp-skills`; state must remain outside the bound repository.
 
-Boot verifies the actual OMP version, root identity, unparented transcript/header, canonical source hashes, OMP profile and Herdr location. It preserves unrelated root AGENTS/configuration bytes, records private runtime configuration and launch intent, then starts or reconnects to the independent runtime. A live or uncertain host is never blindly spawned again. Read-only health checks are bounded; partial PA startup failure keeps the endpoint available and records a manager blocker.
+Boot verifies the actual OMP version, root identity, unparented transcript/header, canonical source hashes, OMP profile and pane location. It preserves unrelated root AGENTS/configuration bytes, records private runtime configuration and launch intent, then starts or reconnects to the independent runtime. A live or uncertain host is never blindly spawned again. Read-only health checks are bounded; partial PA startup failure keeps the endpoint available and records a manager blocker.
 
 After a boot attempt, failed or incomplete admission blocks native and Startup tools. Source/turn admission failure invokes native abort; a swallowed extension hook exception does not grant work authority. Boot failure produces one stop reminder and then parks. The `/startup` command remains available for explicit correction/retry.
 
@@ -136,7 +148,7 @@ After a boot attempt, failed or incomplete admission blocks native and Startup t
 
 ## Crews and tools
 
-The hierarchy is manager -> owning architect -> dev/QA. PA and shared DevOps report to manager. Each event has an immutable team with one architect, one QA and one or more devs, grouped in one Herdr tab. Admission must verify every member before work claims become ready. A complete, finished, idle crew can be explicitly reused for another event with a fresh assignment/generation; membership history is retained.
+The hierarchy is manager -> owning architect -> dev/QA. PA and shared DevOps report to manager. Each event has an immutable team with one architect, one QA and one or more devs, grouped in one tab. Admission must verify every member before work claims become ready. On Herdr, a complete, finished, idle crew can be explicitly reused for another event with a fresh assignment/generation; Tern does not support crew reuse. Membership history is retained.
 
 Load the complete canonical [manager](../../skills/startup-role-manager/SKILL.md), assigned role and [shared loop](../../skills/startup-loop/SKILL.md). Native `task` remains OMP's bounded-helper tool. It is not overridden with Startup staffing modes. Helpers receive no employee admission and their factories install the employee-tool denial guard before attachment.
 
@@ -159,7 +171,7 @@ Every listed argument is required; zero-argument tools take `{}`. `string` and `
 | `startup_hire` | `{requestId: string, role: string, additional: number}`; `role` is one of architect, qa, dev, devops or pa. | Manager only. Reserves identities and returns the durable hire receipt; the single permanent PA is created automatically. |
 | `startup_delegate` | `{eventId: string, developers: number}` | Manager only, with the required PA supervision gate. Delegates persisted intake and returns the reserved team. Launches continue serially; progress and uncertain launch alerts appear through `startup_staff`. |
 | `startup_activate` | `{employeeIds: string[]}` | Manager only. Queues prepared launches and returns `{activated: employeeIds}`. Uncertain starts require reconciliation; a retry while launching is refused. |
-| `startup_replace` | `{employeeId: string, evidence: JSON}` | Manager only. Reserves a replacement after explicit failure/identity evidence and unresolved-work reconciliation; returns the next generation. |
+| `startup_replace` | `{employeeId: string, evidence: JSON}` | Manager only. Reserves a replacement after explicit failure/identity evidence and unresolved-work reconciliation; returns the next generation. Tern additionally requires a saved pane and attested PID, expired presence, and proof that both block and process are absent. |
 | `startup_intake` | `{eventId: string, input: JSON, amendItemIds: string[]}` | Manager only. Saves external work before delegation and returns the intake record. |
 | `startup_route` | `{inputId: string, disposition: string, reason: string, amendItemIds: string[]}`; `disposition` is one of work, status, control, conversation or decision. | Manager only. Classifies a saved native input and returns the routed record. |
 | `startup_input` | `{inputId: string, offset: number}` | Manager or assigned active crew with input scope. Returns a 4096-character page and continuation metadata. |
@@ -197,9 +209,9 @@ Observation collection failures, individual invalid observations and queue read 
 
 Canonical queues support arrays and objects containing either `items` or `rows`. Capture and item transitions preserve that container and its unknown metadata. A document containing both keys is ambiguous and requires explicit repair. Coordinator restarts preserve crews, employee generations, native transcripts and history; interrupted active claims and held grants remain recorded for manager reconciliation rather than replaying work.
 
-Herdr idle/done/blocked/unknown snapshots become timestamped durable manager alerts. Working state remains queryable without generating manager inbox traffic. Herdr state sequences are server-wide: forward jumps between observations of one employee are valid; regressions report a gap. Idle/done never settle a claim. Heartbeats and working animation never reset semantic progress. The watchdog checks claims, queue progression, unclassified input, employee presence, manager presence and PA deadlines. Polling can report gaps; it does not promise replay of every unseen intermediate lifecycle transition.
+Idle/done/blocked/unknown snapshots become timestamped durable manager alerts. Working state remains queryable without generating manager inbox traffic. Herdr state sequences are server-wide: forward jumps between observations of one employee are valid; regressions report a gap. Idle/done never settle a claim. Heartbeats and working animation never reset semantic progress. The watchdog checks claims, queue progression, unclassified input, employee presence, manager presence and PA deadlines. Polling can report gaps; it does not promise replay of every unseen intermediate lifecycle transition.
 
-Manager `startup_claim` and native wake/continuation selection share an actionable priority order: current failures/questions, crew technical reports, then other unresolved alerts, with sequence preserved within each class. Selection reads only the recipient's pending inbox and unresolved claims. Routine PA reports and lifecycle observations stay durable but do not trigger manager inference. Current state proves recovery before stale presence/progress/item/input/settlement alerts are deferred; missing Herdr presence is distinct from fresh control polling. Unknown alerts remain actionable. `STARTUP_INBOX` exposes the deferred count, latest PA summary and the exact next selected message with `startup_claim {}`. This selection is already prioritized; no administrative walk is required. An outstanding claim clears the next-claim receipt. Deferred records remain pending with original IDs/payloads; they are not silently acknowledged or discarded. Other employee inboxes remain FIFO.
+Manager `startup_claim` and native wake/continuation selection share an actionable priority order: current failures/questions, crew technical reports, then other unresolved alerts, with sequence preserved within each class. Selection reads only the recipient's pending inbox and unresolved claims. Routine PA reports and lifecycle observations stay durable but do not trigger manager inference. Current state proves recovery before stale presence/progress/item/input/settlement alerts are deferred; missing pane runtime presence is distinct from fresh control polling. Unknown alerts remain actionable. `STARTUP_INBOX` exposes the deferred count, latest PA summary and the exact next selected message with `startup_claim {}`. This selection is already prioritized; no administrative walk is required. An outstanding claim clears the next-claim receipt. Deferred records remain pending with original IDs/payloads; they are not silently acknowledged or discarded. Other employee inboxes remain FIFO.
 
 Employee polling updates control-presence metadata and injects durable own-inbox notifications through native `sendMessage`/next-turn delivery. It never types into the human composer or acknowledges work. Native `read`/`write` dispatch through `xd://startup_*` retains the same employee authority checks as named tools. Native `isIdle()` and `hasPendingMessages()` are required: idle roots release execution slots after recap/auxiliary requests, including after reattachment. Claims and settlements remain explicit. A coordinator-epoch rejection can reconnect the same credential/session metadata; uncertain command writes are never automatically replayed. A connection attempt briefly waits for the explicit no-commit HTTP 425 native-session-report-pending response.
 
@@ -209,15 +221,15 @@ Employee boot failures are handled inside the native hook, leave the pane intera
 
 ## State and recovery boundaries
 
-State is under `<home>/startup/NAME/`: `binding.json`, `staff.sqlite`, canonical queue/resource files, private `runtime-config.json`, `runtime-launch.json`, `runtime-launch.lock`, generated `launches/` manifests/bootstraps and `runtime.log`. Private runtime files are owner-only. Business history and runtime effects share the fenced store; lifecycle is observation evidence, not an alternate work log.
+State is under `<home>/startup/NAME/`: `binding.json`, `staff.sqlite`, canonical queue/resource files, private `runtime-config.json`, `runtime-launch.json`, `runtime-launch.lock`, the recovery-only `runtime-rebind.json` journal, generated `launches/` manifests/bootstraps and `runtime.log`. Private runtime files are owner-only. Business history and runtime effects share the fenced store; lifecycle is observation evidence, not an alternate work log.
 
 - V7 uses a distinct store host scope ending in `:startup-v7`. Existing V6 databases are refused even after their owner lease expires. There is no automatic scope rewrite or state import.
 - Configured V6 duties block V7 startup. V7 does not expose V6 duty, filesystem repair, repair-authorization or grant-verification parity. Preserve that state for a separately designed migration.
 - An interrupted prepared launch or retained launch lock requires explicit ownership/identity reconciliation. Do not create a second runtime to conceal uncertainty.
 - The detached coordinator survives manager process loss, but it is not installed as an OS-supervised service. Automatic recovery from coordinator process death is not established.
 - Coordinator restart fences unresolved work. Metadata reconnection restores the control channel; technical work remains blocked until saved uncertain claims/grants are reconciled. No uncertain mutation is replayed. Explicit claim reconciliation restores a ready crew to waiting only after all uncertain member claims/grants are resolved. Exact reconciliation retries retain their original evidence and do not reset completed assignments.
-- Native restore must retain the named profile, explicit Herdr integration, generated bootstrap, bound cwd and original native root transcript. Preservation of those flags by Herdr/native restore remains unproven. Bare `omp --resume` is not acceptance evidence for employee admission.
-- Live two-crew creation, direct pane input routing, real deadline fault detection, PA recovery and explicit same-transcript resumes passed on 2026-10-15. See [live evidence](../../docs/startup-v7/live-acceptance.json). Automatic Herdr restore, OS restart and V6 migration remain unverified/unsupported boundaries.
+- Native restore must retain the named profile, generated bootstrap, bound cwd, original native root transcript and, on Herdr, its explicit integration. Preservation of those flags by Herdr/native restore remains unproven. Bare `omp --resume` is not acceptance evidence for employee admission.
+- Live two-crew creation, direct pane input routing, real deadline fault detection, PA recovery and explicit same-transcript resumes passed on Herdr on 2026-10-15. See [live evidence](../../docs/startup-v7/live-acceptance.json). This does not establish Tern acceptance. Automatic restore, OS restart and V6 migration remain unverified/unsupported boundaries.
 
 ## Host integration
 
@@ -273,7 +285,7 @@ A live `settings_apply` whose response is lost throws `HostControlUncertainError
 - `create`: scope, requestId, skillsRoot, executionLimit, harness, expectedOwnerEpoch=0 and expectedRevision=0. Initializes a cold root; it does not manufacture a manager process.
 - `select`: validates the binding and reads it without a lease or process start.
 - `status`, `staff`, `progress`, `alerts`: optional bounded `query` with limit and queue/staff/team/input cursors. These reuse the typed host status, queue/team progress and supervision reasons. Offline state is explicit unavailable.
-- `associations`: required `after` (null or last employee ID) and `limit` (1-64). Reads the live owner through `GET /host/associations?limit=64`; later pages pass `after`. Offline/archived owners return explicit unavailable.
+- `associations`: required `after` (null or last employee ID) and `limit` (1-64). Reads the live Herdr owner through `GET /host/associations?limit=64`; later pages pass `after`. Tern and offline/archived owners return explicit unavailable.
 - `settings`: saved future-launch selections and current connection-bound observations; optional limit and after launch cursor. Catalog/effective absence is unavailable, never inferred from requested settings.
 - `settings_draft`: validates a selection without writing. `settings_apply`: requestId, expected owner epoch/store revision and baseSettingsRevision; receipt includes saved scope/provenance.
 - `resume`: expected epoch/revision plus requestId. Observes the saved native manager identity before invoking the existing launcher. Missing identity is `missing_session`; a lost result remains `uncertain`. Neither outcome creates a replacement manager or retries an uncertain dispatch.

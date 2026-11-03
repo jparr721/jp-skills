@@ -1,12 +1,10 @@
 ---
 name: hotfix
-description: Use when fixing a bug in place on your current branch — stays on the branch you are on, confirms the issue with an opt-in live repro, checks whether the bug pattern is widespread with conditional 1-to-3 issue-spread analysis, then shows a dead-simple plan for approval before fixing every site, verifying with reused session creds, running pr-review-toolkit light review plus a final code-simplifier pass, and getting final approval before shipping a ready PR.
+description: Fix a small, scoped bug in place on the current branch, with approval and a ready PR.
 ---
 
 # Hotfix
 
-## Herdr preflight
-Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
 
 ## Overview
 
@@ -15,10 +13,8 @@ Fast, robust, in-place bug fixes on the branch you are already on. The sequence 
 SPREAD fans out only when triage justifies it; live repro runs only when you opt in.
 No phase is skipped otherwise.
 
-`hotfix` is the lightweight sibling of `pipeline`. Reach for `pipeline` when the work is
-a feature, a refactor, a migration, an auth change, or anything spanning multiple systems —
-it buys worktree isolation, deliberation, review rounds, and QA proof. Reach for `hotfix`
-when a bug is small, its scope is knowable, and you want it fixed where you stand.
+For the scope hierarchy and standalone operation, see `../pipeline/SKILL.md` → Work hierarchy.
+Use this skill for a small, knowable bug on the current branch.
 
 **Non-negotiable constraints:**
 

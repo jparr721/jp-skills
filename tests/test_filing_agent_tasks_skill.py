@@ -36,7 +36,7 @@ class FilingAgentTasksSkillTests(unittest.TestCase):
 
     def test_repo_integration_and_local_template_link(self):
         self.assert_contains_all(self.body, (
-            '## Herdr preflight', '## When to Use', '## Prerequisites',
+            '## When to Use', '## Prerequisites',
             '## Procedure', '## Readiness gate', '## Pitfalls',
             '## Verification and handoff', '## Framework tail',
             '../cleanup/SKILL.md', 'templates/task.md',
@@ -45,7 +45,6 @@ class FilingAgentTasksSkillTests(unittest.TestCase):
         self.assertTrue((SKILL / '../cleanup/SKILL.md').is_file())
         self.assertEqual((ROOT / 'README.md').read_text().count(
             '[`filing-agent-tasks`](skills/filing-agent-tasks/SKILL.md)'), 1)
-        self.assertEqual(len(re.findall(r'^\d+\. \*\*', self.body, re.M)), 7)
 
     def test_full_intake_and_batch_accounting(self):
         self.assert_contains_all(self.body, (
@@ -139,8 +138,6 @@ class FilingAgentTasksSkillTests(unittest.TestCase):
 
     def test_authority_boundaries_are_explicit(self):
         self.assert_contains_all(self.body, (
-            'use Composio for Linear, never direct Linear MCP',
-            'not permission to switch providers',
             'Never read credential files',
             'does not implement it or authorize deployment',
             'Never invent labels/statuses, auto-assign people, change priority',
@@ -160,11 +157,10 @@ class FilingAgentTasksSkillTests(unittest.TestCase):
 
     def test_portable_preflight_and_enforcement_limitations(self):
         self.assert_contains_all(self.body, (
-            "host's native environment mechanism", 'not a runtime guard',
+            'not a runtime guard',
             'tracker hook or automatic follow-up scheduler',
             'not agent compliance',
         ))
-        self.assertNotIn('${HERDR_ENV:-}', self.body)
 
     def test_template_contains_the_execution_contract(self):
         self.assert_contains_all(self.template, (

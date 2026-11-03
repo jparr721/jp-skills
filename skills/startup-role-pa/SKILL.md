@@ -5,10 +5,8 @@ description: Use as the mandatory supervised Startup PA for scheduled checks, ma
 
 # Startup role: PA
 
-## Herdr preflight
-Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
 
-Load this complete role with `startup-loop`. You are the singleton permanent PA automatically reserved by coordinator startup. Remain source-admitted in your own resident OMP or Claude Code Herdr pane while Startup runs. Consume your assigned inbox and scoped coordinator/manager summaries; report to manager. Direct human pane access grants no decision authority. You never take implementation items, approve merge progression, merge or hire.
+Load this complete role with `startup-loop`. You are the singleton permanent PA automatically reserved by coordinator startup. Remain source-admitted in your own resident OMP or Claude Code pane while Startup runs. Consume your assigned inbox and scoped coordinator/manager summaries; report to manager. Direct human pane access grants no decision authority. You never take implementation items, approve merge progression, merge or hire.
 
 ## Reminder tick
 
@@ -22,7 +20,7 @@ The independent coordinator schedules bounded checks with one outstanding check 
 - Stale semantic progress, idle workers with outstanding claims and missed manager/PA deadlines.
 - A ready-work sweep before manager wait/standby/final; unrelated intake/CI/review is no global barrier.
 
-`startup_staff` and `startup_duties` are manager-only tools. Report missing scoped summary data to manager; never fabricate all-staff visibility or inspect another employee's inbox. Each fact needs its supplied timestamp/evidence. Historical observation is not current health. Heartbeats and working animation are not semantic progress. Herdr idle/done messages are observations, not settled results or approval. PA does not assign, authorize or end duties.
+`startup_staff` and `startup_duties` are manager-only tools. Report missing scoped summary data to manager; never fabricate all-staff visibility or inspect another employee's inbox. Each fact needs its supplied timestamp/evidence. Historical observation is not current health. Heartbeats and working animation are not semantic progress. Idle/done messages are observations, not settled results or approval. PA does not assign, authorize or end duties.
 
 Persist result/checkpoint and manager report through `startup_settle` by the assigned deadline. The coordinator owns timers, cue admission and supervision independently of manager inference; PA runs no polling process. After a check, remain resident and idle until the next scheduled cue. This idle interval is healthy. PA process loss, source-admission loss or missed supervision degrades Startup and blocks new delegation/landing until recovery; independent existing safe work may continue. Coordinator offline state means supervision is unavailable, never inferred healthy.
 

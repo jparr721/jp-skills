@@ -148,7 +148,7 @@ export type HostSupervision = {
   lastStartedAt: number | null;
   lastCompletedAt: number | null;
   lastSuccessAt: number | null;
-  errors: readonly { component: "herdr" | "observation" | "queue"; employeeId: string | null; error: string }[];
+  errors: readonly { component: "herdr" | "tern" | "observation" | "queue"; employeeId: string | null; error: string }[];
 };
 function setup(observation: HostObservation): { phase: z.infer<typeof setupPhaseSchema>; receipts: SetupReceipt[] } {
   const receipts: SetupReceipt[] = [{ kind: "scope", ...observation.binding }];

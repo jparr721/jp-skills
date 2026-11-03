@@ -12,7 +12,7 @@ Manager claiming and automatic wakes use the same ordered actionable inbox: curr
 
 Routine PA reports and lifecycle idle/done observations remain durable TO manager. They do not require a manager inference turn or automatic historical-mail drain. `STARTUP_INBOX` supplies the deferred count and latest PA report when the manager next works. Current PA alerts/questions remain actionable; scheduled PA checks and authenticated polling continue.
 
-Recovered presence, superseded item revisions, classified inputs and settled-claim alerts are deferred only with current state evidence. A missing Herdr observation remains actionable even while control polling is fresh. Unknown alert payloads stay eligible. Deferred messages keep their IDs, payloads and pending state for inspection; deferral never acknowledges or deletes them. When only deferred history remains, preserve it and wait rather than looping through administrative acknowledgements.
+Recovered presence, superseded item revisions, classified inputs and settled-claim alerts are deferred only with current state evidence. A missing runtime observation remains actionable even while control polling is fresh. Unknown alert payloads stay eligible. Deferred messages keep their IDs, payloads and pending state for inspection; deferral never acknowledges or deletes them. When only deferred history remains, preserve it and wait rather than looping through administrative acknowledgements.
 
 ## Repository acquisition
 
@@ -60,7 +60,7 @@ Settlement of a current item dev assignment automatically saves one linked `item
 
 Every accepted action increments revision, including QA assignment/proof. A normal flow is revisions 1 captured QUEUED, 2 assigned, 3 review, 4 QA assignment, 5 QA proof, 6 gate, 7 manager completion. `startup_finish_team` requires captured work and no unresolved owned item, mail, claim, assignment or grant.
 
-QA APPROVE supplies proof; only the owning architect approves its gate and only manager approves final landing. Other architects, workers, PA and helpers cannot authorize merge progression. Herdr lifecycle state never settles claims or approves work. New delegation/landing requires source-admitted mandatory PA supervision.
+QA APPROVE supplies proof; only the owning architect approves its gate and only manager approves final landing. Other architects, workers, PA and helpers cannot authorize merge progression. Lifecycle state never settles claims or approves work. New delegation/landing requires source-admitted mandatory PA supervision.
 
 ## Paused execution
 
@@ -74,4 +74,4 @@ Capacity-blocked pending delivery is different: the cue is unclaimed and the coo
 
 ## Coordinator ownership
 
-The authenticated harness client (OMP extension or Claude Startup bridge) sends commands to the coordinator, the exclusive state writer and lease owner. Preserve runtime receipts and journal recovery; direct queue-file writes are not an alternate execution path. Missing coordinator/harness/Herdr readiness requires explicit recovery. Lifecycle observations and watchdog alerts preserve work history without manufacturing completion or authority.
+The authenticated harness client (OMP extension or Claude Startup bridge) sends commands to the coordinator, the exclusive state writer and lease owner. Preserve runtime receipts and journal recovery; direct queue-file writes are not an alternate execution path. Missing coordinator, harness or pane runtime readiness requires explicit recovery. Lifecycle observations and watchdog alerts preserve work history without manufacturing completion or authority.

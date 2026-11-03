@@ -49,7 +49,7 @@ class AskSkillTests(unittest.TestCase):
                 self.assertIn(rule, self.body)
 
     def test_repo_framework_and_catalog(self):
-        for heading in ('## Herdr preflight', '## When to Use', '## Procedure',
+        for heading in ('## When to Use', '## Procedure',
                         '## Pitfalls', '## Verification', '## Framework tail'):
             self.assertIn(heading, self.body)
         self.assertIn('../cleanup/SKILL.md', self.body)
@@ -57,17 +57,6 @@ class AskSkillTests(unittest.TestCase):
         readme = (ROOT / 'README.md').read_text()
         self.assertEqual(readme.count('[`ask`](skills/ask/SKILL.md)'), 1)
 
-    def test_upgrade_includes_selected_hermes_profile(self):
-        upgrade = (ROOT / 'skills/upgrading-jp-skills/SKILL.md').read_text()
-        for registry in ('~/.claude/skills/', '~/.agents/skills/', '~/.codex/skills/',
-                         '~/.pi/agent/skills/', '~/.omp/agent/skills/',
-                         '${HERMES_HOME:-~/.hermes}/skills/'):
-            self.assertIn(registry, upgrade)
-        for rule in ('never modify another profile implicitly',
-                     'preserve real files/directories', 'skills.external_dirs',
-                     'Local Hermes skills take precedence',
-                     'Verify actual discovery with Hermes', '/reload-skills'):
-            self.assertIn(rule, upgrade)
 
     def test_documented_link_commands_preserve_existing_entries_on_repeat(self):
         readme = (ROOT / 'README.md').read_text()

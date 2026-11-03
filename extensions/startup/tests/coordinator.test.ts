@@ -7,6 +7,7 @@ import { z } from "zod";
 import { openStore, type StartupStore } from "../src/store";
 import { openCoordinator, serveCoordinator, type Coordinator } from "../src/coordinator";
 import type { HerdrObservation, HerdrRuntime } from "../src/herdr-runtime";
+import type { TernRuntime } from "../src/tern-runtime";
 import { connectEmployee } from "../src/employee-client";
 import { hostReceiptSchema, hostStatusSchema, sourceSchema } from "../src/contracts";
 import { claudeMcpConfig } from "../src/claude-launch";
@@ -1596,4 +1597,86 @@ for (const harness of ["omp", "claude"] as const) test(`association read preserv
   expect(page).toMatchObject({ herdrSession: "fixture-herdr", rows: expect.arrayContaining([{ employeeId: "manager", role: "manager", generation: 1, status: "current", launchId: expect.any(String), harness, nativeSession, terminalId: "term1", source: expect.any(Object), lastSeen: 1000, lastPoll: 1000 }]) });
   expect(f.store.snapshot()).toEqual(before);
   expect(JSON.stringify(page)).not.toMatch(/manager-secret|credentialDigest|connectionEpoch|bootId/);
+});
+
+test("Tern admission fences allocation, process identity and lifecycle checkpoints", async () => {
+  const f = fixture(8);
+  const barrier = Promise.withResolvers<void>();
+  const entered = Promise.withResolvers<void>();
+  let alive = true;
+  let clock = 1000;
+  let blockAbsent = false;
+  let processAbsent = false;
+  let inspectFailed = false;
+  let creates = 0;
+  const tern: TernRuntime = {
+    check: async () => {},
+    createTab: async () => { creates += 1; entered.resolve(); await barrier.promise; return { sessionId: "1", tabId: "2", blockId: "3" }; },
+    split: async () => { throw new Error("unexpected split"); },
+    process: async ({ blockId }) => ({ pane: blockId, child: null, group: null, foreground: null }),
+    isAbsent: async () => { if (inspectFailed) throw new Error("Tern inspect unavailable"); return blockAbsent; },
+    isProcessAbsent: async () => processAbsent,
+    ownsProcess: async ({ blockId, pid }) => (blockId === "1" && pid === 101) || (alive && blockId === "3" && pid === 103),
+  };
+  const { herdrSession: _herdrSession, herdrIntegration: _herdrIntegration, ...common } = f.config;
+  const config = { ...common, backend: "tern" as const, ternSession: "1", ternWindow: "", ternBinary: "tern", ternSocket: "/tmp/tern.sock", managerPaneId: "1", managerPid: 101 };
+  const coordinator = openCoordinator({ store: f.store, tern, config, now: () => clock });
+  const starting = coordinator.start();
+  await entered.promise;
+  const pa = f.store.runtimeBindings().find((entry) => entry.employeeId !== "manager");
+  if (!pa) throw new Error("missing PA reservation");
+  const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(config.startupRoot, "launches", `${pa.launchId}.json`), "utf8")));
+  const transcript = join(f.root, "tern-pa.jsonl");
+  writeFileSync(transcript, JSON.stringify({ type: "session", id: "pa-session" }) + "\n");
+  const request = { credential: manifest.credential, source: manifest.source, nativeSession: transcript, agentSessionId: "pa-session", paneId: "3", pid: 103 };
+  await expect(coordinator.admit(request)).rejects.toThrow("allocation is not committed");
+  const reservedManager = f.store.runtimeBindings().find((entry) => entry.employeeId === "manager");
+  if (!reservedManager) throw new Error("missing manager reservation");
+  const earlyManager = await coordinator.admit({ credential: config.managerCredential, source: reservedManager.source, nativeSession: config.managerFile, agentSessionId: config.managerSession, paneId: "1", pid: 101 });
+  await expect(coordinator.command(earlyManager.connection, { kind: "replace", employeeId: pa.employeeId, evidence: "unknown allocation" })).rejects.toThrow("unknown allocation");
+  barrier.resolve();
+  await starting;
+  await expect(coordinator.admit({ ...request, pid: 104 })).rejects.toThrow("not owned");
+  const admitted = await coordinator.admit(request);
+  expect(admitted.lifecycleSequence).toBe(0);
+  const sample = { backend: "tern" as const, paneId: "3", pid: 103, sessionId: "pa-session", sequence: 1, phase: "working" as const, pendingMessages: false };
+  await coordinator.poll(admitted.connection, undefined, undefined, sample);
+  await coordinator.poll(admitted.connection, undefined, undefined, sample);
+  await expect(coordinator.poll(admitted.connection, undefined, undefined, { ...sample, pendingMessages: true })).rejects.toThrow("sequence");
+  await expect(coordinator.poll(admitted.connection, undefined, undefined, { ...sample, sequence: 3 })).rejects.toThrow("sequence");
+  await coordinator.poll(admitted.connection, undefined, undefined, { ...sample, sequence: 2, phase: "idle" });
+  const savedCheckpoint = f.store.runtimeBindings().find((entry) => entry.launchId === pa.launchId);
+  expect(savedCheckpoint).toMatchObject({ stateSequence: 2, observedState: "idle", ternObservation: { ...sample, sequence: 2, phase: "idle" } });
+  expect(() => f.store.observeRuntime({ employeeId: pa.employeeId, generation: pa.generation, nativeSession: transcript, state: "working", sequence: 3, observedAt: 999, ternObservation: { ...sample, sequence: 3 } })).toThrow("time regressed");
+  expect(f.store.runtimeBindings().find((entry) => entry.launchId === pa.launchId)).toEqual(savedCheckpoint);
+  const resumed = await coordinator.admit(request);
+  expect(resumed.lifecycleSequence).toBe(2);
+  expect(f.store.runtimeBindings().find((entry) => entry.launchId === pa.launchId)).toMatchObject({ stateSequence: 2, observedState: "idle" });
+  alive = false;
+  await expect(coordinator.command(resumed.connection, { kind: "begin_turn" })).rejects.toThrow("no longer owned");
+  expect(f.store.runtimeBindings().find((entry) => entry.launchId === pa.launchId)?.turnActive).toBe(false);
+  await expect(coordinator.command(resumed.connection, { kind: "begin_turn" })).rejects.toThrow("not admitted");
+  alive = true;
+  const reconnected = await coordinator.admit(request);
+  alive = false;
+  await expect(coordinator.poll(reconnected.connection, undefined, undefined, { ...sample, sequence: 3 })).rejects.toThrow("no longer owned");
+  const managerRuntime = f.store.runtimeBindings().find((entry) => entry.employeeId === "manager");
+  if (!managerRuntime) throw new Error("missing manager reservation");
+  const managerRequest = { credential: config.managerCredential, source: managerRuntime.source, nativeSession: config.managerFile, agentSessionId: config.managerSession, paneId: "1", pid: 101 };
+  const manager = await coordinator.admit(managerRequest);
+  const replace = { kind: "replace" as const, employeeId: pa.employeeId, evidence: "verified stopped" };
+  await expect(coordinator.command(manager.connection, replace)).rejects.toThrow("live or recently");
+  clock = 2501;
+  const currentManager = await coordinator.admit(managerRequest);
+  inspectFailed = true;
+  await expect(coordinator.command(currentManager.connection, replace)).rejects.toThrow("inspect unavailable");
+  inspectFailed = false;
+  await expect(coordinator.command(currentManager.connection, replace)).rejects.toThrow("live or recently");
+  blockAbsent = true;
+  await expect(coordinator.command(currentManager.connection, replace)).rejects.toThrow("live or recently");
+  processAbsent = true;
+  await expect(coordinator.command(currentManager.connection, replace)).resolves.toEqual({ generation: 2 });
+  expect(f.store.runtimeBindings().findLast((entry) => entry.employeeId === pa.employeeId)).toMatchObject({ generation: 2, state: "prepared" });
+  await expect(coordinator.admit(request)).rejects.toThrow("superseded");
+  expect(creates).toBe(1);
 });

@@ -2,7 +2,7 @@
 
 ## Runtime admission
 
-The Startup's selected harness (OMP or Claude Code), Herdr and the Startup coordinator are mandatory. The coordinator owns durable workflow state; Herdr owns panes/processes; the harness owns execution/transcripts. An installed binary or a pane label does not prove admission. Every employee has one directly interactive Herdr pane and an authenticated, source-bound root session in the Startup's selected harness (OMP or Claude Code). Missing runtime readiness blocks staffing.
+The Startup's selected harness, supported pane runtime and coordinator are mandatory. OMP can use Herdr or Tern; Claude Code requires Herdr. The coordinator owns durable workflow state; the pane runtime owns panes/processes; the harness owns execution/transcripts. An installed binary or a pane label does not prove admission. Every employee has one directly interactive pane and an authenticated, source-bound root session in its selected harness. Missing runtime readiness blocks staffing.
 
 ## Binding
 
@@ -23,7 +23,7 @@ The Startup's selected harness (OMP or Claude Code), Herdr and the Startup coord
 | Resource/explicit DevOps request | Manager relays team's unchanged technical request/authorization to shared `startup-role-devops` |
 | Supervision reminders | Mandatory resident `startup-role-pa` receives own scoped cues/coordinator summary and reports to manager |
 
-Manager uses `startup_hire`, `startup_delegate`, `startup_activate` and `startup_replace` for employee management. Crew membership determines manager -> owning event architect -> dev/QA hierarchy, not harness root parent IDs or pane names. Humans may interact directly with each pane without promoting its role or bypassing approval gates.
+Manager uses `startup_hire`, `startup_delegate`, `startup_activate` and `startup_replace` for employee management. Tern replacement requires proven absence of the saved pane and attested process as well as the normal recovery evidence; it does not support finished-crew reuse. Crew membership determines manager -> owning event architect -> dev/QA hierarchy, not harness root parent IDs or pane names. Humans may interact directly with each pane without promoting its role or bypassing approval gates.
 
 Ordinary OMP `task` or Claude Code Agent subagent pipeline supervisors/buddy/review helpers consume their root's local helper capacity, separately from coordinator root-turn slots. There is no aggregate cross-root helper enforcement. Helpers have no employee admission, durable employee inbox, staffing or workflow approval authority. Explicitly bind their complete assigned canonical procedure before work. Shipping restrictions must come from the user; helper status alone neither grants workflow approval nor requires repository credential isolation.
 
@@ -31,4 +31,4 @@ Intake retains every explicit canonical role request in `requested_roles`; older
 
 The architect preserves required buddy review, per-kind QA and bounded architectural APPROVE/scoped REDO gates. QA APPROVE supplies evidence; only the owning architect approves its gate and only manager approves final landing/acceptance. These permissions govern recorded workflow progression. Shipping restrictions come from explicit user instructions; V7 does not require repository-level merge denial or credential isolation. A user-authorized shipping agent reports its result through the crew so manager can record completion.
 
-The coordinator saves observed Herdr idle/done transitions as durable system messages to manager. Lifecycle state never settles a claim, accepts work or approves a merge. PA source admission and continuing supervision gate new delegation/landing; degraded supervision leaves independent existing safe work eligible to continue. Binding/activation retries preserve identities and pending work; missing source, capacity or runtime health remains an explicit blocker.
+The coordinator saves observed idle/done transitions as durable system messages to manager. Lifecycle state never settles a claim, accepts work or approves a merge. PA source admission and continuing supervision gate new delegation/landing; degraded supervision leaves independent existing safe work eligible to continue. Binding/activation retries preserve identities and pending work; missing source, capacity or runtime health remains an explicit blocker.

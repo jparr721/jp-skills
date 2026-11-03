@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { openCoordinator, serveCoordinator, type Coordinator } from "./src/coordinator";
 import { createHerdrRuntime, runHerdrCommand, type HerdrRuntime } from "./src/herdr-runtime";
+import { createTernCommandRunner, createTernRuntime, ternParentPid, type TernRuntime } from "./src/tern-runtime";
 import { openStore, type StartupStore } from "./src/store";
-import { readPrivateJson, parseRuntimeHostConfig, type RuntimeHostConfig } from "./src/v7-launch";
+import { readPrivateJson, parseRuntimeHostConfig, rebindSchema, type RuntimeHostConfig } from "./src/v7-launch";
 
 export type RuntimeHost = Readonly<{
   coordinator: Coordinator;
@@ -18,22 +20,36 @@ function report(config: RuntimeHostConfig, operation: string, error: unknown): v
 }
 export async function startRuntimeHost(input: RuntimeHostConfig): Promise<RuntimeHost> {
   const config: RuntimeHostConfig = parseRuntimeHostConfig(input);
+  if ("backend" in config && config.backend === "tern" && "harness" in config)
+    throw new Error("Tern Startup requires OMP; Claude lifecycle attestation is unavailable");
+  const rebindPath = join(config.startupRoot, "runtime-rebind.json");
+  const rebind = existsSync(rebindPath) ? rebindSchema.parse(readPrivateJson(rebindPath)) : null;
+  if (rebind !== null && (!("backend" in config) || config.managerPid !== rebind.newPid || config.managerInstance !== rebind.newInstance))
+    throw new Error("Manager rebind journal does not match the runtime configuration");
   const store = openStore({
     path: join(config.startupRoot, "staff.sqlite"),
     scope: { skillsHome: config.skillsHome, startupRoot: config.startupRoot, host: hostname(), name: config.name, boundRoot: config.boundRoot, managerSession: config.managerSession },
     owner: { id: randomUUID(), managerGeneration: config.ownerGeneration, leaseMs: 60000 }, now: Date.now,
+    ...(rebind === null ? {} : { expectedControl: { ownerEpoch: rebind.ownerEpoch, revision: rebind.revision } }),
   });
+  if ("backend" in config) {
+    const tern = createTernRuntime({ binary: config.ternBinary, window: config.ternWindow, sessionId: config.ternSession,
+      run: createTernCommandRunner({ socket: config.ternSocket, timeoutMs: 35000 }), parentPid: ternParentPid });
+    return serveRuntimeHost({ config, store, tern });
+  }
   const herdr = createHerdrRuntime({ session: config.herdrSession, workspaceId: config.workspaceId, binary: config.herdrBinary, run: runHerdrCommand });
   return serveRuntimeHost({ config, store, herdr });
 }
-export async function serveRuntimeHost(input: Readonly<{ config: RuntimeHostConfig; store: StartupStore; herdr: HerdrRuntime }>): Promise<RuntimeHost> {
-  const { config, store, herdr } = input;
+export async function serveRuntimeHost(input: Readonly<{ config: RuntimeHostConfig; store: StartupStore } & ({ herdr: HerdrRuntime } | { tern: TernRuntime })>): Promise<RuntimeHost> {
+  const { config, store } = input;
   const snapshot = store.snapshot();
   if (snapshot.duties.length > 0) {
     store.close();
     throw new Error("Configured V6 duties require explicit migration; V7 does not omit or assume repair authority");
   }
-  const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: Date.now });
+  const coordinator: Coordinator = "tern" in input
+    ? openCoordinator({ store, tern: input.tern, config, now: Date.now })
+    : openCoordinator({ store, herdr: input.herdr, config, now: Date.now });
   let startupFailure: string | null = null;
   const endpoint: Coordinator = {
     ...coordinator,

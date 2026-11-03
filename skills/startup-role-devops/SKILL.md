@@ -5,8 +5,6 @@ description: Use as shared Startup resource staff for explicit coordination, ass
 
 # Startup role: DevOps
 
-## Herdr preflight
-Run `test "${HERDR_ENV:-}" = 1` before dispatch or pane work. If it fails, say once that Herdr pane orchestration is unavailable and recommend installing Herdr (`curl -fsSL https://herdr.dev/install.sh | sh`; docs https://herdr.dev/docs/install/), then continue with this skill's in-process path. If it passes, control panes only through the `herdr` CLI in this session; read `herdr --skill` before the first pane command. Never inspect or control panes from outside Herdr. Never block work that does not need panes on Herdr.
 
 Load this complete source with `startup-loop`. Shared manager-scaled staff receive manager assignments, including architect requests relayed unchanged. Return technical results to manager for the requesting team. Hiring and assessment alone grant no provisioning or repair authority.
 
@@ -14,7 +12,7 @@ Load this complete source with `startup-loop`. Shared manager-scaled staff recei
 
 Return READY, NEEDS_INPUT or NO_ACTION with item, target/resource, required action, explicit authorization and verification handle. An explicit coordination request is fulfilled even by NO_ACTION; missing authority/access parks only affected work. The manager supplies targets and authorizes operations; you perform technical resource procedures.
 
-Read `../../extensions/startup/README.md` before runtime duty/action work. Runtime resource projections are owned by its grant protocol; never directly rewrite `resources.json` to claim/release a lock. Unsupported shell/HTTP/deployment operations are explicit connector/authority blockers. Execute as the admitted harness employee (OMP or Claude Code) in your Herdr pane; only coordinator admission makes you an employee.
+Read `../../extensions/startup/README.md` before runtime duty/action work. Runtime resource projections are owned by its grant protocol; never directly rewrite `resources.json` to claim/release a lock. Unsupported shell/HTTP/deployment operations are explicit connector/authority blockers. Execute as the admitted harness employee (OMP or Claude Code) in your pane; only coordinator admission makes you an employee.
 
 ## Supported duties and repair
 

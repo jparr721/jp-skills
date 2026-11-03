@@ -16,8 +16,6 @@ metadata:
 
 Talk about the codebase, not work on it. Invoked bare, reply `ask mode on` and wait for the first question. Stay in this mode across follow-up questions until the user ends it or explicitly requests implementation; then leave this mode and follow the selected editing workflow.
 
-## Herdr preflight
-Run `test "${HERDR_ENV:-}" = 1` through the terminal tool before any dispatch or pane work. Outside Herdr, say so once and continue in-process; recommend installation only if `command -v herdr` also fails. Inside Herdr, read `herdr --skill` before using its CLI. Never inspect or control panes from outside Herdr. Ordinary codebase discussion needs no panes.
 
 ## When to Use
 - The user invokes `/ask` (OMP: `/skill:ask`) to discuss code, understand behavior, trace a flow, compare approaches, or explore trade-offs without edits.

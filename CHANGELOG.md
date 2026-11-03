@@ -2,6 +2,16 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [7.11.0] - 2026-11-02
+
+- Remove generic Herdr preflights; Dark Factory can use Tern, Herdr or in-process workers.
+- Startup supports OMP in Tern with authenticated native lifecycle observations, process ownership checks and fenced recovery. Claude on Tern remains unsupported; Herdr remains available.
+- `filing-agent-tasks` discovers Linear integrations and can opt in to saving ticket snapshots in the configured private GitHub storage repository.
+- Dark Factory never creates or requires a Startup; `STARTUP_MODE=off` provides an independent execution path even when a Startup is present.
+- Upgrade checks Hermes only on explicit request. Startup hiring guidance uses the selected supported pane backend.
+- Define the workflow hierarchy once: Startup handles an open queue, Dark Factory a fixed queue, Pipeline one task, and Hotfix a small in-place bug. Follow-up tickets remain outside the current factory run.
+- Tern lifecycle polling retries an unacknowledged state before sending a later transition, preventing sequence gaps after a connection failure.
+
 ## [7.10.0] - 2026-10-27
 
 Salvages the reusable procedure from a set of uncommitted local skill edits that predated 7.9.0 and

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { assertStartupPath, bootSelection, canonicalStartupRoot, ensureStartupRoot, isLegacyBinding, persistBinding, startupsDirectory } from "./src/boot";
 import { encode, hostStatusQuerySchema, hostStatusSchema, idSchema, jsonSchema, ownerControlReceiptSchema, ownerControlRequestSchema, scopeSchema, timeSchema, StoreAuthorityError, StoreConflictError, StoreFenceError, type Json, type OwnerControlReceipt, type Scope } from "./src/contracts";
 import { createHerdrRuntime, runHerdrCommand } from "./src/herdr-runtime";
+import { createTernCommandRunner, createTernRuntime, ternParentPid } from "./src/tern-runtime";
 import { ompSettingsArgs, validateRoleSettings } from "./src/profiles";
 import { hostAssociationQuerySchema, hostAssociationPageSchema, effectiveRoleSettingsSchema, requestedRoleSettingsSchema, runtimeCapabilitySchema, savedRoleSettingsSchema, roleSettingsInputSchema } from "./src/runtime-contracts";
 import { applyOfflineOwnerControl, openStore, ownerControlOperationPath, readOwnerControl, readOwnerControlReceipt, readOwnerControlFile, withOwnerControlRequest } from "./src/store";
@@ -288,6 +289,13 @@ if (import.meta.main) {
     }
     const text = Buffer.concat(chunks).toString("utf8");
     const result = await executeHostControl(JSON.parse(text), { now: Date.now, executionHost: hostname, resume: launchRuntimeHost, observeManager: async (config) => {
+      if ("backend" in config) {
+        if ("harness" in config) throw new StoreAuthorityError("Tern Startup requires OMP; Claude lifecycle attestation is unavailable");
+        const tern = createTernRuntime({ binary: config.ternBinary, window: config.ternWindow, sessionId: config.ternSession,
+          run: createTernCommandRunner({ socket: config.ternSocket, timeoutMs: 35000 }), parentPid: ternParentPid });
+        await tern.check();
+        return tern.ownsProcess({ blockId: config.managerPaneId, pid: config.managerPid });
+      }
       const herdr = createHerdrRuntime({ session: config.herdrSession, workspaceId: config.workspaceId, binary: config.herdrBinary, run: runHerdrCommand });
       const expectedHarness = "harness" in config ? "claude" : "omp";
       return (await herdr.observe()).some((item) => item.harness === expectedHarness && item.paneId === config.managerPaneId && item.nativeSession === (expectedHarness === "omp" ? config.managerFile : config.managerSession));
