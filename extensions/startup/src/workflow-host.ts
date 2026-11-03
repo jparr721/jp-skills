@@ -78,7 +78,17 @@ export class BoundedWorkflowHost {
             this.targets = Object.fromEntries(Object.entries(decision.targets).map(([item, targets]) => [item, [...targets]]));
             this.graphFrozen = true;
             break;
-          case "reserve": this.reservations.push({ id: decision.reservationId, itemIds: [...decision.itemIds], state: "active", ...(decision.purpose === undefined ? {} : { purpose: decision.purpose }), ...(decision.assignmentKey === undefined ? {} : { assignmentKey: decision.assignmentKey }) }); this.reservationScopes.set(decision.reservationId, id); break;
+          case "reserve": {
+            this.reservations.push({ id: decision.reservationId, itemIds: [...decision.itemIds], state: "active", ...(decision.purpose === undefined ? {} : { purpose: decision.purpose }), ...(decision.assignmentKey === undefined ? {} : { assignmentKey: decision.assignmentKey }) });
+            this.reservationScopes.set(decision.reservationId, id);
+            if (decision.purpose === "assignment") {
+              for (const itemId of decision.itemIds) {
+                const index = this.dependencyReadyItems.indexOf(itemId);
+                if (index !== -1) this.dependencyReadyItems.splice(index, 1);
+              }
+            }
+            break;
+          }
           case "settle": {
             const entry = this.reservations.find((value) => value.id === decision.reservationId);
             if (!entry) throw new Error("Missing reservation");

@@ -2,6 +2,10 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [8.1.1] - 2026-11-03
+
+- Invalidate factory dependency readiness when another assignment is reserved, in both standalone and persisted Startup authorities. Dependents wait until matching-head readiness is verified again.
+
 ## [8.1.0] - 2026-11-03
 
 - Unify Startup, Dark Factory, Pipeline and Hotfix on one coordinator transition engine for scoped work, dependency readiness, native assignment receipts and inherited review limits. Startup retains its persisted queue and authority; standalone runs do not require Startup.

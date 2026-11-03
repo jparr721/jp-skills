@@ -88,9 +88,13 @@ describe("bounded workflow host", () => {
     host.ready(host.rootId, "a", "h");
     expect(() => host.ready(host.rootId, "a", "new-head")).toThrow();
     const updatedDev = host.reserve(host.rootId, "a", "updated-dev");
+    expect(() => host.reserve(nested, "b", "dev")).toThrow();
+    expect(() => host.ready(host.rootId, "a", "new-head")).toThrow();
+    expect(() => host.reserve(nested, "b", "dev")).toThrow();
     const updatedQa = host.reserve(host.rootId, "a", "updated-qa");
     host.settle(host.rootId, updatedDev, "completed");
     host.settle(host.rootId, updatedQa, "completed");
+    expect(() => host.reserve(nested, "b", "dev")).toThrow();
     host.recordRole(host.rootId, { itemId: "a", role: "dev", agentId: "dev", head: "new-head", reservationId: updatedDev, evidence: { implementation: "fixed", artifact: "commit" } });
     host.recordRole(host.rootId, { itemId: "a", role: "qa", agentId: "qa", head: "new-head", reservationId: updatedQa, evidence: { method: "test", result: "pass", artifact: "log" } });
     host.ready(host.rootId, "a", "new-head");

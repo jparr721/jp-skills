@@ -743,6 +743,16 @@ test("factory freezes manager targets and waits for independently ready prerequi
     factory.settleRole(factory.rootId, reservation, { itemId: "first", role, agentId: `agent-${role}`, head: proof.head, evidence: { verified: "yes" } });
   }
   factory.readyItem(factory.rootId, "first", proof);
+  const rework = factory.reserve(factory.rootId, "first", "first-rework", { kind: "dev", worktree: proof.worktree });
+  expect(() => factory.reserve(factory.rootId, "second", "blocked-during-rework")).toThrow();
+  factory.settleRole(factory.rootId, rework, { itemId: "first", role: "dev", agentId: "agent-dev", head: "c".repeat(40), evidence: { verified: "yes" } });
+  expect(() => factory.readyItem(factory.rootId, "first", { ...proof, head: "c".repeat(40) })).toThrow();
+  expect(() => factory.reserve(factory.rootId, "second", "blocked-before-proof")).toThrow();
+  const qa = factory.reserve(factory.rootId, "first", "first-qa-rework", { kind: "qa", worktree: proof.worktree });
+  factory.settleRole(factory.rootId, qa, { itemId: "first", role: "qa", agentId: "agent-qa", head: "c".repeat(40), evidence: { verified: "yes" } });
+  const architect = factory.reserve(factory.rootId, "first", "first-architect-rework", { kind: "architect", worktree: proof.worktree });
+  factory.settleRole(factory.rootId, architect, { itemId: "first", role: "architect", agentId: "agent-architect", head: "c".repeat(40), evidence: { verified: "yes" } });
+  factory.readyItem(factory.rootId, "first", { ...proof, head: "c".repeat(40) });
   expect(factory.reserve(factory.rootId, "second", "unblocked")).toBeTruthy();
   f.store.close();
 });

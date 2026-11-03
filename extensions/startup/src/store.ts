@@ -2996,7 +2996,11 @@ export function openStore(args: {
           const id = randomUUID();
           return executeWorkflow({ kind: "reserve", role: "owner", itemIds: [itemId], reservationId: id, purpose: "assignment", assignmentKey }, {
             transaction: (run) => run(), read: () => view(scopeId),
-            apply: () => { put("workflowChild", id, workflowChildSchema.parse({ id, scopeId, claimId: item.claimId, itemId, assignmentKey, state: "active", ...(role === undefined ? {} : { role }) })); return id; },
+            apply: () => {
+              put("workflowChild", id, workflowChildSchema.parse({ id, scopeId, claimId: item.claimId, itemId, assignmentKey, state: "active", ...(role === undefined ? {} : { role }) }));
+              db.query("DELETE FROM records WHERE kind=? AND id=?").run("workflowReady", `${root.id}/${itemId}`);
+              return id;
+            },
           });
         }),
         settle: (scopeId: string, reservationId: string, outcome: "completed" | "failed" | "uncertain"): void => tx(() => {
