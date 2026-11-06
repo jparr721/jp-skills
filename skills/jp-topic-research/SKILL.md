@@ -16,7 +16,7 @@ Documentation drifts; solved problems get rebuilt. Check prior art before commit
 - When NOT to use: repo-specific plumbing with no external analogue; a plan that already records its adopt/adapt/build verdict.
 
 ## Search-provider gate
-Assume a provider exists. Try in order: `web_search` → browser → docs MCP; first that answers wins. If none answers, STOP and ask the human for one before proceeding. Never silent-skip, never fabricate. Log queries plus provider used in the brief, or `not-run: <reason>`.
+Assume a provider exists. Try in order: `web_search` → browser → docs MCP; first that answers wins. If none answers, inspect available local sources and continue independent work. Record the unresolved research and ask the human only when an unavailable source is essential. Never silently skip or fabricate. Log queries plus provider used in the brief, or `not-run: <reason>`.
 
 ## Core pattern: the brief
 One page, five slots, in this order:
@@ -27,12 +27,12 @@ One page, five slots, in this order:
 5. Queries run plus per-candidate confidence (high/medium/low).
 
 ## Human quick-check
-After party consensus, each deviation delta becomes exactly one batched supervisor/principal question ("adopt X instead of building Y?"); planning waits for the answer. Non-deviating finds ride advisory in the ledger/deck. Never auto-adopt, never implement inside this skill.
+After party consensus, resolve routine deviation choices using the task scope and available evidence. Ask one batched question only for a decision that requires user authorization or cannot be resolved from context; continue independent work while waiting. Record the decision and evidence; implementation remains with the owning workflow.
 
 ## Common mistakes
 - Rubber-stamping "no prior art found" after one query — run at least 3 distinct queries (name variants, ecosystem registry, "awesome-X" lists).
 - Ranking by API elegance over adoption — the boring popular answer wins ties and most non-ties; that bias is the point.
-- Adapting the plan silently — any new dep is a human question, not an inline edit.
+- Changing the plan without recording the evidence or obtaining authorization when actually required.
 - Searching after consensus instead of during Round 1 — late findings cause rework; the brief is required input to Round 2.
 
 ## Worked example (compaction slice)

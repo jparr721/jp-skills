@@ -1,6 +1,6 @@
-# Explicitly authorized Git reconciliation
+# Git reconciliation
 
-Use only after the normal fast-forward upgrade refuses and the user asks you to resolve it. The goal is to preserve both histories and the user's original working changes, not to manufacture a clean tree by deleting work.
+Use when the normal fast-forward upgrade refuses and the checkout can be safely reconciled without disturbing another owner. The goal is to preserve both histories and the user's original working changes, not to manufacture a clean tree by deleting work.
 
 ## 1. Discover and preserve
 

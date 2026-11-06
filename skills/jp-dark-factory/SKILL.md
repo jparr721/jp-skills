@@ -23,21 +23,17 @@ One **principal orchestrator** freezes the selected ticket queue in the bounded 
 **sub-orchestrator** per ticket; each runs `jp-pipeline` within its inherited scope and reports a bounded outcome.
 The principal merges in topological order and closes the epic only when its whole scope is complete.
 
-Scale rule: run ticket implementation and verification in parallel. Defer ticket reviews to cross-queue review before any merge. Each review round consumes one from each covered change's shared budget; honor any stricter inherited cap. Fix actionable findings and verify; re-review updated changes when budget remains, stopping on APPROVE.
+Scale rule: continuously identify ready independent regions and run ticket implementation and verification in parallel; refill capacity on each completion or stall without waiting for the whole wave. Defer ticket reviews to cross-queue review before any merge. Each review round consumes one from each covered change's shared budget; honor any stricter inherited cap. Fix actionable findings and verify; re-review updated changes when budget remains, stopping on APPROVE.
 
-**`jp-pipeline` is a hard precondition.** Step 0 checks it is available. If it is absent, the run
-pauses and tells the user exactly where to get it - it never substitutes a home-grown
-implement/review loop. No `jp-pipeline`, no factory.
+Resolve `jp-pipeline` from the installed registry or the configured skills checkout. If unavailable, recover access while continuing independent intake and planning; use the shared coordinator and preserve the user's requested verification and landing gates.
 
 **Non-negotiable constraints:**
-1. **Pipeline present (Step 0).** Absent -> pause with the link, stop. Never improvise the loop.
+1. **Pipeline access (Step 0).** Recover the installed or configured source if unavailable; continue independent work during recovery.
 2. **Context firewall (section 3).** The principal never reads file bodies, full diffs, full
    logs, or full ticket descriptions. Sub-orchestrators read only their pipeline's outcome
    blocks, never code. Everything heavy happens inside pipeline runs.
 3. **Bounded review before landing.** Ticket pipelines defer review; the principal coordinates cross-queue review, fixes actionable findings through the crew and verifies them. Stop at APPROVE or the inherited per-change cap.
-4. **Shared questions once.** Anything every ticket would ask - notably local-vs-CI
-   verification - is asked once by the principal at the parameter gate and propagated to all
-   pipeline calls. Asking it per ticket is a protocol violation. Topic-research delta questions (adopt-X-instead-of-Y) are shared questions: asked once by the principal and propagated, never re-asked per ticket.
+4. **Shared settings once.** Resolve verification mode and routine choices from the request and defaults, then propagate them to every pipeline. Ask once only when an essential decision cannot be resolved from context.
 5. **One auth token, held centrally.** `AUTH_TOKEN` (session cookie / bearer token) is supplied
    once, held by the principal, and propagated to every ticket pipeline for QA. It travels via
    env only, never lands in files, logs, ledger, or outcome blocks. Pipelines whose QA needs no
@@ -77,7 +73,7 @@ The only required input is the Linear task ID. Everything else has a default; co
 | `TARGET_BRANCH` | `main` | Where each child ticket PR is merged. Propagated as each pipeline's `target`. |
 | `MAX_PARALLEL` | `6` | Cap on concurrent sub-orchestrators. Each pipeline manages its own internal width; this caps tickets in flight. |
 | `AUTO_MERGE` | `true` | Principal merges each clean child PR in topo order. Set `false` only when the user requests no merge; leave PRs open and report them. |
-| `VERIFY_MODE` | `jp-ask` | `local` / `ci-only` / `jp-ask`. `jp-ask` -> principal batches the question once at the gate; the answer propagates to every pipeline via its `verify-mode` override. Never asked per ticket. |
+| `VERIFY_MODE` | `local` | `local` / `ci-only`. Honor an explicit user constraint and propagate the selected mode to every pipeline. |
 | `AUTH_TOKEN` | (empty) | Optional session cookie / bearer token for QA, supplied once and propagated via an approved environment channel. Needed for authenticated preview or deployed proof. If absent or expired, one question bubbles up; record only its disposition, never the value. |
 | `WORKTREE_MODE` | `local` | `local` (git worktree under `<home>/worktrees/<repo>/<branch>` per the `jp-pipeline` Step 1b contract, where `<home>` is `$JP_SKILLS_HOME` else `$XDG_CONFIG_HOME/jp-skills` else `~/.config/jp-skills`) or `vm` (Conductor `{worktree_id: vm_ip}`). Pipelines create their own trees there; the orchestrator checkout stays bookkeeping-only. |
 | `STACK_MODE` | `auto` | `auto` (stack along DAG edges with `--base` chains, fall back to flat with reason) / `stacked` (fail loudly instead of falling back) / `flat` (current behavior: every PR targets `TARGET_BRANCH`). |
@@ -111,9 +107,7 @@ digraph dark_factory {
 
 ## Step 0 - Precondition and epic branch (blocking)
 
-1. **Confirm `jp-pipeline` is available.** If it is not installed or not resolvable, pause and tell
-   the user exactly where to get it (install path / link), then stop. Do not proceed, do not
-   substitute a bespoke implement/review loop. No `jp-pipeline`, no factory.
+1. **Resolve `jp-pipeline`.** Check the installed registry and configured skills checkout. Repair a missing link when authorized; continue independent intake and planning while recovering access. Preserve coordinator state and required review and verification gates.
 2. **Discover the execution backend.** Resolve `BACKEND` before dispatch. In `auto`, prefer
    Herdr only when `HERDR_ENV=1` and its server/API preflight succeeds; otherwise use Tern
    when `tern` is installed and its session is reachable, else use in-process. Explicit
@@ -137,7 +131,7 @@ digraph dark_factory {
    and worker agent where applicable, and that the `jp-pipeline` precondition passed.
    Then proceed to the parameter gate.
 
-## Step 1 - Parameter gate (blocking)
+## Step 1 - Resolve parameters
 
 Before dispatch, resolve the parameters from the request and defaults. Ask only for information needed to proceed:
 
@@ -146,13 +140,8 @@ Before dispatch, resolve the parameters from the request and defaults. Ask only 
    Default `true`; set `false` when the user requests no merge. Do not ask for merge approval.
 2. **`MAX_PARALLEL`** - confirm the sub-orchestrator width matches the available worktree/VM pool.
 3. **`VERIFY_MODE`** - `local` (every pipeline runs the full local gate) vs `ci-only` (every
-   pipeline defers to CI). Ask once here when the default `jp-ask` stands; the answer is recorded
-   in the ledger and propagated to all pipeline calls. It is never re-asked per ticket.
-4. **`AUTH_TOKEN`** - ask for a session cookie / bearer token when any ticket's QA is likely to
-   need authenticated access (authed preview, staging/production, post-deploy verification). One
-   token covers all tickets; record only `token: provided (redacted)`, never the value. If no
-   ticket needs auth, skip it - a pipeline that hits auth without one bubbles up a single
-   question, answered once and re-propagated.
+   pipeline defers to CI). Default to local; honor the user's explicit mode and propagate it to all pipeline calls.
+4. **`AUTH_TOKEN`** - reuse a supplied or available authorized session for authenticated QA. If a required credential is unavailable, ask once and continue independent work while waiting. Record only `token: provided (redacted)`, never the value.
 5. **Linear team** - the team under which sub-orchestrators file `follow-up` / `qa-found`
    tickets (resolve via `list_issue_labels`/team metadata if not obvious from the task).
 6. **`STACK_MODE`** - `auto` (stack along DAG edges, flat fallback) vs `stacked` (no fallback — stacking failure stops and escalates) vs `flat` (every PR targets `TARGET_BRANCH`, pre-patch behavior). Default `auto`.
@@ -169,13 +158,12 @@ Before dispatch, resolve the parameters from the request and defaults. Ask only 
 Decide backend and Startup mode once at this gate; never re-ask per ticket. The user may set
 `STARTUP_MODE=off` at invocation or change it before dispatch.
 
-Do not start planning until these are confirmed.
+Start independent planning as soon as the necessary scope is known; resolve optional settings and actual dependencies in parallel.
 
 For noninteractive fan-out, resolve shared values here and include the resolved parameter
 manifest in every sub-orchestrator brief. Include the target or stack parent, merge ownership,
 verify mode, worktree mode, stack mode, Startup mode, auth disposition, and shared scope decisions. Never pass
-`verify-mode ask` onward or assume a child can recover an answer from this conversation. Ask a
-shared question once, record the answer, and propagate it unchanged. `MAX_PARALLEL` is an upper
+`verify-mode ask` onward or assume a child can recover an answer from this conversation. Resolve shared settings from context and defaults; ask once only when a necessary decision remains unavailable, then propagate it unchanged. `MAX_PARALLEL` is an upper
 bound, not a promise that the runtime can start that many agents; inspect live agent capacity,
 including supervisors and reviewers, before choosing each wave. This run hit the three-agent cap
 with a supervisor and two workers; the supervisor yielded and resumed after capacity opened.
@@ -315,8 +303,8 @@ For each wave, in dependency order:
   `{{TARGET_BRANCH}}`) + `don't merge` + `verify-mode {{VERIFY_MODE}}`. If supplied, pass
   `AUTH_TOKEN` only through an approved environment channel; omit it otherwise.
 - Copy every resolved shared value and decision into the brief. A noninteractive child call must
-  not depend on an earlier interactive gate in the principal's chat. Resolve `jp-ask` values before
-  dispatch and pass only the selected value; keep secrets in the approved environment channel.
+  not depend on an earlier interactive gate in the principal's chat. Resolve shared values from the request and defaults before
+  dispatch and pass the selected value; keep secrets in the approved environment channel.
 - Same-wave sub-orchestrators run concurrently. Collect outcome blocks. A ticket is not
   `PR_OPEN` until its outcome shows a real ready PR URL, `checks: PASS` on the exact head,
   `qa: PASS`, and a delivered deck path. Review is pending until all implementation
@@ -333,7 +321,7 @@ For each wave, in dependency order:
 not scheduled in this run. They can form a separately authorized future run. Re-polling may
 identify outstanding work for an accurate epic-closure decision, but never expands this queue.
 
-**Final review:** Once all implementation waves and their required checks are complete, dispatch `jp-pr-review-toolkit` across the full set of changes before merging any ticket. Track each round against every covered change's inherited budget. Fix actionable findings and run affected checks; when budget remains, review the updated changes and stop on their first APPROVE. At the cap, report fixes as unreviewed and stop if a required approval or finding remains unresolved. BLOCK stops landing; never invent an APPROVE.
+**Final review:** Once all implementation waves and their required checks are complete, dispatch `jp-pr-review-toolkit` across the full set of changes before merging any ticket. Track each round against every covered change's inherited budget. Fix actionable findings and run affected checks; when budget remains, review the updated changes and stop on their first APPROVE. At the cap, report fixes as unreviewed and hold only landing if a required approval or finding remains unresolved; continue independent work. BLOCK stops landing; never invent an APPROVE.
 
 ### 5.3 COLLECT (owned by the outcome schema, not by you)
 
@@ -349,9 +337,7 @@ factory-wide review after all implementation is ready:
 Collect per the selected backend reference or the in-process result; request a corrected block
 from the same owner, never dispatch a second pipeline.
 
-If the outcome is `BLOCKED` / `NEEDS_DECISION`, mark the ticket `BLOCKED` and escalate the
-one-liner to the user. Do not reach into the ticket's pipeline to repair it yourself -
-re-dispatch the sub-orchestrator with the decision or the corrected brief.
+If an outcome is `BLOCKED` / `NEEDS_DECISION`, investigate and resolve the issue using available evidence and authorized alternatives. Return a corrected brief to the owner and continue independent tickets. Ask the user only for a decision or permission that is actually needed and cannot be resolved from context.
 
 If CI is red after a DONE outcome (a race with a post-push check): dispatch a **targeted Fix
 agent** on that ticket's worktree with the specific failing CI output (handle only - no raw
@@ -370,7 +356,7 @@ Merge ticket PRs in topological order (no PR is merged before all its `blocks`/`
      `git fetch origin {{TARGET_BRANCH}} && git rebase origin/{{TARGET_BRANCH}}`, resolve
      conflicts, re-verify in the ticket's `verify-mode`, and force-push the branch only. If a review of the reconciled change is required, use only remaining per-change budget; otherwise report reconciliation as unreviewed and honor the landing gate. In pane mode use a run-owned
      ephemeral pane, collect the one-line result, and close only on success.
-   - Structural/ambiguous conflict -> stop, escalate to the user.
+   - Structural or ambiguous conflict -> inspect both histories and affected behavior, resolve within the authorized scope, verify, and continue independent tickets. Ask only if an essential decision cannot be determined.
 3. Mark the ticket `MERGED` in the ledger. Collapse the row (deck path retained for the report).
 4. **Sync the orchestrator branch with `TARGET_BRANCH`** after each merge: `git fetch origin && git rebase origin/{{TARGET_BRANCH}}`. Resolve any conflicts directly - do not dispatch an agent for this. The orchestrator branch carries no code changes, so conflicts are rare and always local. Resolve, then continue.
 5. Record newly discovered follow-ups without adding them to this run's fixed queue.
@@ -543,8 +529,7 @@ Epic closure cannot proceed while any ticket lacks its required QA pass or a dec
   `ownership-verification.json` in the SYT-9093 run record.
 - **No red merges, no force-push to `TARGET_BRANCH`, no permission/settings changes.**
 - **No manual branch merges:** ticket branches land via `gh pr merge` only.
-- **Escalation:** anything `BLOCKED` after re-dispatch, or any structural rebase conflict, stops
-  and pings the user with a one-line summary - do not grind.
+- **Recovery:** investigate repeated blockers and structural conflicts, try supported alternatives, and continue independent tickets. Ask the user only when an essential decision or authorization cannot be resolved from available evidence.
 - **Context:** if any outcome block exceeds the schema, ask its existing owner to correct it. Protect your context.
 - **Stack driver owns stack traffic, principal owns merges.** The driver retargets, rebases, and re-greens; it never runs `gh pr merge` itself. No second driver per run.
 - **Flat is always a valid fallback.** Stacking failure records a reason and continues flat — never a stall, never a silent unstacked merge of a chained child (retarget first, then merge).
@@ -576,8 +561,8 @@ Check the environmental cause before accepting a lane's blocker: a CI failure re
 full" or a missing mount is host state, not code, and re-running it after cleanup is often the whole
 fix. Verify the host rather than inheriting the lane's diagnosis.
 
-**An architecture change halts the run before anything else is edited.** When the owner reverses a
-decision every lane depends on - deployment target, runtime, template shape - stop the lanes first,
+**An architecture change fences affected lanes before shared files are edited.** When the owner reverses a
+decision that active lanes depend on - deployment target, runtime, template shape - stop those lanes first and continue unrelated work,
 keeping worktrees and branches intact. Persist the decision as `STOP-<topic>.md` in the run directory,
 append a superseded banner to every lane brief, and say plainly that lanes were **stopped**, not
 messaged: a running non-interactive agent cannot take a mid-run instruction, so killing the process and
@@ -585,10 +570,10 @@ re-briefing is the only honest way to redirect it. Touch the shared artifact (te
 config schema) only after the halt, or two lanes and the orchestrator will write the old shape into it
 concurrently.
 
-**A halt is not done until the scheduler is paused and the count is re-checked.** Stopping lanes leaves
+**A lane halt is not done until its scheduler is fenced and the count is re-checked.** Stopping lanes leaves
 whatever cron or watchdog started them alive, and its next tick relaunches work the owner just told you
 to stop - a "stopped" factory that quietly resumed is worse than one that never stopped. In the same
-turn: pause the factory's watchdog and alert jobs, stop the lanes, verify the process count, and
+turn: fence scheduling for the affected lanes, stop them, verify the process count, and
 re-check once after one scheduling interval has passed before reporting the halt as complete.
 
 ## 8c. Ship one slice end-to-end before you fan out
@@ -663,7 +648,7 @@ required review and QA evidence.
 
 ## Common Mistakes
 
-- **Proceeding without the `jp-pipeline` skill.** The precondition is the whole factory. Pause with the link; never improvise the loop.
+- **Abandoning work on a missing skill.** Recover the configured pipeline source and continue independent work while access is restored.
 - **Reading code/diffs/logs into your own context.** The single failure mode. Delegate everything heavy; consume only outcome blocks.
 - **Implementing, reviewing, or QA-ing at the principal layer.** Pipelines own all three. The principal coordinates, merges, and verifies outcomes.
 - **Letting a sub-orchestrator freelance.** It runs `jp-pipeline` with the brief's overrides. A sub-orchestrator that implements directly has broken the pattern - discard and re-dispatch.
