@@ -13,6 +13,16 @@ const begin = z.object({ scopeId: z.string() });
 const view = z.object({ graphFrozen: z.boolean(), planner: z.object({ state: z.string() }).nullable(), reservations: z.array(z.object({ id: z.string(), state: z.string() })) });
 const hook = (event: string, id: string, extra: object) => ({ hook_event_name: event, session_id: "session", tool_name: "Agent", tool_use_id: id, ...extra });
 
+test.each(["merged", "ready-pr"])("hotfix accepts %s landing", async (landing) => {
+  const controller = new ClaudeBoundedController("session", process.cwd());
+  const scope = begin.parse(await invoke(controller, "bounded_begin", {
+    workflow: "hotfix", itemIds: ["one"], reviewLimit: 1, runtimeLimit: 1,
+    target: "main", landing, allowedChildTargets: [],
+  }));
+  expect(scope.scopeId).toBeTruthy();
+  controller.close();
+});
+
 test("factory planner and native Agent result share one authority and fixed queue", async () => {
   const controller = new ClaudeBoundedController("session", process.cwd());
   const root = begin.parse(await invoke(controller, "bounded_begin", { workflow: "factory", itemIds: ["one", "two"], reviewLimit: 2, runtimeLimit: 2, target: "main", landing: "ready-pr", allowedChildTargets: [] }));

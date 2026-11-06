@@ -4,6 +4,24 @@ import boundedEntry from "../bounded-entry";
 import { startWorkflowBridge } from "../src/workflow-bridge";
 import { BoundedWorkflowHost } from "../src/workflow-host";
 
+test.each(["merged", "ready-pr"])("hotfix accepts %s landing", async (mode) => {
+  const tools = new Map();
+  const sessionManager = { getSessionId: () => "session" };
+  const root = { id: "root", session: { sessionManager } };
+  const pi = {
+    zod: z,
+    pi: { AgentRegistry: { global: () => ({ get: () => root }) } },
+    registerTool: (tool) => { tools.set(tool.name, tool); },
+    on: () => {},
+  };
+  boundedEntry(pi);
+  const result = await tools.get("bounded_begin").execute("test", {
+    workflow: "hotfix", itemIds: ["one"], reviewLimit: 1,
+    landing: { mode, target: "main" },
+  }, undefined, undefined, { agent: { id: "root", kind: "main" }, sessionManager, cwd: process.cwd() });
+  expect(JSON.parse(result.content[0].text).landing.mode).toBe(mode);
+});
+
 test.each([
   { label: "pipeline follows mixed async receipt", workflow: "pipeline", dispatchError: false, terminalAgent: "task", rejected: false },
   { label: "planner follows mixed async receipt", workflow: "factory", dispatchError: false, terminalAgent: "task", rejected: false },
