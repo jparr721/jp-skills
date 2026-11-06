@@ -7,6 +7,7 @@
 - Allow a new review after a correlated terminal review returns no valid verdict, without replaying an uncertain assignment or inventing approval.
 - Keep authorized work moving through recoverable failures and preserve interactive OMP input for follow-ups.
 - Automatically coordinate separate bounded pipelines for cross-repository work, preserving review budgets and repository-specific evidence.
+- Multiplex independent workstreams concurrently as host capacity allows, without waiting on unrelated failures or reviews.
 
 ## [8.1.6] - 2026-11-06
 
