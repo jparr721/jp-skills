@@ -2,6 +2,12 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [8.1.7] - 2026-11-06
+
+- Allow a new review after a correlated terminal review returns no valid verdict, without replaying an uncertain assignment or inventing approval.
+- Keep authorized work moving through recoverable failures and preserve interactive OMP input for follow-ups.
+- Automatically coordinate separate bounded pipelines for cross-repository work, preserving review budgets and repository-specific evidence.
+
 ## [8.1.6] - 2026-11-06
 
 - Show storage lock owner metadata on contention, including user, host, operation, PID and creation time for new locks.
