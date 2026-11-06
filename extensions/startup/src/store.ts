@@ -137,6 +137,7 @@ const workflowChildSchema = z.strictObject({
   assignmentKey: idSchema, state: z.enum(["active", "completed", "failed", "uncertain"]),
   role: z.strictObject({ kind: z.enum(["architect", "dev", "qa"]), worktree: z.string().startsWith("/") }).optional(),
   proof: z.strictObject({ itemId: idSchema, role: z.enum(["architect", "dev", "qa"]), agentId: idSchema, head: z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/), evidence: z.record(z.string().min(1), z.string().min(1)) }).optional(),
+  roleEvidence: z.literal("invalid").optional(),
 }).readonly();
 const workflowLaunchSchema = z.strictObject({
   launchKey: idSchema, scopeId: idSchema, claimId: idSchema, employeeId: idSchema,
@@ -2753,7 +2754,7 @@ export function openStore(args: {
         const saved = scope(id);
         const children = selected("SELECT payload FROM records WHERE kind='workflowChild' AND json_extract(payload,'$.claimId')=?", [input.claimId], workflowChildSchema);
         return { scope: { kind: "bounded", itemIds: [saved.itemId] }, admitted: [saved.itemId],
-          reservations: children.map((child) => ({ id: child.id, itemIds: [child.itemId], state: child.state, purpose: "assignment" as const, assignmentKey: child.assignmentKey })),
+          reservations: children.map((child) => ({ id: child.id, itemIds: [child.itemId], state: child.state, purpose: "assignment" as const, assignmentKey: child.assignmentKey, ...(child.role ? { role: child.role } : {}), ...(child.roleEvidence ? { roleEvidence: child.roleEvidence } : {}) })),
           completedItemIds: [], graphFrozen: true,
           reviews: selected("SELECT payload FROM records WHERE kind='workflowReview' AND json_extract(payload,'$.changeId')=?", [saved.itemId], workflowReviewSchema), reviewLimit: saved.limit, workflow: saved.workflow };
       };
@@ -2823,6 +2824,16 @@ export function openStore(args: {
             apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed", proof })); },
           });
         }),
+        settleRoleWithoutProof: (scopeId: string, reservationId: string, role: { itemId: string; role: WorkflowRoleAssignment["kind"] }): void => tx(() => {
+          scope(scopeId);
+          const child = read("workflowChild", reservationId, workflowChildSchema);
+          if (child === null || child.scopeId !== scopeId || child.claimId !== input.claimId || child.itemId !== role.itemId || child.role?.kind !== role.role)
+            throw new StoreAuthorityError("Role completion is outside its reserved item and role");
+          executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome: "completed" }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed", roleEvidence: "invalid" })); },
+          });
+        }),
       };
     },
     createFactoryAuthority(input: { readonly manager: Binding; readonly itemIds: readonly string[]; readonly limit: number; readonly launchKey: string; readonly assertConnection: () => void }) {
@@ -2884,7 +2895,7 @@ export function openStore(args: {
         if (rootScope === null) throw new StoreFenceError("Factory root scope is unavailable");
         const dependencyReadyItemIds = rootScope.items.filter((item) => read("workflowReady", `${root.id}/${item.itemId}`, workflowReadySchema) !== null).map((item) => item.itemId);
         return { scope: { kind: "bounded", itemIds: saved.items.map((item) => item.itemId) }, admitted: saved.items.map((item) => item.itemId),
-          reservations: children.map((child) => ({ id: child.id, itemIds: [child.itemId], state: child.state, purpose: "assignment" as const, assignmentKey: child.assignmentKey })),
+          reservations: children.map((child) => ({ id: child.id, itemIds: [child.itemId], state: child.state, purpose: "assignment" as const, assignmentKey: child.assignmentKey, ...(child.role ? { role: child.role } : {}), ...(child.roleEvidence ? { roleEvidence: child.roleEvidence } : {}) })),
           reviews, completedItemIds: [], dependencyReadyItemIds, graphFrozen: plan?.frozen === true,
           planner: plan === null ? null : { reservationId: plan.reservationId, state: plan.state },
           ...(plan?.frozen ? { dependencies: plan.dependencies } : {}),
@@ -3023,6 +3034,17 @@ export function openStore(args: {
           executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome: "completed" }, {
             transaction: (run) => run(), read: () => view(scopeId),
             apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed", proof })); },
+          });
+        }),
+        settleRoleWithoutProof: (scopeId: string, reservationId: string, role: { itemId: string; role: WorkflowRoleAssignment["kind"] }): void => tx(() => {
+          const saved = scope(scopeId);
+          const child = read("workflowChild", reservationId, workflowChildSchema);
+          if (child === null || child.scopeId !== scopeId || child.itemId !== role.itemId || child.role?.kind !== role.role ||
+              !saved.items.some((item) => item.claimId === child.claimId && item.itemId === child.itemId))
+            throw new StoreAuthorityError("Role completion is outside its frozen item and role");
+          executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome: "completed" }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed", roleEvidence: "invalid" })); },
           });
         }),
       };

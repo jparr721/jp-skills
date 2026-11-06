@@ -5,7 +5,8 @@ import { dirname } from "node:path";
 import { BoundedWorkflowHost } from "../src/workflow-host";
 import { connectWorkflowBridge, readRunManifest, startWorkflowBridge, type WorkflowReceiptVerifier } from "../src/workflow-bridge";
 import { observeWorkflowBinding } from "../src/workflow-bridge-native";
-const handoff = { items: [{ itemId: "A", worktree: "/repo", head: "a".repeat(40), prNumber: 123 }] };
+const handoffItem = { itemId: "A", worktree: "/repo", head: "a".repeat(40), prNumber: 123 };
+const handoff = { items: [handoffItem] };
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
@@ -233,6 +234,110 @@ test("role proof never downgrades to ordinary completion without authority suppo
   const reservation = await client.reserveAssignment({ itemId: "A", assignmentKey: "dev", role: { kind: "dev", worktree: "/repo" } });
   const evidence = { scopeId: host.rootId, itemId: "A", assignmentKey: "dev", ...reservation, nativeJobId: "job", status: "completed", roleProof: { role: "dev", itemId: "A", verdict: "pass", worktree: "/repo", agentId: "a", head: "a".repeat(40), evidence: { implementation: "x" } } };
   expect(await client.submitAssignment({ reservationId: reservation.reservationId, evidence })).toBe("uncertain");
+});
+
+test("verified invalid role evidence settles the original assignment without granting readiness", async () => {
+  const host = new BoundedWorkflowHost("pipeline", ["A"], 2);
+  const bridge = await startWorkflowBridge(host, { acceptBoundHostReceipts: true, validateRoleAssignment: async () => true, validateReady: async () => true });
+  cleanup.push(bridge.close);
+  const binding = { kind: "tern" as const, blockId: "4", pid: 123, runtime: { ownsProcess: async () => true } };
+  const client = await connectWorkflowBridge({ socket: bridge.socket, token: bridge.issueRun({ scopeId: host.rootId, binding }) });
+  cleanup.push(client.close);
+  const role = { kind: "architect" as const, worktree: "/repo" };
+  const reservation = await client.reserveAssignment({ itemId: "A", assignmentKey: "architect", role });
+  const evidence = { scopeId: host.rootId, itemId: "A", assignmentKey: "architect", ...reservation, nativeJobId: "job", status: "completed", roleEvidence: "invalid" };
+  expect(await client.submitAssignment({ reservationId: reservation.reservationId, evidence })).toBe("completed_without_role");
+  expect(host.view(host.rootId).reservations).toContainEqual(expect.objectContaining({ id: reservation.reservationId, state: "completed" }));
+  await expect(client.submitAssignment({ reservationId: reservation.reservationId, evidence })).rejects.toThrow();
+  await expect(client.reserveAssignment({ itemId: "A", assignmentKey: "architect", role })).rejects.toThrow();
+  await expect(client.readyItem(handoffItem)).rejects.toThrow();
+});
+
+test("invalid evidence markers never bypass correlation, role identity, verification or authority", async () => {
+  const cases = ["extra", "marker", "proof", "failed", "non-role", "scope", "item", "key", "reservation", "launch", "job", "verifier", "verifier-failed", "verifier-throws", "authority", "authority-claim", "authority-throws", "binding"] as const;
+  for (const scenario of cases) {
+    const host = new BoundedWorkflowHost("pipeline", ["A"], 2);
+    const authority = {
+      rootId: host.rootId, view: host.view.bind(host), nest: host.nest.bind(host), reserve: host.reserve.bind(host), settle: host.settle.bind(host),
+      ...(scenario === "authority" ? {} : { settleRoleWithoutProof: (scopeId: string, reservationId: string, role: { itemId: string; role: "architect" | "dev" | "qa" }) => {
+        if (scenario === "authority-claim") return host.settleRoleWithoutProof(scopeId, reservationId, { ...role, role: "qa" });
+        if (scenario === "authority-throws") throw new Error("Authority unavailable");
+        host.settleRoleWithoutProof(scopeId, reservationId, role);
+      } }),
+    };
+    let bindingChecks = 0;
+    const binding = { kind: "tern" as const, blockId: "4", pid: 123, runtime: { ownsProcess: async () => ++bindingChecks < (scenario === "binding" ? 2 : Infinity) } };
+    const bridge = await startWorkflowBridge(authority, { verifyTerminal: async () => {
+      if (scenario === "verifier-throws") throw new Error("Verifier unavailable");
+      return scenario === "verifier" ? null : scenario === "verifier-failed" ? "failed" : "completed";
+    }, validateRoleAssignment: async () => true });
+    cleanup.push(bridge.close);
+    const client = await connectWorkflowBridge({ socket: bridge.socket, token: bridge.issueRun({ scopeId: host.rootId, binding }) });
+    cleanup.push(client.close);
+    const reservation = await client.reserveAssignment({ itemId: "A", assignmentKey: "architect", ...(scenario === "non-role" ? {} : { role: { kind: "architect", worktree: "/repo" } }) });
+    const evidence = {
+      scopeId: scenario === "scope" ? "wrong" : host.rootId,
+      itemId: scenario === "item" ? "B" : "A",
+      assignmentKey: scenario === "key" ? "wrong" : "architect",
+      ...reservation,
+      ...(scenario === "reservation" ? { reservationId: randomUUID() } : {}),
+      ...(scenario === "launch" ? { launchId: randomUUID() } : {}),
+      nativeJobId: scenario === "job" ? "" : "job",
+      status: scenario === "failed" ? "failed" : "completed",
+      roleEvidence: scenario === "marker" ? "valid" : "invalid",
+      ...(scenario === "proof" ? { roleProof: { role: "architect", itemId: "A", verdict: "pass", worktree: "/repo", agentId: "a", head: "a".repeat(40), evidence: { artifact: "x" } } } : {}),
+      ...(scenario === "extra" ? { unexpected: true } : {}),
+    };
+    expect(await client.submitAssignment({ reservationId: reservation.reservationId, evidence })).toBe("uncertain");
+    expect(host.view(host.rootId).reservations).toContainEqual(expect.objectContaining({ id: reservation.reservationId, state: "uncertain" }));
+  }
+});
+
+test("disconnect during invalid role evidence verification cannot complete the assignment", async () => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<"completed">();
+  const host = new BoundedWorkflowHost("pipeline", ["A"], 2);
+  const bridge = await startWorkflowBridge(host, { verifyTerminal: async () => { entered.resolve(); return release.promise; }, validateRoleAssignment: async () => true });
+  cleanup.push(bridge.close);
+  const binding = { kind: "tern" as const, blockId: "4", pid: 123, runtime: { ownsProcess: async () => true } };
+  const client = await connectWorkflowBridge({ socket: bridge.socket, token: bridge.issueRun({ scopeId: host.rootId, binding }) });
+  cleanup.push(client.close);
+  const reservation = await client.reserveAssignment({ itemId: "A", assignmentKey: "architect", role: { kind: "architect", worktree: "/repo" } });
+  const submission = client.submitAssignment({ reservationId: reservation.reservationId, evidence: { scopeId: host.rootId, itemId: "A", assignmentKey: "architect", ...reservation, nativeJobId: "job", status: "completed", roleEvidence: "invalid" } });
+  const result = submission.then(() => "fulfilled", () => "rejected");
+  await entered.promise;
+  await bridge.close();
+  release.resolve("completed");
+  expect(await result).toBe("rejected");
+  expect(host.view(host.rootId).reservations).toContainEqual(expect.objectContaining({ id: reservation.reservationId, state: "uncertain" }));
+});
+
+test("a lost completion response leaves the missing role evidence visible to the owner", async () => {
+  const host = new BoundedWorkflowHost("pipeline", ["A"], 2);
+  let disconnect: () => void = () => {};
+  const authority = {
+    rootId: host.rootId, view: host.view.bind(host), nest: host.nest.bind(host), reserve: host.reserve.bind(host), settle: host.settle.bind(host),
+    settleRoleWithoutProof: (scopeId: string, reservationId: string, role: { itemId: string; role: "architect" | "dev" | "qa" }) => {
+      host.settleRoleWithoutProof(scopeId, reservationId, role);
+      disconnect();
+    },
+  };
+  const bridge = await startWorkflowBridge(authority, { acceptBoundHostReceipts: true, validateRoleAssignment: async () => true });
+  cleanup.push(bridge.close);
+  const binding = { kind: "tern" as const, blockId: "4", pid: 123, runtime: { ownsProcess: async () => true } };
+  const client = await connectWorkflowBridge({ socket: bridge.socket, token: bridge.issueRun({ scopeId: host.rootId, binding }) });
+  cleanup.push(client.close);
+  const reservation = await client.reserveAssignment({ itemId: "A", assignmentKey: "architect", role: { kind: "architect", worktree: "/repo" } });
+  disconnect = () => { void client.close(); };
+  await expect(client.submitAssignment({ reservationId: reservation.reservationId, evidence: {
+    scopeId: host.rootId, itemId: "A", assignmentKey: "architect", ...reservation,
+    nativeJobId: "job", status: "completed", roleEvidence: "invalid",
+  } })).rejects.toThrow();
+  const owner = await connectWorkflowBridge({ socket: bridge.socket, token: bridge.ownerToken });
+  cleanup.push(owner.close);
+  expect(await owner.view()).toMatchObject({ reservations: [expect.objectContaining({
+    id: reservation.reservationId, state: "completed", role: { kind: "architect", worktree: "/repo" }, roleEvidence: "invalid",
+  })] });
 });
 
 test("nested target is enforced by the owner policy, never silently ignored", async () => {

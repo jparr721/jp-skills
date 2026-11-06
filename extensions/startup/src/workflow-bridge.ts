@@ -36,7 +36,8 @@ const nestedSchema = z.strictObject({ scopeId: z.string().min(1), token: z.strin
 const runReservationSchema = z.strictObject({ reservationId: z.string().uuid(), launchId: z.string().uuid() });
 const reservationSchema = z.string().min(1);
 const outcomeSchema = z.enum(["completed", "failed", "uncertain"]);
-const boundReceiptSchema = z.strictObject({ scopeId: z.string().min(1), itemId: z.string().min(1), assignmentKey: z.string().min(1), reservationId: z.string().uuid(), launchId: z.string().uuid(), nativeJobId: z.string().min(1), status: z.enum(["completed", "failed"]), roleProof: roleProofSchema.optional() });
+const assignmentOutcomeSchema = z.enum(["completed", "completed_without_role", "failed", "uncertain"]);
+const boundReceiptSchema = z.strictObject({ scopeId: z.string().min(1), itemId: z.string().min(1), assignmentKey: z.string().min(1), reservationId: z.string().uuid(), launchId: z.string().uuid(), nativeJobId: z.string().min(1), status: z.enum(["completed", "failed"]), roleProof: roleProofSchema.optional(), roleEvidence: z.literal("invalid").optional() });
 const manifestSchema = z.strictObject({ socket: z.string().min(1), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), scopeId: z.string().min(1) });
 type Workflow = Exclude<WorkflowKind, "startup">;
 type Operation = { operation: "view" } | { operation: "reserve" } | { operation: "submit"; evidence: unknown } | { operation: "reserve-assignment"; itemId: string; assignmentKey: string; role?: WorkflowRoleAssignment } | { operation: "submit-assignment"; reservationId: string; evidence: unknown } | { operation: "reserve-plan" } | { operation: "submit-plan"; reservationId: string; evidence: unknown } | { operation: "ready-item"; item: WorkflowReadyItem } | { operation: "finish-run"; handoff: WorkflowRunHandoff } | { operation: "nest"; workflow: Workflow; itemIds: readonly string[]; limit: number; target?: string };
@@ -62,6 +63,7 @@ export type WorkflowBridgeAuthority = {
   reserve(scopeId: string, itemId: string, assignmentKey: string, role?: WorkflowRoleAssignment): string;
   settle(scopeId: string, reservationId: string, outcome: WorkflowOutcome): void;
   settleRole?(scopeId: string, reservationId: string, receipt: { itemId: string; role: WorkflowRoleAssignment["kind"]; agentId: string; head: string; evidence: Record<string, string> }): void;
+  settleRoleWithoutProof?(scopeId: string, reservationId: string, role: { itemId: string; role: WorkflowRoleAssignment["kind"] }): void;
   reservePlan?(scopeId: string): string;
   settlePlan?(scopeId: string, reservationId: string, outcome: "failed" | "uncertain"): void;
   completePlan?(scopeId: string, reservationId: string, plan: WorkflowPlan): void;
@@ -78,6 +80,8 @@ export type WorkflowBridge = {
   close(): Promise<void>;
 };
 
+/** Bound-host mode trusts the child to observe native jobs. A live binding alone
+ * does not independently verify a job's terminal state. */
 export type WorkflowBridgeOptions = (
   | { acceptBoundHostReceipts: true; verifyTerminal?: never }
   | { acceptBoundHostReceipts?: false; verifyTerminal: WorkflowReceiptVerifier }
@@ -197,6 +201,7 @@ export async function startWorkflowBridge(host: WorkflowBridgeAuthority, options
                 assignment.verifying = true;
                 let verdict: "completed" | "failed" | null = null;
                 let roleProof: WorkflowRoleProof | undefined;
+                let withoutRole = false;
                 try {
                   const receipt = boundReceiptSchema.safeParse(request.evidence);
                   const correlated = receipt.success && receipt.data.scopeId === assignment.scopeId && receipt.data.itemId === assignment.itemId && receipt.data.assignmentKey === assignment.assignmentKey && receipt.data.reservationId === assignment.reservationId && receipt.data.launchId === assignment.launchId;
@@ -205,7 +210,12 @@ export async function startWorkflowBridge(host: WorkflowBridgeAuthority, options
                   } else {
                     verdict = await options.verifyTerminal({ scopeId: assignment.scopeId, itemId: assignment.itemId, assignmentKey: assignment.assignmentKey, reservationId: assignment.reservationId, launchId: assignment.launchId, evidence: request.evidence });
                   }
-                  if (!socket.destroyed && !assignment.terminal && verdict === "completed" && assignment.role) {
+                  const hasMarker = typeof request.evidence === "object" && request.evidence !== null && "roleEvidence" in request.evidence;
+                  if (hasMarker) {
+                    if (!receipt.success || !correlated || receipt.data.roleEvidence !== "invalid" || receipt.data.roleProof !== undefined || receipt.data.status !== "completed" || verdict !== "completed" || !assignment.role || !host.settleRoleWithoutProof) verdict = null;
+                    else if (!await observeWorkflowBinding(capability.binding)) verdict = null;
+                    else withoutRole = true;
+                  } else if (!socket.destroyed && !assignment.terminal && verdict === "completed" && assignment.role) {
                     const proof = receipt.success && correlated ? receipt.data.roleProof : undefined;
                     if (!receipt.success || receipt.data.status !== "completed" || !proof || proof.itemId !== assignment.itemId || proof.role !== assignment.role.kind || proof.worktree !== assignment.role.worktree || !host.settleRole || !options.validateRole || !await options.validateRole({ scopeId: assignment.scopeId, itemId: assignment.itemId, assignmentKey: assignment.assignmentKey, reservationId: assignment.reservationId, launchId: assignment.launchId, nativeJobId: receipt.data.nativeJobId, proof })) verdict = null;
                     else roleProof = proof;
@@ -215,6 +225,15 @@ export async function startWorkflowBridge(host: WorkflowBridgeAuthority, options
                 if (verdict !== "completed" && verdict !== "failed") {
                   uncertain(assignment);
                   result = "uncertain";
+                } else if (withoutRole && assignment.role && host.settleRoleWithoutProof) {
+                  try {
+                    host.settleRoleWithoutProof(assignment.scopeId, assignment.reservationId, { itemId: assignment.itemId, role: assignment.role.kind });
+                    assignment.terminal = true;
+                    result = "completed_without_role";
+                  } catch {
+                    uncertain(assignment);
+                    result = "uncertain";
+                  }
                 } else if (roleProof && host.settleRole) {
                   try {
                     host.settleRole(assignment.scopeId, assignment.reservationId, { itemId: assignment.itemId, role: roleProof.role, agentId: roleProof.agentId, head: roleProof.head, evidence: roleProof.evidence });
@@ -443,7 +462,7 @@ export type WorkflowBridgeClient = {
   reserve(): Promise<string>;
   submit(evidence: unknown): Promise<"completed" | "failed" | "uncertain">;
   reserveAssignment(input: { itemId: string; assignmentKey: string; role?: WorkflowRoleAssignment }): Promise<{ reservationId: string; launchId: string }>;
-  submitAssignment(input: { reservationId: string; evidence: unknown }): Promise<"completed" | "failed" | "uncertain">;
+  submitAssignment(input: { reservationId: string; evidence: unknown }): Promise<"completed" | "completed_without_role" | "failed" | "uncertain">;
   reservePlan(): Promise<{ reservationId: string; launchId: string }>;
   submitPlan(input: { reservationId: string; evidence: unknown }): Promise<"completed" | "failed" | "uncertain">;
   readyItem(item: WorkflowReadyItem): Promise<void>;
@@ -500,7 +519,7 @@ export async function connectWorkflowBridge(input: { socket: string; token: stri
     reserve: async () => reservationSchema.parse(await call({ operation: "reserve" })),
     submit: async (evidence) => outcomeSchema.parse(await call({ operation: "submit", evidence })),
     reserveAssignment: async ({ itemId, assignmentKey, role }) => runReservationSchema.parse(await call({ operation: "reserve-assignment", itemId, assignmentKey, ...(role ? { role } : {}) })),
-    submitAssignment: async ({ reservationId, evidence }) => outcomeSchema.parse(await call({ operation: "submit-assignment", reservationId, evidence })),
+    submitAssignment: async ({ reservationId, evidence }) => assignmentOutcomeSchema.parse(await call({ operation: "submit-assignment", reservationId, evidence })),
     reservePlan: async () => runReservationSchema.parse(await call({ operation: "reserve-plan" })),
     submitPlan: async ({ reservationId, evidence }) => outcomeSchema.parse(await call({ operation: "submit-plan", reservationId, evidence })),
     readyItem: async (item) => { z.strictObject({ ready: z.literal(true) }).parse(await call({ operation: "ready-item", item })); },
