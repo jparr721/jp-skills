@@ -289,3 +289,38 @@ test("native preflight errors remain visible and uncertain assignments cannot be
   await expect(call("task", args)).rejects.toThrow();
   expect(calls).toBe(1);
 });
+
+test("a terminal review with invalid output can be retried without inventing a verdict", async () => {
+  const tools = new Map();
+  const jobs = [];
+  const children = new Map();
+  const sessionManager = { getSessionId: () => "session" };
+  const root = { id: "root", session: { sessionManager, asyncJobManager: { getAllJobs: () => jobs } } };
+  const registry = { get: (id) => id === "root" ? root : children.get(id) };
+  boundedEntry({ zod: z, pi: { AgentRegistry: { global: () => registry } }, registerTool: (tool) => tools.set(tool.name, tool), on: () => {} });
+  const cwd = realpathSync(execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim());
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
+  const changes = [{ changeId: "A", head, worktree: cwd }];
+  let count = 0;
+  const context = { agent: { id: "root", kind: "main" }, sessionManager, cwd, invokeTool: async () => {
+    count++;
+    const id = `child-${count}`;
+    const output = count === 1 ? "Review in prose" : JSON.stringify({ changes, verdict: "approve" });
+    children.set(id, { id, parentId: "root", session: { messages: [{ role: "assistant", content: [{ type: "text", text: output }] }] } });
+    jobs.push({ id, ownerId: "root", agentId: id, type: "task", status: "completed", promise: Promise.resolve(), latestDetails: { progress: [{ index: 0, id, agent: "reviewer", status: "completed" }] } });
+    return { content: [], details: { progress: [{ index: 0, id, agent: "reviewer", status: "running" }] } };
+  } };
+  const call = (name, args) => tools.get(name).execute("test", args, undefined, undefined, context);
+  const begin = JSON.parse((await call("bounded_begin", { workflow: "pipeline", itemIds: ["A"], reviewLimit: 1, landing: { mode: "ready-pr", target: "main" } })).content[0].text);
+  const args = { scopeId: begin.scopeId, itemId: "A", assignmentKey: "review-1", context: "test", tasks: [{ agent: "reviewer", task: "Review", solutionSpace: "Read only" }], review: changes };
+  await call("task", args);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const first = JSON.parse((await call("bounded_status", { scopeId: begin.scopeId })).content[0].text);
+  expect(first.reviews[0]).toMatchObject({ state: "failed", verdict: null });
+  await expect(call("task", args)).rejects.toThrow();
+  await call("task", { ...args, assignmentKey: "review-2" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const second = JSON.parse((await call("bounded_status", { scopeId: begin.scopeId })).content[0].text);
+  expect(second.reviews[1]).toMatchObject({ state: "completed", verdict: "approve" });
+  expect(count).toBe(2);
+});

@@ -4,7 +4,7 @@ import type { WorkflowRoleAssignment } from "./workflow-bridge";
 
 type BoundedKind = Exclude<WorkflowKind, "startup">;
 type Reservation = { id: string; itemIds: readonly string[]; state: "active" | "completed" | "failed" | "uncertain"; purpose?: "claim" | "assignment"; assignmentKey?: string; role?: WorkflowRoleAssignment; roleEvidence?: "invalid" };
-type Review = { changeId: string; reservationId: string; head: string; state: "active" | "completed" | "uncertain"; verdict: null | "approve" | "changes-requested" | "block" };
+type Review = { changeId: string; reservationId: string; head: string; state: "active" | "completed" | "failed" | "uncertain"; verdict: null | "approve" | "changes-requested" | "block" };
 type Scope = { id: string; workflow: BoundedKind; itemIds: readonly string[]; reviewLimit: number };
 type RoleReceipt = { itemId: string; role: "architect" | "dev" | "qa"; agentId: string; head: string; reservationId: string; evidence: Readonly<Record<string, string>> };
 
@@ -206,6 +206,13 @@ export class BoundedWorkflowHost {
   settleReview(scopeId: string, reservationId: string, changes: readonly { changeId: string; head: string }[], verdict: "approve" | "changes-requested" | "block" | "uncertain"): void {
     if (this.reviewScopes.get(reservationId) !== scopeId) throw new Error("Review belongs to a different scope");
     this.transition(scopeId, { kind: "review-batch-settle", role: "owner", reservationId, changes, verdict });
+  }
+
+  failReview(scopeId: string, reservationId: string): void {
+    if (this.reviewScopes.get(reservationId) !== scopeId) throw new Error("Review belongs to a different scope");
+    const entries = this.reviews.filter((entry) => entry.reservationId === reservationId);
+    if (!entries.length || entries.some((entry) => entry.state !== "active")) throw new Error("Review reservation is not active");
+    for (const entry of entries) entry.state = "failed";
   }
 
   settle(scopeId: string, reservationId: string, outcome: "completed" | "failed" | "uncertain"): void {

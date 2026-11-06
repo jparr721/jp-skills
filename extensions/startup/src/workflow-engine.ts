@@ -32,7 +32,7 @@ export type WorkflowView = Readonly<{
   completableItemIds?: readonly string[];
   dependencyReadyItemIds?: readonly string[];
   readyableItemIds?: readonly string[];
-  reviews: readonly Readonly<{ changeId: string; reservationId: string; head: string; state: "active" | "completed" | "uncertain"; verdict: null | "approve" | "changes-requested" | "block" }>[];
+  reviews: readonly Readonly<{ changeId: string; reservationId: string; head: string; state: "active" | "completed" | "failed" | "uncertain"; verdict: null | "approve" | "changes-requested" | "block" }>[];
   reviewLimit: number;
   reviewLimits?: Readonly<Record<string, number>>;
   workflow: WorkflowKind;

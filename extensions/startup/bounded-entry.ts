@@ -509,7 +509,10 @@ export default function boundedEntry(pi: ExtensionAPI): void {
           if (realpathSync(git(cwd, "rev-parse", "--show-toplevel")) !== cwd || realpathSync(resolve(cwd, git(cwd, "rev-parse", "--git-common-dir"))) !== common || git(cwd, "rev-parse", "HEAD") !== change.head) throw new Error("Review worktree, repository or head changed");
         }
       };
-      if (changes) verifyWorktrees();
+      if (changes) {
+        verifyWorktrees();
+        if (current.view(params.scopeId).reservations.some((entry) => entry.purpose === "assignment" && entry.itemIds.includes(params.itemId) && entry.assignmentKey === params.assignmentKey && entry.state !== "failed")) throw new Error("Assignment already reserved, completed or uncertain");
+      }
       const reviewId = changes ? current.reserveReview(params.scopeId, changes.map(({ changeId, head }) => ({ changeId, head }))) : undefined;
       let reviewFinished = false;
       const finishReview = (childId: string | null, completed: boolean) => {
@@ -527,7 +530,10 @@ export default function boundedEntry(pi: ExtensionAPI): void {
           if (childId) current.recordReviewActor(params.scopeId, reviewId, childId);
           if (parsed.changes.length !== changes.length || changes.some((change) => !parsed.changes.some((entry) => entry.changeId === change.changeId && entry.head === change.head && entry.worktree === change.worktree))) throw new Error("Reviewer output does not cover the reserved worktrees and heads");
           verdict = parsed.verdict;
-        } catch { verdict = "uncertain"; }
+        } catch {
+          if (childId) { current.failReview(params.scopeId, reviewId); reviewFinished = true; return; }
+          verdict = "uncertain";
+        }
         current.settleReview(params.scopeId, reviewId, changes, verdict);
         reviewFinished = true;
       };
