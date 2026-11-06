@@ -3,7 +3,7 @@ import { dispatchWorkflow, executeWorkflow, type WorkflowDecision, type Workflow
 import type { WorkflowRoleAssignment } from "./workflow-bridge";
 
 type BoundedKind = Exclude<WorkflowKind, "startup">;
-type Reservation = { id: string; itemIds: readonly string[]; state: "active" | "completed" | "failed" | "uncertain"; purpose?: "claim" | "assignment"; assignmentKey?: string; role?: WorkflowRoleAssignment };
+type Reservation = { id: string; itemIds: readonly string[]; state: "active" | "completed" | "failed" | "uncertain"; purpose?: "claim" | "assignment"; assignmentKey?: string; role?: WorkflowRoleAssignment; roleEvidence?: "invalid" };
 type Review = { changeId: string; reservationId: string; head: string; state: "active" | "completed" | "uncertain"; verdict: null | "approve" | "changes-requested" | "block" };
 type Scope = { id: string; workflow: BoundedKind; itemIds: readonly string[]; reviewLimit: number };
 type RoleReceipt = { itemId: string; role: "architect" | "dev" | "qa"; agentId: string; head: string; reservationId: string; evidence: Readonly<Record<string, string>> };
@@ -240,6 +240,7 @@ export class BoundedWorkflowHost {
     if (this.reservationScopes.get(reservationId) !== scopeId || !entry || entry.state !== "active" || entry.purpose !== "assignment" || entry.itemIds.length !== 1 || entry.itemIds[0] !== role.itemId || entry.role?.kind !== role.role)
       throw new Error("Role completion has no active scoped assignment for this item and role");
     this.transition(scopeId, { kind: "settle", role: "owner", reservationId, outcome: "completed" });
+    entry.roleEvidence = "invalid";
   }
 
   recordReviewActor(scopeId: string, reservationId: string, agentId: string): void {

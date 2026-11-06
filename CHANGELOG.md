@@ -6,6 +6,7 @@
 
 - Keep a correlated inherited native assignment's completion separate from its role proof. Malformed role output reports `completed_without_role`, consumes the assignment key, and cannot itself satisfy a role gate; ambiguous identities remain uncertain.
 - Request the exact role-output schema when dispatching native tasks.
+- Preserve the invalid-evidence marker and assigned role in reservation status, including when the completion response is lost.
 
 ## [8.1.2] - 2026-11-05
 

@@ -692,7 +692,9 @@ test.each(["code", "research"])("completion respects review scope for %s items",
     expect(() => host.settleRoleWithoutProof(scopeId, plain, noProof)).toThrow();
     host.settle(scopeId, plain, "failed");
     host.settleRoleWithoutProof(scopeId, reservation, noProof);
-    expect(host.view(scopeId).reservations.find((entry) => entry.id === reservation)?.state).toBe("completed");
+    expect(host.view(scopeId).reservations.find((entry) => entry.id === reservation)).toMatchObject({
+      state: "completed", role: { kind: "architect", worktree: itemHandoff.worktree }, roleEvidence: "invalid",
+    });
     expect(() => host.settleRoleWithoutProof(scopeId, reservation, noProof)).toThrow();
     expect(() => host.reserve(scopeId, itemId, `invalid-architect-${scopeId}`)).toThrow();
     const failed = host.reserve(scopeId, itemId, `failed-architect-${scopeId}`, { kind: "architect", worktree: itemHandoff.worktree });

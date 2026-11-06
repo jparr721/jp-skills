@@ -22,7 +22,12 @@ export type WorkflowDecision = WorkflowRequest;
 export type WorkflowView = Readonly<{
   scope: { kind: "startup" } | { kind: "bounded"; itemIds: readonly string[] };
   admitted: readonly string[];
-  reservations: readonly Readonly<{ id: string; itemIds: readonly string[]; state: "active" | WorkflowOutcome; purpose?: "claim" | "assignment"; assignmentKey?: string }>[];
+  reservations: readonly Readonly<{
+    id: string; itemIds: readonly string[]; state: "active" | WorkflowOutcome;
+    purpose?: "claim" | "assignment"; assignmentKey?: string;
+    role?: Readonly<{ kind: "architect" | "dev" | "qa"; worktree: string }>;
+    roleEvidence?: "invalid";
+  }>[];
   completedItemIds?: readonly string[];
   completableItemIds?: readonly string[];
   dependencyReadyItemIds?: readonly string[];

@@ -312,6 +312,34 @@ test("disconnect during invalid role evidence verification cannot complete the a
   expect(host.view(host.rootId).reservations).toContainEqual(expect.objectContaining({ id: reservation.reservationId, state: "uncertain" }));
 });
 
+test("a lost completion response leaves the missing role evidence visible to the owner", async () => {
+  const host = new BoundedWorkflowHost("pipeline", ["A"], 2);
+  let disconnect: () => void = () => {};
+  const authority = {
+    rootId: host.rootId, view: host.view.bind(host), nest: host.nest.bind(host), reserve: host.reserve.bind(host), settle: host.settle.bind(host),
+    settleRoleWithoutProof: (scopeId: string, reservationId: string, role: { itemId: string; role: "architect" | "dev" | "qa" }) => {
+      host.settleRoleWithoutProof(scopeId, reservationId, role);
+      disconnect();
+    },
+  };
+  const bridge = await startWorkflowBridge(authority, { acceptBoundHostReceipts: true, validateRoleAssignment: async () => true });
+  cleanup.push(bridge.close);
+  const binding = { kind: "tern" as const, blockId: "4", pid: 123, runtime: { ownsProcess: async () => true } };
+  const client = await connectWorkflowBridge({ socket: bridge.socket, token: bridge.issueRun({ scopeId: host.rootId, binding }) });
+  cleanup.push(client.close);
+  const reservation = await client.reserveAssignment({ itemId: "A", assignmentKey: "architect", role: { kind: "architect", worktree: "/repo" } });
+  disconnect = () => { void client.close(); };
+  await expect(client.submitAssignment({ reservationId: reservation.reservationId, evidence: {
+    scopeId: host.rootId, itemId: "A", assignmentKey: "architect", ...reservation,
+    nativeJobId: "job", status: "completed", roleEvidence: "invalid",
+  } })).rejects.toThrow();
+  const owner = await connectWorkflowBridge({ socket: bridge.socket, token: bridge.ownerToken });
+  cleanup.push(owner.close);
+  expect(await owner.view()).toMatchObject({ reservations: [expect.objectContaining({
+    id: reservation.reservationId, state: "completed", role: { kind: "architect", worktree: "/repo" }, roleEvidence: "invalid",
+  })] });
+});
+
 test("nested target is enforced by the owner policy, never silently ignored", async () => {
   const host = new BoundedWorkflowHost("factory", ["A"], 2, {});
   const bridge = await startWorkflowBridge(host, {
