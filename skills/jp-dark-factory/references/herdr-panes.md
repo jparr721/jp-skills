@@ -23,4 +23,4 @@ Use Herdr inspection only to reconcile the recorded launch and read a bounded ou
 
 ## Failure handling
 - An uncertain launch or lost response stays unresolved; inspect the recorded host and pane state without retrying the launch.
-- When the backend is unavailable, use a host-supported in-process dispatch only after ownership is conclusively resolved. If receipts or inherited scope cannot be reconciled, stop and report the blocker.
+- When the backend is unavailable, use a host-supported in-process dispatch only after ownership is conclusively resolved. If receipts or inherited scope cannot be reconciled, keep the affected operation fenced, recover the original owner, and continue independent work; report the remaining blocker.

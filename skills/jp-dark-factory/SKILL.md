@@ -561,8 +561,8 @@ Check the environmental cause before accepting a lane's blocker: a CI failure re
 full" or a missing mount is host state, not code, and re-running it after cleanup is often the whole
 fix. Verify the host rather than inheriting the lane's diagnosis.
 
-**An architecture change halts the run before anything else is edited.** When the owner reverses a
-decision every lane depends on - deployment target, runtime, template shape - stop the lanes first,
+**An architecture change fences affected lanes before shared files are edited.** When the owner reverses a
+decision that active lanes depend on - deployment target, runtime, template shape - stop those lanes first and continue unrelated work,
 keeping worktrees and branches intact. Persist the decision as `STOP-<topic>.md` in the run directory,
 append a superseded banner to every lane brief, and say plainly that lanes were **stopped**, not
 messaged: a running non-interactive agent cannot take a mid-run instruction, so killing the process and
@@ -570,10 +570,10 @@ re-briefing is the only honest way to redirect it. Touch the shared artifact (te
 config schema) only after the halt, or two lanes and the orchestrator will write the old shape into it
 concurrently.
 
-**A halt is not done until the scheduler is paused and the count is re-checked.** Stopping lanes leaves
+**A lane halt is not done until its scheduler is fenced and the count is re-checked.** Stopping lanes leaves
 whatever cron or watchdog started them alive, and its next tick relaunches work the owner just told you
 to stop - a "stopped" factory that quietly resumed is worse than one that never stopped. In the same
-turn: pause the factory's watchdog and alert jobs, stop the lanes, verify the process count, and
+turn: fence scheduling for the affected lanes, stop them, verify the process count, and
 re-check once after one scheduling interval has passed before reporting the halt as complete.
 
 ## 8c. Ship one slice end-to-end before you fan out
