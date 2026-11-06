@@ -80,6 +80,8 @@ export type WorkflowBridge = {
   close(): Promise<void>;
 };
 
+/** Bound-host mode trusts the child to observe native jobs. A live binding alone
+ * does not independently verify a job's terminal state. */
 export type WorkflowBridgeOptions = (
   | { acceptBoundHostReceipts: true; verifyTerminal?: never }
   | { acceptBoundHostReceipts?: false; verifyTerminal: WorkflowReceiptVerifier }
