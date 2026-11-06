@@ -681,12 +681,39 @@ test.each(["code", "research"])("completion respects review scope for %s items",
   const itemHandoff = { itemId, worktree: f.scope.boundRoot, head: "a".repeat(40), prNumber: 123 };
   const handoff = { items: [itemHandoff] };
   expect(() => authority.finishRun(authority.rootId, handoff)).toThrow();
-  for (const role of ["architect", "dev", "qa"] as const) {
+  const boundedNested = authority.nest(authority.rootId, "hotfix", [itemId], 1);
+  const noProof = { itemId, role: "architect" } as const;
+  for (const [host, scopeId, wrongScope] of [[authority, authority.rootId, boundedNested], [factory, nested, factory.rootId]] as const) {
+    const reservation = host.reserve(scopeId, itemId, `invalid-architect-${scopeId}`, { kind: "architect", worktree: itemHandoff.worktree });
+    expect(() => host.settleRoleWithoutProof(wrongScope, reservation, noProof)).toThrow();
+    expect(() => host.settleRoleWithoutProof(scopeId, reservation, { ...noProof, itemId: "foreign" })).toThrow();
+    expect(() => host.settleRoleWithoutProof(scopeId, reservation, { ...noProof, role: "dev" })).toThrow();
+    const plain = host.reserve(scopeId, itemId, `plain-${scopeId}`);
+    expect(() => host.settleRoleWithoutProof(scopeId, plain, noProof)).toThrow();
+    host.settle(scopeId, plain, "failed");
+    host.settleRoleWithoutProof(scopeId, reservation, noProof);
+    expect(host.view(scopeId).reservations.find((entry) => entry.id === reservation)?.state).toBe("completed");
+    expect(() => host.settleRoleWithoutProof(scopeId, reservation, noProof)).toThrow();
+    expect(() => host.reserve(scopeId, itemId, `invalid-architect-${scopeId}`)).toThrow();
+    const failed = host.reserve(scopeId, itemId, `failed-architect-${scopeId}`, { kind: "architect", worktree: itemHandoff.worktree });
+    host.settle(scopeId, failed, "failed");
+    expect(() => host.settleRoleWithoutProof(scopeId, failed, noProof)).toThrow();
+  }
+  for (const role of ["dev", "qa", "architect"] as const) {
+    if (role === "architect") {
+      expect(() => authority.finishRun(authority.rootId, handoff)).toThrow();
+      expect(() => factory.readyItem(factory.rootId, itemId, itemHandoff)).toThrow();
+      expect(() => factory.finishRun(factory.rootId, handoff)).toThrow();
+    }
     const reservation = authority.reserve(authority.rootId, itemId, `pipeline-${role}`, { kind: role, worktree: itemHandoff.worktree });
     authority.settleRole(authority.rootId, reservation, { itemId, role, agentId: `pipeline-${role}`, head: itemHandoff.head, evidence: { verified: "yes" } });
     const factoryReservation = factory.reserve(nested, itemId, `factory-${role}`, { kind: role, worktree: itemHandoff.worktree });
     factory.settleRole(nested, factoryReservation, { itemId, role, agentId: `factory-${role}`, head: itemHandoff.head, evidence: { verified: "yes" } });
   }
+  const laterBounded = authority.reserve(authority.rootId, itemId, "later-unproved", { kind: "architect", worktree: itemHandoff.worktree });
+  authority.settleRoleWithoutProof(authority.rootId, laterBounded, noProof);
+  const laterFactory = factory.reserve(nested, itemId, "factory-later-unproved", { kind: "architect", worktree: itemHandoff.worktree });
+  factory.settleRoleWithoutProof(nested, laterFactory, noProof);
   authority.finishRun(authority.rootId, handoff);
   factory.readyItem(factory.rootId, itemId, { worktree: itemHandoff.worktree, head: itemHandoff.head, prNumber: itemHandoff.prNumber });
   factory.finishRun(factory.rootId, handoff);

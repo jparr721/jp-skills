@@ -2823,6 +2823,16 @@ export function openStore(args: {
             apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed", proof })); },
           });
         }),
+        settleRoleWithoutProof: (scopeId: string, reservationId: string, role: { itemId: string; role: WorkflowRoleAssignment["kind"] }): void => tx(() => {
+          scope(scopeId);
+          const child = read("workflowChild", reservationId, workflowChildSchema);
+          if (child === null || child.scopeId !== scopeId || child.claimId !== input.claimId || child.itemId !== role.itemId || child.role?.kind !== role.role)
+            throw new StoreAuthorityError("Role completion is outside its reserved item and role");
+          executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome: "completed" }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed" })); },
+          });
+        }),
       };
     },
     createFactoryAuthority(input: { readonly manager: Binding; readonly itemIds: readonly string[]; readonly limit: number; readonly launchKey: string; readonly assertConnection: () => void }) {
@@ -3023,6 +3033,17 @@ export function openStore(args: {
           executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome: "completed" }, {
             transaction: (run) => run(), read: () => view(scopeId),
             apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed", proof })); },
+          });
+        }),
+        settleRoleWithoutProof: (scopeId: string, reservationId: string, role: { itemId: string; role: WorkflowRoleAssignment["kind"] }): void => tx(() => {
+          const saved = scope(scopeId);
+          const child = read("workflowChild", reservationId, workflowChildSchema);
+          if (child === null || child.scopeId !== scopeId || child.itemId !== role.itemId || child.role?.kind !== role.role ||
+              !saved.items.some((item) => item.claimId === child.claimId && item.itemId === child.itemId))
+            throw new StoreAuthorityError("Role completion is outside its frozen item and role");
+          executeWorkflow({ kind: "settle", role: "owner", reservationId, outcome: "completed" }, {
+            transaction: (run) => run(), read: () => view(scopeId),
+            apply: () => { put("workflowChild", reservationId, workflowChildSchema.parse({ ...child, state: "completed" })); },
           });
         }),
       };

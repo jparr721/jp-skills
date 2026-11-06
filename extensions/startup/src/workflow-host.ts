@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { dispatchWorkflow, executeWorkflow, type WorkflowDecision, type WorkflowEffectReceipt, type WorkflowKind, type WorkflowRequest, type WorkflowTransaction, type WorkflowView } from "./workflow-engine";
+import type { WorkflowRoleAssignment } from "./workflow-bridge";
 
 type BoundedKind = Exclude<WorkflowKind, "startup">;
-type Reservation = { id: string; itemIds: readonly string[]; state: "active" | "completed" | "failed" | "uncertain"; purpose?: "claim" | "assignment"; assignmentKey?: string };
+type Reservation = { id: string; itemIds: readonly string[]; state: "active" | "completed" | "failed" | "uncertain"; purpose?: "claim" | "assignment"; assignmentKey?: string; role?: WorkflowRoleAssignment };
 type Review = { changeId: string; reservationId: string; head: string; state: "active" | "completed" | "uncertain"; verdict: null | "approve" | "changes-requested" | "block" };
 type Scope = { id: string; workflow: BoundedKind; itemIds: readonly string[]; reviewLimit: number };
 type RoleReceipt = { itemId: string; role: "architect" | "dev" | "qa"; agentId: string; head: string; reservationId: string; evidence: Readonly<Record<string, string>> };
@@ -141,9 +142,14 @@ export class BoundedWorkflowHost {
     return id;
   }
 
-  reserve(scopeId: string, itemId: string, assignmentKey?: string): string {
+  reserve(scopeId: string, itemId: string, assignmentKey?: string, role?: WorkflowRoleAssignment): string {
     const id = randomUUID();
     this.transition(scopeId, { kind: "reserve", role: "owner", itemIds: [itemId], reservationId: id, ...(assignmentKey === undefined ? {} : { purpose: "assignment", assignmentKey }) });
+    if (role !== undefined) {
+      const reservation = this.reservations.find((entry) => entry.id === id);
+      if (!reservation) throw new Error("Missing reservation");
+      reservation.role = { ...role };
+    }
     return id;
   }
 
@@ -227,6 +233,13 @@ export class BoundedWorkflowHost {
         this.roleReceipts.push({ ...receipt, reservationId });
       },
     });
+  }
+
+  settleRoleWithoutProof(scopeId: string, reservationId: string, role: { itemId: string; role: "architect" | "dev" | "qa" }): void {
+    const entry = this.reservations.find((value) => value.id === reservationId);
+    if (this.reservationScopes.get(reservationId) !== scopeId || !entry || entry.state !== "active" || entry.purpose !== "assignment" || entry.itemIds.length !== 1 || entry.itemIds[0] !== role.itemId || entry.role?.kind !== role.role)
+      throw new Error("Role completion has no active scoped assignment for this item and role");
+    this.transition(scopeId, { kind: "settle", role: "owner", reservationId, outcome: "completed" });
   }
 
   recordReviewActor(scopeId: string, reservationId: string, agentId: string): void {

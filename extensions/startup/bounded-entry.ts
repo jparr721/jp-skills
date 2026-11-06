@@ -21,11 +21,14 @@ export default function boundedEntry(pi: ExtensionAPI): void {
   const jobSchema = z.object({ id: text, ownerId: text, agentId: text, type: z.literal("task"), status: z.enum(["running", "completed", "failed", "cancelled"]), promise: z.unknown().refine((value): value is Promise<unknown> => value instanceof Promise), latestDetails: z.unknown() }).passthrough();
   const reviewResult = z.object({ changes: z.array(z.object({ changeId: text, head: text, worktree: text }).strict()), verdict: z.enum(["approve", "changes-requested", "block"]) }).strict();
   const plannerResult = z.object({ dependencies: z.record(z.string(), z.array(text)), targets: z.record(z.string(), z.array(text).min(1)) }).passthrough();
+  const roleText = z.string().refine((value) => value.trim().length > 0);
   const roleResult = z.union([
-    z.object({ role: z.literal("architect"), itemId: text, head: text, verdict: z.literal("pass"), evidence: z.object({ findings: text, decision: text }).strict() }).strict(),
-    z.object({ role: z.literal("dev"), itemId: text, head: text, verdict: z.literal("pass"), evidence: z.object({ implementation: text, artifact: text }).strict() }).strict(),
-    z.object({ role: z.literal("qa"), itemId: text, head: text, verdict: z.literal("pass"), evidence: z.object({ method: text, result: text, artifact: text }).strict() }).strict(),
+    z.object({ role: z.literal("architect"), itemId: roleText, head: roleText, verdict: z.literal("pass"), evidence: z.object({ findings: roleText, decision: roleText }).strict() }).strict(),
+    z.object({ role: z.literal("dev"), itemId: roleText, head: roleText, verdict: z.literal("pass"), evidence: z.object({ implementation: roleText, artifact: roleText }).strict() }).strict(),
+    z.object({ role: z.literal("qa"), itemId: roleText, head: roleText, verdict: z.literal("pass"), evidence: z.object({ method: roleText, result: roleText, artifact: roleText }).strict() }).strict(),
   ]);
+  const rolePrompt = (kind: "architect" | "dev" | "qa", itemId: string, worktree: string) =>
+    `You are assigned the ${kind} role for item ${itemId}. Worktree: ${worktree}. Only return pass if the assigned work is complete. Your final response must be exactly one JSON object, with no prose or additional keys: top-level role (exactly "${kind}"), itemId (exactly ${JSON.stringify(itemId)}), head (the full current Git HEAD commit), verdict (exactly "pass"), and evidence. Evidence must be an object containing exactly ${kind === "architect" ? "findings and decision" : kind === "dev" ? "implementation and artifact" : "method, result, and artifact"}; every evidence value must be a nonblank string.`;
   const registry = pi.pi.AgentRegistry.global();
   let host: BoundedWorkflowHost | undefined;
   let owner: string | undefined;
@@ -369,7 +372,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         const task = params.tasks[0];
         if (!task) throw new Error("One native task is required");
         const { reservationId, launchId } = await inherited.reserveAssignment({ itemId: params.itemId, assignmentKey: params.assignmentKey, ...(role ? { role } : {}) });
-        const nativeTasks = role ? [{ ...task, task: `${task.task}\nYou are assigned the ${role.kind} role for item ${params.itemId}. Worktree: ${role.worktree}. Your final response must be one JSON object with role, itemId, head, verdict (pass), and evidence. Architect evidence requires findings and decision; dev evidence requires implementation and artifact; QA evidence requires method, result, and artifact.` }] : params.tasks;
+        const nativeTasks = role ? [{ ...task, task: `${task.task}\n${rolePrompt(role.kind, params.itemId, role.worktree)}` }] : params.tasks;
         try {
           const native = await ctx.invokeTool({ context: params.context, tasks: nativeTasks });
           const done = synchronous.safeParse(native.details);
@@ -391,22 +394,34 @@ export default function boundedEntry(pi: ExtensionAPI): void {
             const receipt = progress.parse(terminal.latestDetails).progress.find((entry) => entry.id === child.id && entry.agent === child.agent);
             if (terminal.id !== match.parsed.data.id || terminal.ownerId !== ctx.agent.id || terminal.agentId !== child.id || registry.get(child.id)?.parentId !== ctx.agent.id || !receipt || terminal.status === "running" || (terminal.status === "completed" ? receipt.status !== "completed" : !["failed", "aborted"].includes(receipt.status))) throw new Error("Uncorrelated terminal native receipt");
             let roleProof: unknown;
+            let roleEvidence: "invalid" | undefined;
             if (role && terminal.status === "completed") {
               const childRef = registry.get(child.id);
               if (childRef?.parentId !== ctx.agent.id || !childRef.session) throw new Error("Correlated role session is unavailable");
-              const message = [...childRef.session.messages].reverse().find((entry) => entry.role === "assistant");
-              if (!message || message.role !== "assistant") throw new Error("Role output unavailable");
-              const blocks = message.content.filter((block) => block.type === "text").map((block) => block.text);
-              if (blocks.length !== 1) throw new Error("Role output is not structured");
-              const parsed = roleResult.parse(JSON.parse(blocks[0] ?? ""));
               const actualHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: role.worktree, encoding: "utf8" }).trim();
-              if (parsed.role !== role.kind || parsed.itemId !== params.itemId || parsed.head !== actualHead) throw new Error("Native role output does not match its assignment or current head");
-              roleProof = { role: parsed.role, itemId: parsed.itemId, verdict: parsed.verdict, worktree: role.worktree, agentId: `${ctx.sessionManager.getSessionId()}:${child.id}`, head: parsed.head, evidence: parsed.evidence };
+              const message = [...childRef.session.messages].reverse().find((entry) => entry.role === "assistant");
+              const blocks = message?.role === "assistant" ? message.content.filter((block) => block.type === "text").map((block) => block.text) : [];
+              let output: unknown;
+              if (blocks.length === 1) {
+                try { output = JSON.parse(blocks[0] ?? ""); } catch { /* Invalid role output is not proof. */ }
+              }
+              if (typeof output === "object" && output !== null && (
+                ("role" in output && typeof output.role === "string" && output.role !== role.kind) ||
+                ("itemId" in output && typeof output.itemId === "string" && output.itemId !== params.itemId) ||
+                ("head" in output && typeof output.head === "string" && output.head !== actualHead)
+              )) throw new Error("Role output identity or head does not match the assignment");
+              const parsed = roleResult.safeParse(output);
+              if (!parsed.success) {
+                roleEvidence = "invalid";
+              } else {
+                const proof = parsed.data;
+                roleProof = { role: proof.role, itemId: proof.itemId, verdict: proof.verdict, worktree: role.worktree, agentId: `${ctx.sessionManager.getSessionId()}:${child.id}`, head: proof.head, evidence: proof.evidence };
+              }
             }
-            evidence = { scopeId: params.scopeId, itemId: params.itemId, assignmentKey: params.assignmentKey, reservationId, launchId, nativeJobId: terminal.id, status: terminal.status === "completed" ? "completed" : "failed", ...(roleProof ? { roleProof } : {}) };
+            evidence = { scopeId: params.scopeId, itemId: params.itemId, assignmentKey: params.assignmentKey, reservationId, launchId, nativeJobId: terminal.id, status: terminal.status === "completed" ? "completed" : "failed", ...(roleProof ? { roleProof } : {}), ...(roleEvidence ? { roleEvidence } : {}) };
           } else if (done.data.results.length !== 1 || done.data.results[0]?.index !== 0) throw new Error("Uncorrelated native result");
           const outcome = await inherited.submitAssignment({ reservationId, evidence });
-          return result({ native: evidence, parentOutcome: outcome });
+          return result({ native: evidence, parentOutcome: outcome, ...(outcome === "completed_without_role" ? { warning: "The task ran and may have had effects. Role evidence was invalid; do not replay this task." } : {}) });
         } catch (error: unknown) {
           await inherited.close();
           throw error;
@@ -511,7 +526,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         current.settleReview(params.scopeId, reviewId, changes, verdict);
         reviewFinished = true;
       };
-      const nativeTasks = changes ? [{ ...task, task: `${task.task}\nReview the exact changes and heads below. Your final response must be one JSON object with exactly changes and verdict (approve, changes-requested, or block): ${JSON.stringify(changes)}` }] : params.role ? [{ ...task, task: `${task.task}\nYou are assigned the ${params.role.kind} role for item ${params.itemId}. Worktree: ${params.role.worktree}. Your final response must be one JSON object with role, itemId, head (full current Git commit), verdict (pass), and evidence. Architect evidence requires nonempty findings and decision; dev evidence requires implementation and artifact; QA evidence requires method, result, and artifact. Only return pass if the assigned work is complete.` }] : params.tasks;
+      const nativeTasks = changes ? [{ ...task, task: `${task.task}\nReview the exact changes and heads below. Your final response must be one JSON object with exactly changes and verdict (approve, changes-requested, or block): ${JSON.stringify(changes)}` }] : params.role ? [{ ...task, task: `${task.task}\n${rolePrompt(params.role.kind, params.itemId, params.role.worktree)}` }] : params.tasks;
       const finishRole = (childId: string, reservationId: string) => {
         if (!params.role) return;
         try {

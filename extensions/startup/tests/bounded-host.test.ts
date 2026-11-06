@@ -36,6 +36,26 @@ describe("bounded workflow host", () => {
     expect(() => host.reserve(host.rootId, "one", "qa")).toThrow();
     expect(host.view(host.rootId).completedItemIds).toEqual([]);
   });
+  test("settles only the matching active scoped role without creating proof or freeing its key", () => {
+    const host = new BoundedWorkflowHost("factory", ["one", "two"], 3, {});
+    const nested = host.nest(host.rootId, "pipeline", ["one"], 2);
+    const role = { itemId: "one", role: "architect" } as const;
+    const reservation = host.reserve(nested, "one", "architect", { kind: "architect", worktree: "/work" });
+    expect(() => host.settleRoleWithoutProof(host.rootId, reservation, role)).toThrow();
+    expect(() => host.settleRoleWithoutProof(nested, reservation, { ...role, itemId: "two" })).toThrow();
+    expect(() => host.settleRoleWithoutProof(nested, reservation, { ...role, role: "dev" })).toThrow();
+    const nonRole = host.reserve(nested, "one", "non-role");
+    expect(() => host.settleRoleWithoutProof(nested, nonRole, role)).toThrow();
+    host.settle(nested, nonRole, "failed");
+    host.settleRoleWithoutProof(nested, reservation, role);
+    expect(host.view(nested).reservations.find((entry) => entry.id === reservation)?.state).toBe("completed");
+    expect(() => host.settleRoleWithoutProof(nested, reservation, role)).toThrow();
+    expect(() => host.reserve(nested, "one", "architect")).toThrow();
+    expect(() => host.ready(nested, "one", "head")).toThrow();
+    const failed = host.reserve(nested, "one", "failed-role", { kind: "architect", worktree: "/work" });
+    host.settle(nested, failed, "failed");
+    expect(() => host.settleRoleWithoutProof(nested, failed, role)).toThrow();
+  });
   test("a lost native effect becomes uncertain and cannot be sent twice", async () => {
     const host = new BoundedWorkflowHost("pipeline", ["one"], 2);
     let calls = 0;

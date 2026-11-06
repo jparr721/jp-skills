@@ -2,6 +2,11 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [8.1.3] - 2026-11-05
+
+- Keep a correlated inherited native assignment's completion separate from its role proof. Malformed role output reports `completed_without_role`, consumes the assignment key, and cannot itself satisfy a role gate; ambiguous identities remain uncertain.
+- Request the exact role-output schema when dispatching native tasks.
+
 ## [8.1.2] - 2026-11-05
 
 - Start Tern bounded workers without retaining a shell wrapper, and wait for verified process identity before publishing their private attachment manifest. Failed or ambiguous launches remain uncertain.
