@@ -3,14 +3,15 @@ import { existsSync } from "node:fs";
 import { BoundedWorkflowHost } from "../src/workflow-host";
 import { readRunManifest, startWorkflowBridge } from "../src/workflow-bridge";
 import { createWorkflowBridgeLauncher, WorkflowLaunchUncertainError } from "../src/workflow-bridge-launch";
+import type { TernProcess } from "../src/tern-runtime";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
-async function fixture() {
+async function fixture(identityTimeoutMs = 1000) {
   const host = new BoundedWorkflowHost("pipeline", ["A"], 2);
   const bridge = await startWorkflowBridge(host, { verifyTerminal: async () => null });
   cleanup.push(bridge.close);
-  return { host, bridge, launcher: createWorkflowBridgeLauncher({ bridge }) };
+  return { host, bridge, launcher: createWorkflowBridgeLauncher({ bridge, identityTimeoutMs }) };
 }
 
 test("Tern gets a fixed private manifest only after its new process is pinned", async () => {
@@ -32,6 +33,99 @@ test("Tern gets a fixed private manifest only after its new process is pinned", 
   await expect(launcher.launch({ kind: "tern", runtime, launchKey: "launch-1", scopeId: host.rootId, cwd: "/repo", parentBlockId: "2", argv: ["omp"] })).rejects.toThrow("already attempted");
 });
 
+test("Tern waits for the launched process before publishing its manifest", async () => {
+  const { host, bridge, launcher } = await fixture();
+  let manifest = "";
+  let observations = 0;
+  const runtime = {
+    split: async (input: { argv: readonly string[] }) => {
+      manifest = (input.argv.find((arg) => arg.startsWith("JP_WORKFLOW_INHERITED_MANIFEST=")) ?? "").split("=")[1] ?? "";
+      return { sessionId: "1", tabId: "2", blockId: "3" };
+    },
+    process: async () => {
+      expect(existsSync(manifest)).toBe(false);
+      observations += 1;
+      const child = observations === 1
+        ? { pid: 123, name: "fish", argv: ["fish"], cwd: "/repo" }
+        : { pid: 123, name: "omp", argv: ["omp"], cwd: "/repo" };
+      return { pane: "3", child, foreground: child, group: 123 };
+    },
+    ownsProcess: async ({ pid }: { pid: number }) => pid === 123,
+  };
+  const receipt = await launcher.launch({ kind: "tern", runtime, launchKey: "delayed", scopeId: host.rootId, cwd: "/repo", parentBlockId: "2", argv: ["omp"] });
+  expect(receipt).toMatchObject({ kind: "tern", pid: 123 });
+  expect(observations).toBe(2);
+  expect(readRunManifest(manifest)).toMatchObject({ socket: bridge.socket, scopeId: host.rootId });
+});
+
+test("Tern times out a stalled identity read without publishing authority", async () => {
+  const { host, launcher } = await fixture(30);
+  const pending = Promise.withResolvers<TernProcess>();
+  let manifest = "";
+  const runtime = {
+    split: async (input: { argv: readonly string[] }) => {
+      manifest = (input.argv.find((arg) => arg.startsWith("JP_WORKFLOW_INHERITED_MANIFEST=")) ?? "").split("=")[1] ?? "";
+      return { sessionId: "1", tabId: "2", blockId: "3" };
+    },
+    process: () => pending.promise,
+    ownsProcess: async () => true,
+  };
+  const request = { kind: "tern" as const, runtime, launchKey: "stalled", scopeId: host.rootId, cwd: "/repo", parentBlockId: "2", argv: ["omp"] };
+  await expect(launcher.launch(request)).rejects.toBeInstanceOf(WorkflowLaunchUncertainError);
+  expect(existsSync(manifest)).toBe(false);
+  await expect(launcher.launch(request)).rejects.toThrow("already attempted");
+});
+
+test("Tern refuses ambiguous matching process identities", async () => {
+  const { host, launcher } = await fixture();
+  let manifest = "";
+  const runtime = {
+    split: async (input: { argv: readonly string[] }) => {
+      manifest = (input.argv.find((arg) => arg.startsWith("JP_WORKFLOW_INHERITED_MANIFEST=")) ?? "").split("=")[1] ?? "";
+      return { sessionId: "1", tabId: "2", blockId: "3" };
+    },
+    process: async () => ({
+      pane: "3",
+      child: { pid: 123, name: "omp", argv: ["omp"], cwd: "/repo" },
+      foreground: { pid: 456, name: "omp", argv: ["omp"], cwd: "/repo" },
+      group: 123,
+    }),
+    ownsProcess: async () => true,
+  };
+  await expect(launcher.launch({ kind: "tern", runtime, launchKey: "ambiguous", scopeId: host.rootId, cwd: "/repo", parentBlockId: "2", argv: ["omp"] })).rejects.toThrow("identity is ambiguous");
+  expect(existsSync(manifest)).toBe(false);
+});
+
+test("Tern publication failure keeps the launch uncertain and consumes its key", async () => {
+  const { host, bridge } = await fixture();
+  let manifest = "";
+  let splits = 0;
+  const launcher = createWorkflowBridgeLauncher({
+    bridge: {
+      prepareRunManifest: (input) => {
+        const prepared = bridge.prepareRunManifest(input);
+        return { path: prepared.path, publish: () => { throw new Error("disk write failed"); } };
+      },
+    },
+  });
+  const runtime = {
+    split: async (input: { argv: readonly string[] }) => {
+      splits += 1;
+      manifest = (input.argv.find((arg) => arg.startsWith("JP_WORKFLOW_INHERITED_MANIFEST=")) ?? "").split("=")[1] ?? "";
+      return { sessionId: "1", tabId: "2", blockId: "3" };
+    },
+    process: async () => ({ pane: "3", child: { pid: 123, name: "omp", argv: ["omp"], cwd: "/repo" }, foreground: null, group: 123 }),
+    ownsProcess: async () => true,
+  };
+  const request = { kind: "tern" as const, runtime, launchKey: "publish-failed", scopeId: host.rootId, cwd: "/repo", parentBlockId: "2", argv: ["omp"] };
+  const attempt = launcher.launch(request);
+  await expect(attempt).rejects.toBeInstanceOf(WorkflowLaunchUncertainError);
+  await expect(attempt).rejects.toThrow("disk write failed");
+  expect(existsSync(manifest)).toBe(false);
+  await expect(launcher.launch(request)).rejects.toThrow("already attempted");
+  expect(splits).toBe(1);
+});
+
 test("Herdr pins the newly allocated pane and exact observed native session", async () => {
   const { host, launcher } = await fixture();
   let manifest = "";
@@ -51,7 +145,7 @@ test("uncertain launch is never repeated and no manifest is published", async ()
   let manifest = "";
   let effects = 0;
   const runtime = {
-    split: async (input: { argv: readonly string[] }) => { effects += 1; manifest = (input.argv[1] ?? "").split("=")[1] ?? ""; return { sessionId: "1", tabId: "2", blockId: "3" }; },
+    split: async (input: { argv: readonly string[] }) => { effects += 1; manifest = (input.argv.find((arg) => arg.startsWith("JP_WORKFLOW_INHERITED_MANIFEST=")) ?? "").split("=")[1] ?? ""; return { sessionId: "1", tabId: "2", blockId: "3" }; },
     process: async () => ({ pane: "3", child: null, foreground: null, group: null }),
     ownsProcess: async () => false,
   };

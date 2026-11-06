@@ -17,7 +17,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
   const kind = z.enum(["factory", "pipeline", "hotfix"]);
   const taskItem = z.object({ name: z.string().optional(), agent: z.string().optional(), task: text, solutionSpace: text, tools: z.array(z.string()).optional(), isolated: z.boolean().optional() });
   const progress = z.object({ progress: z.array(z.object({ index: z.number().int(), id: text, agent: text, status: text }).passthrough()) }).passthrough();
-  const synchronous = z.object({ results: z.array(z.object({ index: z.number().int(), id: text, exitCode: z.number().int(), aborted: z.boolean().optional() }).passthrough()) }).passthrough();
+  const synchronous = z.object({ results: z.array(z.object({ index: z.number().int(), id: text, exitCode: z.number().int(), aborted: z.boolean().optional() }).passthrough()).min(1) }).passthrough();
   const jobSchema = z.object({ id: text, ownerId: text, agentId: text, type: z.literal("task"), status: z.enum(["running", "completed", "failed", "cancelled"]), promise: z.unknown().refine((value): value is Promise<unknown> => value instanceof Promise), latestDetails: z.unknown() }).passthrough();
   const reviewResult = z.object({ changes: z.array(z.object({ changeId: text, head: text, worktree: text }).strict()), verdict: z.enum(["approve", "changes-requested", "block"]) }).strict();
   const plannerResult = z.object({ dependencies: z.record(z.string(), z.array(text)), targets: z.record(z.string(), z.array(text).min(1)) }).passthrough();
@@ -358,8 +358,10 @@ export default function boundedEntry(pi: ExtensionAPI): void {
           const { reservationId, launchId } = await inherited.reservePlan();
           try {
             const native = await ctx.invokeTool({ context: params.context, tasks: [{ ...task, task: `${task.task}\nReturn one JSON object containing dependencies and targets maps keyed by every frozen item. Dependencies name only frozen items; targets are allowed Git branch names. Frozen items: ${JSON.stringify(scope.scope.itemIds)}` }] });
+            if (native.isError) throw new Error("Inherited planner dispatch failed");
             const done = synchronous.safeParse(native.details);
-            const spawned = done.success ? done.data.results : progress.parse(native.details).progress;
+            const running = done.success ? null : progress.parse(native.details).progress;
+            const spawned = done.success ? done.data.results : running ?? [];
             if (spawned.length !== 1 || spawned[0]?.index !== 0) throw new Error("Inherited planner dispatch lacks one correlated task");
             const childId = spawned[0].id;
             const matches = jobs.getAllJobs({ ownerId: ctx.agent.id }).filter((entry) => !previous.has(entry.id)).map((raw) => ({ raw, parsed: jobSchema.safeParse(raw) })).filter((entry) => entry.parsed.success && entry.parsed.data.agentId === childId && entry.parsed.data.ownerId === ctx.agent.id);
@@ -369,7 +371,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
             if (existingChild && existingChild.parentId !== ctx.agent.id) throw new Error("Inherited planner child ancestry does not match dispatch");
             await match.parsed.data.promise;
             const terminal = jobSchema.parse(match.raw);
-            const receipt = progress.parse(terminal.latestDetails).progress.find((entry) => entry.id === childId);
+            const receipt = progress.parse(terminal.latestDetails).progress.find((entry) => entry.id === childId && (running === null || entry.agent === running[0]?.agent));
             if (terminal.id !== match.parsed.data.id || terminal.ownerId !== ctx.agent.id || terminal.agentId !== childId || registry.get(childId)?.parentId !== ctx.agent.id || !receipt || terminal.status === "running") throw new Error("Inherited planner terminal receipt does not match its job");
             let plan: { dependencies: Record<string, string[]>; targets: Record<string, string[]> } | undefined;
             if (terminal.status === "completed" && receipt.status === "completed") {
