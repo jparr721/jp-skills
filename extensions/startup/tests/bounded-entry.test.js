@@ -36,6 +36,12 @@ test.each(["merged", "ready-pr"])("nested hotfix inherits %s and needs no human 
   chmodSync(join(directory, "gh"), 0o755);
   process.env.PATH = `${directory}:${previousPath}`;
   try {
+    if (!process.env.JP_HOTFIX_TEST_CHILD) {
+      execFileSync(process.execPath, ["test", import.meta.path, "-t", `nested hotfix inherits ${mode} and needs no human go`], {
+        cwd, env: { ...process.env, JP_HOTFIX_TEST_CHILD: "1" }, stdio: "pipe",
+      });
+      return;
+    }
     const tools = new Map();
     const sessionManager = { getSessionId: () => "session" };
     const root = { id: "root", session: { sessionManager } };

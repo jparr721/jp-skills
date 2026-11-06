@@ -38,6 +38,12 @@ test.each(["merged", "ready-pr"])("nested hotfix inherits %s and needs no human 
   process.env.PATH = `${directory}:${previousPath}`;
   const controller = new ClaudeBoundedController("session", cwd);
   try {
+    if (!process.env.JP_HOTFIX_TEST_CHILD) {
+      execFileSync(process.execPath, ["test", import.meta.path, "-t", `nested hotfix inherits ${landing} and needs no human go`], {
+        cwd, env: { ...process.env, JP_HOTFIX_TEST_CHILD: "1" }, stdio: "pipe",
+      });
+      return;
+    }
     const parent = begin.parse(await invoke(controller, "bounded_begin", { workflow: "pipeline", itemIds: ["one"], reviewLimit: 2, runtimeLimit: 1, target: "main", landing, allowedChildTargets: [] }));
     const child = begin.parse(await invoke(controller, "bounded_nest", { parentId: parent.scopeId, workflow: "hotfix", itemIds: ["one"], reviewLimit: 1, target: "main" }));
     await expect(invoke(controller, "bounded_complete", { scopeId: child.scopeId, itemId: "one", worktree: cwd, head, prNumber: 1 })).rejects.toThrow(
