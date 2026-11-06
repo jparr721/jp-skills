@@ -478,7 +478,7 @@ simplify: candidates=<n> applied=<x> dropped=<y> followups=<ids> | re-verify: <m
 
 ## Step 8 - MERGE
 
-Auto-merge, gated. Merge when every one of these holds - no separate approval gate; the supervisor only surfaces batched questions and stop-and-reports:
+Merge by default, without a separate approval prompt. Follow CI and resolve failures until the following conditions hold; honor an explicit request not to merge:
 
 - the review loop terminated cleanly per Step 6 - the last round verdicts APPROVE with zero
   must-fix. Terminating at the cap *with* must-fix open is not a clean

@@ -30,8 +30,6 @@ export default function boundedEntry(pi: ExtensionAPI): void {
   let host: BoundedWorkflowHost | undefined;
   let owner: string | undefined;
   let ownerSession: string | undefined;
-  const hotfixApprovals = new Set<string>();
-  let pendingHotfixApproval: { scopeId: string; head: string } | undefined;
   const landingScopes = new Map<string, { mode: "merged" | "ready-pr"; target: string; allowedChildTargets: readonly string[] }>();
   let bridge: WorkflowBridge | undefined;
   let launcher: { launch(request: WorkflowLaunchRequest): Promise<WorkflowLaunchReceipt> } | undefined;
@@ -77,12 +75,6 @@ export default function boundedEntry(pi: ExtensionAPI): void {
     if (ctx.agent.id !== inheritedOwner && !childScopes.get(ctx.agent.id)?.has(scopeId)) throw new Error("Native child has no capability for this inherited scope");
     return client;
   }
-  pi.on("input", (event, ctx) => {
-    if (ctx.agent.kind !== "main" || ctx.agent.id !== owner || ctx.sessionManager.getSessionId() !== ownerSession || event.source === "extension" || !host) return;
-    if (event.text.trim().toLowerCase() !== "go" || !pendingHotfixApproval) return;
-    hotfixApprovals.add(`${pendingHotfixApproval.scopeId}:${pendingHotfixApproval.head}`);
-    pendingHotfixApproval = undefined;
-  });
   const result = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }] });
   function verifyReadyPr(scopeId: string, handoff: Readonly<{ itemId: string; worktree: string; head: string; prNumber: number }>, rootCwd: string): { url: string; target: string } {
     const policy = landingScopes.get(scopeId);
@@ -105,7 +97,6 @@ export default function boundedEntry(pi: ExtensionAPI): void {
       if (ref?.session?.sessionManager.getSessionId() !== ctx.sessionManager.getSessionId()) throw new Error("Bounded owner is not bound to its native session");
       const allowedChildTargets = params.landing.allowedChildTargets ?? [];
       for (const target of [params.landing.target, ...allowedChildTargets]) execFileSync("git", ["check-ref-format", `refs/heads/${target}`], { cwd: ctx.cwd });
-      if (params.workflow === "hotfix" && params.landing.mode !== "ready-pr") throw new Error("Hotfix does not merge");
       host = new BoundedWorkflowHost(params.workflow, params.itemIds, params.reviewLimit, params.dependencies); owner = ctx.agent.id; ownerSession = ctx.sessionManager.getSessionId();
       const landing = { mode: params.landing.mode, target: params.landing.target, allowedChildTargets };
       landingScopes.set(host.rootId, landing);
@@ -134,7 +125,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
       if (Object.keys(planned).length && params.itemIds.some((item) => !planned[item]?.includes(target))) throw new Error("Nested target is outside the frozen item plan");
       const scopeId = current.nest(params.parentId, params.workflow, params.itemIds, params.reviewLimit);
       if (ctx.agent.id !== owner) childScopes.get(ctx.agent.id)?.add(scopeId);
-      landingScopes.set(scopeId, { ...parentLanding, target, mode: params.workflow === "hotfix" ? "ready-pr" : parentLanding.mode });
+      landingScopes.set(scopeId, { ...parentLanding, target });
       return result({ scopeId, view: current.view(scopeId) });
     },
   });
@@ -167,19 +158,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
       return result({ itemId: params.itemId, head: params.head, pr: pr.url, target: pr.target, readyForDependent: true });
     },
   });
-  pi.registerTool({ name: "bounded_request_approval", label: "Request hotfix approval", description: "Bind the next human 'go' to this hotfix scope and exact current head.", parameters: z.object({ scopeId: text, worktree: text, head: text }),
-    async execute(_id, params, _signal, _update, ctx) {
-      const current = authority(ctx, params.scopeId);
-      if (ctx.agent.id !== owner || current.view(params.scopeId).workflow !== "hotfix") throw new Error("Only the root can request approval for a hotfix");
-      const cwd = realpathSync(params.worktree);
-      const actual = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
-      if (actual !== params.head || !/^[0-9a-f]{40,64}$/i.test(actual)) throw new Error("Requested approval head is not current");
-      if (pendingHotfixApproval && (pendingHotfixApproval.scopeId !== params.scopeId || pendingHotfixApproval.head !== actual.toLowerCase())) throw new Error("A different hotfix approval is already pending");
-      pendingHotfixApproval = { scopeId: params.scopeId, head: actual.toLowerCase() };
-      return result({ scopeId: params.scopeId, head: actual, awaiting: "human go" });
-    },
-  });
-  pi.registerTool({ name: "bounded_complete", label: "Complete bounded work", description: "Close work only after correlated role/review receipts and independently checked landing evidence. Hotfix requires an actual human go for the pending scope/head.", parameters: z.object({ scopeId: text, itemId: text, worktree: text, head: text, prNumber: z.number().int().positive().optional() }),
+  pi.registerTool({ name: "bounded_complete", label: "Complete bounded work", description: "Close work only after correlated role/review receipts and independently checked landing evidence.", parameters: z.object({ scopeId: text, itemId: text, worktree: text, head: text, prNumber: z.number().int().positive().optional() }),
     async execute(_id, params, _signal, _update, ctx) {
       const current = authority(ctx, params.scopeId);
       if (ctx.agent.id !== owner) throw new Error("Only the root owner can close work");
@@ -188,9 +167,6 @@ export default function boundedEntry(pi: ExtensionAPI): void {
       if (realpathSync(git(cwd, "rev-parse", "--show-toplevel")) !== cwd || realpathSync(resolve(cwd, git(cwd, "rev-parse", "--git-common-dir"))) !== realpathSync(resolve(ctx.cwd, git(ctx.cwd, "rev-parse", "--git-common-dir"))) || git(cwd, "rev-parse", "HEAD") !== params.head || git(cwd, "status", "--porcelain") !== "") throw new Error("Worktree or reviewed head is not clean and current");
       const landing = landingScopes.get(params.scopeId);
       if (!landing) throw new Error("Immutable landing configuration is unavailable");
-      const approvalKey = `${params.scopeId}:${params.head.toLowerCase()}`;
-      if (current.view(params.scopeId).workflow === "hotfix" && !hotfixApprovals.has(approvalKey)) throw new Error("Hotfix requires human approval of this exact scope and head");
-      if (current.view(params.scopeId).workflow === "hotfix" && landing.mode !== "ready-pr") throw new Error("Hotfix requires ready-PR handoff and cannot merge");
       if (!params.prNumber) throw new Error("Completion requires a pull request number for verified landing or handoff");
       const pr = z.object({ headRefOid: text, baseRefName: text, state: z.string(), isDraft: z.boolean(), url: text, mergeCommit: z.object({ oid: text }).nullable() }).parse(JSON.parse(execFileSync("gh", ["pr", "view", String(params.prNumber), "--json", "headRefOid,baseRefName,state,isDraft,url,mergeCommit"], { cwd, encoding: "utf8" })));
       if (pr.headRefOid !== params.head || pr.baseRefName !== landing.target) throw new Error("PR does not match the reviewed head and selected target");
@@ -201,7 +177,6 @@ export default function boundedEntry(pi: ExtensionAPI): void {
       } else if (pr.state !== "OPEN" || pr.isDraft) throw new Error("PR is not open and ready");
       const artifact = { prNumber: params.prNumber, url: pr.url, target: pr.baseRefName, state: pr.state, mergeCommit: pr.mergeCommit?.oid ?? null };
       current.complete(params.scopeId, params.itemId, params.head);
-      hotfixApprovals.delete(approvalKey);
       return result({ itemId: params.itemId, head: params.head, outcome: "completed", landing: artifact });
     },
   });
@@ -256,7 +231,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
           const target = requestedTarget ?? policy.target;
           if (target !== policy.target && !policy.allowedChildTargets.includes(target)) throw new Error("Nested target is outside the frozen parent policy");
           const scopeId = current.nest(parentId, workflow, itemIds, limit);
-          landingScopes.set(scopeId, { ...policy, target, mode: workflow === "hotfix" ? "ready-pr" : policy.mode });
+          landingScopes.set(scopeId, { ...policy, target });
           return scopeId;
         },
       });

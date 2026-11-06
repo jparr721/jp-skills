@@ -1,8 +1,65 @@
 import { expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import boundedEntry from "../bounded-entry";
 import { startWorkflowBridge } from "../src/workflow-bridge";
 import { BoundedWorkflowHost } from "../src/workflow-host";
+
+test.each(["merged", "ready-pr"])("hotfix accepts %s landing", async (mode) => {
+  const tools = new Map();
+  const sessionManager = { getSessionId: () => "session" };
+  const root = { id: "root", session: { sessionManager } };
+  const pi = {
+    zod: z,
+    pi: { AgentRegistry: { global: () => ({ get: () => root }) } },
+    registerTool: (tool) => { tools.set(tool.name, tool); },
+    on: () => {},
+  };
+  boundedEntry(pi);
+  const result = await tools.get("bounded_begin").execute("test", {
+    workflow: "hotfix", itemIds: ["one"], reviewLimit: 1,
+    landing: { mode, target: "main" },
+  }, undefined, undefined, { agent: { id: "root", kind: "main" }, sessionManager, cwd: process.cwd() });
+  expect(JSON.parse(result.content[0].text).landing.mode).toBe(mode);
+});
+
+test.each(["merged", "ready-pr"])("nested hotfix inherits %s and needs no human go", async (mode) => {
+  const directory = mkdtempSync(join(tmpdir(), "hotfix-landing-"));
+  const previousPath = process.env.PATH;
+  const cwd = realpathSync(process.cwd());
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
+  const pr = JSON.stringify({ headRefOid: head, baseRefName: "main", state: "OPEN", isDraft: false, url: "https://example.test/pr/1", mergeCommit: null });
+  writeFileSync(join(directory, "gh"), `#!/bin/sh\nprintf '%s\\n' '${pr}'\n`);
+  chmodSync(join(directory, "gh"), 0o755);
+  process.env.PATH = `${directory}:${previousPath}`;
+  try {
+    if (!process.env.JP_HOTFIX_TEST_CHILD) {
+      execFileSync(process.execPath, ["test", import.meta.path, "-t", `nested hotfix inherits ${mode} and needs no human go`], {
+        cwd, env: { ...process.env, JP_HOTFIX_TEST_CHILD: "1" }, stdio: "pipe",
+      });
+      return;
+    }
+    const tools = new Map();
+    const sessionManager = { getSessionId: () => "session" };
+    const root = { id: "root", session: { sessionManager } };
+    boundedEntry({ zod: z, pi: { AgentRegistry: { global: () => ({ get: () => root }) } }, registerTool: (tool) => tools.set(tool.name, tool), on: () => {} });
+    const context = { agent: { id: "root", kind: "main" }, sessionManager, cwd };
+    const call = async (name, args) => tools.get(name).execute("test", args, undefined, undefined, context);
+    const rootResult = await call("bounded_begin", { workflow: "pipeline", itemIds: ["one"], reviewLimit: 2, landing: { mode, target: "main" } });
+    const parentId = JSON.parse(rootResult.content[0].text).scopeId;
+    const childResult = await call("bounded_nest", { parentId, workflow: "hotfix", itemIds: ["one"], reviewLimit: 1 });
+    const scopeId = JSON.parse(childResult.content[0].text).scopeId;
+    await expect(call("bounded_complete", { scopeId, itemId: "one", worktree: cwd, head, prNumber: 1 })).rejects.toThrow(
+      mode === "merged" ? "PR has not been merged" : "Canonical completion gates are not satisfied",
+    );
+  } finally {
+    process.env.PATH = previousPath;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test.each([
   { label: "pipeline follows mixed async receipt", workflow: "pipeline", dispatchError: false, terminalAgent: "task", rejected: false },

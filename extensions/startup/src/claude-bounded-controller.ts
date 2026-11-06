@@ -1,11 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { homedir } from "node:os";
 import { z } from "zod";
 import { BoundedWorkflowHost } from "./workflow-host";
 import { ClaudeBoundedHost } from "./claude-bounded-host";
-import { ClaudeApprovalGate } from "./claude-bounded-approval";
 
 const text = z.string().trim().min(1);
 const role = z.enum(["architect", "dev", "qa"]);
@@ -15,8 +13,7 @@ const tools = {
   bounded_prepare: { description: "Reserve an assignment before calling foreground Agent with the marker. For a non-role assignment request a single JSON object {status:'completed',result:'...'}. For roles request JSON with role,itemId,head,verdict=pass,evidence; evidence keys: architect findings/decision, dev implementation/artifact, qa method/result/artifact.", schema: z.strictObject({ scopeId: text, itemId: text, assignmentKey: text, role: role.optional(), worktree: text.optional() }) },
   bounded_review: { description: "Reserve an independent foreground reviewer. Include the marker and request a JSON object with exactly changes and verdict (approve, changes-requested, block).", schema: z.strictObject({ scopeId: text, changes: z.array(z.strictObject({ changeId: text, head: text, worktree: text })).min(1) }) },
   bounded_ready: { description: "Mark prerequisite ready after role gates and a verified open pull request.", schema: z.strictObject({ scopeId: text, itemId: text, worktree: text, head: text, prNumber: z.number().int().positive() }) },
-  bounded_complete: { description: "Complete only after role and independent-review gates and verified PR landing. Hotfix also requires the matching pending approval.", schema: z.strictObject({ scopeId: text, itemId: text, worktree: text, head: text, prNumber: z.number().int().positive() }) },
-  bounded_request_approval: { description: "Bind the next human go to this hotfix scope and current head; the native transcript must confirm the matching prompt ID.", schema: z.strictObject({ scopeId: text, worktree: text, head: text }) },
+  bounded_complete: { description: "Complete only after role and independent-review gates and verified PR landing.", schema: z.strictObject({ scopeId: text, itemId: text, worktree: text, head: text, prNumber: z.number().int().positive() }) },
   bounded_status: { description: "Read the shared authority's scoped state.", schema: z.strictObject({ scopeId: text }) },
   bounded_result: { description: "Read a correlated foreground Agent result, if observed.", schema: z.strictObject({ scopeId: text, reservationId: text }) },
   bounded_nest: { description: "Create a nested scope within the fixed parent queue and inherited review limit.", schema: z.strictObject({ parentId: text, workflow: z.enum(["pipeline", "hotfix"]), itemIds: z.array(text).min(1), reviewLimit: z.number().int(), target: text }) },
@@ -24,23 +21,13 @@ const tools = {
 const rpc = z.looseObject({ jsonrpc: z.literal("2.0"), id: z.union([z.string(), z.number()]).optional(), method: text, params: z.unknown().optional() });
 const call = z.looseObject({ name: text, arguments: z.unknown().optional() });
 const hookIdentity = z.looseObject({ hook_event_name: z.literal("PreToolUse"), session_id: text, tool_name: text, agent_id: z.string().optional() });
-const promptEvent = z.looseObject({ hook_event_name: z.literal("UserPromptSubmit"), session_id: text, prompt: z.string(), prompt_id: text.optional(), transcript_path: text.optional(), agent_id: z.string().optional() });
 
 export class ClaudeBoundedController {
   private authority: BoundedWorkflowHost | undefined;
   private native: ClaudeBoundedHost | undefined;
   private readonly targets = new Map<string, { target: string; allowed: readonly string[]; landing: "merged" | "ready-pr" }>();
-  private readonly approval: ClaudeApprovalGate;
-  constructor(private readonly sessionId: string, private readonly cwd: string, configRoot = process.env.CLAUDE_CONFIG_DIR ?? resolve(homedir(), ".claude")) {
-    this.approval = new ClaudeApprovalGate(sessionId, configRoot);
-  }
+  constructor(private readonly sessionId: string, private readonly cwd: string) {}
   hook(raw: unknown): Record<string, unknown> {
-    const prompt = promptEvent.safeParse(raw);
-    if (prompt.success) {
-      const event = prompt.data;
-      this.approval.observe({ sessionId: event.session_id, prompt: event.prompt, ...(event.agent_id === undefined ? {} : { agentId: event.agent_id }), ...(event.prompt_id === undefined ? {} : { promptId: event.prompt_id }), ...(event.transcript_path === undefined ? {} : { transcript: event.transcript_path }) });
-      return {};
-    }
     const parsed = hookIdentity.safeParse(raw);
     if (parsed.success && parsed.data.tool_name.startsWith("mcp__bounded__")) {
       if (parsed.data.session_id !== this.sessionId || parsed.data.agent_id) return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: "Only the root session may control the bounded authority" } };
@@ -81,7 +68,6 @@ export class ClaudeBoundedController {
       if (this.authority) throw new Error("This session already has a bounded authority");
       const input = tools.bounded_begin.schema.parse(args);
       for (const target of [input.target, ...input.allowedChildTargets]) this.git(this.cwd, "check-ref-format", `refs/heads/${target}`);
-      if (input.workflow === "hotfix" && input.landing !== "ready-pr") throw new Error("Hotfix cannot merge");
       const authority = new BoundedWorkflowHost(input.workflow, input.itemIds, input.reviewLimit);
       const allowed = [input.target, ...input.allowedChildTargets];
       this.native = new ClaudeBoundedHost({ sessionId: this.sessionId, authority, limit: input.runtimeLimit, validateRole: ({ worktree, head }) => this.verifyWorktree(worktree, head), validatePlan: (targets) => Object.values(targets).every((entries) => entries.every((entry) => allowed.includes(entry))) });
@@ -106,18 +92,10 @@ export class ClaudeBoundedController {
       const input = tools.bounded_review.schema.parse(args);
       return native.prepareReview(input.scopeId, input.changes);
     }
-    if (name === "bounded_request_approval") {
-      const input = tools.bounded_request_approval.schema.parse(args);
-      if (authority.view(input.scopeId).workflow !== "hotfix" || !this.verifyWorktree(input.worktree, input.head)) throw new Error("Approval requires the current hotfix worktree and head");
-      this.approval.request(input.scopeId, input.head);
-      return { scopeId: input.scopeId, head: input.head, awaiting: "human go confirmed by native transcript" };
-    }
     if (name === "bounded_ready" || name === "bounded_complete") {
       const input = tools.bounded_complete.schema.parse(args);
       const policy = this.targets.get(input.scopeId);
       if (!policy || !this.verifyWorktree(input.worktree, input.head) || this.git(input.worktree, "status", "--porcelain") !== "") throw new Error("Scoped worktree and head must be clean and current");
-      const hotfix = authority.view(input.scopeId).workflow === "hotfix";
-      if (name === "bounded_complete" && hotfix && !this.approval.authorized(input.scopeId, input.head)) throw new Error("Hotfix requires a matching native human go and transcript receipt");
       const pr = z.object({ headRefOid: text, baseRefName: text, state: text, isDraft: z.boolean(), url: text, mergeCommit: z.object({ oid: text }).nullable() }).parse(JSON.parse(execFileSync("gh", ["pr", "view", String(input.prNumber), "--json", "headRefOid,baseRefName,state,isDraft,url,mergeCommit"], { cwd: input.worktree, encoding: "utf8" })));
       if (pr.headRefOid !== input.head || pr.baseRefName !== policy.target) throw new Error("PR does not match scoped head and target");
       if (name === "bounded_ready") {
@@ -129,7 +107,6 @@ export class ClaudeBoundedController {
           this.git(input.worktree, "merge-base", "--is-ancestor", pr.mergeCommit.oid, `refs/remotes/origin/${policy.target}`);
         } else if (pr.state !== "OPEN" || pr.isDraft) throw new Error("PR is not open and ready");
         authority.complete(input.scopeId, input.itemId, input.head);
-        if (hotfix) this.approval.consume(input.scopeId, input.head);
       }
       return { itemId: input.itemId, head: input.head, pr: pr.url, outcome: name === "bounded_ready" ? "ready" : "completed" };
     }
@@ -150,7 +127,7 @@ export class ClaudeBoundedController {
         if (input.itemIds.some((item) => !planned[item]?.includes(input.target))) throw new Error("Target is outside the frozen item plan");
       }
       const scopeId = authority.nest(input.parentId, input.workflow, input.itemIds, input.reviewLimit);
-      this.targets.set(scopeId, { target: input.target, allowed: parent.allowed, landing: input.workflow === "hotfix" ? "ready-pr" : parent.landing });
+      this.targets.set(scopeId, { target: input.target, allowed: parent.allowed, landing: parent.landing });
       return { scopeId, view: authority.view(scopeId) };
     }
     throw new Error("Unknown bounded tool");
