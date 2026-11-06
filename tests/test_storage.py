@@ -190,11 +190,48 @@ class SafetyTests(unittest.TestCase):
     def test_lock_prevents_concurrent_storage_writers(self):
         s = load_storage()
         with tempfile.TemporaryDirectory() as tmp:
-            with s.locked(Path(tmp)):
+            with s.locked(Path(tmp), 'sync'):
                 with self.assertRaises(RuntimeError):
-                    with s.locked(Path(tmp)):
+                    with s.locked(Path(tmp), 'sync'):
                         self.fail('second writer acquired the lock')
             self.assertFalse((Path(tmp)/'.storage.lock').exists())
+
+    def test_lock_reports_owner_and_operation(self):
+        s = load_storage()
+        with tempfile.TemporaryDirectory() as tmp:
+            with s.locked(Path(tmp), 'sync'):
+                owner = json.loads((Path(tmp) / '.storage.lock/owner.json').read_text())
+                self.assertEqual(owner['pid'], os.getpid())
+                self.assertEqual(owner['operation'], 'sync')
+                self.assertTrue(owner['user'])
+                self.assertTrue(owner['host'])
+                with self.assertRaises(RuntimeError) as error:
+                    with s.locked(Path(tmp), 'status'):
+                        self.fail('second writer acquired the lock')
+                message = str(error.exception)
+                for value in (str(owner['pid']), owner['user'], owner['host'], owner['operation'], owner['created_at']):
+                    self.assertIn(value, message)
+
+    def test_lock_reports_legacy_or_unavailable_owner_without_removing_it(self):
+        s = load_storage()
+        with tempfile.TemporaryDirectory() as tmp:
+            lock = Path(tmp) / '.storage.lock'
+            lock.mkdir()
+            owner = lock / 'owner.json'
+            for content in ('{"pid": 123, "created_at": "2026-11-06T17:37:21Z"}', '{', None):
+                if content is None:
+                    owner.unlink()
+                else:
+                    owner.write_text(content)
+                with self.assertRaises(RuntimeError) as error:
+                    with s.locked(Path(tmp), 'sync'):
+                        self.fail('second writer acquired the lock')
+                self.assertIn('storage is locked', str(error.exception))
+                if content and content.startswith('{"pid"'):
+                    self.assertIn('123', str(error.exception))
+                else:
+                    self.assertIn('owner unavailable', str(error.exception))
+                self.assertTrue(lock.exists())
 
     def test_public_repository_is_refused(self):
         s = load_storage()

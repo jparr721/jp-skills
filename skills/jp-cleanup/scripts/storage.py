@@ -3,10 +3,12 @@
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import getpass
 import json
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import sys
 import uuid
@@ -267,15 +269,22 @@ def sync(root, repo, branch, attempts=5):
 
 
 @contextmanager
-def locked(base):
+def locked(base, operation):
     base.mkdir(parents=True, exist_ok=True)
     lock = base / '.storage.lock'
     try:
         lock.mkdir()
     except FileExistsError:
-        raise RuntimeError(f'storage is locked: {lock}; check its owner before recovery') from None
+        try:
+            owner = json.loads((lock / 'owner.json').read_text(encoding='utf-8'))
+            if not isinstance(owner, dict) or not owner:
+                raise ValueError('owner is not an object')
+            details = json.dumps(owner, sort_keys=True, ensure_ascii=True)
+        except (OSError, ValueError):
+            details = 'owner unavailable'
+        raise RuntimeError(f'storage is locked: {lock}; owner: {details}; verify the process before recovery') from None
     try:
-        (lock / 'owner.json').write_text(canonical({'pid': os.getpid(), 'created_at': timestamp()}))
+        (lock / 'owner.json').write_text(canonical({'pid': os.getpid(), 'created_at': timestamp(), 'user': getpass.getuser(), 'host': socket.gethostname(), 'operation': operation}))
         yield
     finally:
         (lock / 'owner.json').unlink(missing_ok=True)
@@ -384,7 +393,7 @@ def main(argv=None):
     base = home()
     if args.command == 'post-run' and not (base / 'storage.json').exists():
         return 0  # No implicit opt-in or remote side effects during unrelated skill runs.
-    with locked(base):
+    with locked(base, args.command):
         if args.command == 'setup':
             selected = args.repo
             if selected is None:
