@@ -2,6 +2,10 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [8.1.6] - 2026-11-06
+
+- Show storage lock owner metadata on contention, including user, host, operation, PID and creation time for new locks.
+
 ## [8.1.5] - 2026-11-06
 
 - Report native OMP task errors without masking them as missing progress, while retaining uncertain reservations and duplicate-dispatch protection.
