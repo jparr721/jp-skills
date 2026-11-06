@@ -15,7 +15,7 @@ The sequence is **INTAKE -> WORKTREE+CREW -> PARTY PLAN -> IMPLEMENT -> PR -> RE
 
 Before dispatch, read the shared authority at the installed `jp-pipeline` skill's `references/workflow-policy.md`, or `$JP_SKILLS_REPO/skills/jp-pipeline/references/workflow-policy.md`. Apply its scope, crew and inherited per-change review budget throughout this run.
 
-Start or inherit the bounded scope by the policy's host procedure before dispatch. A standalone run freezes its one item with `bounded_begin`; a nested run keeps the parent's scope and uses `bounded_nest`. Route assignments, review and completion through that host, and recover missing capabilities through the same owner. Continue independent work; hold only actions that require the unavailable capability instead of starting a separate ledger.
+For a task spanning Git repositories, automatically coordinate a separate bounded pipeline per repository using the policy's cross-repository procedure; do not ask the user to choose a split. Start or inherit the bounded scope by the policy's host procedure before dispatch. A standalone run freezes its one item with `bounded_begin`; a nested run keeps the parent's scope and uses `bounded_nest`. Route assignments, review and completion through that host, and recover missing capabilities through the same owner. Continue independent work; hold only actions that require the unavailable capability instead of starting a separate ledger.
 
 For a standalone pipeline, the Step 1 supervisor owns the run and is the sole user contact:
 workers route questions to it via `hub`; it batches questions and returns the final report.
