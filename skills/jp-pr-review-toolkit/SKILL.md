@@ -28,7 +28,7 @@ Verdict meanings:
 
 - **APPROVE** — zero must-fix. Suggestions and followups never block. The caller may ship once its own gates pass.
 - **FIX-THEN-SHIP** — must-fix list non-empty. Fix each item and re-verify; re-review only if the shared budget permits and the caller requires it. Report fixes after the last review as unreviewed; never ship past an open must-fix or invent approval.
-- **BLOCK** — the implementation is wrong against its task or plan, needs a design change, or a finding invalidates the approach. Line fixes are the wrong tool: escalate (pipeline stops via supervisor, hotfix hands to pipeline).
+- **BLOCK** — the implementation is wrong against its task or plan, needs a design change, or a finding invalidates the approach. Address the design finding through the owning workflow; continue independent work while landing remains gated.
 
 Finding ranks:
 
@@ -116,7 +116,7 @@ A finding that would need a third round is either must-fix on standing proof or 
 
 Map the survivors:
 
-1. Any survivor invalidating the approach or design → BLOCK. Log surviving must-fix items anyway, then escalate instead of fixing lines.
+1. Any survivor invalidating the approach or design → BLOCK. Log surviving must-fix items and route the design repair through the owning workflow.
 2. Else any must-fix → FIX-THEN-SHIP with the full list.
 3. Else → APPROVE.
 
@@ -146,7 +146,7 @@ One sweep agent covering all five angles in a single pass, then one combined Lev
 - **Polishing before the verdict.** `jp-code-simplifier` runs after APPROVE, never inside the fight.
 - **Reviewing the whole repository by default.** Scope is the diff unless the user asks broader.
 - **Treating suggestions as must-fix.** Taste never blocks shipping; proven breakage never ships as taste.
-- **Answering BLOCK with line fixes.** BLOCK means the design is wrong: escalate.
+- **Ignoring a BLOCK design finding.** Repair the design through the owning workflow before landing.
 - **Skipping the test lens because tests exist.** Existing tests can still miss exactly the behavior that changed.
 - **Skipping failure review because code compiles.** Silent failures are behavioral bugs, not type errors.
 - **Merging while the review is still running.** An in-flight review is not an APPROVE. A print-mode reviewer

@@ -36,21 +36,12 @@ Stall rule: no user-visible progress within ~2 min of activation → emit the in
    The rounds' shape notes see one round's increment; this pass sees the finished
    change as a whole. It is re-verified against the Step 4b gate in the chosen mode, not re-reviewed -
    that would breach the cap.
-4. **Local verification runs only with permission.** CI runs a deliberately trimmed
-   lane. The full local gate (every typecheck, every test suite in every workspace -
-   including the lanes CI skips - and every build) runs locally ONLY if you said so when the
-   supervisor asked. Before the first verification run, the supervisor batches you one question:
-   run the full gate locally, or keep verification to CI only (typechecks, tests, builds, and
-   generators all included in the question). The answer is recorded as `verify-mode: local |
-   ci-only` and governs Steps 4-8. A green PR is a floor, not the bar - in ci-only mode the
-   report says so explicitly instead of implying local proof.
+4. **Verify without unnecessary pauses.** Default to the appropriate local verification gate and CI. Honor an explicit `ci-only` or other verification constraint, and record `verify-mode: local | ci-only`. Report checks not run with their reasons; never imply local proof from CI alone.
 5. **Never merge red.** The gate in the chosen mode green on the final commit, CI green, and zero
    remaining must-fix items, or no merge. In ci-only mode the merge gate is CI
    green on the exact commit plus APPROVE verdicts; nothing claims local proof that never ran.
 6. **Never bypass repository hooks.** No `--no-verify`, no `HUSKY=0`, no `core.hooksPath`
-   change, no equivalent. Record whether CI-only permission explicitly includes the normal
-   lint/format commit hook; that exception never authorizes separate local tests, typechecks,
-   builds or generators. On hook failure, stop the publication sequence and preserve its log,
+   change, no equivalent. Run the normal commit hook unless the user expressly restricts it; respect any separate ci-only constraint on local tests, typechecks, builds or generators. On hook failure, hold the affected publication and preserve its log,
    HEAD, index and worktree. Route a bounded source repair to the assigned writer, freeze the
    repaired wave, then retry the ordinary hook; escalate only when repair needs new authority
    or cannot proceed. Never suppress the rule, weaken configuration, or treat an authored fix
@@ -91,7 +82,7 @@ Optional overrides, stated in plain language inside the prompt:
 | "target `<branch>`" | Base the PR on `<branch>` instead of the repo default. |
 | "skip planning" | Force PARTY PLAN to be skipped. Use only when the plan is genuinely already written (names behavior, affected areas, acceptance criteria). |
 | "N review rounds" | Select up to two, subject to any stricter inherited per-change cap. Record the cap before review; it cannot be raised by a nested run. |
-| "verify-mode `<local\|ci-only>`" | Preset the Step 4 answer instead of asking. `jp-dark-factory` uses this to propagate one shared answer to every ticket pipeline. |
+| "verify-mode `<local\|ci-only>`" | Set the Step 4 verification mode. `jp-dark-factory` uses this to propagate one shared answer to every ticket pipeline. |
 | "skip the simplify pass" | Skip Step 7. The per-round shape notes still run. |
 | "use worktree `<path>`" | Reuse an existing worktree instead of creating the default `<home>/worktrees/<repo>/<branch>` one (Step 1b). It must be dedicated to this task and clean. |
 | "skip QA" | NEVER honored. Step 9 always runs. If the prompt asks for it, say so and run QA anyway. |
@@ -130,7 +121,7 @@ digraph pipeline {
   open -> simp    [label="no"];
   simp -> green;
   green -> merge  [label="yes"];
-  green -> stop   [label="no"];
+  green -> impl   [label="no: diagnose and fix"];
   merge -> qa -> done;
 }
 ```
@@ -178,7 +169,7 @@ branch:    <work branch>
 worktree:  <absolute path> (created | reused)
 supervisor: <agent id>
 plan:      party | already-specified (<source>)
-verify-mode: <local | ci-only | pending - supervisor asks before the first gate run>
+verify-mode: <local | ci-only>
 surface:   ci runs: <commands CI runs>
            ci skips: <commands that exist but CI does not run - this pipeline runs them>
            needs: <services/deps stood up in the worktree so those can execute>
@@ -279,14 +270,7 @@ and bounded continuation. Evidence: `vendoring/supervisor.md` and
 
 ## Step 4 - VERIFY
 
-**CI is a floor, not the bar - and the local gate is permission-gated.** Repos trim their CI lane
-for wall-clock: the db-free suite, the changed-files subset, no builds, sometimes no typecheck
-at all. The supervisor asks once, batched with any other intake questions, before anything local
-runs: full local gate (`local`) or CI only (`ci-only`). Typechecks, tests, builds, and generator
-runs are all covered by that one answer - never run any of them locally first and ask after.
-In `local` mode this step runs the *whole* verification surface locally so that "clean" means
-the software is clean. In `ci-only` mode nothing below runs locally; the pipeline relies on
-`gh pr checks` and every local line is reported as not-run with reason `ci-only mode`.
+**CI is a floor, not the bar.** Default to local verification plus CI; honor an explicit `ci-only` constraint. In `local` mode run the appropriate verification surface. In `ci-only` mode use CI and report local checks as not run with reason `ci-only mode`.
 
 ### Step 4a - Establish the verification surface
 
@@ -380,8 +364,7 @@ verify:
   not-run      <cmd>  <why it cannot run here - in ci-only mode, every skipped local line says ci-only mode>
 ```
 
-A red step is a stop. Do not open a PR on red, do not push on red, and never report "done" on
-red.
+A red step triggers diagnosis, repair, and re-verification. Continue independent work while it runs; in ci-only mode push the repair so CI can verify it. A PR may remain open with red checks, but never merge or report completion on red.
 
 **Cadence.** In `local` mode the full gate runs before the first push (Step 5) and again on the
 final commit before the merge gate (Step 8). Inside the review loop, each round re-runs at minimum the
@@ -420,10 +403,9 @@ no-finding result, and a duplicate or incomplete batch does not count as the rou
    a verdict block required. Pass the ticket acceptance plus the consensus slice table as the task
    source. Review the **pushed diff**, never a stale local one - each round's review must see the
    previous round's fixes. The supervisor reads round state from the coordinator.
-   A round without a verdict remains unresolved; reconcile it with the same owner before proceeding.
+   A round without a verdict remains unresolved. Reconcile it with the owner; retry a proven terminal failed attempt using a fresh key. Continue independent work while truly uncertain effects are reconciled.
 2. **Enforce** the verdict:
-   - **BLOCK** - stop. Escalate via the supervisor immediately; line fixes are the wrong tool.
-     Do not spend another round.
+   - **BLOCK** - diagnose the design finding, revise the plan and repair the affected work within the authorized scope. Continue independent work; keep landing gated on the required review and verification. Do not spend an extra round beyond the inherited cap.
    - **FIX-THEN-SHIP must-fix** - fix. Always. Must-fix already survived the club fight, so it
      is never waived for convenience; a genuine false positive is logged with its reason and
      counts as dissent, not a waiver.
@@ -441,11 +423,9 @@ no-finding result, and a duplicate or incomplete batch does not count as the rou
 round <n>: verdict=<APPROVE|FIX-THEN-SHIP|BLOCK> must-fix=<m> suggestions=<c> | fixed=<x> dissent=<y> followups=<ids> | remaining=<m'>
 ```
 
-**Termination.** Stop on the first APPROVE. After FIX-THEN-SHIP, fix and verify; if budget remains, review the pushed fix. At the cap, report the fixes as unreviewed and stop if a required approval or finding remains unresolved. Do not merge without the Step 8 approval gate or open an extra round.
+**Termination.** Stop on the first APPROVE. After FIX-THEN-SHIP, fix and verify; if budget remains, review the pushed fix. At the cap, report the fixes as unreviewed and hold only landing if a required approval or finding remains unresolved; continue independent work. Do not merge without the Step 8 approval gate or open an extra round.
 
-**Escalate via the supervisor immediately**, without spending another round, on a BLOCK verdict,
-or if a fix would require a design change the consensus plan does not cover. Another review
-round is not the tool for either.
+On a BLOCK verdict or a needed design change, have the supervisor coordinate diagnosis, a revised plan and the authorized repair. Ask the user only when a required decision or permission cannot be resolved from the existing scope. Do not exceed the review cap.
 
 
 ## Step 7 - SIMPLIFY
@@ -482,7 +462,7 @@ Merge by default, without a separate approval prompt. Follow CI and resolve fail
 
 - the review loop terminated cleanly per Step 6 - the last round verdicts APPROVE with zero
   must-fix. Terminating at the cap *with* must-fix open is not a clean
-  termination: that path stops and reports instead of merging
+  termination: hold merging, continue independent work, and report the remaining gate
 - Step 7 ran (or the user skipped it), and any simplification edits it made were pushed with a
   green Step 4b gate (ci-only mode: pushed plus CI green)
 - the **Step 4b gate is green on the exact commit being merged** - in local mode re-run the full
@@ -521,8 +501,7 @@ cross-workspace type or test breakage appears; in ci-only mode push plus CI gree
 on the rebased commit is the evidence. Never force-push the target branch.
 
 **If CI is red**, do not merge. Dispatch a targeted fix for the specific failure, re-verify
-(Step 4b), push, and re-check. Fixing red CI does not open a new review round either. If it
-stays red, escalate via the supervisor with the failing check name and log location.
+(Step 4b), push, and re-check. Fixing red CI does not open a new review round either. If it stays red, investigate the failing check and continue repair or independent work; report the evidence if an external dependency prevents progress.
 
 **Do not clean up yet.** Step 9 QA still needs the worktree (and the deck is written there).
 Leave cleanup to Step 9. Never remove a worktree that still has uncommitted or unpushed
@@ -576,9 +555,7 @@ executes it.
    bake it into files; never print it in logs or the report - record only `token: provided (redacted)`.
    QA waits for a working token rather than faking the authenticated path.
 4. **Run it, record evidence.** Commands run, data used, what was observed, what passed/failed.
-   A QA failure is a stop-and-report via the supervisor with the failing proof attached - not a
-   silent re-implementation. Small fixes for QA-found bugs ride the Step 4b gate; anything
-   larger becomes a follow-up ticket.
+   A QA failure triggers diagnosis and repair with the failing proof attached. Run the Step 4b gate on fixes, repeat affected QA, and continue independent work. Report any work outside the authorized scope as a follow-up.
 5. **Write the slide deck.** Prefer the repo's existing deck convention when one exists;
    otherwise write markdown slides to `qa/<branch-slug>-deck.md` in the worktree (one
    `#`-titled slide per `---` separator): context, what changed, real-data proof (commands +
@@ -693,7 +670,7 @@ risk:      <=2 lines of residual risk, or none
 - **Skipping QA or accepting gate-green as proof.** Step 9 always runs with real data against the changed path. Suite output is the floor; the recorded proof is the bar.
 - **Faking the authenticated QA path.** If QA needs a session token you do not have, the supervisor asks for it and QA waits. Never mock what should be a logged-in pass, never bake the token into files, never print it.
 - **Cleaning up the worktree before the deck is delivered.** Step 8 never removes it; Step 9 keeps it until the deck is copied out (always on "don't merge"). A deck that only exists inside a removed worktree was never delivered.
-- **Running typechecks, tests, builds, or generators locally without asking.** The supervisor asks local-vs-CI once before the first gate run; one answer covers all of them. Running any of them first and asking after breaches permission.
+- **Ignoring the requested verification mode.** Honor an explicit `ci-only` or local constraint and report the actual checks.
 - **Claiming local proof in ci-only mode.** In ci-only mode every unrun local line says `ci-only mode`, the merge rides on CI green plus APPROVE verdicts, and nothing implies a local run happened.
 - **Treating an unrelated dirty working tree as part of the task.** The supervisor relays it as a batched question. Ask through it first.
 - **Opening a draft PR or ending a turn on the activation line alone.** PRs are always ready (`gh pr ready` repair when the repo defaults to drafts); the activation line ships with the first Step 1 action.

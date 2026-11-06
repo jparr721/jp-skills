@@ -50,8 +50,7 @@ Start or inherit a single-item hotfix scope through the bounded host in that pol
 
 1. Observe the symptom (browser, CLI, logs, or pasted evidence) and pin the exact source
    lines responsible — file paths plus line ranges.
-2. State the pin back to the user with the observed evidence. No pin → stop and ask;
-   never proceed to spread analysis on an unconfirmed guess.
+2. State the pin with observed evidence. If the cause is not yet pinned, continue investigation, collect independent evidence, and test hypotheses; ask only for information unavailable through authorized sources. Do not treat a guess as a confirmed pin.
 
 ### Step 3 - SPREAD (issue spread analysis, conditional 1→3)
 
@@ -89,14 +88,13 @@ reproduce the bug are left untouched and reported as checked-clean.
 1. **Review.** Run the `jp-pr-review-toolkit` light variant once over the scoped diff: one sweep
    agent across all five angles, one combined Level plus Splinter challenge, verdict block
    required. Pass the confirmed pin as the task source. The canonical review, lighter than the
-   pipeline full fight: no defense round, no second completed review. A missing verdict block leaves
-   the attempt unresolved; reconcile it with the same owner and never guess or start a duplicate.
+   pipeline full fight: no defense round, no second completed review. A missing verdict leaves the attempt unresolved. Reconcile with the owner; if the host proves the attempt ended without a valid verdict, retry with a new assignment key. Continue independent work while truly uncertain effects are reconciled.
 2. **Enforce** the verdict: FIX-THEN-SHIP must-fix clears here like any other scoped site;
    BLOCK stops SHIP and hands the work to `jp-pipeline` with the verdict and inherited budget attached. The handoff does not grant a new review round.
 3. Repro after: show the same observation passing where it failed before.
 4. Verify in the requested mode. In `ci-only` mode use CI for tests, typecheck and lint; otherwise run checks suited to the change. Add regression coverage when required by the request or repository.
 5. Report the diff stat, the verdict, plus what was checked-clean, then continue to SIMPLIFY (no handoff — continue through PR, CI, merge, and verification).
-6. Reuse the Step 1 intake creds first for any authenticated check; ask for a token set (what token, what scope/expiry, where to paste) only when missing, expired, or lacking scope. Missing/insufficient token is a single stop-and-report question — never fake the authenticated path. This is repro-after with auth, not a QA deck.
+6. Reuse the Step 1 intake creds first for any authenticated check; ask for a token set (what token, what scope/expiry, where to paste) only when missing, expired, or lacking scope. For a missing or insufficient token, ask once and continue independent work while waiting; never fake the authenticated path. This is repro-after with auth, not a QA deck.
 
 ### Step 7 - SIMPLIFY
 
