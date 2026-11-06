@@ -23,7 +23,7 @@ One **principal orchestrator** freezes the selected ticket queue in the bounded 
 **sub-orchestrator** per ticket; each runs `jp-pipeline` within its inherited scope and reports a bounded outcome.
 The principal merges in topological order and closes the epic only when its whole scope is complete.
 
-Scale rule: run ticket implementation and verification in parallel. Defer ticket reviews to cross-queue review before any merge. Each review round consumes one from each covered change's shared budget; honor any stricter inherited cap. Fix actionable findings and verify; re-review updated changes when budget remains, stopping on APPROVE.
+Scale rule: continuously identify ready independent regions and run ticket implementation and verification in parallel; refill capacity on each completion or stall without waiting for the whole wave. Defer ticket reviews to cross-queue review before any merge. Each review round consumes one from each covered change's shared budget; honor any stricter inherited cap. Fix actionable findings and verify; re-review updated changes when budget remains, stopping on APPROVE.
 
 Resolve `jp-pipeline` from the installed registry or the configured skills checkout. If unavailable, recover access while continuing independent intake and planning; use the shared coordinator and preserve the user's requested verification and landing gates.
 

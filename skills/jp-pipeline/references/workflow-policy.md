@@ -12,7 +12,7 @@ Coordination is executable, not a prompt-maintained ledger: use the host's share
 
 ### Workstream scheduling
 
-The coordinator multiplexes the task: identify independent workstreams, dispatch them concurrently as soon as they are ready, and keep scheduling ready work whenever capacity opens. Use the available host capacity and supported fallback execution; when capacity is limited, queue the remaining work and start it as slots become available. A failure, missing receipt, question, CI run or review delays only work that actually depends on it. Reconcile ownership before retrying a possibly active worker; do not duplicate side effects or assign overlapping writers. Coordinate integration and landing after their real dependencies are ready.
+The coordinator actively finds parallel burn-down regions: decompose the remaining work by actual dependencies and write ownership, identify every ready independent workstream, and dispatch them concurrently as soon as capacity permits. On each completion, stall, failure or newly discovered dependency, rescan the remaining work and fill available slots; do not wait for an entire wave when another region is ready. Use the available host capacity and supported fallback execution; when capacity is limited, queue the remaining work and start it as slots become available. A failure, missing receipt, question, CI run or review delays only work that actually depends on it. Reconcile ownership before retrying a possibly active worker; do not duplicate side effects or assign overlapping writers. Coordinate integration and landing after their real dependencies are ready.
 
 ### Cross-repository work
 

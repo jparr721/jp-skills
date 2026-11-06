@@ -17,6 +17,8 @@ Before dispatch, read the shared authority at the installed `jp-pipeline` skill'
 
 For a task spanning Git repositories, automatically coordinate a separate bounded pipeline per repository using the policy's cross-repository procedure; do not ask the user to choose a split. Start or inherit the bounded scope by the policy's host procedure before dispatch. A standalone run freezes its one item with `bounded_begin`; a nested run keeps the parent's scope and uses `bounded_nest`. Route assignments, review and completion through that host, and recover missing capabilities through the same owner. Continue independent work; hold only actions that require the unavailable capability instead of starting a separate ledger.
 
+**Parallel burn-down:** The supervisor continuously finds independent ready work and schedules it concurrently within available capacity, including across repositories. Re-scan on every completion or stall; a blocked lane does not hold unrelated work. Preserve actual dependencies, single-writer ownership, inherited budgets and uncertain-effect fencing.
+
 For a standalone pipeline, the Step 1 supervisor owns the run and is the sole user contact:
 workers route questions to it via `hub`; it batches questions and returns the final report.
 
