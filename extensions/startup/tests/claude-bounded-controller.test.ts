@@ -1,4 +1,8 @@
 import { expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 import { ClaudeBoundedController } from "../src/claude-bounded-controller";
 
@@ -21,6 +25,29 @@ test.each(["merged", "ready-pr"])("hotfix accepts %s landing", async (landing) =
   }));
   expect(scope.scopeId).toBeTruthy();
   controller.close();
+});
+
+test.each(["merged", "ready-pr"])("nested hotfix inherits %s and needs no human go", async (landing) => {
+  const directory = mkdtempSync(join(tmpdir(), "hotfix-landing-"));
+  const previousPath = process.env.PATH;
+  const cwd = realpathSync(process.cwd());
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
+  const pr = JSON.stringify({ headRefOid: head, baseRefName: "main", state: "OPEN", isDraft: false, url: "https://example.test/pr/1", mergeCommit: null });
+  writeFileSync(join(directory, "gh"), `#!/bin/sh\nprintf '%s\\n' '${pr}'\n`);
+  chmodSync(join(directory, "gh"), 0o755);
+  process.env.PATH = `${directory}:${previousPath}`;
+  const controller = new ClaudeBoundedController("session", cwd);
+  try {
+    const parent = begin.parse(await invoke(controller, "bounded_begin", { workflow: "pipeline", itemIds: ["one"], reviewLimit: 2, runtimeLimit: 1, target: "main", landing, allowedChildTargets: [] }));
+    const child = begin.parse(await invoke(controller, "bounded_nest", { parentId: parent.scopeId, workflow: "hotfix", itemIds: ["one"], reviewLimit: 1, target: "main" }));
+    await expect(invoke(controller, "bounded_complete", { scopeId: child.scopeId, itemId: "one", worktree: cwd, head, prNumber: 1 })).rejects.toThrow(
+      landing === "merged" ? "PR has not merged" : "Canonical completion gates are not satisfied",
+    );
+  } finally {
+    controller.close();
+    process.env.PATH = previousPath;
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("factory planner and native Agent result share one authority and fixed queue", async () => {

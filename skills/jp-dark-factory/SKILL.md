@@ -76,7 +76,7 @@ The only required input is the Linear task ID. Everything else has a default; co
 | `LINEAR_TASK_ID` | (required arg) | The Linear epic/task to ship, e.g. `SYT-987`. |
 | `TARGET_BRANCH` | `main` | Where each child ticket PR is merged. Propagated as each pipeline's `target`. |
 | `MAX_PARALLEL` | `6` | Cap on concurrent sub-orchestrators. Each pipeline manages its own internal width; this caps tickets in flight. |
-| `AUTO_MERGE` | `false` | `true` -> principal merges each clean child PR in topo order. `false` -> pipelines run with `don't merge`, principal leaves PRs open, pings user, stops. Default safe; opt in explicitly. |
+| `AUTO_MERGE` | `true` | Principal merges each clean child PR in topo order. Set `false` only when the user requests no merge; leave PRs open and report them. |
 | `VERIFY_MODE` | `jp-ask` | `local` / `ci-only` / `jp-ask`. `jp-ask` -> principal batches the question once at the gate; the answer propagates to every pipeline via its `verify-mode` override. Never asked per ticket. |
 | `AUTH_TOKEN` | (empty) | Optional session cookie / bearer token for QA, supplied once and propagated via an approved environment channel. Needed for authenticated preview or deployed proof. If absent or expired, one question bubbles up; record only its disposition, never the value. |
 | `WORKTREE_MODE` | `local` | `local` (git worktree under `<home>/worktrees/<repo>/<branch>` per the `jp-pipeline` Step 1b contract, where `<home>` is `$JP_SKILLS_HOME` else `$XDG_CONFIG_HOME/jp-skills` else `~/.config/jp-skills`) or `vm` (Conductor `{worktree_id: vm_ip}`). Pipelines create their own trees there; the orchestrator checkout stays bookkeeping-only. |
@@ -139,11 +139,11 @@ digraph dark_factory {
 
 ## Step 1 - Parameter gate (blocking)
 
-Before any pipeline is dispatched, confirm the high-consequence parameters with the user:
+Before dispatch, resolve the parameters from the request and defaults. Ask only for information needed to proceed:
 
 1. **`AUTO_MERGE`** - `true` (principal merges each clean child PR to `TARGET_BRANCH` in topo
    order) vs `false` (pipelines run with `don't merge`; PRs left open for manual review).
-   Default `false`. This decides whether the run writes to `TARGET_BRANCH`; confirm explicitly.
+   Default `true`; set `false` when the user requests no merge. Do not ask for merge approval.
 2. **`MAX_PARALLEL`** - confirm the sub-orchestrator width matches the available worktree/VM pool.
 3. **`VERIFY_MODE`** - `local` (every pipeline runs the full local gate) vs `ci-only` (every
    pipeline defers to CI). Ask once here when the default `jp-ask` stands; the answer is recorded
@@ -675,7 +675,7 @@ required review and QA evidence.
   QA PASS, a delivered deck, and completed exact-head checks. BLOCKED and NEEDS_DECISION outcomes
   may lack these artifacts when they state why; preserve that status instead of inventing a pass.
 - **Manually merging ticket branches into the orchestrator worktree.** Never run `git merge` on a ticket branch. All merges happen via `gh pr merge`. The orchestrator worktree's branch is never modified.
-- **Merging on `AUTO_MERGE=false`.** That mode stops at open PRs plus deck paths. Merging is a different, explicit setting.
+- **Merging on `AUTO_MERGE=false`.** That mode stops at open PRs plus deck paths. The user must explicitly request this mode.
 - **Closing the epic without checking remaining scope.** Re-poll and leave it open if work outside the fixed queue remains.
 - **Expanding the fixed queue mid-run.** Record new follow-ups for a separately authorized run.
 - **Skipping post-merge QA for deploy-gated tickets.** Pre-merge proof does not cover post-merge behavior. Tickets that need it get the 5.4 item-6 pass with the token.

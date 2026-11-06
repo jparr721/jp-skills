@@ -53,6 +53,5 @@ export function claudeBoundedHookSettings(bun: string, script: string): object {
   const command = `${quote(bun)} ${quote(script)}`;
   return { hooks: {
     ...Object.fromEntries(["PreToolUse", "PostToolUse", "PostToolUseFailure"].map((event) => [event, [{ matcher: event === "PreToolUse" ? "Agent|^mcp__bounded__.*" : "Agent", hooks: [{ type: "command", command, timeout: 30, ...(event === "PreToolUse" ? { onFailure: "block" } : {}) }] }]])),
-    UserPromptSubmit: [{ hooks: [{ type: "command", command, timeout: 30, onFailure: "block" }] }],
   } };
 }
