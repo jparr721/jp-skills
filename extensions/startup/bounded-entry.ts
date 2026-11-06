@@ -78,6 +78,9 @@ export default function boundedEntry(pi: ExtensionAPI): void {
     if (ctx.agent.id !== inheritedOwner && !childScopes.get(ctx.agent.id)?.has(scopeId)) throw new Error("Native child has no capability for this inherited scope");
     return client;
   }
+  const rejectNativeError = (native: { isError?: boolean; content: readonly { type: string; text?: string }[] }) => {
+    if (native.isError) throw new Error(`Native task failed: ${native.content.filter((block) => block.type === "text").map((block) => block.text).join("\n")}`);
+  };
   const result = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }] });
   function verifyReadyPr(scopeId: string, handoff: Readonly<{ itemId: string; worktree: string; head: string; prNumber: number }>, rootCwd: string): { url: string; target: string } {
     const policy = landingScopes.get(scopeId);
@@ -317,7 +320,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
   });
   pi.on("session_shutdown", async (_event, ctx) => { if (ctx.agent.kind === "main") { await Promise.all([...inheritedClients.values()].map((client) => client.close())); await bridge?.close(); } });
   // The host supplies invokeTool only for an override of the actual native task tool.
-  pi.registerTool({ name: "task", label: "Bounded native task", description: "Dispatch one assignment through the real native task tool. Set planner for the factory's initial graph; reviews require independently dispatched reviewers and verified worktree heads.", parameters: z.object({ scopeId: text, itemId: text, assignmentKey: text, context: z.string(), tasks: z.array(taskItem).min(1).max(1), planner: z.boolean().optional(), role: z.object({ kind: z.enum(["architect", "dev", "qa"]), worktree: text }).strict().optional(), review: z.array(z.object({ changeId: text, head: text, worktree: text }).strict()).min(1).optional() }),
+  pi.registerTool({ name: "task", label: "Bounded native task", strict: false, description: "Dispatch one assignment through the real native task tool. Set planner for the factory's initial graph. Omit role and review when unused; never supply both. Reviews require independently dispatched reviewers and verified worktree heads.", parameters: z.object({ scopeId: text, itemId: text, assignmentKey: text, context: z.string(), tasks: z.array(taskItem).min(1).max(1), planner: z.boolean().optional(), role: z.object({ kind: z.enum(["architect", "dev", "qa"]), worktree: text }).strict().optional(), review: z.array(z.object({ changeId: text, head: text, worktree: text }).strict()).min(1).optional() }),
     async execute(_id, params, _signal, _update, ctx) {
       if (inheritedManifest) {
         const inherited = inheritedAuthority(ctx, params.scopeId);
@@ -336,7 +339,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
           const { reservationId, launchId } = await inherited.reservePlan();
           try {
             const native = await ctx.invokeTool({ context: params.context, tasks: [{ ...task, task: `${task.task}\nReturn one JSON object containing dependencies and targets maps keyed by every frozen item. Dependencies name only frozen items; targets are allowed Git branch names. Frozen items: ${JSON.stringify(scope.scope.itemIds)}` }] });
-            if (native.isError) throw new Error("Inherited planner dispatch failed");
+            rejectNativeError(native);
             const done = synchronous.safeParse(native.details);
             const running = done.success ? null : progress.parse(native.details).progress;
             const spawned = done.success ? done.data.results : running ?? [];
@@ -376,6 +379,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         try {
           const native = await ctx.invokeTool({ context: params.context, tasks: nativeTasks });
           const done = synchronous.safeParse(native.details);
+          if (!done.success) rejectNativeError(native);
           let evidence: unknown = native;
           if (!done.success) {
             const spawned = progress.parse(native.details).progress;
@@ -464,6 +468,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         const dispatch = await current.plan(params.scopeId, async (reservationId) => {
           const native = await invoke({ context: params.context, tasks: [{ ...task, task: `${task.task}\nReturn one JSON object containing dependencies and targets maps keyed by every frozen item. Dependencies name only frozen items; targets are allowed Git branch names. Frozen items: ${JSON.stringify(frozen.itemIds)}` }] });
           const done = synchronous.safeParse(native.details);
+          if (!done.success) rejectNativeError(native);
           if (done.success && done.data.results.length === 1 && done.data.results[0]?.index === 0) {
             const terminal = done.data.results[0];
             if (registry.get(terminal.id)?.parentId !== ctx.agent.id) throw new Error("Planner result ancestry does not match dispatch");
@@ -550,6 +555,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         const native = await invoke({ context: params.context, tasks: nativeTasks });
         nativeResult = native;
         const done = synchronous.safeParse(native.details);
+        if (!done.success) rejectNativeError(native);
         if (done.success && done.data.results.length === 1 && done.data.results[0]?.index === 0) {
           const terminal = done.data.results[0];
           if (registry.get(terminal.id)?.parentId !== ctx.agent.id) throw new Error("Native result ancestry does not match dispatch");
