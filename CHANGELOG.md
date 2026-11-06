@@ -2,6 +2,11 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [8.1.5] - 2026-11-06
+
+- Report native OMP task errors without masking them as missing progress, while retaining uncertain reservations and duplicate-dispatch protection.
+- Clarify bounded task role and review options and disable strict output grammar for the task interface.
+
 ## [8.1.4] - 2026-11-05
 
 - Keep an inherited host's correlated native completion separate from its role proof. Malformed role output reports `completed_without_role`, consumes the assignment key, and cannot itself satisfy a role gate; ambiguous identities remain uncertain.

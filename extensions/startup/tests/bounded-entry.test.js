@@ -262,3 +262,30 @@ test.each([
     await bridge.close();
   }
 });
+
+test("native preflight errors remain visible and uncertain assignments cannot be replayed", async () => {
+  const tools = new Map();
+  const sessionManager = { getSessionId: () => "session" };
+  const jobs = [];
+  const root = { id: "root", session: { sessionManager, asyncJobManager: { getAllJobs: () => jobs } } };
+  boundedEntry({ zod: z, pi: { AgentRegistry: { global: () => ({ get: () => root }) } }, registerTool: (tool) => tools.set(tool.name, tool), on: () => {} });
+  const taskTool = tools.get("task");
+  const schema = z.toJSONSchema(taskTool.parameters);
+  expect(taskTool.strict).toBe(false);
+  expect(schema.required).not.toContain("role");
+  expect(schema.required).not.toContain("review");
+  let calls = 0;
+  const context = { agent: { id: "root", kind: "main" }, sessionManager, cwd: process.cwd(), invokeTool: async () => {
+    calls++;
+    return { isError: true, content: [{ type: "text", text: 'Unknown agent "general"' }], details: { results: [] } };
+  } };
+  const call = (name, args) => tools.get(name).execute("test", args, undefined, undefined, context);
+  const begin = JSON.parse((await call("bounded_begin", { workflow: "pipeline", itemIds: ["A"], reviewLimit: 2, landing: { mode: "ready-pr", target: "main" } })).content[0].text);
+  const args = { scopeId: begin.scopeId, itemId: "A", assignmentKey: "architect", context: "test", role: { kind: "architect", worktree: process.cwd() }, tasks: [{ agent: "general", task: "Plan", solutionSpace: "Read only" }] };
+  await expect(call("task", args)).rejects.toThrow('Unknown agent "general"');
+  const status = JSON.parse((await call("bounded_status", { scopeId: begin.scopeId })).content[0].text);
+  expect(status.reservations[0].state).toBe("uncertain");
+  await expect(call("bounded_reconcile", { scopeId: begin.scopeId, reservationId: status.reservations[0].id })).rejects.toThrow("do not redispatch");
+  await expect(call("task", args)).rejects.toThrow();
+  expect(calls).toBe(1);
+});
