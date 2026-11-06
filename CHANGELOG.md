@@ -2,6 +2,12 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [8.1.2] - 2026-11-05
+
+- Start Tern bounded workers without retaining a shell wrapper, and wait for verified process identity before publishing their private attachment manifest. Failed or ambiguous launches remain uncertain.
+- Treat native task receipts with empty `results` and populated `progress` as in-flight, so inherited assignments and planners can complete with correlated receipts.
+- Run Startup verification on GitHub-hosted Linux instead of self-hosted runners.
+
 ## [8.1.1] - 2026-11-03
 
 - Invalidate factory dependency readiness when another assignment is reserved, in both standalone and persisted Startup authorities. Dependents wait until matching-head readiness is verified again.
