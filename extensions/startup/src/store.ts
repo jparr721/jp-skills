@@ -108,6 +108,15 @@ import {
 import { dispatchWorkflow, executeWorkflow, type WorkflowRequest, type WorkflowView } from "./workflow-engine";
 import type { WorkflowBridgeAuthority, WorkflowRoleAssignment, WorkflowRunHandoff } from "./workflow-bridge";
 type WorkflowRoleReceipt = Parameters<NonNullable<WorkflowBridgeAuthority["settleRole"]>>[2];
+// Historical-envelope consumer: intentionally non-strict projection of the four core receipt fields. Producers stay strict; the saved immutable result is never rewritten.
+const workflowReviewReceiptSchema = z
+  .object({
+    kind: z.literal("workflow-review"),
+    reservationId: idSchema,
+    head: z.string().trim().min(1),
+    verdict: z.enum(["approve", "changes-requested", "block"]),
+  })
+  .readonly();
 const workflowReviewSchema = z.strictObject({
   changeId: idSchema, reservationId: idSchema, head: z.string().trim().min(1),
   reviewerId: idSchema, messageId: idSchema, limit: z.number().int().min(1).max(3),
@@ -3114,7 +3123,7 @@ export function openStore(args: {
         if (saved === null || saved.result.kind !== "completed" || claim?.status !== "settled" ||
             claim.messageId !== existing.messageId || claim.employeeId !== existing.reviewerId)
           throw new StoreAuthorityError("Review requires its reviewer's completed, settled assignment result");
-        const receipt = z.strictObject({ kind: z.literal("workflow-review"), reservationId: idSchema, head: z.string().trim().min(1), verdict: z.enum(["approve", "changes-requested", "block"]) }).parse(saved.result.output);
+        const receipt = workflowReviewReceiptSchema.parse(saved.result.output);
         if (receipt.reservationId !== reservationId || receipt.head !== existing.head)
           throw new StoreConflictError("Review result does not match its reservation and exact head");
         return workflow({ kind: "review-settle", role: sender.role, reservationId, head: receipt.head, verdict: receipt.verdict }, () => {
