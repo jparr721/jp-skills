@@ -1779,7 +1779,7 @@ test("manager imports a legacy root through an authenticated command", async () 
 });
 
 
-test("coordinator settles an offline OMP run from its independently observed review", async () => {
+test.skipIf(!Bun.which("omp"))("coordinator settles an offline OMP run from its independently observed review", async () => {
   if (process.env.JP_COORDINATOR_OFFLINE_CHILD !== "1") {
     const directory = mkdtempSync(join(tmpdir(), "startup-gh-path-"));
     try {

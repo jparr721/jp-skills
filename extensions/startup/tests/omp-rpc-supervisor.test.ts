@@ -30,9 +30,9 @@ test("review evidence requires the reserved token on the same native invocation"
   }
 });
 
-test("owned OMP RPC process responds and journals lifecycle when installed", async () => {
+test.skipIf(!Bun.which("omp"))("owned OMP RPC process responds and journals lifecycle when installed", async () => {
   const binary = Bun.which("omp");
-  if (!binary) return;
+  if (!binary) throw new Error("OMP executable disappeared before the test started");
   const directory = mkdtempSync(join(tmpdir(), "omp-rpc-owner-"));
   const path = join(directory, "journal.jsonl");
   try {
@@ -47,9 +47,9 @@ test("owned OMP RPC process responds and journals lifecycle when installed", asy
 }, 30000);
 
 
-test("owned RPC host tool reserves before native execution on a real OMP host", async () => {
+test.skipIf(!Bun.which("omp"))("owned RPC host tool reserves before native execution on a real OMP host", async () => {
   const binary = Bun.which("omp");
-  if (!binary) return;
+  if (!binary) throw new Error("OMP executable disappeared before the test started");
   const directory = mkdtempSync(join(tmpdir(), "omp-rpc-reserve-"));
   const extension = join(directory, "probe.ts");
   const captured = Promise.withResolvers<ExpectedReview>();
@@ -64,9 +64,9 @@ test("owned RPC host tool reserves before native execution on a real OMP host", 
 }, 30000);
 
 
-test("bounded entry requests coordinator review before native reviewer starts on real OMP", async () => {
+test.skipIf(!Bun.which("omp"))("bounded entry requests coordinator review before native reviewer starts on real OMP", async () => {
   const binary = Bun.which("omp");
-  if (!binary) return;
+  if (!binary) throw new Error("OMP executable disappeared before the test started");
   const directory = mkdtempSync(join(tmpdir(), "omp-bounded-rpc-"));
   const extension = join(directory, "probe.ts");
   mkdirSync(join(directory, "repo"));
@@ -115,9 +115,9 @@ export default function(pi) {
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }, 30000);
 
-test("real OMP steer delivers to running and idle sessions", async () => {
+test.skipIf(!Bun.which("omp"))("real OMP steer delivers to running and idle sessions", async () => {
   const binary = Bun.which("omp");
-  if (!binary) return;
+  if (!binary) throw new Error("OMP executable disappeared before the test started");
   const directory = mkdtempSync(join(tmpdir(), "omp-steer-"));
   const extension = join(directory, "offline.ts");
   writeFileSync(extension, `import { createAssistantMessageEventStream } from "@oh-my-pi/pi-ai";

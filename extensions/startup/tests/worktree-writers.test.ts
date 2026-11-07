@@ -5,8 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scanWorktreeWriters } from "../src/worktree-writers";
 
-test("observes a live write handle and clears after the writer exits", async () => {
-  if (!Bun.which("lsof") || !Bun.which("python3")) return;
+test.skipIf(!Bun.which("lsof") || !Bun.which("python3"))("observes a live write handle and clears after the writer exits", async () => {
   const root = mkdtempSync(join(tmpdir(), "startup-writer-"));
   const child = spawn("python3", ["-c", "import sys,time; f=open(sys.argv[1], 'w'); print('ready', flush=True); time.sleep(30)", join(root, "held")], { stdio: ["ignore", "pipe", "ignore"] });
   try {
