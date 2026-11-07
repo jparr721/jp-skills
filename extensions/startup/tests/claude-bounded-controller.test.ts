@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -30,7 +30,13 @@ test.each(["merged", "ready-pr"])("hotfix accepts %s landing", async (landing) =
 test.each(["merged", "ready-pr"])("nested hotfix inherits %s and needs no human go", async (landing) => {
   const directory = mkdtempSync(join(tmpdir(), "hotfix-landing-"));
   const previousPath = process.env.PATH;
-  const cwd = realpathSync(process.cwd());
+  const repo = process.env.JP_HOTFIX_TEST_CHILD ? process.cwd() : join(directory, "repo");
+  if (!process.env.JP_HOTFIX_TEST_CHILD) {
+    mkdirSync(repo);
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "fixture"], { cwd: repo });
+  }
+  const cwd = realpathSync(repo);
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
   const pr = JSON.stringify({ headRefOid: head, baseRefName: "main", state: "OPEN", isDraft: false, url: "https://example.test/pr/1", mergeCommit: null });
   writeFileSync(join(directory, "gh"), `#!/bin/sh\nprintf '%s\\n' '${pr}'\n`);

@@ -149,3 +149,51 @@ describe("bounded workflow host", () => {
     expect(() => new BoundedWorkflowHost("factory", ["same", "same"], 3)).toThrow();
   });
 });
+
+test("manager-led pipeline requires independently dispatched approval at the completed head", () => {
+  const host = new BoundedWorkflowHost("pipeline", ["one"], 2, undefined, { mode: "manager-led", ownerId: "owner" });
+  const work = host.reserve(host.rootId, "one", "implementation");
+  host.settle(host.rootId, work, "completed");
+  host.recordImplementationActor(host.rootId, "one", work, "author");
+  expect(() => host.complete(host.rootId, "one", "head")).toThrow();
+  const review = host.reserveReview(host.rootId, [{ changeId: "one", head: "head" }]);
+  host.recordReviewActor(host.rootId, review, "author");
+  host.settleReview(host.rootId, review, [{ changeId: "one", head: "head" }], "approve");
+  expect(() => host.complete(host.rootId, "one", "head")).toThrow();
+});
+
+test("manager-led pipeline completes only with independent matching-head review", () => {
+  const host = new BoundedWorkflowHost("pipeline", ["one"], 2, undefined, { mode: "manager-led", ownerId: "owner" });
+  const work = host.reserve(host.rootId, "one", "implementation");
+  host.settle(host.rootId, work, "completed");
+  host.recordImplementationActor(host.rootId, "one", work, "author");
+  const review = host.reserveReview(host.rootId, [{ changeId: "one", head: "head" }]);
+  host.recordReviewActor(host.rootId, review, "reviewer");
+  host.settleReview(host.rootId, review, [{ changeId: "one", head: "head" }], "approve");
+  expect(() => host.complete(host.rootId, "one", "other")).toThrow();
+  host.complete(host.rootId, "one", "head");
+  host.complete(host.rootId, "one", "head");
+  expect(() => host.complete(host.rootId, "one", "other")).toThrow();
+  expect(host.view(host.rootId).completedItemIds).toEqual(["one"]);
+});
+
+test("manager-led approval from the owner cannot authorize completion", () => {
+  const host = new BoundedWorkflowHost("hotfix", ["one"], 1, undefined, { mode: "manager-led", ownerId: "owner" });
+  const work = host.reserve(host.rootId, "one", "work");
+  host.settle(host.rootId, work, "completed");
+  const review = host.reserveReview(host.rootId, [{ changeId: "one", head: "head" }]);
+  host.recordReviewActor(host.rootId, review, "owner");
+  host.settleReview(host.rootId, review, [{ changeId: "one", head: "head" }], "approve");
+  expect(() => host.complete(host.rootId, "one", "head")).toThrow();
+});
+
+test("manager-led approval does not bypass uncertain assignments", () => {
+  const host = new BoundedWorkflowHost("pipeline", ["one"], 2, undefined, { mode: "manager-led", ownerId: "owner" });
+  const work = host.reserve(host.rootId, "one", "work");
+  host.settle(host.rootId, work, "uncertain");
+  const review = host.reserveReview(host.rootId, [{ changeId: "one", head: "head" }]);
+  host.recordReviewActor(host.rootId, review, "reviewer");
+  host.settleReview(host.rootId, review, [{ changeId: "one", head: "head" }], "approve");
+  expect(() => host.complete(host.rootId, "one", "head")).toThrow();
+  expect(() => host.reserve(host.rootId, "one", "work")).toThrow();
+});

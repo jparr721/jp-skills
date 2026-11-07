@@ -2145,3 +2145,410 @@ test("claim selection does not decode unrelated historical inboxes or claims", (
   expect(f.store.claimNext({ employee: f.store.managerBinding })?.message.id).toBe("real-new-error");
   f.store.close();
 });
+
+test("manager captures work and reserves a pipeline without a team or PA", () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "direct-event", input: "request", amendItemIds: [] } });
+  const capture = { captureId: "direct-capture", eventId: "direct-event", rows: [{ id: "direct-item", expectedRevision: null, fields: fields("Do work") }], receipt: "captured" };
+  expect(f.store.captureIntake({ architect: f.store.managerBinding, capture }).teamId).toBeNull();
+  expect(f.store.captureIntake({ architect: f.store.managerBinding, capture }).items[0]?.id).toBe("direct-item");
+  expect(f.store.managerPendingWork().undelegatedIntake).toBe(false);
+  const args = { manager: f.store.managerBinding, itemId: "direct-item", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work-one", launchKey: "direct-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  const run = f.store.reserveManagerRun(args);
+  expect(run).toMatchObject({ created: true, run: { launchKey: "direct-run", itemId: "direct-item", state: "starting", limit: 2 } });
+  expect(f.store.reserveManagerRun(args)).toEqual({ run: run.run, created: false });
+  expect(() => f.store.reserveManagerRun({ ...args, launchKey: "duplicate" })).toThrow();
+  expect(() => f.store.reserveManagerRun({ ...args, limit: 3 })).toThrow();
+  f.store.close();
+});
+
+test("manager run becomes uncertain on restart and cannot be duplicated", () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "restart-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "restart-capture", eventId: "restart-event", rows: [{ id: "restart-item", expectedRevision: null, fields: fields("Do work") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "restart-item", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "restart-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  f.store.close();
+  const reopened = openStore({ path: f.path, scope: f.scope, owner: f.owner, now: () => 1200 });
+  reopened.bindEmployee({ manager: reopened.managerBinding, binding: { ...reopened.managerBinding, assignment: null, source: source("manager") } });
+  expect(reopened.managerRuns()[0]?.state).toBe("uncertain");
+  expect(() => reopened.reserveManagerRun({ ...args, manager: reopened.managerBinding, launchKey: "retry" })).toThrow();
+  reopened.close();
+});
+
+test("manager runs permit distinct worktrees while fencing the same worktree and item", () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "race-event", input: "request", amendItemIds: [] } });
+  const capture = { captureId: "race-capture", eventId: "race-event", rows: [{ id: "one", expectedRevision: null, fields: fields("First") }, { id: "two", expectedRevision: null, fields: fields("Second") }, { id: "three", expectedRevision: null, fields: fields("Third") }], receipt: "captured" };
+  f.store.captureIntake({ architect: f.store.managerBinding, capture });
+  const secondWorktree = join(f.root, "second-worktree");
+  const secondRepo = join(f.root, "second-repo");
+  mkdirSync(secondWorktree);
+  mkdirSync(secondRepo);
+  const args = { manager: f.store.managerBinding, itemId: "one", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work-one", launchKey: "one-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  expect(f.store.reserveManagerRun({ ...args, itemId: "two", launchKey: "two-run", branch: "work-two", worktree: secondWorktree }).created).toBe(true);
+  expect(() => f.store.reserveManagerRun({ ...args, itemId: "three", launchKey: "same-branch", worktree: secondRepo })).toThrow();
+  expect(() => f.store.reserveManagerRun({ ...args, itemId: "three", launchKey: "conflict", repository: secondRepo })).toThrow();
+  expect(() => f.store.reserveManagerRun({ ...args, launchKey: "duplicate-other-tree", repository: secondRepo, worktree: secondRepo })).toThrow();
+  expect(() => f.store.captureIntake({ architect: f.store.managerBinding, capture: { ...capture, captureId: "race-amend", rows: [{ id: "one", expectedRevision: 1, fields: fields("First changed") }] } })).toThrow();
+  expect(() => f.store.acceptManagerRun({ manager: f.store.managerBinding, launchKey: "one-run", location: {} })).toThrow();
+  expect(f.store.acceptManagerRun({ manager: f.store.managerBinding, launchKey: "one-run", location: { nativeId: "pane-1" } }).state).toBe("accepted");
+  expect(f.store.settleManagerRun({ manager: f.store.managerBinding, launchKey: "one-run", state: "reported", outcome: { claim: "done" } }).state).toBe("accepted");
+  expect(() => f.store.reserveManagerRun({ ...args, itemId: "three", launchKey: "still-active-repo", worktree: secondWorktree })).toThrow();
+  expect(() => f.store.reserveManagerRun({ ...args, launchKey: "replay" })).toThrow();
+  f.store.acceptManagerRun({ manager: f.store.managerBinding, launchKey: "two-run", location: { nativeId: "pane-2" } });
+  f.store.settleManagerRun({ manager: f.store.managerBinding, launchKey: "two-run", state: "failed", outcome: { error: "failed after dispatch" } });
+  expect(() => f.store.reserveManagerRun({ ...args, itemId: "two", launchKey: "failed-retry", worktree: secondWorktree })).toThrow();
+  f.store.close();
+});
+
+test("legacy migration transfers only undispatched queued items without changing their team", () => {
+  const f = fixture();
+  const t = active(f, "legacy-event", []);
+  f.store.captureIntake({ architect: t.architectBinding, capture: { captureId: "legacy-capture", eventId: "legacy-event", rows: [
+    { id: "ready", expectedRevision: null, fields: fields("Ready") },
+    { id: "dispatched", expectedRevision: null, fields: { ...fields("Dispatched"), dispatched_at: 12 } },
+    { id: "needs-decision", expectedRevision: null, fields: { ...fields("Waiting"), status: "NEEDS_DECISION" } },
+    { id: "terminal", expectedRevision: null, fields: { ...fields("Rejected"), status: "REJECTED" } },
+  ], receipt: "captured" } });
+  const before = f.store.getTeam(t.team.id);
+  const receipt = f.store.migrateManagerQueue({ manager: f.store.managerBinding, migrationId: "migration-one" });
+  expect(receipt.migrated).toEqual(["ready"]);
+  expect(receipt.blocked).toEqual(expect.arrayContaining([
+    expect.objectContaining({ itemId: "dispatched" }),
+    expect.objectContaining({ itemId: "needs-decision" }),
+    expect.objectContaining({ itemId: "terminal" }),
+  ]));
+  expect(f.store.migrateManagerQueue({ manager: f.store.managerBinding, migrationId: "migration-one" })).toEqual(receipt);
+  expect(f.store.getTeam(t.team.id)).toEqual(before);
+  expect(() => f.store.transitionItem({ employee: t.architectBinding, request: { action: "assign", requestId: "old-assign", itemId: "ready", expectedRevision: 1, employeeId: t.dev, evidence: "work" } })).toThrow("manager");
+  expect(f.store.reserveManagerRun({ manager: f.store.managerBinding, itemId: "ready", workflow: "pipeline", limit: 2, target: "main", branch: "work-one", launchKey: "legacy-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot }).created).toBe(true);
+  f.store.close();
+});
+
+test("legacy migration retains review history and remaining review budget", () => {
+  const f = fixture();
+  const t = active(f, "history-event", []);
+  f.store.captureIntake({ architect: t.architectBinding, capture: { captureId: "history-capture", eventId: "history-event", rows: [
+    { id: "prior-review", expectedRevision: null, fields: fields("Already reviewed") },
+    { id: "uncertain-review", expectedRevision: null, fields: fields("Uncertain review") },
+  ], receipt: "captured" } });
+  const db = new Database(f.path);
+  const insert = db.query("INSERT INTO records(kind,id,payload) VALUES(?,?,?)");
+  const review = { changeId: "prior-review", reservationId: "old-review", head: "old-head", reviewerId: t.qa, messageId: "review-msg", limit: 2, state: "completed", verdict: "changes-requested", resultId: "old-result" };
+  insert.run("workflowReview", "old-review", JSON.stringify(review));
+  insert.run("workflowReview", "uncertain-review", JSON.stringify({ ...review, changeId: "uncertain-review", reservationId: "uncertain-review", state: "uncertain", verdict: null, resultId: null }));
+  db.close();
+  const receipt = f.store.migrateManagerQueue({ manager: f.store.managerBinding, migrationId: "history-migration" });
+  expect(receipt.migrated).toEqual(["prior-review"]);
+  expect(receipt.blocked).toContainEqual(expect.objectContaining({ itemId: "uncertain-review" }));
+  const args = { manager: f.store.managerBinding, itemId: "prior-review", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work-one", launchKey: "history-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  expect(() => f.store.reserveManagerRun(args)).toThrow("remaining inherited review limit");
+  expect(f.store.reserveManagerRun({ ...args, limit: 1 }).run.limit).toBe(1);
+  f.store.close();
+});
+
+test("verified completion holds its worktree until original worker termination is verified", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "verify-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "verify-capture", eventId: "verify-event", rows: [{ id: "one", expectedRevision: null, fields: fields("One") }, { id: "two", expectedRevision: null, fields: fields("Two") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "one", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work-one", launchKey: "verify-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  const location = { kind: "tern", blockId: "pane-1", pid: 123 };
+  f.store.acceptManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, location });
+  const head = "a".repeat(40);
+  const review = { reviewId: "review-1", launchKey: args.launchKey, head, reviewerId: "reviewer", invocationId: "job-1" };
+  f.store.reserveManagerReview({ manager: f.store.managerBinding, launchKey: review.launchKey, reviewId: review.reviewId, head: review.head });
+  f.store.bindManagerReview({ manager: f.store.managerBinding, reviewId: review.reviewId, reviewerId: review.reviewerId, invocationId: review.invocationId });
+  await f.store.settleManagerReview({ manager: f.store.managerBinding, reviewId: review.reviewId, verify: async () => ({ ...review, verdict: "approve" }) });
+  f.store.settleManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, state: "reported", outcome: { claim: "complete" } });
+  const evidence = { launchKey: args.launchKey, itemId: args.itemId, location, repository: args.repository, worktree: args.worktree, target: args.target, head, prNumber: 42, prState: "MERGED", prDraft: false, mergeCommit: "c".repeat(40), review: { reviewId: "review-1", reviewerId: "reviewer", invocationId: "job-1", head, verdict: "approve", rounds: 1 } };
+  const next = { ...args, itemId: "two", launchKey: "next-run" };
+  await expect(f.store.completeManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, verify: async () => null })).rejects.toThrow();
+  await expect(f.store.completeManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, verify: async () => ({ ...evidence, location: { ...location, pid: 456 } }) })).rejects.toThrow();
+  await expect(f.store.completeManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, verify: async () => ({ ...evidence, review: { ...evidence.review, head: "b".repeat(40) } }) })).rejects.toThrow();
+  expect(() => f.store.reserveManagerRun(next)).toThrow();
+  const completed = await f.store.completeManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, verify: async () => evidence });
+  expect(completed.state).toBe("completed");
+  expect(f.store.queueItems().find((item) => item.id === "one")?.status).toBe("MERGED");
+  expect(f.store.snapshot().queueRevisions.find((item) => item.id === "one")?.revision).toBe(2);
+  expect(() => f.store.reserveManagerRun(next)).toThrow();
+  f.store.close();
+  const reopened = openStore({ path: f.path, scope: f.scope, owner: f.owner, now: () => 1200 });
+  reopened.bindEmployee({ manager: reopened.managerBinding, binding: { ...reopened.managerBinding, assignment: null, source: source("manager") } });
+  expect(() => reopened.reserveManagerRun({ ...next, manager: reopened.managerBinding })).toThrow();
+  const proof = { launchKey: args.launchKey, itemId: args.itemId, location, status: "terminated", evidence: "native exit record" };
+  await expect(reopened.releaseManagerRun({ manager: reopened.managerBinding, launchKey: args.launchKey, verify: async () => ({ ...proof, location: { ...location, pid: 999 } }) })).rejects.toThrow();
+  const released = await reopened.releaseManagerRun({ manager: reopened.managerBinding, launchKey: args.launchKey, verify: async () => proof });
+  expect(released.state).toBe("completed");
+  expect(released.completion).toEqual(completed.completion);
+  expect(reopened.reserveManagerRun({ ...next, manager: reopened.managerBinding }).created).toBe(true);
+  expect(() => reopened.reserveManagerRun({ ...args, manager: reopened.managerBinding, launchKey: "duplicate-one" })).toThrow();
+  reopened.close();
+});
+
+test("a verified terminal run releases its repository without approving or replaying the item", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "terminal-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "terminal-capture", eventId: "terminal-event", rows: [{ id: "one", expectedRevision: null, fields: fields("One") }, { id: "two", expectedRevision: null, fields: fields("Two") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "one", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work-one", launchKey: "terminal-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  const location = { kind: "tern", blockId: "pane-1", pid: 123 };
+  f.store.acceptManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, location });
+  f.store.settleManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, state: "failed", outcome: { reason: "failed" } });
+  const proof = { launchKey: args.launchKey, itemId: args.itemId, location, status: "terminated", evidence: "native exit record", outcome: "failed-no-effect" };
+  const next = { ...args, itemId: "two", launchKey: "next-run" };
+  await expect(f.store.releaseManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, verify: async () => ({ ...proof, location: { ...location, pid: 456 } }) })).rejects.toThrow();
+  expect(() => f.store.reserveManagerRun(next)).toThrow();
+  const released = await f.store.releaseManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, verify: async () => proof });
+  expect(released.state).toBe("released");
+  expect(f.store.reserveManagerRun(next).created).toBe(true);
+  expect(() => f.store.reserveManagerRun({ ...args, launchKey: "replay" })).toThrow();
+  f.store.close();
+});
+
+test("completion verification cannot settle a run changed while the verifier was pending", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "verify-race", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "verify-race-capture", eventId: "verify-race", rows: [{ id: "race", expectedRevision: null, fields: fields("Race") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "race", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "race-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  const location = { kind: "tern", blockId: "pane-1", pid: 123 };
+  f.store.acceptManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, location });
+  const head = "a".repeat(40);
+  const evidence = { launchKey: args.launchKey, itemId: args.itemId, location, repository: args.repository, worktree: args.worktree, target: args.target, head, prNumber: 42, prState: "MERGED", prDraft: false, mergeCommit: "c".repeat(40), review: { reviewId: "review-1", reviewerId: "reviewer", invocationId: "job-1", head, verdict: "approve", rounds: 1 } };
+  const pending = Promise.withResolvers<unknown>();
+  const completion = f.store.completeManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, verify: () => pending.promise });
+  f.store.settleManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, state: "uncertain", outcome: "lost" });
+  pending.resolve(evidence);
+  await expect(completion).rejects.toThrow("changed during completion verification");
+  expect(f.store.managerRuns()[0]?.state).toBe("uncertain");
+  f.store.close();
+});
+
+test("quarantined imported legacy work cannot be resumed by ordinary capture", () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "import-event", input: "legacy", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "import-capture", eventId: "import-event", rows: [{ id: "old", expectedRevision: null, fields: { ...fields("Old"), status: "NEEDS_DECISION", legacy_import: { migrationId: "old", original: { status: "RUNNING" } } } }], receipt: "imported" } });
+  expect(() => f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "unsafe-resume", eventId: "import-event", rows: [{ id: "old", expectedRevision: 1, fields: { status: "QUEUED", legacy_import: null } }], receipt: "resume" } })).toThrow("reconciliation");
+  expect(f.store.queueItems()[0]?.status).toBe("NEEDS_DECISION");
+  f.store.close();
+});
+
+test("durable reviews require a correlated verifier and retain budget across restart", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "review-direct", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "review-direct-capture", eventId: "review-direct", rows: [{ id: "item", expectedRevision: null, fields: fields("Review") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "item", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "review-direct-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: f.store.managerBinding, launchKey: args.launchKey, location: { kind: "tern", blockId: "one", pid: 42 } });
+  const head = "a".repeat(40);
+  const request = { manager: f.store.managerBinding, launchKey: args.launchKey, reviewId: "review-1", head, reviewerId: "reviewer", invocationId: "job-1" };
+  expect(f.store.reserveManagerReview(request)).toMatchObject({ state: "active", reviewerId: null, invocationId: null });
+  await expect(f.store.settleManagerReview({ manager: f.store.managerBinding, reviewId: request.reviewId, verify: async () => null })).rejects.toThrow("native identity");
+  expect(f.store.reserveManagerReview(request).state).toBe("active");
+  expect(() => f.store.reserveManagerReview({ ...request, reviewId: "review-2" })).toThrow();
+  expect(f.store.bindManagerReview({ manager: f.store.managerBinding, reviewId: request.reviewId, reviewerId: request.reviewerId, invocationId: request.invocationId }).invocationId).toBe("job-1");
+  expect(() => f.store.bindManagerReview({ manager: f.store.managerBinding, reviewId: request.reviewId, reviewerId: request.reviewerId, invocationId: "other" })).toThrow();
+  const result = { reviewId: request.reviewId, launchKey: args.launchKey, head, reviewerId: request.reviewerId, invocationId: request.invocationId, verdict: "approve" };
+  await expect(f.store.settleManagerReview({ manager: f.store.managerBinding, reviewId: request.reviewId, verify: async () => ({ ...result, invocationId: "wrong" }) })).rejects.toThrow();
+  expect((await f.store.settleManagerReview({ manager: f.store.managerBinding, reviewId: request.reviewId, verify: async () => result })).verdict).toBe("approve");
+  expect(() => f.store.reserveManagerReview({ ...request, reviewId: "review-2" })).toThrow();
+  f.store.close();
+});
+
+
+test("verified termination permits retry with the original review budget", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "retry-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "retry-capture", eventId: "retry-event", rows: [{ id: "retry", expectedRevision: null, fields: fields("Retry") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "retry", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work-one", launchKey: "retry-first", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  const location = { kind: "tern", blockId: "first", pid: 1 };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location });
+  const head = "a".repeat(40);
+  f.store.reserveManagerReview({ manager: args.manager, launchKey: args.launchKey, reviewId: "first-review", head });
+  f.store.bindManagerReview({ manager: args.manager, reviewId: "first-review", reviewerId: "reviewer", invocationId: "job" });
+  await f.store.settleManagerReview({ manager: args.manager, reviewId: "first-review", verify: async () => ({ reviewId: "first-review", launchKey: args.launchKey, head, reviewerId: "reviewer", invocationId: "job", verdict: "changes-requested" }) });
+  f.store.settleManagerRun({ manager: args.manager, launchKey: args.launchKey, state: "failed", outcome: "failed" });
+  expect(() => f.store.reserveManagerRun({ ...args, launchKey: "retry-second" })).toThrow();
+  await f.store.releaseManagerRun({ manager: args.manager, launchKey: args.launchKey, verify: async () => ({ launchKey: args.launchKey, itemId: args.itemId, location, status: "terminated", evidence: "native exit", outcome: "failed-no-effect" }) });
+  expect(() => f.store.reserveManagerRun({ ...args, launchKey: "retry-second", target: "other" })).toThrow();
+  expect(f.store.reserveManagerRun({ ...args, launchKey: "retry-second" }).created).toBe(true);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: "retry-second", location: { kind: "tern", blockId: "second", pid: 2 } });
+  f.store.reserveManagerReview({ manager: args.manager, launchKey: "retry-second", reviewId: "second-review", head });
+  f.store.bindManagerReview({ manager: args.manager, reviewId: "second-review", reviewerId: "reviewer-2", invocationId: "job-2" });
+  await f.store.settleManagerReview({ manager: args.manager, reviewId: "second-review", verify: async () => ({ reviewId: "second-review", launchKey: "retry-second", head, reviewerId: "reviewer-2", invocationId: "job-2", verdict: "changes-requested" }) });
+  expect(() => f.store.reserveManagerReview({ manager: args.manager, launchKey: "retry-second", reviewId: "third-review", head })).toThrow();
+  f.store.close();
+});
+
+
+test("migration reports an uncertain manager run as blocked", () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "migration-run-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "migration-run-capture", eventId: "migration-run-event", rows: [{ id: "item", expectedRevision: null, fields: fields("Item") }], receipt: "captured" } });
+  f.store.reserveManagerRun({ manager: f.store.managerBinding, itemId: "item", workflow: "pipeline", limit: 2, target: "main", branch: "work-one", launchKey: "migration-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot });
+  f.store.settleManagerRun({ manager: f.store.managerBinding, launchKey: "migration-run", state: "uncertain", outcome: "unknown" });
+  const receipt = f.store.migrateManagerQueue({ manager: f.store.managerBinding, migrationId: "migration-run-check" });
+  expect(receipt.alreadyManaged).not.toContain("item");
+  expect(receipt.blocked).toContainEqual(expect.objectContaining({ itemId: "item" }));
+  f.store.close();
+});
+
+
+test("termination cannot release a run past a conflicting pending queue write", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "pending-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "pending-capture", eventId: "pending-event", rows: [{ id: "item", expectedRevision: null, fields: fields("Item") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "item", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "pending-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  const location = { pane: "one" };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location });
+  const db = new Database(f.path);
+  db.query("INSERT INTO records(kind,id,payload) VALUES(?,?,?)").run("intent", "conflicting-pending", JSON.stringify({ file: "queue.json", before: "different", after: "also different", state: "pending", capture: null }));
+  db.close();
+  await expect(f.store.releaseManagerRun({ manager: args.manager, launchKey: args.launchKey, verify: async () => ({ launchKey: args.launchKey, itemId: args.itemId, location, status: "terminated", evidence: "native exit" }) })).rejects.toThrow("conflicts");
+  expect(f.store.managerRuns()[0]?.state).toBe("accepted");
+  f.store.close();
+});
+
+
+test("progress reports do not stop a live run from reserving and binding review", () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "report-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "report-capture", eventId: "report-event", rows: [{ id: "item", expectedRevision: null, fields: fields("Item") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "item", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "report-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location: { pane: "one" } });
+  expect(f.store.settleManagerRun({ manager: args.manager, launchKey: args.launchKey, state: "reported", outcome: "working" }).state).toBe("accepted");
+  f.store.reserveManagerReview({ manager: args.manager, launchKey: args.launchKey, reviewId: "report-review", head: "a".repeat(40) });
+  f.store.settleManagerRun({ manager: args.manager, launchKey: args.launchKey, state: "reported", outcome: "reviewing" });
+  expect(f.store.bindManagerReview({ manager: args.manager, reviewId: "report-review", reviewerId: "reviewer", invocationId: "invocation" }).state).toBe("active");
+  expect(() => f.store.reserveManagerRun({ ...args, launchKey: "duplicate" })).toThrow();
+  f.store.close();
+});
+
+
+test("progress reports do not invalidate in-flight review verification", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "report-race-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "report-race-capture", eventId: "report-race-event", rows: [{ id: "item", expectedRevision: null, fields: fields("Item") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "item", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "report-race-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location: { pane: "one" } });
+  const head = "a".repeat(40);
+  f.store.reserveManagerReview({ manager: args.manager, launchKey: args.launchKey, reviewId: "report-race-review", head });
+  f.store.bindManagerReview({ manager: args.manager, reviewId: "report-race-review", reviewerId: "reviewer", invocationId: "invocation" });
+  const pending = Promise.withResolvers<unknown>();
+  const settlement = f.store.settleManagerReview({ manager: args.manager, reviewId: "report-race-review", verify: () => pending.promise });
+  f.store.settleManagerRun({ manager: args.manager, launchKey: args.launchKey, state: "reported", outcome: "still running" });
+  pending.resolve({ reviewId: "report-race-review", launchKey: args.launchKey, head, reviewerId: "reviewer", invocationId: "invocation", verdict: "approve" });
+  expect((await settlement).verdict).toBe("approve");
+  f.store.close();
+});
+
+test("manager input reserves once and fences uncertain delivery across restart", () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "input-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "input-capture", eventId: "input-event", rows: [{ id: "item", expectedRevision: null, fields: fields("Item") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "item", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "input-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location: { pane: "one" } });
+  const input = { manager: args.manager, launchKey: args.launchKey, messageId: "message-1", text: "continue" };
+  expect(f.store.reserveManagerInput(input)).toMatchObject({ created: true, receipt: { state: "sending" } });
+  expect(f.store.reserveManagerInput(input).created).toBe(false);
+  expect(() => f.store.reserveManagerInput({ ...input, text: "other" })).toThrow();
+  f.store.close();
+  const reopened = openStore({ path: f.path, scope: f.scope, owner: f.owner, now: () => 1200 });
+  reopened.bindEmployee({ manager: reopened.managerBinding, binding: { ...reopened.managerBinding, assignment: null, source: source("manager") } });
+  expect(reopened.reserveManagerInput({ ...input, manager: reopened.managerBinding })).toMatchObject({ created: false, receipt: { state: "uncertain" } });
+  expect(() => reopened.settleManagerInput({ manager: reopened.managerBinding, launchKey: args.launchKey, messageId: input.messageId, state: "delivered" })).toThrow();
+  reopened.close();
+});
+
+test("manager input delivered receipt is immutable and exact replay never resends", () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "delivered-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "delivered-capture", eventId: "delivered-event", rows: [{ id: "item", expectedRevision: null, fields: fields("Item") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "item", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "delivered-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location: { pane: "one" } });
+  const input = { manager: args.manager, launchKey: args.launchKey, messageId: "message-1", text: "continue" };
+  f.store.reserveManagerInput(input);
+  expect(f.store.settleManagerInput({ manager: args.manager, launchKey: args.launchKey, messageId: input.messageId, state: "delivered" }).state).toBe("delivered");
+  expect(f.store.reserveManagerInput(input)).toMatchObject({ created: false, receipt: { state: "delivered" } });
+  expect(() => f.store.settleManagerInput({ manager: args.manager, launchKey: args.launchKey, messageId: input.messageId, state: "uncertain" })).toThrow();
+  f.store.close();
+});
+
+
+test("worker termination releases the repository but not an uncertain item", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "unknown-exit", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "unknown-exit-capture", eventId: "unknown-exit", rows: [{ id: "one", expectedRevision: null, fields: fields("One") }, { id: "two", expectedRevision: null, fields: fields("Two") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "one", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work-one", launchKey: "unknown-exit-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  const location = { pane: "one" };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location });
+  f.store.settleManagerRun({ manager: args.manager, launchKey: args.launchKey, state: "failed", outcome: "unverified failure report" });
+  const stopped = await f.store.releaseManagerRun({ manager: args.manager, launchKey: args.launchKey, verify: async () => ({ launchKey: args.launchKey, itemId: args.itemId, location, status: "terminated", evidence: "native exit" }) });
+  expect(stopped.state).toBe("uncertain");
+  expect(() => f.store.reserveManagerRun({ ...args, launchKey: "retry" })).toThrow();
+  expect(f.store.reserveManagerRun({ ...args, itemId: "two", launchKey: "other" }).created).toBe(true);
+  f.store.close();
+});
+
+test("unstarted runs release only after verified no-dispatch and process closure", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "not-started-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "not-started-capture", eventId: "not-started-event", rows: [{ id: "item", expectedRevision: null, fields: fields("Item") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "item", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work-one", launchKey: "not-started-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  f.store.settleManagerRun({ manager: args.manager, launchKey: args.launchKey, state: "uncertain", outcome: "startup failure" });
+  await expect(f.store.releaseUndispatchedManagerRun({ manager: args.manager, launchKey: args.launchKey, verify: async () => ({ launchKey: "wrong", itemId: args.itemId, status: "not-dispatched", evidence: "closed before prompt" }) })).rejects.toThrow();
+  expect(() => f.store.reserveManagerRun({ ...args, launchKey: "retry" })).toThrow();
+  const released = await f.store.releaseUndispatchedManagerRun({ manager: args.manager, launchKey: args.launchKey, verify: async () => ({ launchKey: args.launchKey, itemId: args.itemId, status: "not-dispatched", evidence: "original process closed before prompt submission" }) });
+  expect(released.state).toBe("released");
+  expect(f.store.reserveManagerRun({ ...args, launchKey: "retry" }).created).toBe(true);
+  f.store.close();
+});
+
+test("invalid correlated terminal review can retry without consuming a round", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "invalid-review-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "invalid-review-capture", eventId: "invalid-review-event", rows: [{ id: "item", expectedRevision: null, fields: fields("Item") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "item", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "invalid-review-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location: { pane: "one" } });
+  const head = "a".repeat(40);
+  const review = { manager: args.manager, launchKey: args.launchKey, reviewId: "invalid-review", head };
+  f.store.reserveManagerReview(review);
+  f.store.bindManagerReview({ manager: args.manager, reviewId: review.reviewId, reviewerId: "reviewer", invocationId: "invoke-1" });
+  const evidence = { reviewId: review.reviewId, launchKey: args.launchKey, head, reviewerId: "reviewer", invocationId: "invoke-1", status: "invalid", evidence: "original terminal transcript malformed" };
+  await expect(f.store.failManagerReview({ manager: args.manager, reviewId: review.reviewId, verify: async () => ({ ...evidence, invocationId: "wrong" }) })).rejects.toThrow();
+  expect(() => f.store.reserveManagerReview({ ...review, reviewId: "next-review" })).toThrow();
+  expect((await f.store.failManagerReview({ manager: args.manager, reviewId: review.reviewId, verify: async () => evidence })).state).toBe("failed");
+  expect(() => f.store.reserveManagerReview(review)).toThrow();
+  expect(f.store.reserveManagerReview({ ...review, reviewId: "next-review" }).state).toBe("active");
+  expect(() => f.store.bindManagerReview({ manager: args.manager, reviewId: "next-review", reviewerId: "reviewer", invocationId: "invoke-1" })).toThrow();
+  f.store.close();
+});
+
+test("review cancellation requires verified no-dispatch and leaves original key fenced", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "cancel-review-event", input: "request", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "cancel-review-capture", eventId: "cancel-review-event", rows: [{ id: "item", expectedRevision: null, fields: fields("Item") }], receipt: "captured" } });
+  const args = { manager: f.store.managerBinding, itemId: "item", workflow: "hotfix" as const, limit: 1, target: "main", branch: "work-one", launchKey: "cancel-review-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  f.store.reserveManagerRun(args);
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location: { pane: "one" } });
+  const review = { manager: args.manager, launchKey: args.launchKey, reviewId: "cancel-review", head: "a".repeat(40) };
+  f.store.reserveManagerReview(review);
+  await expect(f.store.cancelManagerReview({ manager: args.manager, reviewId: review.reviewId, verify: async () => ({ reviewId: "wrong", launchKey: args.launchKey, status: "not-dispatched", evidence: "no native invocation" }) })).rejects.toThrow();
+  expect(() => f.store.reserveManagerReview({ ...review, reviewId: "next-review" })).toThrow();
+  expect((await f.store.cancelManagerReview({ manager: args.manager, reviewId: review.reviewId, verify: async () => ({ reviewId: review.reviewId, launchKey: args.launchKey, status: "not-dispatched", evidence: "host rejected before invocation" }) })).state).toBe("cancelled");
+  expect(() => f.store.reserveManagerReview(review)).toThrow();
+  expect(f.store.reserveManagerReview({ ...review, reviewId: "next-review" }).state).toBe("active");
+  f.store.close();
+});

@@ -1,6 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
@@ -12,6 +14,7 @@ import { connectEmployee } from "../src/employee-client";
 import { hostReceiptSchema, hostStatusSchema, sourceSchema } from "../src/contracts";
 import { claudeMcpConfig } from "../src/claude-launch";
 import { loadProfile, profileText, validateRoleSettings } from "../src/profiles";
+import { startOwnedOmpRpc } from "../src/omp-rpc-supervisor";
 
 const roots: string[] = [];
 const stores: StartupStore[] = [];
@@ -25,7 +28,7 @@ const manifestSchema = z.object({ credential: z.string(), source: sourceSchema }
 function fixture(executionLimit: number) {
   return harnessFixture(executionLimit, "omp");
 }
-function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
+function harnessFixture(executionLimit: number, harness: "omp" | "claude", managerRpc?: typeof startOwnedOmpRpc) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "sv7-")));
   roots.push(root);
   const home = join(root, "home");
@@ -77,7 +80,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
     observe: async () => { if (observationBarrier) await observationBarrier; if (observationFailure) throw observationFailure; return observations; },
   };
   const config = { name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), herdrSession: "fixture-herdr", profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
-  const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => { const value = now; now += clockStep; return value; } });
+  const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => { const value = now; now += clockStep; return value; }, ...(managerRpc ? { managerRpc } : {}) });
   async function admit(employeeId: string): Promise<string> {
     const runtime = store.runtimeBindings().findLast((r) => r.employeeId === employeeId);
     if (!runtime) throw new Error("Missing runtime");
@@ -89,6 +92,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
   async function ready() {
     await coordinator.start();
     const manager = await coordinator.admit({ credential: "manager-secret", nativeSession: managerNative, paneId: "w1:p1", source: store.runtimeBindings().find((r) => r.employeeId === "manager")!.source });
+    await coordinator.command(manager.connection, { kind: "ensure_pa" });
     const pa = store.snapshot().employees.find((e) => e.role === "pa");
     if (!pa) throw new Error("Missing PA");
     const paConnection = await admit(pa.id);
@@ -111,11 +115,13 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude") {
   return { advancingClock: () => { clockStep = 1; }, coordinator, herdr, store, config, observations, launches, layouts, root, home, ready, admit, delegate, setRoleSettings, advance: (time: number) => { now = time; }, delayLaunch: (barrier: Promise<void>) => { launchBarrier = barrier; }, delayObservation: (barrier: Promise<void>) => { observationBarrier = barrier; }, failLayout: (error: Error) => { layoutFailure = error; }, failObservation: (error: Error | null) => { observationFailure = error; }, layoutCalls: () => layoutCalls };
 }
 
-test("cold coordinator restart launches the same PA after its saved preflight becomes available", async () => {
+test("a requested PA resumes its saved preflight after coordinator restart", async () => {
   const f = fixture(8);
   f.setRoleSettings("pa", "claude", null, null);
   writeFileSync(join(f.config.startupRoot, ".claude.json"), JSON.stringify({ projects: {} }), { mode: 0o600 });
-  await expect(f.coordinator.start()).rejects.toThrow("workspace trust");
+  await f.coordinator.start();
+  const firstManager = await f.admit("manager");
+  await expect(f.coordinator.command(firstManager, { kind: "ensure_pa" })).rejects.toThrow("workspace trust");
   const paEmployee = f.store.snapshot().employees.find((employee) => employee.role === "pa");
   if (!paEmployee) throw new Error("Missing prepared PA employee");
   const pa = f.store.runtimeBindings().findLast((runtime) => runtime.employeeId === paEmployee.id);
@@ -141,6 +147,9 @@ test("cold coordinator restart launches the same PA after its saved preflight be
   f.observations.push(managerObservation);
   writeFileSync(join(f.config.startupRoot, ".claude.json"), JSON.stringify({ projects: { [f.config.boundRoot]: { hasTrustDialogAccepted: true } } }), { mode: 0o600 });
   await restarted.start();
+  const managerRuntime = store.runtimeBindings().find((runtime) => runtime.employeeId === "manager")!;
+  const resumedManager = await restarted.admit({ credential: f.config.managerCredential, nativeSession: f.config.managerFile, paneId: f.config.managerPaneId, source: managerRuntime.source });
+  await restarted.command(resumedManager.connection, { kind: "ensure_pa" });
 
   const resumedPa = store.runtimeBindings().findLast((runtime) => runtime.employeeId === paEmployee.id);
   expect(resumedPa?.launchId).toBe(pa.launchId);
@@ -264,6 +273,8 @@ test("OMP session reports persist actual catalog and state only for the authenti
 test("a failed unadmitted boot immediately persists a redacted manager alert and can later admit", async () => {
   const f = fixture(8);
   await f.coordinator.start();
+  const manager = await f.admit("manager");
+  await f.coordinator.command(manager, { kind: "ensure_pa" });
   const saved = f.store.runtimeBindings().find((r) => r.employeeId !== "manager");
   if (!saved) throw new Error("Missing PA launch");
   const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${saved.launchId}.json`), "utf8")));
@@ -283,9 +294,11 @@ test("a failed unadmitted boot immediately persists a redacted manager alert and
 
 test("Herdr interactive readiness cannot hide a reported boot failure during launch", async () => {
   const f = fixture(8);
+  await f.coordinator.start();
+  const manager = await f.admit("manager");
   const barrier = Promise.withResolvers<void>();
   f.delayLaunch(barrier.promise);
-  const starting = f.coordinator.start();
+  const starting = f.coordinator.command(manager, { kind: "ensure_pa" });
   try {
     const deadline = Date.now() + 1000;
     while (!f.store.runtimeBindings().some((r) => r.employeeId !== "manager" && r.paneId !== null) && Date.now() < deadline) await Bun.sleep(1);
@@ -308,7 +321,7 @@ test("lost Herdr supervision degrades fresh PA connections and persists a manage
   expect(JSON.stringify(await f.coordinator.command(manager, { kind: "staff" }))).toContain("pa-observer-unavailable");
   expect(f.store.snapshot().messages.some((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"herdr-unavailable"'))).toBe(true);
   await f.coordinator.command(manager, { kind: "intake", eventId: "event", input: "work", amendItemIds: [] });
-  await expect(f.coordinator.command(manager, { kind: "delegate", eventId: "event", developers: 1 })).rejects.toThrow("PA");
+  await expect(f.coordinator.command(manager, { kind: "delegate", eventId: "event", developers: 1 })).rejects.toThrow("observer connection unavailable");
   f.failObservation(null);
   await f.coordinator.tick();
   expect(JSON.stringify(await f.coordinator.command(manager, { kind: "staff" }))).toContain('"health":"ready"');
@@ -327,7 +340,7 @@ test("supervision does not treat the same native identity as observed under anot
   expect(f.store.runtimeBindings().findLast((entry) => entry.employeeId === pa)).toMatchObject({ error: "Herdr session not observed" });
 });
 
-test("one conflicting employee observation cannot prevent other observations or PA scheduling", async () => {
+test("one conflicting employee observation does not trigger periodic PA work", async () => {
   const f = fixture(8);
   const { manager, pa } = await f.ready();
   const team = await f.delegate(manager, "observation-fault");
@@ -336,18 +349,18 @@ test("one conflicting employee observation cannot prevent other observations or 
   if (!saved?.nativeSession) throw new Error("Missing architect runtime");
   f.store.observeRuntime({ employeeId: saved.employeeId, generation: saved.generation, nativeSession: saved.nativeSession, state: "working", sequence: 1, observedAt: 1000 });
   await expect(f.coordinator.tick()).resolves.toBeUndefined();
-  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && m.id.startsWith("pa-check-"))).toBe(true);
+  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && m.id.startsWith("pa-check-"))).toBe(false);
   expect(f.store.runtimeBindings().find((r) => r.employeeId === pa)?.stateSequence).toBe(1);
   expect(f.coordinator.health().status).toBe("degraded");
 });
 
-test("a malformed queue cannot starve PA scheduling, and health recovers after a valid rows document is restored", async () => {
+test("malformed queue degrades health without PA checks and recovers after repair", async () => {
   const f = fixture(8);
   const { pa } = await f.ready();
   const queue = join(f.config.stateDirectory, "queue.json");
   writeFileSync(queue, '{"rows":');
   await expect(f.coordinator.tick()).resolves.toBeUndefined();
-  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && m.id.startsWith("pa-check-"))).toBe(true);
+  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && m.id.startsWith("pa-check-"))).toBe(false);
   expect(f.coordinator.health().status).toBe("degraded");
   const server = serveCoordinator({ coordinator: f.coordinator, socketPath: f.config.socketPath }); servers.push(server);
   expect((await fetch("http://localhost/health", { unix: f.config.socketPath })).status).toBe(503);
@@ -357,12 +370,12 @@ test("a malformed queue cannot starve PA scheduling, and health recovers after a
   expect((await fetch("http://localhost/health", { unix: f.config.socketPath })).status).toBe(200);
 });
 
-test("failed observation collection still schedules a PA check and marks health degraded", async () => {
+test("failed observation collection degrades health without scheduling PA checks", async () => {
   const f = fixture(8);
   const { pa } = await f.ready();
   f.failObservation(new Error("controlled observation outage"));
   await expect(f.coordinator.tick()).resolves.toBeUndefined();
-  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && m.id.startsWith("pa-check-"))).toBe(true);
+  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && m.id.startsWith("pa-check-"))).toBe(false);
   expect(f.coordinator.health().status).toBe("degraded");
   f.failObservation(null);
   await f.coordinator.tick();
@@ -378,8 +391,7 @@ test("lost observations mean unknown manager presence and do not flood the PA wi
   f.advance(1050);
   await f.coordinator.tick();
   const messages = f.store.snapshot().messages;
-  expect(messages.filter((m) => m.recipient === pa)).toHaveLength(1);
-  expect(messages.find((m) => m.recipient === pa)?.payload).toMatchObject({ kind: "pa-check", managerPresence: "unknown" });
+  expect(messages.filter((m) => m.recipient === pa)).toHaveLength(0);
   expect(messages.some((m) => JSON.stringify(m.payload).includes('"kind":"manager-offline"'))).toBe(false);
 });
 
@@ -450,38 +462,44 @@ test("uncertain pane creation is fenced before a manager retries activation", as
   expect(f.store.runtimeBindings().findLast((r) => r.employeeId === id)?.state).toBe("uncertain");
 });
 
-test("boot requires a source-bound PA and reserves one permanent PA on retries", async () => {
+test("boot does not reserve a PA and on-demand retries reuse one identity", async () => {
   const f = fixture(8);
   await f.coordinator.start();
   await f.coordinator.start();
-  expect(f.store.snapshot().employees.filter((e) => e.role === "pa")).toHaveLength(1);
-  expect(f.layoutCalls()).toBe(1);
-  expect(f.launches).toHaveLength(1);
+  expect(f.store.snapshot().employees.filter((e) => e.role === "pa")).toHaveLength(0);
+  expect(f.layoutCalls()).toBe(0);
+  expect(f.launches).toHaveLength(0);
   const manager = await f.admit("manager");
-  await f.coordinator.command(manager, { kind: "intake", eventId: "event", input: "work", amendItemIds: [] });
-  await expect(f.coordinator.command(manager, { kind: "delegate", eventId: "event", developers: 1 })).rejects.toThrow("PA");
-  expect(f.store.snapshot().teams).toHaveLength(0);
+  const first = await f.coordinator.command(manager, { kind: "ensure_pa" });
+  expect(await f.coordinator.command(manager, { kind: "ensure_pa" })).toEqual(first);
+  expect(f.store.snapshot().employees.filter((e) => e.role === "pa")).toHaveLength(1);
+  expect(f.launches).toHaveLength(1);
 });
 
-test("a saved manager launch is fenced when its canonical source changes without rewriting its receipt", async () => {
-  const f = fixture(8);
-  const skillsRoot = join(f.root, "isolated-skills");
-  for (const name of ["jp-startup-role-manager", "jp-startup-role-pa", "jp-startup-loop"]) {
-    const directory = join(skillsRoot, "skills", name);
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(join(directory, "SKILL.md"), `Canonical ${name}`);
+test("changed manager or loop source fences existing and new manager admission", async () => {
+  for (const changed of ["jp-startup-role-manager", "jp-startup-loop"]) {
+    const f = fixture(8);
+    const skillsRoot = join(f.root, "isolated-skills");
+    for (const name of ["jp-startup-role-manager", "jp-startup-role-pa", "jp-startup-loop"]) {
+      const directory = join(skillsRoot, "skills", name);
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(join(directory, "SKILL.md"), `Canonical ${name}`);
+    }
+    f.config.skillsRoot = skillsRoot;
+    await f.coordinator.start();
+    const before = f.store.runtimeBindings();
+    const saved = before.find((entry) => entry.employeeId === "manager");
+    if (!saved) throw new Error("Missing manager launch");
+    const connection = await f.admit("manager");
+    const manifest = join(f.config.stateDirectory, "launches", `${saved.launchId}.json`);
+    const receipt = readFileSync(manifest, "utf8");
+    writeFileSync(join(skillsRoot, "skills", changed, "SKILL.md"), `Changed ${changed}`);
+    await expect(f.coordinator.command(connection, { kind: "staff" })).rejects.toThrow("Canonical source changed");
+    await expect(f.coordinator.admit({ credential: f.config.managerCredential, nativeSession: f.config.managerFile, paneId: f.config.managerPaneId, source: saved.source })).rejects.toThrow("Canonical source changed");
+    await expect(f.coordinator.start()).rejects.toThrow("Saved launch source differs");
+    expect(f.store.runtimeBindings()).toEqual(before.map((entry) => entry.employeeId === "manager" ? { ...entry, state: "ready", nativeSession: f.config.managerFile, lastPoll: 1000 } : entry));
+    expect(readFileSync(manifest, "utf8")).toBe(receipt);
   }
-  f.config.skillsRoot = skillsRoot;
-  await f.coordinator.start();
-  const before = f.store.runtimeBindings();
-  const manager = before.find((entry) => entry.employeeId === "manager");
-  if (!manager) throw new Error("Missing manager launch");
-  const manifest = join(f.config.stateDirectory, "launches", `${manager.launchId}.json`);
-  const receipt = readFileSync(manifest, "utf8");
-  writeFileSync(manager.source.rolePath, "Unapproved changed manager source");
-  await expect(f.coordinator.start()).rejects.toThrow("Saved launch source differs");
-  expect(f.store.runtimeBindings()).toEqual(before);
-  expect(readFileSync(manifest, "utf8")).toBe(receipt);
 });
 
 test("generated employee bootstrap imports without native OMP package aliases", async () => {
@@ -555,19 +573,20 @@ test("an unadmitted launch that misses its deadline becomes a manager blocker", 
   expect(f.store.snapshot().messages.some((m) => m.recipient === "manager" && JSON.stringify(m.payload).includes('"kind":"launch-stalled"') && JSON.stringify(m.payload).includes(team.architect))).toBe(true);
 });
 
-test("heartbeats cannot disguise stale work and an overdue PA blocks new crews", async () => {
+test("heartbeats cannot disguise stale input and the PA does not block new work", async () => {
   const f = fixture(8);
   const { manager, paConnection } = await f.ready();
+  await f.coordinator.command(manager, { kind: "receive", id: "stale", source: "interactive", raw: { text: "work", images: [] } });
   await f.coordinator.tick();
   f.advance(1300);
   await f.coordinator.poll(manager);
   await f.coordinator.poll(paConnection);
   await f.coordinator.tick();
   const staff = await f.coordinator.command(manager, { kind: "staff" });
-  expect(JSON.stringify(staff)).toContain("pa-overdue");
-  expect(f.store.snapshot().messages.some((m) => JSON.stringify(m.payload).includes("stale-progress"))).toBe(true);
+  expect(JSON.stringify(staff)).toContain('"health":"ready"');
+  expect(f.store.snapshot().messages.some((m) => JSON.stringify(m.payload).includes("stale-input"))).toBe(true);
   await f.coordinator.command(manager, { kind: "intake", eventId: "event", input: "work", amendItemIds: [] });
-  await expect(f.coordinator.command(manager, { kind: "delegate", eventId: "event", developers: 1 })).rejects.toThrow("PA");
+  await expect(f.coordinator.command(manager, { kind: "delegate", eventId: "event", developers: 1 })).resolves.toBeDefined();
 });
 
 test("Unix endpoint derives authority from admission and rejects forged credentials and actor fields", async () => {
@@ -578,7 +597,7 @@ test("Unix endpoint derives authority from admission and rejects forged credenti
   const source = f.store.runtimeBindings().find((r) => r.employeeId === "manager")!.source;
   await expect(connectEmployee({ socketPath: f.config.socketPath, credential: "forged", nativeSession: f.config.managerFile, paneId: "w1:p1", source })).rejects.toThrow("403");
   const client = await connectEmployee({ socketPath: f.config.socketPath, credential: "manager-secret", nativeSession: f.config.managerFile, paneId: "w1:p1", source });
-  expect((await client.poll()).projection).toContain("Startup role: manager");
+  expect((await client.poll()).projection).toContain("# Startup manager");
   await expect(client.request({ kind: "claim", employeeId: "other" })).rejects.toThrow("400");
   client.close();
 });
@@ -612,7 +631,7 @@ test("unchanged degraded health can be observed repeatedly without conflicting a
   await f.coordinator.tick();
   f.advance(2200);
   await expect(f.coordinator.tick()).resolves.toBeUndefined();
-  expect(f.store.snapshot().messages.filter((m) => JSON.stringify(m.payload).includes('"kind":"pa-offline"'))).toHaveLength(1);
+  expect(f.store.snapshot().messages.filter((m) => JSON.stringify(m.payload).includes('"kind":"pa-offline"'))).toHaveLength(0);
 });
 
 test("exact receipt replay does not count as new semantic progress", async () => {
@@ -625,12 +644,12 @@ test("exact receipt replay does not count as new semantic progress", async () =>
   expect(f.store.runtimeBindings().find((r) => r.employeeId === pa)?.lastProgress).toBe(1000);
 });
 
-test("manager disappearance is delivered to its PA even with no outstanding manager work", async () => {
+test("manager disappearance does not create PA duties", async () => {
   const f = fixture(8);
   const { pa } = await f.ready();
   f.observations.splice(f.observations.findIndex((o) => o.paneId === "w1:p1"), 1);
   await f.coordinator.tick();
-  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && JSON.stringify(m.payload).includes("manager-offline"))).toBe(true);
+  expect(f.store.snapshot().messages.some((m) => m.recipient === pa && JSON.stringify(m.payload).includes("manager-offline"))).toBe(false);
 });
 
 test("a queued item remains monitored after the architect acknowledges its intake", async () => {
@@ -668,8 +687,8 @@ test("unrelated reports and another item revision cannot hide a stalled queue it
 });
 
 
-test("root turn admission reserves manager and PA capacity and releases no work receipts", async () => {
-  const f = fixture(3);
+test("root turn admission reserves manager capacity and releases no work receipts", async () => {
+  const f = fixture(2);
   const { manager, paConnection } = await f.ready();
   const team = await f.delegate(manager, "event");
   const architect = await f.admit(team.architect);
@@ -1201,17 +1220,18 @@ test("host cancel withdraws one request and settles only that item's worker gene
   expect(admitted.mode).toBe("startup_outcome");
 });
 
-test("OMP employees launch on the OMP model role bound to their Startup role", async () => {
+test("legacy employees retain model roles while the optional PA uses the profile default", async () => {
   const f = fixture(8);
   const { manager } = await f.ready();
   const team = await f.delegate(manager, "model-roles");
   const launched = f.launches.map((launch) => {
     const binding = f.store.runtimeBindings().find((r) => launch.name === `s-${r.launchId.replaceAll("-", "").slice(0, 28)}`);
     const employee = f.store.snapshot().employees.find((e) => e.id === binding?.employeeId);
-    return { role: employee?.role, model: launch.args[launch.args.indexOf("--model") + 1] };
+    const modelIndex = launch.args.indexOf("--model");
+    return { role: employee?.role, model: modelIndex < 0 ? null : launch.args[modelIndex + 1] };
   });
   expect(launched.map((l) => l.role).sort()).toEqual(["architect", "dev", "pa", "qa"]);
-  expect(Object.fromEntries(launched.map((l) => [l.role, l.model]))).toEqual({ pa: "@smol", architect: "@plan", dev: "@slow", qa: "@advisor" });
+  expect(Object.fromEntries(launched.map((l) => [l.role, l.model]))).toEqual({ pa: null, architect: "@plan", dev: "@slow", qa: "@advisor" });
   expect(team.devs).toHaveLength(1);
 });
 
@@ -1221,7 +1241,7 @@ test("a saved model request replaces the bound OMP model role for that launch", 
   const { manager } = await f.ready();
   await f.delegate(manager, "model-override");
   const models = f.launches.flatMap((launch) => launch.args.flatMap((arg, index) => arg === "--model" ? [launch.args[index + 1]] : []));
-  expect(models.sort()).toEqual(["@plan", "@slow", "@smol", "openai/gpt-5.2"]);
+  expect(models.sort()).toEqual(["@plan", "@slow", "openai/gpt-5.2"]);
 });
 
 test("Claude employees launch with an assigned session, prompt suffix and shared hook files only", async () => {
@@ -1260,7 +1280,8 @@ test("Claude crew panes carry only the manifest and admit by assigned session wi
 test("Claude admission waits for the assigned session and refuses a mismatched one", async () => {
   const f = harnessFixture(8, "claude");
   await f.coordinator.start();
-  await f.coordinator.admit({ credential: "manager-secret", nativeSession: "manager-session", paneId: "w1:p1", source: f.store.runtimeBindings().find((r) => r.employeeId === "manager")!.source });
+  const manager = await f.coordinator.admit({ credential: "manager-secret", nativeSession: "manager-session", paneId: "w1:p1", source: f.store.runtimeBindings().find((r) => r.employeeId === "manager")!.source });
+  await f.coordinator.command(manager.connection, { kind: "ensure_pa" });
   const saved = f.store.runtimeBindings().find((r) => r.employeeId !== "manager");
   if (!saved?.paneId) throw new Error("Missing PA launch");
   const manifest = manifestSchema.parse(JSON.parse(readFileSync(join(f.config.stateDirectory, "launches", `${saved.launchId}.json`), "utf8")));
@@ -1642,7 +1663,11 @@ test("Tern admission fences allocation, process identity and lifecycle checkpoin
   const { herdrSession: _herdrSession, herdrIntegration: _herdrIntegration, ...common } = f.config;
   const config = { ...common, backend: "tern" as const, ternSession: "1", ternWindow: "", ternBinary: "tern", ternSocket: "/tmp/tern.sock", managerPaneId: "1", managerPid: 101 };
   const coordinator = openCoordinator({ store: f.store, tern, config, now: () => clock });
-  const starting = coordinator.start();
+  await coordinator.start();
+  const reservedManager = f.store.runtimeBindings().find((entry) => entry.employeeId === "manager");
+  if (!reservedManager) throw new Error("missing manager reservation");
+  const earlyManager = await coordinator.admit({ credential: config.managerCredential, source: reservedManager.source, nativeSession: config.managerFile, agentSessionId: config.managerSession, paneId: "1", pid: 101 });
+  const starting = coordinator.command(earlyManager.connection, { kind: "ensure_pa" });
   await entered.promise;
   const pa = f.store.runtimeBindings().find((entry) => entry.employeeId !== "manager");
   if (!pa) throw new Error("missing PA reservation");
@@ -1651,10 +1676,6 @@ test("Tern admission fences allocation, process identity and lifecycle checkpoin
   writeFileSync(transcript, JSON.stringify({ type: "session", id: "pa-session" }) + "\n");
   const request = { credential: manifest.credential, source: manifest.source, nativeSession: transcript, agentSessionId: "pa-session", paneId: "3", pid: 103 };
   await expect(coordinator.admit(request)).rejects.toThrow("allocation is not committed");
-  const reservedManager = f.store.runtimeBindings().find((entry) => entry.employeeId === "manager");
-  if (!reservedManager) throw new Error("missing manager reservation");
-  const earlyManager = await coordinator.admit({ credential: config.managerCredential, source: reservedManager.source, nativeSession: config.managerFile, agentSessionId: config.managerSession, paneId: "1", pid: 101 });
-  await expect(coordinator.command(earlyManager.connection, { kind: "replace", employeeId: pa.employeeId, evidence: "unknown allocation" })).rejects.toThrow("unknown allocation");
   barrier.resolve();
   await starting;
   await expect(coordinator.admit({ ...request, pid: 104 })).rejects.toThrow("not owned");
@@ -1701,3 +1722,164 @@ test("Tern admission fences allocation, process identity and lifecycle checkpoin
   await expect(coordinator.admit(request)).rejects.toThrow("superseded");
   expect(creates).toBe(1);
 });
+
+test("manager startup does not launch a PA before a question exists", async () => {
+  const f = fixture(8);
+  await f.coordinator.start();
+  expect(f.store.snapshot().employees.filter((employee) => employee.role === "pa")).toHaveLength(0);
+  expect(f.launches).toHaveLength(0);
+  await f.coordinator.tick();
+  expect(f.store.snapshot().messages.filter((message) => message.kind === "duty")).toHaveLength(0);
+});
+
+
+test("question assistant starts only on demand and does not receive periodic checks", async () => {
+  const f = fixture(8);
+  await f.coordinator.start();
+  const source = f.store.runtimeBindings().find((r) => r.employeeId === "manager")!.source;
+  const manager = (await f.coordinator.admit({ credential: "manager-secret", nativeSession: f.config.managerFile, paneId: "w1:p1", source })).connection;
+  const first = await f.coordinator.command(manager, { kind: "ensure_pa" });
+  expect(await f.coordinator.command(manager, { kind: "ensure_pa" })).toEqual(first);
+  expect(f.launches).toHaveLength(1);
+  expect(f.launches[0]?.args).not.toContain("--model");
+  f.advance(5000);
+  await f.coordinator.tick();
+  expect(f.store.snapshot().messages.filter((message) => message.id.startsWith("pa-check-"))).toHaveLength(0);
+});
+
+test("manager can run the durable queue migration without a PA or crew", async () => {
+  const f = fixture(8);
+  await f.coordinator.start();
+  const source = f.store.runtimeBindings().find((r) => r.employeeId === "manager")!.source;
+  const manager = (await f.coordinator.admit({ credential: "manager-secret", nativeSession: f.config.managerFile, paneId: "w1:p1", source })).connection;
+  const receipt = await f.coordinator.command(manager, { kind: "manager_migrate", migrationId: "migration-1" });
+  expect(receipt).toMatchObject({ migrationId: "migration-1", migrated: [], blocked: [] });
+  expect(await f.coordinator.command(manager, { kind: "manager_migrate", migrationId: "migration-1" })).toEqual(receipt);
+});
+
+test("manager imports a legacy root through an authenticated command", async () => {
+  const f = fixture(8);
+  const sourceRoot = join(f.root, "legacy");
+  mkdirSync(sourceRoot);
+  writeFileSync(join(sourceRoot, "binding.json"), JSON.stringify({ name: "old", bound_root: f.config.boundRoot }));
+  writeFileSync(join(sourceRoot, "queue.json"), JSON.stringify([{ id: "legacy-item", request: "old work", acceptance: "done" }]));
+  const db = new Database(join(sourceRoot, "staff.sqlite"));
+  db.run("CREATE TABLE records(value TEXT)");
+  db.run("CREATE TABLE audit(value TEXT)");
+  db.run("CREATE TABLE lease(value TEXT)");
+  db.close();
+  await f.coordinator.start();
+  const manager = await f.admit("manager");
+  const request = { kind: "manager_import_legacy", migrationId: "old-one", sourceRoot } as const;
+  const receipt = await f.coordinator.command(manager, request);
+  expect(receipt).toMatchObject({ migrationId: "old-one", items: ["legacy-item"] });
+  expect(await f.coordinator.command(manager, request)).toEqual(receipt);
+  expect(f.store.queueItems()).toMatchObject([{ id: "legacy-item", status: "NEEDS_DECISION" }]);
+});
+
+
+test("coordinator settles an offline OMP run from its independently observed review", async () => {
+  if (process.env.JP_COORDINATOR_OFFLINE_CHILD !== "1") {
+    const directory = mkdtempSync(join(tmpdir(), "startup-gh-path-"));
+    try {
+      const gh = join(directory, "gh");
+      writeFileSync(gh, `#!/bin/sh
+head=$(git rev-parse HEAD)
+if [ "$JP_COORDINATOR_BAD_HEAD" = 1 ]; then head=0000000000000000000000000000000000000000; fi
+printf '{"headRefOid":"%s","baseRefName":"main","state":"OPEN","isDraft":false,"url":"https://example.test/pr/1","mergeCommit":null}\n' "$head"
+`);
+      chmodSync(gh, 0o755);
+      for (const scenario of ["success", "bad-head", "shutdown", "exit", "preaccept", "prespawn", "invalid-review"]) execFileSync(process.execPath, ["test", import.meta.path, "-t", "coordinator settles an offline OMP run"], { env: { ...process.env, JP_COORDINATOR_OFFLINE_CHILD: "1", JP_COORDINATOR_SCENARIO: scenario, JP_COORDINATOR_BAD_HEAD: scenario === "bad-head" ? "1" : "0", PATH: `${directory}:${process.env.PATH ?? ""}` }, stdio: "pipe", timeout: 40000 });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+    return;
+  }
+  const binary = Bun.which("omp");
+  if (!binary) throw new Error("Real OMP binary is required for coordinator integration");
+  let extension = "";
+  let calls = 0;
+  let ownedClient: Awaited<ReturnType<typeof startOwnedOmpRpc>> | undefined;
+  const managerRpc: typeof startOwnedOmpRpc = async (input) => {
+    calls++;
+    const client = await startOwnedOmpRpc({ ...input, binary, args: ["--mode", "rpc", "--no-ui", "--no-extensions", "--no-skills", "--no-context-files", "--extension", extension] });
+    ownedClient = client;
+    return { ...client, call: (command) => process.env.JP_COORDINATOR_SCENARIO === "preaccept" && calls === 1 && command.type === "get_state" ? Promise.reject(new Error("fixture preaccept failure")) : client.call(command.type === "prompt" ? { ...command, message: "/coordinator-probe" } : command) };
+  };
+  const f = harnessFixture(8, "omp", managerRpc);
+  execFileSync("git", ["init", "-q", f.config.boundRoot]);
+  execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "fixture"], { cwd: f.config.boundRoot });
+  const worktree = join(f.root, "run-worktree");
+  execFileSync("git", ["worktree", "add", "-q", "-b", "feature-offline", worktree], { cwd: f.config.boundRoot });
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: worktree, encoding: "utf8" }).trim();
+  const bin = join(f.root, "bin"); mkdirSync(bin);
+  const gh = join(bin, "gh");
+  writeFileSync(gh, `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({ headRefOid: head, baseRefName: "main", state: "OPEN", isDraft: false, url: "https://example.test/pr/1", mergeCommit: null })}'\n`); chmodSync(gh, 0o755);
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${bin}:${previousPath ?? ""}`;
+  extension = join(f.root, "probe.ts");
+  const boundedPath = join(import.meta.dir, "../bounded-entry.ts");
+  const reviewResult = JSON.stringify({ changes: [{ changeId: "item", head, worktree: worktree }], verdict: "approve" });
+  writeFileSync(extension, `import { createAssistantMessageEventStream } from "@oh-my-pi/pi-ai";
+import boundedEntry from ${JSON.stringify(boundedPath)};
+import { existsSync, writeFileSync } from "node:fs";
+export default function(pi) {
+ boundedEntry(pi);
+ pi.registerProvider("rpc-fixture", { api: "rpc-fixture", apiKey: "offline", baseUrl: "http://127.0.0.1:1", models: [{id:"offline",name:"offline",reasoning:false,input:["text"],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:100000,maxTokens:1000}], streamSimple: (model) => { const msg={role:"assistant",api:model.api,provider:model.provider,model:model.id,content:[{type:"text",text:(${JSON.stringify(process.env.JP_COORDINATOR_SCENARIO === "invalid-review")} && !existsSync(${JSON.stringify(join(f.root, "invalid-once"))})) ? (writeFileSync(${JSON.stringify(join(f.root, "invalid-once"))}, "1"), "invalid JSON") : ${JSON.stringify(reviewResult)}}],stopReason:"stop",timestamp:Date.now(),usage:{input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}}; const stream=createAssistantMessageEventStream();stream.push({type:"start",partial:msg});stream.push({type:"done",reason:"stop",message:msg});stream.end();return stream; } });
+ pi.on("before_subagent_spawn", () => ({model:"rpc-fixture/offline"}));
+ pi.registerCommand("coordinator-probe", {description:"probe",handler:async(_args,ctx)=> { const s=pi.pi.AgentRegistry.global().get(ctx.agent.id).session; const call=(name,args)=>s.getToolByName(name).execute("probe-"+name,args); const begin=JSON.parse((await call("bounded_begin",{workflow:"pipeline",itemIds:["item"],reviewLimit:2,execution:"manager-led",landing:{mode:"ready-pr",target:"main"}})).content[0].text); await call("task",{scopeId:begin.scopeId,itemId:"item",assignmentKey:"review-1",context:"read only",tasks:[{name:"ReviewOne",agent:"reviewer",task:"Review",solutionSpace:"read only"}],review:[{changeId:"item",head:${JSON.stringify(head)},worktree:${JSON.stringify(worktree)}}]}); await new Promise(resolve=>setTimeout(resolve,1000)); if (${JSON.stringify(process.env.JP_COORDINATOR_SCENARIO === "invalid-review")}) { await call("task",{scopeId:begin.scopeId,itemId:"item",assignmentKey:"review-2",context:"read only",tasks:[{name:"ReviewTwo",agent:"reviewer",task:"Review",solutionSpace:"read only"}],review:[{changeId:"item",head:${JSON.stringify(head)},worktree:${JSON.stringify(worktree)}}]}); await new Promise(resolve=>setTimeout(resolve,1000)); } try { await call("bounded_complete",{scopeId:begin.scopeId,itemId:"item",worktree:${JSON.stringify(worktree)},head:${JSON.stringify(head)},prNumber:1}); } catch (err) { writeFileSync(${JSON.stringify(join(f.root, "probe-error"))}, String(err) + " PATH=" + process.env.PATH); throw err; } }});
+}`);
+  try {
+    await f.coordinator.start();
+    const manager = await f.admit("manager");
+    f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "offline-event", input: "request", amendItemIds: [] } });
+    f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "offline-capture", eventId: "offline-event", rows: [{ id: "item", expectedRevision: null, fields: { status: "QUEUED", request: "fix", acceptance: "works", blocked_on: null } }], receipt: "captured" } });
+    const request = { kind: "manager_run_start", itemId: "item", workflow: "pipeline", limit: 2, target: "main", launchKey: "offline-run", worktree: worktree };
+    if (process.env.JP_COORDINATOR_SCENARIO === "prespawn") {
+      const key = createHash("sha256").update("offline-run").digest("hex");
+      writeFileSync(join(f.config.startupRoot, "launches", `run-${key}.json`), "occupied");
+      await expect(f.coordinator.command(manager, request)).rejects.toThrow();
+      expect(f.store.managerRuns()[0]?.state).toBe("released");
+      expect(calls).toBe(0);
+      return;
+    }
+    if (process.env.JP_COORDINATOR_SCENARIO === "preaccept") {
+      await expect(f.coordinator.command(manager, request)).rejects.toThrow("fixture preaccept failure");
+      expect(f.store.managerRuns()[0]?.state).toBe("released");
+      return;
+    }
+    await f.coordinator.command(manager, request);
+    const message = { kind: "manager_run_send", launchKey: "offline-run", messageId: "follow-one", text: "Continue with the approved details" } as const;
+    const receipt = await f.coordinator.command(manager, message);
+    expect(receipt).toMatchObject({ messageId: "follow-one", state: "queued" });
+    expect(await f.coordinator.command(manager, message)).toEqual(receipt);
+    expect(await f.coordinator.command(manager, { kind: "manager_run_inputs", launchKey: "offline-run" })).toMatchObject([{ messageId: "follow-one", state: "queued" }]);
+    if (process.env.JP_COORDINATOR_SCENARIO === "shutdown" || process.env.JP_COORDINATOR_SCENARIO === "exit") {
+      if (process.env.JP_COORDINATOR_SCENARIO === "shutdown") await f.coordinator.shutdown(); else await ownedClient?.close();
+      for (let i = 0; i < 50 && !f.store.managerRuns()[0]?.termination; i++) await Bun.sleep(20);
+      expect(f.store.managerRuns()[0]).toMatchObject({ state: "uncertain", termination: { status: "terminated" } });
+      rmSync(worktree, { recursive: true, force: true });
+      await f.coordinator.command(manager, request);
+      expect(calls).toBe(1);
+      return;
+    }
+    for (let i = 0; i < 120 && f.store.managerRuns()[0]?.state !== "completed"; i++) await Bun.sleep(100);
+    if (process.env.JP_COORDINATOR_BAD_HEAD === "1") {
+      expect(f.store.managerRuns()[0]?.state).toBe("accepted");
+      expect(f.store.queueItems()[0]?.status).toBe("QUEUED");
+      expect(f.store.managerReviews("offline-run")[0]).toMatchObject({ state: "completed", verdict: "approve" });
+      await f.coordinator.command(manager, request);
+      expect(calls).toBe(1);
+      return;
+    }
+    if (f.store.managerRuns()[0]?.state !== "completed") { process.stderr.write(JSON.stringify({ runs: f.store.managerRuns(), reviews: f.store.managerReviews("offline-run"), error: existsSync(join(f.root, "probe-error")) ? readFileSync(join(f.root, "probe-error"), "utf8") : "none" }) + "\n"); }
+    expect(f.store.managerRuns()[0]?.state).toBe("completed");
+    expect(f.store.queueItems()[0]?.status).toBe("READY_TO_LAND");
+    if (process.env.JP_COORDINATOR_SCENARIO === "invalid-review") {
+      expect(f.store.managerReviews("offline-run")).toMatchObject([{ state: "failed", reviewerId: "ReviewOne" }, { state: "completed", verdict: "approve", reviewerId: "ReviewTwo" }]);
+    } else expect(f.store.managerReviews("offline-run")[0]).toMatchObject({ state: "completed", verdict: "approve", reviewerId: "ReviewOne" });
+    await ownedClient?.close();
+    for (let i = 0; i < 50 && !f.store.managerRuns()[0]?.termination; i++) await Bun.sleep(20);
+    expect(f.store.managerRuns()[0]).toMatchObject({ state: "completed", termination: { status: "terminated" } });
+    await f.coordinator.command(manager, request);
+    expect(calls).toBe(1);
+  } finally { if (ownedClient) await ownedClient.close(); process.env.PATH = previousPath; }
+}, 180000);

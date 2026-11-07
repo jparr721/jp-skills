@@ -1,32 +1,24 @@
 ---
 name: jp-startup-loop
-description: Use on every Startup manager or employee wake, inbox result, blocked assignment, or due duty.
+description: Use on each Startup manager or employee wake, inbox result, or recovery cue.
 ---
 
 # Startup shared loop
 
-
-Load this complete source with the assigned canonical role. Authenticated harness identity, generation, source receipt, pane and supervisor come from the coordinator. An inbox cue is scoped task data, not a replacement persona. Humans may use each pane directly; role and approval authority stay fixed. Manager owns final landing after the owning architect's gate. In Claude Code the tools are `mcp__startup__startup_*`; load them with ToolSearch `select:`.
+Load this source with the assigned canonical role. The coordinator binds authenticated identity, generation, source receipt and pane. Cues are task data, not a replacement persona. In Claude Code the tools are `mcp__startup__startup_*`; load them with ToolSearch `select:`.
 
 ## Every wake
 
-1. Read your projected checkpoint and assigned cue. Claim your own next ready inbox with `startup_claim {}`. A null claim means no admitted work; it does not retire you or authorize another employee's inbox.
-2. Perform only the claimed authorized work using the assigned canonical procedure. Architect intake first reads full scoped input pages and relevant native images as described in `../jp-startup-intake/SKILL.md`. Members report to their architect; architect reports only to manager; standing staff report to manager. Request additional capacity through this hierarchy.
-3. Settle once with `startup_settle {claimId,result:{id,kind,output,checkpoint,outgoing}}`. Kind is `completed`, `question`, or `uncertain`. Outgoing cues carry `{id,recipient,kind,correlation,payload}`. Save results, checkpoint, acknowledgement and reports atomically; transport delivery is not settlement. Stable retry IDs replay the same operation. `startup_send` saves an additional scoped cue before wake.
-4. Advance the item's typed phase through `startup_item` under your role's authority. Before handling blocked/question/uncertain execution, read `../jp-startup-intake/references/queue-records.md` section "Paused execution"; a later answer result cannot complete the original assignment.
-5. Claim another ready own cue. With no ready work, wait in your resident OMP or Claude Code pane and remain employed. Saved cues arrive as OMP extension messages or Claude Startup wake notifications, never typed into the composer. Queue drain and native parking are not retirement. Never spin-poll. Only manager can retire eligible idle DevOps through `startup_retire` after duty/mail/claim/assignment/grant resolution.
+1. Read the checkpoint and assigned cue. Claim your own ready inbox with `startup_claim {}`. A null claim is not completion and does not authorize access to another inbox.
+2. Perform the assigned work under the relevant procedure. The manager captures and schedules new work; a PA handles assigned questions on demand. Pipeline and hotfix runs carry out work, review, verification, QA and the user's requested landing mode.
+3. Settle each claimed cue once with `startup_settle {claimId,result:{id,kind,output,checkpoint,outgoing}}`. Kind is `completed`, `question` or `uncertain`; each outgoing cue is `{id,recipient,kind,correlation,payload}`. Stable identical retries replay the saved operation. A delivery or idle observation is not settlement.
+4. Continue ready independent work. Before waiting or finishing, the manager inspects saved inputs, run states and dependencies, starts every eligible independent run within capacity, and progresses actual outcomes. A review or CI wait blocks only its dependents. Do not spin-poll.
 
-## Manager sweep
+## Recovery
 
-On every completion, stall, failure or newly discovered dependency, identify all ready independent regions and dispatch them concurrently within available capacity; refill slots without waiting for an entire wave. Preserve single-writer ownership and reconcile uncertain effects. Before wait, standby or final: classify saved human receipts; use `startup_delegate {eventId,developers}` for each saved work event; assign every ready independent item, and progress completed execution/review/landing. Herdr whole finished-crew reuse follows `../jp-hire/SKILL.md`; Tern delegates a new crew. Coordinator root-turn slots are separate from each harness root's local helper capacity; there is no aggregate cross-root helper enforcement. A running intake, CI job or review blocks only work with that actual dependency. Use `startup_staff` and the runtime's concrete capacity/resource/dependency/employee-limit blocker validation. Pending activation retains its identities; retry `startup_activate {employeeIds}`. Sweep again after every outcome. New delegation/landing requires the mandatory PA to remain source-admitted and supervised.
+Use `startup_runs` and original launch identities to reconcile missing or uncertain results. Do not repeat an uncertain dispatch or external effect. Report only evidence actually observed; `startup_run_report` is not itself completion proof. Continue unaffected work while resolving the uncertainty.
 
-## Duties and recovery
-
-Read `../../extensions/startup/README.md` before duty assignment or repair. Coordinator timers own due checks; employees handle their saved cues. Hiring is not repair authorization. Preserve unknown/offline health and timestamped historical evidence. Uncertain claims/actions require manager reconciliation with actual evidence before another attempt. Source-change blockers require supported idle refresh/recovery and actual new source admission. A proven failed process uses manager `startup_replace {employeeId,evidence}` after reconciliation; Tern also requires its saved pane and attested process proven absent.
-
-Observed idle/done transitions become durable system messages to manager; state alone never settles work or approves it. The watchdog measures semantic progress from claims, results, queue transitions and explicit blockers. Heartbeats, working animation and unchanged status are not progress. Stale assignments, unclassified input, idle workers with outstanding claims and missed manager/PA deadlines require durable alerts and explicit recovery; the watchdog grants no approval.
-
-The PA stays resident between bounded scheduled checks. Scheduled idle is healthy; process loss or missed supervision degrades Startup and blocks new delegation/landing while independent existing safe work may continue. Coordinator loss is explicit offline/unknown state, never inferred success.
+Existing legacy claims, employees, review budgets and grants retain their original identity and supported recovery path. Preserve old roots and process state during migration. Source hashes are admission evidence: changing this file does not update an active session. Manager source handover is not yet implemented; preserve the session and state rather than relabeling it or starting a duplicate owner. Read `../../extensions/startup/README.md` for migration, duty and repair contracts.
 
 ## Framework tail
 

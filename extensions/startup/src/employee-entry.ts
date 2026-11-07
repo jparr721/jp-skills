@@ -26,7 +26,7 @@ export const inputSchema = z.object({ id: idSchema.optional(), text: z.string(),
 export type NativeRoot = Readonly<{ nativeSession: string; file: string; lastAssistant: unknown }>;
 export type NativeRootFn = (host: HostAPI, ctx: NativeContext) => Promise<NativeRoot>;
 export async function nativeRoot(host: HostAPI, ctx: NativeContext): Promise<NativeRoot> {
-  if (typeof ctx.abort !== "function") throw new StartupBootError("Startup V7 requires the actual native abort capability before admission");
+  if (typeof ctx.abort !== "function") throw new StartupBootError("Startup requires the actual native abort capability before admission");
   const ref = host.pi.AgentRegistry.global().get(ctx.agent.id);
   if (ctx.agent.kind !== "main" || ref?.kind !== "main" || ref.parentId !== undefined ||
     ref.session?.sessionManager.getSessionId() !== ctx.sessionManager.getSessionId())
@@ -165,7 +165,7 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
     const shape = Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.schema]));
     const schema = z.strictObject(shape);
     host.registerTool({
-      name, label: name, description: `Startup V7 ${name.replace(/^startup_/, "")}; authenticated employee scope and canonical workflow authority apply.`,
+      name, label: name, description: `Startup ${name.replace(/^startup_/, "")}; authenticated employee scope and canonical workflow authority apply.`,
       parameters: b.object(Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.native]))),
       execute: async (_id, params, _signal, _update, ctx) => {
         const current: Admission | null = admission();
@@ -178,6 +178,14 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
   }
   const direct = (kind: string) => (params: Readonly<Record<string, Json>>): Json => ({ kind, ...params });
   register("startup_claim", {}, direct("claim"));
+  register("startup_ensure_pa", {}, direct("ensure_pa"));
+  register("startup_migrate", { migrationId: text }, direct("manager_migrate"));
+  register("startup_import_legacy", { migrationId: text, sourceRoot: text }, direct("manager_import_legacy"));
+  register("startup_run_start", { itemId: text, workflow: { native: b.enum(["pipeline", "hotfix"]), schema: z.enum(["pipeline", "hotfix"]) }, limit: { native: b.number(), schema: z.number().int().min(1).max(2) }, target: text, launchKey: text, worktree: text }, direct("manager_run_start"));
+  register("startup_runs", {}, direct("manager_run_list"));
+  register("startup_run_send", { launchKey: text, messageId: text, text }, direct("manager_run_send"));
+  register("startup_run_inputs", { launchKey: text }, direct("manager_run_inputs"));
+  register("startup_run_report", { launchKey: text, state: { native: b.enum(["reported", "failed", "uncertain"]), schema: z.enum(["reported", "failed", "uncertain"]) }, outcome: json }, direct("manager_run_report"));
   register("startup_settle", { result: { native: b.unknown(), schema: resultSchema } }, direct("settle"));
   register("startup_send", {
     id: text, recipient: text, kind: { native: b.enum(["assignment", "report", "question", "answer", "alert", "duty"]), schema: cueSchema.unwrap().shape.kind }, correlation: text, payload: json,

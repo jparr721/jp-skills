@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -29,7 +29,13 @@ test.each(["merged", "ready-pr"])("hotfix accepts %s landing", async (mode) => {
 test.each(["merged", "ready-pr"])("nested hotfix inherits %s and needs no human go", async (mode) => {
   const directory = mkdtempSync(join(tmpdir(), "hotfix-landing-"));
   const previousPath = process.env.PATH;
-  const cwd = realpathSync(process.cwd());
+  const repo = process.env.JP_HOTFIX_TEST_CHILD ? process.cwd() : join(directory, "repo");
+  if (!process.env.JP_HOTFIX_TEST_CHILD) {
+    mkdirSync(repo);
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "fixture"], { cwd: repo });
+  }
+  const cwd = realpathSync(repo);
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
   const pr = JSON.stringify({ headRefOid: head, baseRefName: "main", state: "OPEN", isDraft: false, url: "https://example.test/pr/1", mergeCommit: null });
   writeFileSync(join(directory, "gh"), `#!/bin/sh\nprintf '%s\\n' '${pr}'\n`);
@@ -323,4 +329,52 @@ test("a terminal review with invalid output can be retried without inventing a v
   const second = JSON.parse((await call("bounded_status", { scopeId: begin.scopeId })).content[0].text);
   expect(second.reviews[1]).toMatchObject({ state: "completed", verdict: "approve" });
   expect(count).toBe(2);
+});
+
+test("manager-led completion requires a correlated independent review and verified PR", async () => {
+  const directory = process.env.JP_MANAGER_TEST_DIRECTORY ?? mkdtempSync(join(tmpdir(), "manager-led-"));
+  const repo = join(directory, "repo");
+  const bin = join(directory, "bin");
+  const previousPath = process.env.PATH;
+  if (!process.env.JP_MANAGER_TEST_DIRECTORY) { mkdirSync(repo); mkdirSync(bin); }
+  const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+  try {
+    if (!process.env.JP_MANAGER_TEST_DIRECTORY) {
+      git("init", "-q");
+      git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "fixture");
+    }
+    const head = git("rev-parse", "HEAD");
+    const cwd = realpathSync(repo);
+    const pr = JSON.stringify({ headRefOid: head, baseRefName: "main", state: "OPEN", isDraft: false, url: "https://example.test/pr/1", mergeCommit: null });
+    writeFileSync(join(bin, "gh"), `#!/bin/sh\nprintf '%s\\n' '${pr}'\n`);
+    chmodSync(join(bin, "gh"), 0o755);
+    process.env.PATH = `${bin}:${previousPath}`;
+    if (!process.env.JP_MANAGER_TEST_DIRECTORY) {
+      execFileSync(process.execPath, ["test", import.meta.path, "-t", "manager-led completion requires"], { cwd, env: { ...process.env, JP_MANAGER_TEST_DIRECTORY: directory }, stdio: "pipe" });
+      return;
+    }
+    const tools = new Map();
+    const jobs = [];
+    const sessionManager = { getSessionId: () => "session" };
+    const root = { id: "root", session: { sessionManager, asyncJobManager: { getAllJobs: () => jobs } } };
+    const changes = [{ changeId: "A", head, worktree: cwd }];
+    const child = { id: "reviewer", parentId: "root", session: { messages: [{ role: "assistant", content: [{ type: "text", text: JSON.stringify({ changes, verdict: "approve" }) }] }] } };
+    boundedEntry({ zod: z, pi: { AgentRegistry: { global: () => ({ get: (id) => id === "root" ? root : id === "reviewer" ? child : undefined }) } }, registerTool: (tool) => tools.set(tool.name, tool), on: () => {} });
+    const context = { agent: { id: "root", kind: "main" }, sessionManager, cwd, invokeTool: async () => {
+      jobs.push({ id: "job", ownerId: "root", agentId: "reviewer", type: "task", status: "completed", promise: Promise.resolve(), latestDetails: { progress: [{ index: 0, id: "reviewer", agent: "reviewer", status: "completed" }] } });
+      return { content: [], details: { progress: [{ index: 0, id: "reviewer", agent: "reviewer", status: "running" }] } };
+    } };
+    const call = (name, args) => tools.get(name).execute("test", args, undefined, undefined, context);
+    const begin = JSON.parse((await call("bounded_begin", { workflow: "pipeline", itemIds: ["A"], reviewLimit: 2, execution: "manager-led", landing: { mode: "ready-pr", target: "main" } })).content[0].text);
+    const completion = { scopeId: begin.scopeId, itemId: "A", worktree: cwd, head, prNumber: 1 };
+    await expect(call("bounded_complete", completion)).rejects.toThrow("Independent review is unavailable");
+    await call("task", { scopeId: begin.scopeId, itemId: "A", assignmentKey: "review", context: "review", tasks: [{ agent: "reviewer", task: "review", solutionSpace: "read only" }], review: changes });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const result = JSON.parse((await call("bounded_complete", completion)).content[0].text);
+    expect(result.outcome).toBe("completed");
+    expect(result.nativeHint).toMatchObject({ sessionId: "session", scopeId: begin.scopeId, worktree: cwd, agentId: "reviewer", head, verdict: "approve", completedRounds: 1, limit: 2, jobId: "job" });
+  } finally {
+    process.env.PATH = previousPath;
+    if (!process.env.JP_MANAGER_TEST_DIRECTORY) rmSync(directory, { recursive: true, force: true });
+  }
 });

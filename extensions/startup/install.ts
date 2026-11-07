@@ -123,7 +123,7 @@ export function manageInstallation(options: InstallOptions): Readonly<{
     .object({
       name: z.literal(packageName),
       version: z.string(),
-      omp: z.object({ extensions: z.tuple([z.literal("v7.ts")]) }),
+      omp: z.object({ extensions: z.tuple([z.literal("startup.ts")]) }),
     })
     .parse(JSON.parse(readFileSync(join(source, "package.json"), "utf8")));
   const plugins = pluginsDirectory(profile, options.env);

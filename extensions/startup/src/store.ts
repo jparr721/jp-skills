@@ -157,6 +157,55 @@ function requireWorkflowHandoff(children: readonly z.infer<typeof workflowChildS
   if (!dev || (workflow !== "hotfix" && (!architect || !qa || new Set([dev.agentId, architect.agentId, qa.agentId]).size !== 3)))
     throw new StoreAuthorityError("Handoff requires distinct correlated role proofs for the exact worktree and head");
 }
+const managerRunSchema = z.strictObject({
+  launchKey: idSchema, itemId: idSchema, eventId: idSchema, revision: timeSchema,
+  workflow: z.enum(["pipeline", "hotfix"]), limit: z.number().int().min(1).max(2),
+  target: z.string().trim().min(1).max(512), branch: z.string().trim().min(1).max(512).optional(), repository: z.string().refine(isAbsolute), worktree: z.string().refine(isAbsolute),
+  assignment: rowSchema, ownerEpoch: timeSchema,
+  state: z.enum(["starting", "accepted", "reported", "failed", "uncertain", "completed", "released"]),
+  location: jsonSchema.nullable(), outcome: jsonSchema.nullable(),
+  completion: z.unknown().optional(),
+  termination: z.unknown().optional(),
+}).readonly();
+export type ManagerRun = z.infer<typeof managerRunSchema>;
+const managerInputSchema = z.strictObject({
+  launchKey: idSchema, messageId: idSchema, textDigest: z.string().regex(/^[0-9a-f]{64}$/), ownerEpoch: timeSchema,
+  state: z.enum(["sending", "delivered", "uncertain"]),
+}).readonly();
+export type ManagerInput = z.infer<typeof managerInputSchema>;
+const managerCompletionSchema = z.strictObject({
+  launchKey: idSchema, itemId: idSchema, location: jsonSchema,
+  repository: z.string().refine(isAbsolute), worktree: z.string().refine(isAbsolute),
+  target: z.string().trim().min(1), head: z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/),
+  prNumber: z.number().int().positive().safe(),
+  prState: z.enum(["OPEN", "MERGED"]), prDraft: z.boolean(),
+  mergeCommit: z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/).nullable(),
+  review: z.strictObject({ reviewId: idSchema, reviewerId: idSchema, invocationId: idSchema, head: z.string(), verdict: z.literal("approve"), rounds: z.number().int().positive().safe() }),
+}).readonly();
+export type ManagerCompletion = z.infer<typeof managerCompletionSchema>;
+const managerReviewSchema = z.strictObject({
+  reviewId: idSchema, launchKey: idSchema, itemId: idSchema,
+  head: z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/),
+  reviewerId: idSchema.nullable(), invocationId: idSchema.nullable(), state: z.enum(["active", "completed", "uncertain", "failed", "cancelled"]),
+  verdict: z.enum(["approve", "changes-requested", "block"]).nullable(), resolution: z.unknown().optional(),
+}).readonly();
+export type ManagerReview = z.infer<typeof managerReviewSchema>;
+const managerReviewEvidenceSchema = z.strictObject({
+  reviewId: idSchema, launchKey: idSchema, head: z.string(),
+  reviewerId: idSchema, invocationId: idSchema, verdict: z.enum(["approve", "changes-requested", "block"]),
+}).readonly();
+const managerTerminationSchema = z.strictObject({
+  launchKey: idSchema, itemId: idSchema, location: jsonSchema,
+  status: z.literal("terminated"), evidence: z.string().trim().min(1), outcome: z.literal("failed-no-effect").optional(),
+}).readonly();
+export type ManagerTermination = z.infer<typeof managerTerminationSchema>;
+const managerItemSchema = z.strictObject({
+  itemId: idSchema, eventId: idSchema, revision: timeSchema, teamId: idSchema, migrationId: idSchema,
+}).readonly();
+const managerMigrationSchema = z.strictObject({
+  migrationId: idSchema, migrated: z.array(idSchema), alreadyManaged: z.array(idSchema),
+  blocked: z.array(z.strictObject({ itemId: idSchema, reason: z.string().min(1) })),
+}).readonly();
 const workflowRunClaimSchema = z.strictObject({ launchKey: idSchema, claimId: idSchema }).readonly();
 const storedSchema = z.strictObject({ payload: z.string() });
 type QueueDocument = Readonly<{ before: string | null; rows: readonly z.infer<typeof rowSchema>[] }> & (
@@ -230,7 +279,7 @@ const resultRecordSchema = z
 const captureRecordSchema = z
   .strictObject({
     request: captureSchema,
-    teamId: idSchema,
+    teamId: idSchema.nullable(),
     items: teamSchema.unwrap().shape.items,
   })
   .readonly();
@@ -241,6 +290,10 @@ const writeIntentSchema = z
     after: z.string(),
     state: z.enum(["pending", "complete"]),
     capture: captureRecordSchema.nullable(),
+    managerCompletion: z.strictObject({
+      original: managerRunSchema, evidence: managerCompletionSchema,
+      revision: timeSchema, status: z.enum(["MERGED", "READY_TO_LAND"]),
+    }).optional(),
     item: itemTransitionSchema.optional(),
     hostCancel: hostCancelFinalizeSchema.optional(),
   })
@@ -602,6 +655,15 @@ export function openStore(args: {
           const plan = read("workflowPlan", launch.scopeId, workflowPlanSchema);
           if (plan?.state === "active") put("workflowPlan", launch.scopeId, { ...plan, state: "uncertain" });
         }
+        for (const run of all("managerRun", managerRunSchema)) {
+          if (run.state === "starting" || run.state === "accepted" || run.state === "reported") put("managerRun", run.launchKey, { ...run, state: "uncertain" });
+        }
+        for (const entry of all("managerInput", managerInputSchema)) {
+          if (entry.state === "sending") put("managerInput", createHash("sha256").update(JSON.stringify([entry.launchKey, entry.messageId])).digest("hex"), { ...entry, state: "uncertain" });
+        }
+        for (const review of all("managerReview", managerReviewSchema)) {
+          if (review.state === "active") put("managerReview", review.reviewId, { ...review, state: "uncertain" });
+        }
         for (const grant of all("grant", grantSchema).filter(
           (entry): boolean => entry.state === "held",
         ))
@@ -911,14 +973,14 @@ export function openStore(args: {
     return next;
   }
   function finalizeCapture(receipt: CaptureReceipt): void {
-    const current: Team = team(receipt.teamId);
+    const current = receipt.teamId === null ? null : team(receipt.teamId);
     const rows = canonicalQueue().rows;
     for (const item of receipt.items.filter((entry): boolean =>
       receipt.request.rows.some((change): boolean => change.id === entry.id),
     )) {
       put("queueOwner", item.id, {
         id: item.id,
-        eventId: current.eventId,
+        eventId: receipt.request.eventId,
         revision: item.revision,
       });
       const row = rows.find((entry) => entry.id === item.id);
@@ -926,7 +988,7 @@ export function openStore(args: {
       observeItemProgress({ itemId: item.id, revision: item.revision, status: z.string().parse(row.status), observedAt: now() });
     }
     put("capture", receipt.request.captureId, receipt);
-    put("team", current.id, {
+    if (current !== null) put("team", current.id, {
       ...current,
       items: receipt.items,
       state: "active",
@@ -981,6 +1043,22 @@ export function openStore(args: {
       saveCue(draft.sender, draft.cue, draft.teamId);
     put("itemTransition", receipt.request.requestId, receipt);
   }
+  function finalizeManagerCompletion(completion: NonNullable<z.infer<typeof writeIntentSchema>["managerCompletion"]>): void {
+    const current = read("managerRun", completion.original.launchKey, managerRunSchema);
+    const owner = read("queueOwner", completion.original.itemId, queueOwnerSchema);
+    if (current === null || owner === null || owner.eventId !== completion.original.eventId || owner.revision !== completion.original.revision)
+      throw new StoreFenceError("Manager run ownership changed before completion");
+    const resumed = current.state === "uncertain" && completion.original.state === "accepted" &&
+      sameDocument({ ...current, state: "accepted" }, completion.original);
+    if (!sameDocument(current, completion.original) && !resumed)
+      throw new StoreFenceError("Manager run changed before completion");
+    const row = canonicalQueue().rows.find((entry) => entry.id === current.itemId);
+    if (row === undefined || row.status !== completion.status)
+      throw new StoreRecoveryError("Manager completion queue readback does not match its receipt");
+    put("queueOwner", current.itemId, { id: current.itemId, eventId: current.eventId, revision: completion.revision });
+    observeItemProgress({ itemId: current.itemId, revision: completion.revision, status: completion.status, observedAt: now() });
+    put("managerRun", current.launchKey, managerRunSchema.parse({ ...current, state: "completed", completion: completion.evidence }));
+  }
   function finalizeHostCancel(cancel: z.infer<typeof hostCancelFinalizeSchema>): void {
     const saved = hostCancelFinalizeSchema.parse(cancel);
     const ownership = read("queueOwner", saved.itemId, queueOwnerSchema);
@@ -1022,6 +1100,7 @@ export function openStore(args: {
           `Read-back verification failed for ${intent.file}, write ${id}`,
         );
       if (intent.capture !== null) finalizeCapture(intent.capture);
+      if (intent.managerCompletion !== undefined) finalizeManagerCompletion(intent.managerCompletion);
       if (intent.item !== undefined) finalizeItem(intent.item);
       if (intent.hostCancel !== undefined) finalizeHostCancel(intent.hostCancel);
       if (intent.file === "resources.json")
@@ -1360,7 +1439,7 @@ export function openStore(args: {
     managerPendingWork(): Readonly<{ unclassifiedInput: boolean; undelegatedIntake: boolean }> {
       return {
         unclassifiedInput: db.query(`SELECT 1 FROM records WHERE kind='receivedInput' AND ${openInputSql} LIMIT 1`).get() !== null,
-        undelegatedIntake: db.query("SELECT 1 FROM records WHERE kind='intake' AND json_extract(payload,'$.teamId') IS NULL LIMIT 1").get() !== null,
+        undelegatedIntake: db.query("SELECT 1 FROM records AS intake WHERE intake.kind='intake' AND json_extract(intake.payload,'$.teamId') IS NULL AND NOT EXISTS (SELECT 1 FROM records AS capture WHERE capture.kind='capture' AND json_extract(capture.payload,'$.request.eventId')=intake.id) LIMIT 1").get() !== null,
       };
     },
     supervisionView(): Pick<Snapshot, "employees" | "teams" | "messages" | "claims" | "inputs" | "queueRevisions" | "itemExecutions"> {
@@ -2037,19 +2116,13 @@ export function openStore(args: {
         const leader: Employee = actor(input.architect);
         const capture: Capture = captureSchema.parse(input.capture);
         const event = read("intake", capture.eventId, intakeRecordSchema);
-        if (event === null || event.teamId === null)
-          throw new StoreAuthorityError("Intake event has no reserved team");
-        const current: Team = team(event.teamId);
-        if (
-          leader.role !== "architect" ||
-          current.architect !== leader.id ||
-          leader.assignment !== current.id ||
-          current.state === "finished" ||
-          !ready(current)
-        )
-          throw new StoreAuthorityError(
-            "Only the ready event team's architect may capture its intake",
-          );
+        if (event === null) throw new StoreAuthorityError("Intake event is unavailable");
+        const current = event.teamId === null ? null : team(event.teamId);
+        if (current === null) {
+          if (leader.role !== "manager") throw new StoreAuthorityError("Only the manager may capture unassigned intake");
+        } else if (leader.role !== "architect" || current.architect !== leader.id || leader.assignment !== current.id || current.state === "finished" || !ready(current)) {
+          throw new StoreAuthorityError("Only the ready event team's architect may capture its intake");
+        }
         const previous = read(
           "capture",
           capture.captureId,
@@ -2071,9 +2144,13 @@ export function openStore(args: {
         )
           throw new StoreConflictError("Capture contains duplicate row IDs");
         const changes = capture.rows.map((change) => {
+          if (leader.role !== "manager" && read("managerItem", change.id, managerItemSchema) !== null) throw new StoreAuthorityError("Queue item belongs to the manager");
+          if (all("managerRun", managerRunSchema).some((entry) => entry.itemId === change.id)) throw new StoreConflictError("Queue item has an active, uncertain or reported manager run");
           const found = rows.find((row): boolean => row.id === change.id);
           const ownership = read("queueOwner", change.id, queueOwnerSchema);
           if (found !== undefined) {
+            if (found.legacy_import != null && (change.fields.status === "QUEUED" || ("legacy_import" in change.fields && !sameDocument(change.fields.legacy_import, found.legacy_import))))
+              throw new StoreRecoveryError("Legacy work requires verified reconciliation before resume");
             if ((ownership?.revision ?? 0) !== change.expectedRevision)
               throw new StoreConflictError(
                 `Queue row ${change.id} has a stale revision`,
@@ -2179,9 +2256,9 @@ export function openStore(args: {
         const after: string = queueText(document, nextRows);
         const saved: CaptureReceipt = captureRecordSchema.parse({
           request: capture,
-          teamId: current.id,
+          teamId: current?.id ?? null,
           items: [
-            ...current.items.filter(
+            ...(current?.items ?? all("capture", captureRecordSchema).filter((entry) => entry.teamId === null && entry.request.eventId === capture.eventId).flatMap((entry) => entry.items)).filter(
               (item): boolean =>
                 !changes.some((change): boolean => change.id === item.id),
             ),
@@ -2203,6 +2280,361 @@ export function openStore(args: {
       applyIntent(`capture/${receipt.request.captureId}`);
       return receipt;
     },
+    migrateManagerQueue(input: { readonly manager: Binding; readonly migrationId: string }): z.infer<typeof managerMigrationSchema> {
+      pendingWrites();
+      return tx(() => {
+        manager(input.manager);
+        const migrationId = idSchema.parse(input.migrationId);
+        const previous = read("managerMigration", migrationId, managerMigrationSchema);
+        if (previous !== null) return previous;
+        const rows = canonicalQueue().rows;
+        if (new Set(rows.map((row) => row.id)).size !== rows.length) throw new StoreRecoveryError("Canonical queue contains duplicate IDs");
+        const migrated: string[] = [];
+        const alreadyManaged: string[] = [];
+        const blocked: { itemId: string; reason: string }[] = [];
+        const scopes = all("workflowScope", workflowScopeSchema);
+        const factories = all("workflowFactoryScope", workflowFactoryScopeSchema);
+        const launches = all("workflowLaunch", workflowLaunchSchema);
+        const managerRuns = all("managerRun", managerRunSchema);
+        const managerReviews = all("managerReview", managerReviewSchema);
+        for (const row of rows) {
+          const owner = read("queueOwner", row.id, queueOwnerSchema);
+          if (owner === null) { blocked.push({ itemId: row.id, reason: "missing queue ownership" }); continue; }
+          const event = read("intake", owner.eventId, intakeRecordSchema);
+          if (event === null) { blocked.push({ itemId: row.id, reason: "missing intake" }); continue; }
+          if (row.status !== "QUEUED") { blocked.push({ itemId: row.id, reason: `status ${String(row.status)} retained` }); continue; }
+          if (row.dispatched_at != null || read("itemExecution", row.id, itemExecutionSchema) !== null) { blocked.push({ itemId: row.id, reason: "assigned or dispatched work requires reconciliation" }); continue; }
+          if (managerRuns.some((run) => run.itemId === row.id && run.state !== "released") || managerReviews.some((review) => review.itemId === row.id && (review.state === "active" || review.state === "uncertain" || review.verdict === "approve"))) { blocked.push({ itemId: row.id, reason: "manager run or review requires reconciliation" }); continue; }
+          const activeScopeIds = new Set([
+            ...scopes.filter((scope) => scope.itemId === row.id).map((scope) => scope.id),
+            ...factories.filter((scope) => scope.items.some((item) => item.itemId === row.id)).map((scope) => scope.id),
+          ]);
+          const reviews = all("workflowReview", workflowReviewSchema).filter((review) => review.changeId === row.id);
+          if (launches.some((launch) => activeScopeIds.has(launch.scopeId) && launch.state !== "closed") ||
+              all("workflowChild", workflowChildSchema).some((child) => child.itemId === row.id && (child.state === "active" || child.state === "uncertain")) ||
+              reviews.some((review) => review.state !== "completed" || review.verdict === null)) {
+            blocked.push({ itemId: row.id, reason: "active or uncertain workflow evidence requires reconciliation" }); continue;
+          }
+          if (reviews.some((review) => review.verdict === "approve") ||
+              (reviews.length > 0 && reviews.length >= Math.min(...reviews.map((review) => review.limit)))) {
+            blocked.push({ itemId: row.id, reason: "prior review is approved or its budget is exhausted" }); continue;
+          }
+          if (event.teamId === null) { alreadyManaged.push(row.id); continue; }
+          const prior = read("managerItem", row.id, managerItemSchema);
+          if (prior !== null) {
+            if (prior.eventId !== owner.eventId || prior.revision !== owner.revision || prior.teamId !== event.teamId) { blocked.push({ itemId: row.id, reason: "manager ownership no longer matches queue revision" }); continue; }
+            alreadyManaged.push(row.id); continue;
+          }
+          put("managerItem", row.id, managerItemSchema.parse({ itemId: row.id, eventId: owner.eventId, revision: owner.revision, teamId: event.teamId, migrationId }));
+          migrated.push(row.id);
+        }
+        const receipt = managerMigrationSchema.parse({ migrationId, migrated, alreadyManaged, blocked });
+        put("managerMigration", migrationId, receipt);
+        return receipt;
+      });
+    },
+    managerRuns(): readonly ManagerRun[] {
+      return all("managerRun", managerRunSchema);
+    },
+    reserveManagerRun(input: { readonly manager: Binding; readonly itemId: string; readonly workflow: "pipeline" | "hotfix"; readonly limit: number; readonly target: string; readonly branch: string; readonly launchKey: string; readonly repository: string; readonly worktree: string }): Readonly<{ run: ManagerRun; created: boolean }> {
+      pendingWrites();
+      return tx(() => {
+        manager(input.manager);
+        const launchKey = idSchema.parse(input.launchKey);
+        const itemId = idSchema.parse(input.itemId);
+        const limit = z.number().int().min(1).max(input.workflow === "hotfix" ? 1 : 2).parse(input.limit);
+        const target = z.string().trim().min(1).max(512).parse(input.target);
+        const branch = z.string().trim().min(1).max(512).parse(input.branch);
+        if (branch === target) throw new StoreAuthorityError("Run branch must differ from target");
+        const repository = realpathSync(z.string().refine(isAbsolute).parse(input.repository));
+        const worktree = realpathSync(z.string().refine(isAbsolute).parse(input.worktree));
+        const prior = read("managerRun", launchKey, managerRunSchema);
+        if (prior !== null) {
+          if (prior.itemId !== itemId || prior.workflow !== input.workflow || prior.limit !== limit || prior.target !== target || (prior.branch !== undefined && prior.branch !== branch) || prior.repository !== repository || prior.worktree !== worktree) throw new StoreConflictError("Manager launch key belongs to a different request");
+          return { run: prior, created: false };
+        }
+        const owner = read("queueOwner", itemId, queueOwnerSchema);
+        const row = canonicalQueue().rows.find((entry) => entry.id === itemId);
+        if (owner === null || row === undefined || row.status !== "QUEUED" || row.dispatched_at != null) throw new StoreAuthorityError("Manager run requires a captured, undispatched queued item");
+        const event = read("intake", owner.eventId, intakeRecordSchema);
+        const migrated = read("managerItem", itemId, managerItemSchema);
+        if (event === null || (event.teamId !== null && (migrated === null || migrated.eventId !== owner.eventId || migrated.revision !== owner.revision || migrated.teamId !== event.teamId))) throw new StoreAuthorityError("Manager run requires manager ownership of the intake item");
+        const runs = all("managerRun", managerRunSchema);
+        const priorRuns = runs.filter((entry) => entry.itemId === itemId);
+        if (priorRuns.some((entry) => entry.state !== "released")) throw new StoreConflictError("Item already has an unreconciled or completed run");
+        if (priorRuns.some((entry) => entry.workflow !== input.workflow || entry.limit !== limit || entry.target !== target || entry.branch !== branch || entry.repository !== repository || entry.worktree !== worktree)) throw new StoreConflictError("Retry must preserve the original workflow, review limit, target and repository");
+        const managerReviews = all("managerReview", managerReviewSchema).filter((entry) => entry.itemId === itemId && entry.state !== "failed" && entry.state !== "cancelled");
+        if (managerReviews.some((entry) => entry.state !== "completed" || entry.verdict === null || entry.verdict === "approve")) throw new StoreAuthorityError("Prior manager review is unresolved or already approved");
+        if (runs.some((entry) => (entry.worktree === worktree || (entry.repository === repository && entry.branch === branch)) && entry.state !== "released" && entry.termination === undefined)) throw new StoreConflictError("Worktree has an unreconciled manager run");
+        const savedLimit = read("workflowLimit", itemId, z.number().int().min(1).max(3));
+        const savedTarget = read("workflowTarget", itemId, z.string().min(1));
+        const reviews = all("workflowReview", workflowReviewSchema).filter((entry) => entry.changeId === itemId);
+        if (reviews.some((entry) => entry.state !== "completed" || entry.verdict === null || entry.verdict === "approve")) throw new StoreAuthorityError("Prior review is unresolved or already approved");
+        const inheritedLimit = savedLimit ?? (reviews.length ? Math.min(...reviews.map((entry) => entry.limit)) : limit);
+        if (limit + reviews.length > inheritedLimit || managerReviews.length >= limit) throw new StoreAuthorityError("Run exceeds the remaining inherited review limit");
+        if (savedTarget !== null && target !== savedTarget) throw new StoreAuthorityError("Run target differs from the frozen target");
+        if (savedLimit === null) put("workflowLimit", itemId, inheritedLimit);
+        if (savedTarget === null) put("workflowTarget", itemId, target);
+        const run = managerRunSchema.parse({ launchKey, itemId, eventId: owner.eventId, revision: owner.revision, workflow: input.workflow, limit, target, branch, repository, worktree, assignment: row, ownerEpoch: epoch, state: "starting", location: null, outcome: null });
+        put("managerRun", launchKey, run);
+        return { run, created: true };
+      });
+    },
+    acceptManagerRun(input: { readonly manager: Binding; readonly launchKey: string; readonly location: Json }): ManagerRun {
+      return tx(() => {
+        manager(input.manager);
+        const run = read("managerRun", input.launchKey, managerRunSchema);
+        if (run === null || run.ownerEpoch !== epoch || run.state !== "starting") throw new StoreFenceError("Manager run is not an active launch in this owner epoch");
+        if (input.location === null || typeof input.location !== "object" || Array.isArray(input.location) || Object.keys(input.location).length === 0) throw new StoreAuthorityError("Manager run requires a native location identity");
+        const updated = managerRunSchema.parse({ ...run, state: "accepted", location: input.location });
+        put("managerRun", run.launchKey, updated);
+        return updated;
+      });
+    },
+    settleManagerRun(input: { readonly manager: Binding; readonly launchKey: string; readonly state: "reported" | "failed" | "uncertain"; readonly outcome: Json }): ManagerRun {
+      return tx(() => {
+        manager(input.manager);
+        const run = read("managerRun", input.launchKey, managerRunSchema);
+        if (run === null || run.ownerEpoch !== epoch || (run.state !== "accepted" && run.state !== "reported" && !(run.state === "starting" && input.state === "uncertain"))) throw new StoreFenceError("Manager run has no current accepted launch");
+        const updated = managerRunSchema.parse({ ...run, state: input.state === "reported" ? "accepted" : input.state, outcome: jsonSchema.parse(input.outcome) });
+        put("managerRun", run.launchKey, updated);
+        return updated;
+      });
+    },
+    managerInputs(launchKey: string): readonly ManagerInput[] {
+      return all("managerInput", managerInputSchema).filter((entry) => entry.launchKey === idSchema.parse(launchKey));
+    },
+    reserveManagerInput(input: { readonly manager: Binding; readonly launchKey: string; readonly messageId: string; readonly text: string }): Readonly<{ receipt: ManagerInput; created: boolean }> {
+      return tx(() => {
+        manager(input.manager);
+        const launchKey = idSchema.parse(input.launchKey);
+        const messageId = idSchema.parse(input.messageId);
+        const text = z.string().min(1).max(100_000).parse(input.text);
+        const id = createHash("sha256").update(JSON.stringify([launchKey, messageId])).digest("hex");
+        const textDigest = createHash("sha256").update(text).digest("hex");
+        const prior = read("managerInput", id, managerInputSchema);
+        if (prior !== null) {
+          if (prior.launchKey !== launchKey || prior.messageId !== messageId || prior.textDigest !== textDigest) throw new StoreConflictError("Input key belongs to a different message");
+          return { receipt: prior, created: false };
+        }
+        const run = read("managerRun", launchKey, managerRunSchema);
+        if (run === null || run.ownerEpoch !== epoch || (run.state !== "accepted" && run.state !== "reported")) throw new StoreFenceError("Input requires a current active manager run");
+        const receipt = managerInputSchema.parse({ launchKey, messageId, textDigest, ownerEpoch: epoch, state: "sending" });
+        put("managerInput", id, receipt);
+        return { receipt, created: true };
+      });
+    },
+    settleManagerInput(input: { readonly manager: Binding; readonly launchKey: string; readonly messageId: string; readonly state: "delivered" | "uncertain" }): ManagerInput {
+      return tx(() => {
+        manager(input.manager);
+        const id = createHash("sha256").update(JSON.stringify([idSchema.parse(input.launchKey), idSchema.parse(input.messageId)])).digest("hex");
+        const prior = read("managerInput", id, managerInputSchema);
+        if (prior === null) throw new StoreFenceError("Input reservation is unavailable");
+        if (prior.state === input.state) return prior;
+        if (prior.state !== "sending" || prior.ownerEpoch !== epoch) throw new StoreFenceError("Input outcome is already settled or uncertain");
+        const receipt = managerInputSchema.parse({ ...prior, state: input.state });
+        put("managerInput", id, receipt);
+        return receipt;
+      });
+    },
+    reserveManagerReview(input: { readonly manager: Binding; readonly launchKey: string; readonly reviewId: string; readonly head: string }): ManagerReview {
+      return tx(() => {
+        manager(input.manager);
+        const run = read("managerRun", input.launchKey, managerRunSchema);
+        if (run === null || run.ownerEpoch !== epoch || run.state !== "accepted" && run.state !== "reported") throw new StoreFenceError("Review requires the current accepted run");
+        const review = managerReviewSchema.parse({ reviewId: input.reviewId, launchKey: run.launchKey, itemId: run.itemId, head: input.head, reviewerId: null, invocationId: null, state: "active", verdict: null });
+        const previous = read("managerReview", review.reviewId, managerReviewSchema);
+        if (previous !== null) {
+          if (previous.launchKey !== review.launchKey || previous.itemId !== review.itemId || previous.head !== review.head) throw new StoreConflictError("Review key belongs to another review");
+          if (previous.state === "failed" || previous.state === "cancelled") throw new StoreConflictError("Review key is already closed; use a new assignment");
+          return previous;
+        }
+        const reviews = all("managerReview", managerReviewSchema).filter((entry) => entry.itemId === run.itemId && entry.state !== "failed" && entry.state !== "cancelled");
+        if (reviews.some((entry) => entry.state !== "completed")) throw new StoreConflictError("Existing review is active or uncertain");
+        if (reviews.some((entry) => entry.verdict === "approve")) throw new StoreConflictError("Review already approved");
+        if (reviews.length >= run.limit) throw new StoreConflictError("Review budget exhausted");
+        put("managerReview", review.reviewId, review);
+        return review;
+      });
+    },
+    managerReviews(launchKey: string): readonly ManagerReview[] {
+      return all("managerReview", managerReviewSchema).filter((review) => review.launchKey === idSchema.parse(launchKey));
+    },
+    bindManagerReview(input: { readonly manager: Binding; readonly reviewId: string; readonly reviewerId: string; readonly invocationId: string }): ManagerReview {
+      return tx(() => {
+        manager(input.manager);
+        const review = read("managerReview", input.reviewId, managerReviewSchema);
+        if (review === null) throw new StoreFenceError("Review reservation is unavailable");
+        const reviewerId = idSchema.parse(input.reviewerId);
+        const invocationId = idSchema.parse(input.invocationId);
+        if (review.reviewerId !== null || review.invocationId !== null) {
+          if (review.reviewerId !== reviewerId || review.invocationId !== invocationId) throw new StoreConflictError("Review is bound to another native invocation");
+          return review;
+        }
+        if (all("managerReview", managerReviewSchema).some((entry) => entry.reviewId !== review.reviewId && entry.launchKey === review.launchKey && entry.invocationId === invocationId)) throw new StoreConflictError("Native invocation already belongs to another review");
+        const run = read("managerRun", review.launchKey, managerRunSchema);
+        if (run === null || run.ownerEpoch !== epoch || (run.state !== "accepted" && run.state !== "reported") || review.state !== "active") throw new StoreFenceError("Review binding requires its current active run");
+        const bound = managerReviewSchema.parse({ ...review, reviewerId, invocationId });
+        put("managerReview", review.reviewId, bound);
+        return bound;
+      });
+    },
+    async failManagerReview(input: { readonly manager: Binding; readonly reviewId: string; readonly verify: (review: ManagerReview, run: ManagerRun) => Promise<unknown> }): Promise<ManagerReview> {
+      const original = tx(() => {
+        manager(input.manager);
+        const review = read("managerReview", input.reviewId, managerReviewSchema);
+        if (review === null || review.reviewerId === null || review.invocationId === null || (review.state !== "active" && review.state !== "uncertain")) throw new StoreFenceError("Review has no unresolved bound native invocation");
+        const run = read("managerRun", review.launchKey, managerRunSchema);
+        if (run === null || run.location === null || run.state === "completed" || run.state === "released") throw new StoreFenceError("Review run has no verifiable original native identity");
+        return { review, run };
+      });
+      const evidence = z.strictObject({ reviewId: idSchema, launchKey: idSchema, head: z.string(), reviewerId: idSchema, invocationId: idSchema, status: z.literal("invalid"), evidence: z.string().trim().min(1) }).parse(await input.verify(original.review, original.run));
+      if (evidence.reviewId !== original.review.reviewId || evidence.launchKey !== original.run.launchKey || evidence.head !== original.review.head || evidence.reviewerId !== original.review.reviewerId || evidence.invocationId !== original.review.invocationId) throw new StoreAuthorityError("Invalid review evidence does not match its native reservation");
+      return tx(() => {
+        manager(input.manager);
+        const review = read("managerReview", input.reviewId, managerReviewSchema);
+        const run = read("managerRun", original.run.launchKey, managerRunSchema);
+        if (review === null || run === null || !sameDocument(review, original.review) || !sameDocument({ ...run, outcome: original.run.outcome }, original.run)) throw new StoreFenceError("Review or run changed during verification");
+        const failed = managerReviewSchema.parse({ ...review, state: "failed", resolution: evidence });
+        put("managerReview", review.reviewId, failed);
+        return failed;
+      });
+    },
+    async cancelManagerReview(input: { readonly manager: Binding; readonly reviewId: string; readonly verify: (review: ManagerReview, run: ManagerRun) => Promise<unknown> }): Promise<ManagerReview> {
+      const original = tx(() => {
+        manager(input.manager);
+        const review = read("managerReview", input.reviewId, managerReviewSchema);
+        if (review === null || review.reviewerId !== null || review.invocationId !== null || (review.state !== "active" && review.state !== "uncertain")) throw new StoreFenceError("Review is not an unbound unresolved reservation");
+        const run = read("managerRun", review.launchKey, managerRunSchema);
+        if (run === null || run.location === null || run.state === "completed" || run.state === "released") throw new StoreFenceError("Review run has no verifiable original native identity");
+        return { review, run };
+      });
+      const evidence = z.strictObject({ reviewId: idSchema, launchKey: idSchema, status: z.literal("not-dispatched"), evidence: z.string().trim().min(1) }).parse(await input.verify(original.review, original.run));
+      if (evidence.reviewId !== original.review.reviewId || evidence.launchKey !== original.run.launchKey) throw new StoreAuthorityError("No-dispatch proof does not match the original review");
+      return tx(() => {
+        manager(input.manager);
+        const review = read("managerReview", input.reviewId, managerReviewSchema);
+        const run = read("managerRun", original.run.launchKey, managerRunSchema);
+        if (review === null || run === null || !sameDocument(review, original.review) || !sameDocument({ ...run, outcome: original.run.outcome }, original.run)) throw new StoreFenceError("Review or run changed during verification");
+        const cancelled = managerReviewSchema.parse({ ...review, state: "cancelled", resolution: evidence });
+        put("managerReview", review.reviewId, cancelled);
+        return cancelled;
+      });
+    },
+    async settleManagerReview(input: { readonly manager: Binding; readonly reviewId: string; readonly verify: (review: ManagerReview, run: ManagerRun) => Promise<unknown> }): Promise<ManagerReview> {
+      const original = tx(() => {
+        manager(input.manager);
+        const review = read("managerReview", input.reviewId, managerReviewSchema);
+        if (review === null) throw new StoreFenceError("Review is unavailable");
+        if (review.state === "completed") return { review, run: null };
+        if (review.reviewerId === null || review.invocationId === null) throw new StoreFenceError("Review native identity is unavailable; reconcile the original dispatch");
+        const run = read("managerRun", review.launchKey, managerRunSchema);
+        if (run === null || run.location === null || run.state === "completed" || run.state === "released") throw new StoreFenceError("Review run has no verifiable original native identity");
+        return { review, run };
+      });
+      if (original.run === null) return original.review;
+      const evidence = managerReviewEvidenceSchema.parse(await input.verify(original.review, original.run));
+      if (evidence.reviewId !== original.review.reviewId || evidence.launchKey !== original.run.launchKey || evidence.head !== original.review.head || evidence.reviewerId !== original.review.reviewerId || evidence.invocationId !== original.review.invocationId)
+        throw new StoreAuthorityError("Verified review does not match its native reservation");
+      return tx(() => {
+        manager(input.manager);
+        const review = read("managerReview", input.reviewId, managerReviewSchema);
+        const run = read("managerRun", original.run.launchKey, managerRunSchema);
+        if (review === null || run === null || !sameDocument(review, original.review) || !sameDocument({ ...run, outcome: original.run.outcome }, original.run)) throw new StoreFenceError("Review or run changed during verification");
+        const settled = managerReviewSchema.parse({ ...review, state: "completed", verdict: evidence.verdict });
+        put("managerReview", review.reviewId, settled);
+        return settled;
+      });
+    },
+    async completeManagerRun(input: { readonly manager: Binding; readonly launchKey: string; readonly verify: (run: ManagerRun) => Promise<unknown> }): Promise<ManagerRun> {
+      pendingWrites();
+      const original = tx(() => {
+        manager(input.manager);
+        const run = read("managerRun", input.launchKey, managerRunSchema);
+        if (run === null || run.state === "starting" || run.state === "released" || run.location === null)
+          throw new StoreFenceError("Manager run has no verifiable original native location");
+        return run;
+      });
+      if (original.state === "completed") return original;
+      const evidence = managerCompletionSchema.parse(await input.verify(original));
+      if (evidence.launchKey !== original.launchKey || evidence.itemId !== original.itemId ||
+          !sameDocument(evidence.location, original.location) ||
+          evidence.repository !== original.repository || evidence.worktree !== original.worktree ||
+          evidence.target !== original.target || evidence.review.head !== evidence.head ||
+          evidence.review.rounds > original.limit || evidence.prDraft ||
+          (evidence.prState === "MERGED" ? evidence.mergeCommit === null : evidence.mergeCommit !== null))
+        throw new StoreAuthorityError("Verified completion does not match the original run, review or PR");
+      pendingWrites();
+      const intentId = `manager-complete/${original.launchKey}`;
+      tx(() => {
+        manager(input.manager);
+        const current = read("managerRun", input.launchKey, managerRunSchema);
+        if (current === null || !sameDocument({ ...current, outcome: original.outcome }, original))
+          throw new StoreFenceError("Manager run changed during completion verification");
+        const owner = read("queueOwner", current.itemId, queueOwnerSchema);
+        if (owner === null || owner.eventId !== current.eventId || owner.revision !== current.revision)
+          throw new StoreFenceError("Manager run item changed during completion verification");
+        const reviews = all("managerReview", managerReviewSchema).filter((review) => review.itemId === current.itemId && review.state === "completed");
+        const review = reviews.find((entry) => entry.reviewId === evidence.review.reviewId);
+        if (review === undefined || review.verdict !== "approve" || review.head !== evidence.head || review.reviewerId !== evidence.review.reviewerId || review.invocationId !== evidence.review.invocationId || review.launchKey !== current.launchKey || reviews.length !== evidence.review.rounds)
+          throw new StoreAuthorityError("Completion requires the independently verified exact-head review receipt");
+        const document = canonicalQueue();
+        const row = document.rows.find((entry) => entry.id === current.itemId);
+        if (row === undefined || row.status !== "QUEUED") throw new StoreFenceError("Manager run queue item is no longer queued");
+        const status = evidence.prState === "MERGED" ? "MERGED" : "READY_TO_LAND";
+        const nextRow = rowSchema.parse({ ...row, status });
+        const after = queueText(document, document.rows.map((entry) => entry.id === current.itemId ? nextRow : entry));
+        put("intent", intentId, { file: "queue.json", before: document.before, after, state: "pending", capture: null,
+          managerCompletion: { original: current, evidence, revision: owner.revision + 1, status } });
+      });
+      applyIntent(intentId);
+      const completed = read("managerRun", original.launchKey, managerRunSchema);
+      if (completed === null || completed.state !== "completed") throw new StoreRecoveryError("Manager completion did not persist");
+      return completed;
+    },
+    async releaseUndispatchedManagerRun(input: { readonly manager: Binding; readonly launchKey: string; readonly verify: (run: ManagerRun) => Promise<unknown> }): Promise<ManagerRun> {
+      pendingWrites();
+      const original = tx(() => {
+        manager(input.manager);
+        const run = read("managerRun", input.launchKey, managerRunSchema);
+        if (run === null || run.location !== null || (run.state !== "starting" && run.state !== "uncertain")) throw new StoreFenceError("Run is not an unlocated pending launch");
+        return run;
+      });
+      const evidence = z.strictObject({ launchKey: idSchema, itemId: idSchema, status: z.literal("not-dispatched"), evidence: z.string().trim().min(1) }).parse(await input.verify(original));
+      if (evidence.launchKey !== original.launchKey || evidence.itemId !== original.itemId) throw new StoreAuthorityError("No-dispatch proof does not match the original run");
+      pendingWrites();
+      return tx(() => {
+        manager(input.manager);
+        const current = read("managerRun", input.launchKey, managerRunSchema);
+        if (current === null || !sameDocument(current, original)) throw new StoreFenceError("Run changed during no-dispatch verification");
+        const released = managerRunSchema.parse({ ...current, state: "released", termination: evidence });
+        put("managerRun", current.launchKey, released);
+        return released;
+      });
+    },
+    async releaseManagerRun(input: { readonly manager: Binding; readonly launchKey: string; readonly verify: (run: ManagerRun) => Promise<unknown> }): Promise<ManagerRun> {
+      pendingWrites();
+      const original = tx(() => {
+        manager(input.manager);
+        const run = read("managerRun", input.launchKey, managerRunSchema);
+        if (run === null || run.state === "starting" || run.state === "released" || run.location === null)
+          throw new StoreFenceError("Manager run has no verifiable original native location");
+        return run;
+      });
+      const evidence = managerTerminationSchema.parse(await input.verify(original));
+      if (evidence.launchKey !== original.launchKey || evidence.itemId !== original.itemId || !sameDocument(evidence.location, original.location))
+        throw new StoreAuthorityError("Verified termination does not match the original run");
+      pendingWrites();
+      return tx(() => {
+        manager(input.manager);
+        const current = read("managerRun", input.launchKey, managerRunSchema);
+        if (current === null || !sameDocument({ ...current, outcome: original.outcome }, original))
+          throw new StoreFenceError("Manager run changed during termination verification");
+        const released = managerRunSchema.parse({ ...current, state: current.state === "completed" ? "completed" : evidence.outcome === "failed-no-effect" ? "released" : "uncertain", termination: evidence });
+        put("managerRun", current.launchKey, released);
+        return released;
+      });
+    },
     queueItems(): readonly z.infer<typeof rowSchema>[] {
       return canonicalQueue().rows;
     },
@@ -2214,6 +2646,7 @@ export function openStore(args: {
       const receipt: ItemTransition = tx(() => {
         const sender = actor(input.employee);
         const request = itemActionSchema.parse(input.request);
+        if (read("managerItem", request.itemId, managerItemSchema) !== null) throw new StoreAuthorityError("Item belongs to manager execution");
         const ownership = read("queueOwner", request.itemId, queueOwnerSchema);
         const event =
           ownership === null

@@ -27,7 +27,7 @@ export function claudeEntryConfig(environment: Environment, sessionId: string, t
   };
 }
 export function bridgeInstructions(tools: readonly string[]): string {
-  return `Startup V7 employee tools are deferred MCP tools on server startup. Before calling any of them, load them all with ToolSearch query "select:${tools.map((name) => `mcp__startup__${name}`).join(",")}". Use them only from the main session, never from subagents.`;
+  return `Startup employee tools are deferred MCP tools on server startup. Before calling any of them, load them all with ToolSearch query "select:${tools.map((name) => `mcp__startup__${name}`).join(",")}". Use them only from the main session, never from subagents.`;
 }
 function listenDirectory(root: string, path: string): void {
   assertStartupPath(root, path, "directory");
@@ -135,8 +135,8 @@ async function serve(): Promise<void> {
     Bun.plugin({ name: "startup-claude-omp-settings", setup(build): void {
       build.module("@oh-my-pi/pi-coding-agent/task/settings", () => ({ loader: "object", exports: { cfgTaskMaxConcurrency: { get: (): never => { throw new StartupBootError("OMP task settings are unavailable in Claude Code"); } } } }));
     } });
-    const { installStartupV7 } = await import("./v7");
-    installStartupV7(shim.host, claudeEntryConfig(environment, sessionId, () => transcript));
+    const { installStartup } = await import("./startup");
+    installStartup(shim.host, claudeEntryConfig(environment, sessionId, () => transcript));
   }
   function attach(path: string): Promise<void> {
     if (transcript !== null) {

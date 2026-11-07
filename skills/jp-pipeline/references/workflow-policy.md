@@ -18,6 +18,10 @@ The coordinator actively finds parallel burn-down regions: decompose the remaini
 
 When one requested change spans multiple Git repositories, automatically run a separate bounded pipeline for each repository under the same coordinating supervisor. Identify each repository by its canonical remote and Git common directory; use its own worktree, native host, item identity, PR, role proofs, review heads and completion evidence, and coordinate dependencies and landing order across repositories. Do not ask the user to choose this split. A pipeline review cap is at most two completed rounds per change; carry a stricter inherited cap and any rounds already spent on that same repository/change into its host. Never create another scope to reset a review budget or repeat an uncertain assignment. A separate repository scope does not inherit another host's runtime state: track its actual receipts and do not claim a cross-repository transaction or completed feature until every required repository and integration gate is satisfied. Dispatch independent repository pipelines concurrently as capacity allows; continue them when another repository is waiting on a dependency or recovery.
 
+### Startup version 9 target
+
+The intended manager-led Startup design schedules short-lived pipeline or hotfix runs directly from its durable queue. The manager coordinates independent work; an on-demand PA relays questions. Runs own their review, verification, QA and requested landing; temporary helpers perform specific work without a permanent employee hierarchy. Preserve per-change review budgets, authenticated receipts and uncertain-launch fencing. This is a target, not a supported tool contract: follow the installed runtime's documented behavior until direct manager-led dispatch and migration are actually implemented and verified.
+
 ### Bounded host
 
 If the current OMP session lacks the bounded tools, resolve `JP_SKILLS_REPO` to the absolute installed repository path, then launch a fresh interactive root yourself using a terminal/PTY:

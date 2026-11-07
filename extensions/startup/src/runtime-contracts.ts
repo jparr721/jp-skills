@@ -178,7 +178,7 @@ export const runtimePolicySchema = z.strictObject({
   paCadenceMs: z.number().int().positive().safe(),
   progressDeadlineMs: z.number().int().positive().safe(),
   connectionDeadlineMs: z.number().int().positive().safe(),
-  executionLimit: z.number().int().min(3).safe(),
+  executionLimit: z.number().int().min(2).safe(),
 });
 export type RuntimePolicy = z.infer<typeof runtimePolicySchema>;
 

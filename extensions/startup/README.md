@@ -1,12 +1,28 @@
-# Startup V7 companion
+# Startup companion
 
-The package entry is `v7.ts`. A detached coordinator owns Startup's SQLite state, launch identity, crew hierarchy and supervision. Each employee runs an independent OMP or Claude Code root in a directly interactive pane. OMP supports Herdr or Tern; Claude Code requires Herdr. Each of the six roles selects a compatible harness independently; a prepared launch records that selection immutably. OMP setup follows; Claude Code setup is in [Claude Code](#claude-code). The manager's inference or process can stop while the coordinator continues observing.
+Startup uses a detached coordinator for durable state and authenticated native sessions. The manager-led design schedules pipeline and hotfix runs, with a PA on demand. The manager-led path is enabled and covered by repository tests, including a real offline OMP coordinator fixture. Live deployment is not verified. OMP supports Herdr or Tern; Claude Code requires Herdr. See the sections below for current backend and recovery contracts.
 
-V7 currently supports new V7 state. It does not migrate a V6 database, reproduce V6 filesystem duty/repair tools, or provide automatic host reboot recovery. Live acceptance for new V7 state is recorded in [the acceptance report](../../docs/startup-v7/acceptance.md). `index.ts` and V6 probes remain historical/component evidence, not an alternate V7 boot path.
+Earlier releases used persistent crews and PA supervision. The historical [acceptance report](../../docs/startup-v7/acceptance.md), [manager recovery guide](../../docs/startup-v7/manager-recovery.md), [recovery proof](../../docs/startup-v7/recovery-acceptance.json) and [screenshot deck](../../docs/slides/startup-v7-recovery-2026-10-15.html) document that design; they do not establish acceptance of the manager-led implementation. Preserve old sessions and their recovery evidence.
 
-The [manager recovery guide](../../docs/startup-v7/manager-recovery.md) describes Herdr recovery, bounded lifecycle alerts, honest connectivity health and finished crew retirement. A resumed manager must use its saved pane, Startup root and OMP profile; Herdr also requires its managed integration. Tern binds the manager process identity: same-process reconnect is supported, while a new manager process requires explicit `/startup-retry` and the rebind safeguards below.
+Manager-led runs require an OMP worker executable even when the manager uses Claude Code. If OMP is missing, launch fails before a run is reserved. Live deployment remains unverified.
 
-The 7.0.2 [recovery proof](../../docs/startup-v7/recovery-acceptance.json) and [screenshot deck](../../docs/slides/startup-v7-recovery-2026-10-15.html) record a live local Herdr run with both session variables unset: a forced employee boot error alerted the manager, the original process recovered automatically in the same pane, PA reports continued, and all owned proof processes were shut down. This does not establish remote Linux compatibility or indefinite liveness.
+## Manager-led migration (implementation in progress)
+
+The manager-led implementation is not yet qualified end to end. These migration operations preserve existing data and do not establish that a work run can complete, that an older active root can be safely retired, or that new manager source hashes are compatible with an existing native session. These tools require an authenticated manager. Changed manager or loop source hashes currently prevent an existing manager from admission and commands; manager source handover is not implemented. Do not overwrite an old binding or relabel an old session as a new manager.
+
+- For an already scoped Startup root with its canonical queue and intact coordinator records, `startup_migrate {migrationId}` examines every row. It adopts eligible, undispatched `QUEUED` rows into manager ownership and returns `migrated`, `alreadyManaged`, and `blocked` IDs and reasons. A stable migration ID replays its receipt. Rows with unresolved effects, assignments, missing ownership or exhausted/approved reviews are preserved for reconciliation. Team records and old review history remain in place.
+- For an older scoped or unscoped root, create and admit a separate Startup root, then call `startup_import_legacy {migrationId,sourceRoot}` from its manager. `sourceRoot` must be an absolute path to a separate root with a valid `binding.json`, `queue.json`, and `staff.sqlite`; a scoped binding must match its original root and database scope. The importer preserves the old root, creates a restricted archive under the selected root's `legacy-imports/<migrationId>` containing the binding, original queue, a consistent SQLite snapshot and hashes, and imports each nonterminal queue row as `NEEDS_DECISION` with its original row and provenance. The receipt lists quarantined rows as `unresolved`; terminal rows are retained in the archive and listed separately, not reopened. A stable ID replays the receipt; changed source or collisions are refused.
+- Imported rows are quarantined because a queue status or expired lease cannot prove the old owner cannot resume or that prior review budget and effects are resolved. Do not dispatch them until a supported evidence-backed reconciliation path exists. This import does not automatically transfer source identities, role employees, duties, grants, review authority or transcripts into active manager state. Preserve and inspect the old root and archived SQLite history for those records.
+
+V6 and scoped 8.x roots can be archived into a separate new root using `startup_import_legacy`; unrelated new work can proceed there without replaying the old work. All imported nonterminal items remain quarantined because old-owner handover and review-budget transfer are unsupported. Do not recreate an imported item as new work or dispatch it while its old execution is uncertain. These operations have repository tests; live migration and legacy nonterminal handover remain unverified. Never delete or overwrite the old root to make migration appear complete.
+
+## Drain and switch to a separate root
+
+Before replacing the older runtime, complete and reconcile its work under that runtime and inspect its claims, effects and review history. Keep its source files and runtime available during that work. A terminal queue status alone does not prove that claims or external effects are resolved; the importer does not verify them or fence the old process.
+
+Create and admit a separate new Startup root, then call `startup_import_legacy {migrationId,sourceRoot}` with the old absolute root. When every queue row has status `MERGED`, `DONE`, `COMPLETED`, `REJECTED` or `CANCELLED`, the receipt returns no `unresolved` items and lists those rows under `retained`; they remain in the archive rather than reopening in the new queue. Preserve the old root and external transcripts. New, unrelated work can use the manager-led path in the new root, subject to its integration limitations above. Do not run both roots against the same work.
+
+If any row is nonterminal or its status is missing, the importer lists it under `unresolved` and saves it as `NEEDS_DECISION`. It cannot resume automatically: old-owner handover and review-budget transfer remain unsupported. An empty `unresolved` list reflects queue statuses only and is not a receipt proving the old runtime is drained, stopped or free of uncertain effects. The terminal-only archive behavior has repository tests, not live end-to-end migration acceptance.
 
 ## Shared bounded workflows
 
@@ -29,13 +45,13 @@ Repository development can load the extension directly after root provisioning. 
 
 ```sh
 bun install --cwd extensions/startup --frozen-lockfile
-OMPCODE= omp --extension "$STARTUP_HERDR_OMP_EXTENSION" --extension "$PWD/extensions/startup/v7.ts"
+OMPCODE= omp --extension "$STARTUP_HERDR_OMP_EXTENSION" --extension "$PWD/extensions/startup/startup.ts"
 ```
 
 In a Tern pane, load Startup without the Herdr extension:
 
 ```sh
-OMPCODE= omp --extension "$PWD/extensions/startup/v7.ts"
+OMPCODE= omp --extension "$PWD/extensions/startup/startup.ts"
 ```
 
 Add `--profile NAME` to run the manager, and so the Startup, on a named OMP profile.
@@ -148,21 +164,34 @@ In the original manager's supported pane and OMP root:
 
 Names contain letters, digits, underscore or hyphen. `new` binds an existing directory, defaulting to native cwd. `select` reads the saved binding. Current selection discovers exactly one matching ancestor `.startup/config.md` binding or uses `STARTUP_NAME`. Startup home resolves `JP_SKILLS_HOME`, then `XDG_CONFIG_HOME/jp-skills`, then `~/.config/jp-skills`; state must remain outside the bound repository.
 
-Boot verifies the actual OMP version, root identity, unparented transcript/header, canonical source hashes, OMP profile and pane location. It preserves unrelated root AGENTS/configuration bytes, records private runtime configuration and launch intent, then starts or reconnects to the independent runtime. A live or uncertain host is never blindly spawned again. Read-only health checks are bounded; partial PA startup failure keeps the endpoint available and records a manager blocker.
+Boot verifies the actual OMP version, root identity, unparented transcript/header, canonical source hashes, OMP profile and pane location. It preserves unrelated root AGENTS/configuration bytes, records private runtime configuration and launch intent, then starts or reconnects to the independent runtime. A live or uncertain host is never blindly spawned again. Read-only health checks are bounded; the PA starts only on manager request.
 
 After a boot attempt, failed or incomplete admission blocks native and Startup tools. Source/turn admission failure invokes native abort; a swallowed extension hook exception does not grant work authority. Boot failure produces one stop reminder and then parks. The `/startup` command remains available for explicit correction/retry.
 
 `-- WORK` preserves the exact original command text and images as the work receipt. Ordinary manager input remains unclassified until `startup_route`. Direct input in an employee pane becomes a durable manager observation with the original text/images; it does not change the employee's role or approval authority. Extension-generated notifications are not human receipts.
 
-## Crews and tools
+## Manager-led operation
 
-The hierarchy is manager -> owning architect -> dev/QA. PA and shared DevOps report to manager. Each event has an immutable team with one architect, one QA and one or more devs, grouped in one tab. Admission must verify every member before work claims become ready. On Herdr, a complete, finished, idle crew can be explicitly reused for another event with a fresh assignment/generation; Tern does not support crew reuse. Membership history is retained.
+The manager captures input, schedules independent pipeline or hotfix runs, tracks dependencies and actual outcomes, and requests a PA only for questions when useful. Work runs own review, verification, QA and the user's requested landing mode. Repository tests cover the manager-led path, including an offline OMP coordinator fixture; live deployment remains unverified. An accepted launch, queued input or report is not verified completion.
 
-Load the complete canonical [manager](../../skills/jp-startup-role-manager/SKILL.md), assigned role and [shared loop](../../skills/jp-startup-loop/SKILL.md). Native `task` remains OMP's bounded-helper tool. It is not overridden with Startup staffing modes. Helpers receive no employee admission and their factories install the employee-tool denial guard before attachment.
+| Manager tool | Input | Effect |
+| --- | --- | --- |
+| `startup_ensure_pa` | `{}` | Start or reuse the manager's PA on demand. |
+| `startup_run_start` | `{itemId,workflow,limit,target,launchKey,worktree}` | Reserve and start `pipeline` or `hotfix` for a manager-owned item. `limit` is 1 or 2; `target` is a Git branch and `worktree` is an absolute Git worktree root. Identical launch keys return the original reservation. |
+| `startup_runs` | `{}` | List saved manager runs and states. |
+| `startup_run_send` | `{launchKey,messageId,text}` | Save an input intent and submit it to the original OMP process. Text is 1 to 16384 characters. A `queued` receipt is not proof the worker acted on it. |
+| `startup_run_inputs` | `{launchKey}` | Inspect saved input receipts for a run, including uncertain outcomes. |
+| `startup_run_report` | `{launchKey,state,outcome}` | Record a `reported`, `failed` or `uncertain` result; a report alone does not establish completion. |
+| `startup_migrate` | `{migrationId}` | Adopt eligible scoped queue rows subject to the migration limits above. |
+| `startup_import_legacy` | `{migrationId,sourceRoot}` | Archive an older separate root and quarantine nonterminal rows as described above. |
 
-### Public employee tools
+Use stable launch and message IDs. Reconcile uncertain launch and input outcomes without replaying them. Continue unrelated ready work. Load the complete [manager](../../skills/jp-startup-role-manager/SKILL.md) and [shared loop](../../skills/jp-startup-loop/SKILL.md). Legacy crews and their roles remain available for recovery of existing work.
 
-The V7 OMP extension registers these tools through `HostAPI.registerTool`. Claude Code runs `claude-bridge.ts` as the MCP server `startup`; its `tools/list` publishes the same names, and Claude Code exposes them as `mcp__startup__startup_*` tools loaded with `ToolSearch` and a `select:` query. Both hosts use the shared employee registration and call the same owner commands. Tool visibility does not grant authority: calls require the admitted main/root session, and the coordinator checks role, employee identity, generation, assignment, claim, receipt, approval and review gates again.
+### Public employee tools and legacy contracts
+
+The manager-led tools above are the normal path. Crew, architect and role-specific entries in this catalog describe legacy compatibility and recovery; they are not prerequisites for new manager-led runs.
+
+The Startup OMP extension registers these tools through `HostAPI.registerTool`. Claude Code runs `claude-bridge.ts` as the MCP server `startup`; its `tools/list` publishes the same names, and Claude Code exposes them as `mcp__startup__startup_*` tools loaded with `ToolSearch` and a `select:` query. Both hosts use the shared employee registration and call the same owner commands. Tool visibility does not grant authority: calls require the admitted main/root session, and the coordinator checks role, employee identity, generation, assignment, claim, receipt, approval and review gates again.
 
 This employee catalog is separate from the typed owner host-control lifecycle interface in [Owner host control and connection lifetime](#owner-host-control-and-connection-lifetime). Host lifecycle commands are not employee tools and cannot claim, settle, approve or impersonate an employee.
 
@@ -178,10 +207,10 @@ Every listed argument is required; zero-argument tools take `{}`. `string` and `
 | `startup_workflow_start` | `{itemId, workflow, limit, launchKey}`; `workflow` is `pipeline` or `hotfix`. | An assigned employee launches a bounded child for its active item, under the manager's saved review cap. The owner keeps the canonical queue and review authority; the child cannot settle the parent's claim. |
 | `startup_workflow_factory_start` | `{itemIds, limit, launchKey}` | The manager starts a fixed queue over currently assigned canonical items with saved caps and targets. |
 | `startup_workflow_review` | Reserve: `{action:"reserve", changeId, reservationId, head, limit, reviewerId}`. Settle: `{action:"settle", reservationId, resultId}`. | The manager establishes the 1–3 round limit; the owning architect may use the established limit. A reservation creates a review assignment. Settlement requires the designated reviewer's completed claim and a verdict for the exact reserved head. |
-| `startup_capture` | `{captureId: string, eventId: string, rows: JSON[], receipt: JSON}` | The assigned architect records canonical queue rows and revisions for its event. Returns the capture receipt. Owner validation requires each row to include `id`, nullable `expectedRevision` and `fields`. |
+| `startup_capture` | `{captureId: string, eventId: string, rows: JSON[], receipt: JSON}` | The manager or assigned legacy architect records canonical queue rows and revisions for its event. Returns the capture receipt. Owner validation requires each row to include `id`, nullable `expectedRevision` and `fields`. |
 | `startup_staff` | `{}` | Manager only. Returns roster, team hierarchy, runtime/capability state, role settings and unresolved recovery metadata. |
-| `startup_hire` | `{requestId: string, role: string, additional: number}`; `role` is one of architect, qa, dev, devops or pa. | Manager only. Reserves identities and returns the durable hire receipt; the single permanent PA is created automatically. |
-| `startup_delegate` | `{eventId: string, developers: number}` | Manager only, with the required PA supervision gate. Delegates persisted intake and returns the reserved team. Launches continue serially; progress and uncertain launch alerts appear through `startup_staff`. |
+| `startup_hire` | `{requestId: string, role: string, additional: number}`; `role` is one of architect, qa, dev, devops or pa. | Manager only. Reserves identities and returns the durable hire receipt; new manager-led work uses the on-demand `startup_ensure_pa` tool. |
+| `startup_delegate` | `{eventId: string, developers: number}` | Legacy manager operation. Delegates persisted intake and returns the reserved team. Launches continue serially; progress and uncertain launch alerts appear through `startup_staff`. |
 | `startup_activate` | `{employeeIds: string[]}` | Manager only. Queues prepared launches and returns `{activated: employeeIds}`. Uncertain starts require reconciliation; a retry while launching is refused. |
 | `startup_replace` | `{employeeId: string, evidence: JSON}` | Manager only. Reserves a replacement after explicit failure/identity evidence and unresolved-work reconciliation; returns the next generation. Tern additionally requires a saved pane and attested PID, expired presence, and proof that both block and process are absent. |
 | `startup_intake` | `{eventId: string, input: JSON, amendItemIds: string[]}` | Manager only. Saves external work before delegation and returns the intake record. |
@@ -211,19 +240,19 @@ Settlement selects the single outstanding claim inside the store transaction; ag
 
 Settlement errors return `recovery: {code,retryable:false,action,employeeId,generation,claimId}` alongside the HTTP error/message. Missing claims, foreign ownership, stale generations, reconciliation, already-settled claims and result replay conflicts are distinct. A durable deduplicated `settlement-blocked` alert goes TO manager. Follow the corrective action instead of repeating a rejected request. New native clients suppress identical rejected settlement payloads locally, including retries that only change the result ID (except where an ID collision is the actual error), abort the duplicate turn and stop automatic stop/cue continuations for that blocked claim. Polling stays active. Corrected results can proceed; a successful settlement of the affected claim or observed claim-state change clears the guard. New ready inbox work also clears a no-claim guard; unrelated mail never clears an active rejected claim. Re-admission and heartbeats alone do not clear it. Existing processes must resume with the upgraded client for this native guard.
 
-Independent QA proof precedes the owning architect's approval gate; manager alone records landing/completion. Other architects, workers, PA, helpers and observed idle/done states cannot approve progression. These are Startup workflow gates for recording review and completion. Shipping permissions follow explicit user instructions; repository-level merge denial and credential isolation are not V7 requirements.
+For legacy crew-owned items, independent QA proof precedes the owning architect's approval gate; manager alone records landing/completion. Other architects, workers, PA, helpers and observed idle/done states cannot approve progression. These are Startup workflow gates for recording review and completion. Shipping permissions follow explicit user instructions; repository-level merge denial and credential isolation are not Startup requirements.
 
 ## Capacity and supervision
 
 `STARTUP_EXECUTION_LIMIT`, when supplied, is a positive safe integer constrained by the saved binding ceiling and must allow at least three root slots. Without an explicit ceiling, root admission derives the selected native `task.maxConcurrency` plus two reserved manager/PA slots. Coordinator permits bound root turns; ordinary helper concurrency remains OMP-local per root and is not aggregated into a global helper budget.
 
-The coordinator has separate lease-renewal and serialized supervision timers. Default supervision ticks every second, PA checks are scheduled every 60 seconds with one outstanding check, semantic progress deadline is five minutes, and connection deadline is 30 seconds. The PA remains resident between checks; continuous inference is not required. PA settlement must include a manager report. Missing/offline/overdue PA supervision blocks new delegation and approval/landing while retaining existing history.
+The coordinator has separate lease-renewal and serialized supervision timers. Default supervision ticks every second; the semantic progress deadline is five minutes and the connection deadline is 30 seconds. PA presence is optional and is not a dispatch or landing gate.
 
-Observation collection failures, individual invalid observations and queue read failures are isolated and reported durably to the manager. Other observations, PA scheduling and independent deadline checks continue. `/health` exposes supervision start/completion/success timestamps and component errors, returns HTTP 503 for degraded or stale supervision, and recovers to HTTP 200 after a successful cycle. Degraded health does not disable the supervision timer. Employee polls read their own control state without loading unrelated global history.
+Observation collection failures, individual invalid observations and queue read failures are isolated and reported durably to the manager. Other observations and independent deadline checks continue. `/health` exposes supervision start/completion/success timestamps and component errors, returns HTTP 503 for degraded or stale supervision, and recovers to HTTP 200 after a successful cycle. Degraded health does not disable the supervision timer. Employee polls read their own control state without loading unrelated global history.
 
 Canonical queues support arrays and objects containing either `items` or `rows`. Capture and item transitions preserve that container and its unknown metadata. A document containing both keys is ambiguous and requires explicit repair. Coordinator restarts preserve crews, employee generations, native transcripts and history; interrupted active claims and held grants remain recorded for manager reconciliation rather than replaying work.
 
-Idle/done/blocked/unknown snapshots become timestamped durable manager alerts. Working state remains queryable without generating manager inbox traffic. Herdr state sequences are server-wide: forward jumps between observations of one employee are valid; regressions report a gap. Idle/done never settle a claim. Heartbeats and working animation never reset semantic progress. The watchdog checks claims, queue progression, unclassified input, employee presence, manager presence and PA deadlines. Polling can report gaps; it does not promise replay of every unseen intermediate lifecycle transition.
+Idle/done/blocked/unknown snapshots become timestamped durable manager alerts. Working state remains queryable without generating manager inbox traffic. Herdr state sequences are server-wide: forward jumps between observations of one employee are valid; regressions report a gap. Idle/done never settle a claim. Heartbeats and working animation never reset semantic progress. The watchdog checks claims, queue progression, unclassified input, employee presence, manager presence and due deadlines. Polling can report gaps; it does not promise replay of every unseen intermediate lifecycle transition.
 
 Manager `startup_claim` and native wake/continuation selection share an actionable priority order: current failures/questions, crew technical reports, then other unresolved alerts, with sequence preserved within each class. Selection reads only the recipient's pending inbox and unresolved claims. Routine PA reports and lifecycle observations stay durable but do not trigger manager inference. Current state proves recovery before stale presence/progress/item/input/settlement alerts are deferred; missing pane runtime presence is distinct from fresh control polling. Unknown alerts remain actionable. `STARTUP_INBOX` exposes the deferred count, latest PA summary and the exact next selected message with `startup_claim {}`. This selection is already prioritized; no administrative walk is required. An outstanding claim clears the next-claim receipt. Deferred records remain pending with original IDs/payloads; they are not silently acknowledged or discarded. Other employee inboxes remain FIFO.
 
@@ -235,13 +264,15 @@ Employee boot failures are handled inside the native hook, leave the pane intera
 
 ## State and recovery boundaries
 
+The version-specific notes below describe historical runtime behavior and evidence for recovering existing work. They do not prescribe crews or mandatory PA supervision for manager-led work.
+
 State is under `<home>/startup/NAME/`: `binding.json`, `staff.sqlite`, canonical queue/resource files, private `runtime-config.json`, `runtime-launch.json`, `runtime-launch.lock`, the recovery-only `runtime-rebind.json` journal, generated `launches/` manifests/bootstraps and `runtime.log`. Private runtime files are owner-only. Business history and runtime effects share the fenced store; lifecycle is observation evidence, not an alternate work log.
 
 ### V8 skill-name cutover and existing Startups
 
 V8 uses `jp-startup-role-*` and `jp-startup-loop`. Existing V7 launch manifests, source receipts and native generations retain their original absolute source paths and hashes. The runtime does not rewrite those records or treat renamed or changed sources as equivalent; an old manager or employee may therefore be fenced after upgrade. `startup_refresh` is for an idle non-manager and cannot migrate the manager. There is currently no supported in-place V7-to-V8 source-identity migration.
 
-To preserve an existing Startup without editing its database, manifests or binding, first stop and independently reconcile its manager, coordinator and employee processes and any uncertain work; do not run the old and new Startups concurrently against the same work. In a fresh supported manager session, with `STARTUP_ROOT` unset or explicitly set to a **different, unused** root, use `/startup new NEW_NAME --dir "BOUND_DIRECTORY"`. Select that new Startup explicitly by name on later boots. If the old and new bindings share a bound directory, unnamed discovery sees multiple bindings, including archived ones, and refuses to choose. The new root is independent: staff, queue, claims, credentials and history are **not** transferred. Preserve the old root for inspection and reconcile or re-enter work deliberately; this is a fresh start, not a migration.
+To preserve an existing Startup without editing its database, manifests or binding, first stop and independently reconcile its manager, coordinator and employee processes and any uncertain work; do not run the old and new Startups concurrently against the same work. In a fresh supported manager session, with `STARTUP_ROOT` unset or explicitly set to a **different, unused** root, use `/startup new NEW_NAME --dir "BOUND_DIRECTORY"`. Select that new Startup explicitly by name on later boots. If the old and new bindings share a bound directory, unnamed discovery sees multiple bindings, including archived ones, and refuses to choose. The new root is independent: staff, claims and credentials are not transferred. The archive import above can preserve old queue and database history in the new root, but imported nonterminal work remains quarantined. New unrelated work may proceed independently; do not re-enter or dispatch quarantined work while its outcome is uncertain.
 
 The separate owner `archive` operation records an archive in the old root; it is not byte-preserving, requires its existing safety checks, and is not necessary merely to leave that root untouched. Neither archiving nor creating a new root proves old native processes are absent.
 
@@ -266,7 +297,7 @@ Ronin, or any other local host, observes and drives a Startup through the coordi
 | `unsupported` | A duty row exists or cannot be read. V6 duties are not migrated. |
 | `recovery-required` | A queue intent is pending, the queue file is ambiguous or invalid, the manager binding failed, a manager runtime is uncertain or abandoned, or a claim, grant, or assignment is in reconciliation. |
 | `missing` | The manager has no runtime yet. |
-| `offline` | The manager runtime is not ready, its poll is stale, Herdr observed it offline, PA supervision is blocked, or the latest supervision pass recorded an error. |
+| `offline` | The manager runtime is not ready, its poll is stale, Herdr observed it offline, or the latest supervision pass recorded an error. |
 | `stale` | The owner lease has lapsed, supervision last completed past the connection deadline, a watched item's recorded progress is past the progress deadline, or unclassified input is past that deadline. |
 | `live` | None of the above. |
 

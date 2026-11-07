@@ -74,7 +74,7 @@ export function jsonSchemaBuilder(): SchemaBuilder {
 }
 export function claudeRoot(input: Readonly<{ sessionId: string; transcript: () => string | null }>): NativeRootFn {
   return async (_host: HostAPI, ctx: NativeContext): Promise<NativeRoot> => {
-    if (typeof ctx.abort !== "function") throw new StartupBootError("Startup V7 requires the actual native abort capability before admission");
+    if (typeof ctx.abort !== "function") throw new StartupBootError("Startup requires the actual native abort capability before admission");
     if (ctx.agent.kind !== "main" || ctx.agent.id !== input.sessionId || ctx.sessionManager.getSessionId() !== input.sessionId)
       throw new StartupBootError("Startup admission requires the actual Claude Code root session named by CLAUDE_CODE_SESSION_ID");
     const file: string | null = input.transcript();

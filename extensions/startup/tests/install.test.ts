@@ -183,7 +183,7 @@ if (process.argv[2] === "--version") process.stdout.write(${JSON.stringify("omp/
 else {
   const source = process.argv.at(-1);
   const manifest = JSON.parse(readFileSync(source + "/package.json", "utf8"));
-  if (manifest.omp.extensions.length !== 1 || manifest.omp.extensions[0] !== "v7.ts") throw new Error("V7 entry not selected");
+  if (manifest.omp.extensions.length !== 1 || manifest.omp.extensions[0] !== "startup.ts") throw new Error("Startup entry not selected");
   mkdirSync(plugins + "/node_modules/@jp-skills", { recursive: true });
   symlinkSync(source, plugins + "/node_modules/@jp-skills/startup");
   writeFileSync(plugins + "/omp-plugins.lock.json", JSON.stringify({ plugins: { "@jp-skills/startup": { version: manifest.version, enabledFeatures: null, enabled: true } }, settings: { user: { keep: true } } }, null, 2));

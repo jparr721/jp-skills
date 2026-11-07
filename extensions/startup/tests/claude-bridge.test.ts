@@ -172,7 +172,8 @@ test("the stdio bridge completes the Claude Code 2.1.302 handshake and serves St
   expect(initialized.protocolVersion).toBe("2025-11-25");
   expect(initialized.capabilities).toEqual({ tools: {} });
   expect(initialized.serverInfo).toMatchObject({ name: "startup" });
-  expect(initialized.instructions).toContain("select:mcp__startup__startup_claim,mcp__startup__startup_settle");
+  expect(initialized.instructions).toContain("select:mcp__startup__startup_claim,");
+  expect(initialized.instructions).toContain("mcp__startup__startup_settle");
   f.child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const listed = z.object({ tools: z.array(z.object({ name: z.string(), description: z.string(), inputSchema: z.record(z.string(), jsonSchema) })) }).parse(await f.rpc({ id: 1, method: "tools/list", params: {} }));
   for (const [name, properties] of Object.entries(publicToolProperties)) {
