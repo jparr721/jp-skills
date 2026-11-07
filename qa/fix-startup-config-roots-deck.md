@@ -1,33 +1,26 @@
-# fix/startup-config-roots — named StartupConfigError for invalid runtime-config
+# fix/startup-config-roots — legacy-skip + strict-fail, 8.1.8
 
 ## Context
-- `bun extensions/startup/config.ts list` threw raw `ZodError` (`skillsHome`/`startupRoot` missing + unrecognized `home`) when one saved dir held old-shape `runtime-config.json` (`{name, home}`) with no legacy `binding.json`.
-- `isLegacyBinding` keys only on sibling `binding.json` (absent → false), so the record passed the `listStartups` filter into strict `parseRuntimeHostConfig`; `config.ts` catches only `StartupConfigError|RuntimeLaunchError`, so Zod escaped unactionable.
-- Classification: trigger = stale legacy persisted content (orphaned/mixed-generation, no current writer emits `home`); defect = code (loader lets raw parse error escape). Fix wraps at `loadConfig` where name+path are in scope.
-
----
+- `bun extensions/startup/config.ts list` threw raw `ZodError` when one saved dir held old-shape `runtime-config.json` with no legacy `binding.json`.
+- Root cause: `isLegacyBinding` keys only on sibling `binding.json`; legacy runtime-only record passed the `listStartups` filter into strict `parseRuntimeHostConfig`; `config.ts` catches only `StartupConfigError|RuntimeLaunchError`.
+- Accepted repair (REDO seq321/seq126): positively-recognized legacy roots are skipped by `list`, refused with actionable `StartupConfigError` on explicit `get`. Malformed current records fail strict, never mistaken for legacy.
 
 ## What changed
-- `extensions/startup/src/startup-config.ts` (`loadConfig` only): `parseRuntimeHostConfig(readPrivateJson(path))` wrapped in try/catch; non-`StartupConfigError`/`RuntimeLaunchError` rethrown as `StartupConfigError("Startup <name> saved config is invalid and needs explicit recovery: <path>: <cause>")`. Strict schemas untouched, no migration, no skip, no live-state writes.
-- `extensions/startup/tests/startup-config.test.ts`: +2 tests — old-shape without `binding.json` fails as named `StartupConfigError` (not `ZodError`, message names name+path, no `secret` leak) for both `list` and `get`; corrupt JSON fails as named `StartupConfigError` (not `SyntaxError`).
-- Untouched: `v7-launch.ts` schemas, `boot.ts` `isLegacyBinding`, `config.ts` catch set (already handles `StartupConfigError`).
+- `extensions/startup/src/startup-config.ts`: `isLegacyRuntimeConfig` requires full old shape (`home:string` + `stateDirectory/boundRoot/skillsRoot/socketPath/managerSession`, none of `skillsHome/startupRoot/backend/harness`). `skipsLegacy` covers legacy `binding.json` OR full-shape legacy runtime-config; unreadable/malformed stay present so `loadConfig` fails loudly. `loadConfig` refuses legacy with `older format` error; wraps unreadable/malformed parse failures into named `StartupConfigError` (name+path). Strict schemas untouched, no migration, no saved-state writes.
+- `extensions/startup/tests/startup-config.test.ts`: 8 tests — marker legacy skip/refuse; full-shape legacy runtime-only skip/refuse; bare `{name,home}` stub strict-fails; partial-current strict-fails; unknown-key strict-fails; corrupt JSON named-fails; redaction + no-secret assertions, no `as` casts.
+- `extensions/startup/README.md`: discovery note extended to runtime-only legacy shape.
+- `VERSION` 8.1.8 + `CHANGELOG.md` 8.1.8 entry + root `README.md` version ref.
+- Untouched: `v7-launch.ts` strict schemas, `boot.ts`, `config.ts` catch set (already handles `StartupConfigError`).
 
----
-
-## Real-data proof
-- `bun test extensions/startup/tests/startup-config.test.ts` → 5 pass, 0 fail.
-- `bun test extensions/startup/tests` → 768 pass, 0 fail (clean tree; earlier 26/4 on same 2 files was dirty-tree artifact — `bounded_complete` asserts clean worktree while fix was uncommitted; 30/0 after commit `0fa5b36`).
+## Real-data proof (head 75c4a42, clean tree)
+- `bun test extensions/startup/tests/startup-config.test.ts` → 8 pass, 0 fail.
+- `bun test extensions/startup/tests` → 771 pass, 0 fail.
 - `bun run --cwd extensions/startup typecheck` → exit 0.
 - `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s extensions/startup/probes -p 'test_*driver.py'` → 6 OK; `-s tests` → 42 OK.
-- Fixture CLI smoke (fixture `$FIX`, never live home):
-  - `JP_SKILLS_HOME=$FIX bun extensions/startup/config.ts list` → exit 1, stderr `Startup oldshape saved config is invalid and needs explicit recovery: $FIX/startup/oldshape/runtime-config.json: [...missing skillsHome/startupRoot...unrecognized "home"...]`; stdout empty; no credential dump.
-  - `get oldshape profile` → exit 1, same named error, no config dump.
-  - `get alpha profile` → exit 0, stdout `"old"`.
-- PR: https://github.com/jparr721/jp-skills/pull/14 — head `0fa5b36`, CI `owner` PASS. STOP before merge holds; no tag/release.
-
----
+- 12-case fixture CLI matrix (disposable `$FIX`, never live home): empty home `[]` exit 0; mixed alpha+legacy list returns only alpha exit 0; legacy-only `[]` exit 0; get alpha full redacted exit 0; get alpha profile `"old"` exit 0; get credential refused exit 1; get legacy-nobind legacy refusal exit 1; malformed/stub/unknown-key list strict-fail exit 1 named path; get missing + invalid name errors exit 1; checksums unchanged (no migration); credential leak grep 0.
+- Real-home `bun extensions/startup/config.ts list` (read-only, no credentials output) → `[{"name":"sythelabs-tern","harness":"omp","profile":"default"}]` exit 0.
+- PR: https://github.com/jparr721/jp-skills/pull/14 — STOP before merge holds; no tag/release (release row separate).
 
 ## Residual risk / follow-ups
-- `list` stays fail-closed on one bad record (by constraint: no silent skip, unchanged return type). Partial-list+warning with a real warning contract is the open design question (Splinter dissent) — follow-up, not this PR.
-- Same wrap also covers corrupt JSON / strict-schema extras; `isLegacyBinding` corrupt-`binding.json` `SyntaxError` path remains outside this fix — follow-up if needed.
-- Release (`jp-config-release`, VERSION bump + tag) is a separate row; not done here.
+- `isLegacyBinding` corrupt-`binding.json` `SyntaxError` now wrapped as named invalid-config (binding path); no silent skip.
+- Partial-list+warning contract remains out of scope by design (fail-closed on malformed, skip-only on positively-recognized legacy).
