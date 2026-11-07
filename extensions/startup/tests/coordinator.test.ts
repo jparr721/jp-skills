@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -14,6 +14,7 @@ import { connectEmployee } from "../src/employee-client";
 import { hostReceiptSchema, hostStatusSchema, sourceSchema } from "../src/contracts";
 import { claudeMcpConfig } from "../src/claude-launch";
 import { loadProfile, profileText, validateRoleSettings } from "../src/profiles";
+import { scanWorktreeWriters } from "../src/worktree-writers";
 import { startOwnedOmpRpc } from "../src/omp-rpc-supervisor";
 
 const roots: string[] = [];
@@ -28,7 +29,7 @@ const manifestSchema = z.object({ credential: z.string(), source: sourceSchema }
 function fixture(executionLimit: number) {
   return harnessFixture(executionLimit, "omp");
 }
-function harnessFixture(executionLimit: number, harness: "omp" | "claude", managerRpc?: typeof startOwnedOmpRpc) {
+function harnessFixture(executionLimit: number, harness: "omp" | "claude", managerRpc?: typeof startOwnedOmpRpc, writerScan?: typeof scanWorktreeWriters) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "sv7-")));
   roots.push(root);
   const home = join(root, "home");
@@ -80,7 +81,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude", manag
     observe: async () => { if (observationBarrier) await observationBarrier; if (observationFailure) throw observationFailure; return observations; },
   };
   const config = { name: "test", stateDirectory, startupRoot, skillsHome: home, boundRoot, skillsRoot: resolve(import.meta.dir, "../../.."), socketPath: join(stateDirectory, "runtime.sock"), herdrSession: "fixture-herdr", profile: "default", herdrIntegration: "/fixture/herdr.ts", managerSession: "manager-session", managerFile, managerPaneId: "w1:p1", managerCredential: "manager-secret", policy: { tickMs: 10, paCadenceMs: 100, progressDeadlineMs: 200, connectionDeadlineMs: 1000, executionLimit }, ...(harness === "claude" ? { harness } : {}) };
-  const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => { const value = now; now += clockStep; return value; }, ...(managerRpc ? { managerRpc } : {}) });
+  const coordinator: Coordinator = openCoordinator({ store, herdr, config, now: () => { const value = now; now += clockStep; return value; }, ...(managerRpc ? { managerRpc } : {}), ...(writerScan ? { writerScan } : {}) });
   async function admit(employeeId: string): Promise<string> {
     const runtime = store.runtimeBindings().findLast((r) => r.employeeId === employeeId);
     if (!runtime) throw new Error("Missing runtime");
@@ -1789,7 +1790,7 @@ if [ "$JP_COORDINATOR_BAD_HEAD" = 1 ]; then head=0000000000000000000000000000000
 printf '{"headRefOid":"%s","baseRefName":"main","state":"OPEN","isDraft":false,"url":"https://example.test/pr/1","mergeCommit":null}\n' "$head"
 `);
       chmodSync(gh, 0o755);
-      for (const scenario of ["success", "bad-head", "shutdown", "exit", "preaccept", "prespawn", "invalid-review"]) execFileSync(process.execPath, ["test", import.meta.path, "-t", "coordinator settles an offline OMP run"], { env: { ...process.env, JP_COORDINATOR_OFFLINE_CHILD: "1", JP_COORDINATOR_SCENARIO: scenario, JP_COORDINATOR_BAD_HEAD: scenario === "bad-head" ? "1" : "0", PATH: `${directory}:${process.env.PATH ?? ""}` }, stdio: "pipe", timeout: 40000 });
+      for (const scenario of ["success", "bad-head", "shutdown", "exit", "preaccept", "prespawn", "invalid-review", "live-writer"]) execFileSync(process.execPath, ["test", import.meta.path, "-t", "coordinator settles an offline OMP run"], { env: { ...process.env, JP_COORDINATOR_OFFLINE_CHILD: "1", JP_COORDINATOR_SCENARIO: scenario, JP_COORDINATOR_BAD_HEAD: scenario === "bad-head" ? "1" : "0", PATH: `${directory}:${process.env.PATH ?? ""}` }, stdio: "pipe", timeout: 40000 });
     } finally { rmSync(directory, { recursive: true, force: true }); }
     return;
   }
@@ -1804,9 +1805,12 @@ printf '{"headRefOid":"%s","baseRefName":"main","state":"OPEN","isDraft":false,"
     ownedClient = client;
     return { ...client, call: (command) => process.env.JP_COORDINATOR_SCENARIO === "preaccept" && calls === 1 && command.type === "get_state" ? Promise.reject(new Error("fixture preaccept failure")) : client.call(command.type === "prompt" ? { ...command, message: "/coordinator-probe" } : command) };
   };
-  const f = harnessFixture(8, "omp", managerRpc);
+  let scanCount = 0;
+  const f = harnessFixture(8, "omp", managerRpc, async (worktree) => { scanCount++; return scanWorktreeWriters(worktree); });
   execFileSync("git", ["init", "-q", f.config.boundRoot]);
-  execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "fixture"], { cwd: f.config.boundRoot });
+  writeFileSync(join(f.config.boundRoot, "held"), "fixture");
+  execFileSync("git", ["add", "held"], { cwd: f.config.boundRoot });
+  execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture"], { cwd: f.config.boundRoot });
   const worktree = join(f.root, "run-worktree");
   execFileSync("git", ["worktree", "add", "-q", "-b", "feature-offline", worktree], { cwd: f.config.boundRoot });
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: worktree, encoding: "utf8" }).trim();
@@ -1827,9 +1831,11 @@ export default function(pi) {
  pi.on("before_subagent_spawn", () => ({model:"rpc-fixture/offline"}));
  pi.registerCommand("coordinator-probe", {description:"probe",handler:async(_args,ctx)=> { const s=pi.pi.AgentRegistry.global().get(ctx.agent.id).session; const call=(name,args)=>s.getToolByName(name).execute("probe-"+name,args); const begin=JSON.parse((await call("bounded_begin",{workflow:"pipeline",itemIds:["item"],reviewLimit:2,execution:"manager-led",landing:{mode:"ready-pr",target:"main"}})).content[0].text); await call("task",{scopeId:begin.scopeId,itemId:"item",assignmentKey:"review-1",context:"read only",tasks:[{name:"ReviewOne",agent:"reviewer",task:"Review",solutionSpace:"read only"}],review:[{changeId:"item",head:${JSON.stringify(head)},worktree:${JSON.stringify(worktree)}}]}); await new Promise(resolve=>setTimeout(resolve,1000)); if (${JSON.stringify(process.env.JP_COORDINATOR_SCENARIO === "invalid-review")}) { await call("task",{scopeId:begin.scopeId,itemId:"item",assignmentKey:"review-2",context:"read only",tasks:[{name:"ReviewTwo",agent:"reviewer",task:"Review",solutionSpace:"read only"}],review:[{changeId:"item",head:${JSON.stringify(head)},worktree:${JSON.stringify(worktree)}}]}); await new Promise(resolve=>setTimeout(resolve,1000)); } try { await call("bounded_complete",{scopeId:begin.scopeId,itemId:"item",worktree:${JSON.stringify(worktree)},head:${JSON.stringify(head)},prNumber:1}); } catch (err) { writeFileSync(${JSON.stringify(join(f.root, "probe-error"))}, String(err) + " PATH=" + process.env.PATH); throw err; } }});
 }`);
+  const writer = process.env.JP_COORDINATOR_SCENARIO === "live-writer" ? spawn("python3", ["-c", "import sys,time; f=open(sys.argv[1], 'a'); print('ready', flush=True); time.sleep(60)", join(worktree, "held")], { stdio: ["ignore", "pipe", "ignore"] }) : undefined;
   try {
+    if (writer) await new Promise<void>((resolve, reject) => { writer.stdout.once("data", () => resolve()); writer.once("error", reject); });
     await f.coordinator.start();
-    const manager = await f.admit("manager");
+    let manager = await f.admit("manager");
     f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "offline-event", input: "request", amendItemIds: [] } });
     f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "offline-capture", eventId: "offline-event", rows: [{ id: "item", expectedRevision: null, fields: { status: "QUEUED", request: "fix", acceptance: "works", blocked_on: null } }], receipt: "captured" } });
     const request = { kind: "manager_run_start", itemId: "item", workflow: "pipeline", limit: 2, target: "main", launchKey: "offline-run", worktree: worktree };
@@ -1877,9 +1883,60 @@ export default function(pi) {
       expect(f.store.managerReviews("offline-run")).toMatchObject([{ state: "failed", reviewerId: "ReviewOne" }, { state: "completed", verdict: "approve", reviewerId: "ReviewTwo" }]);
     } else expect(f.store.managerReviews("offline-run")[0]).toMatchObject({ state: "completed", verdict: "approve", reviewerId: "ReviewOne" });
     await ownedClient?.close();
-    for (let i = 0; i < 50 && !f.store.managerRuns()[0]?.termination; i++) await Bun.sleep(20);
+    if (writer) {
+      for (let i = 0; i < 100 && !f.store.snapshot().messages.some((entry) => JSON.stringify(entry.payload).includes("worktree-writers")); i++) await Bun.sleep(20);
+      expect(f.store.managerRuns()[0]?.termination).toBeUndefined();
+      expect(f.store.snapshot().messages.some((entry) => JSON.stringify(entry.payload).includes(String(writer.pid)))).toBe(true);
+      expect(f.store.managerRunExit("offline-run")).toEqual(f.store.managerRuns()[0]?.location ?? null);
+      expect(f.store.snapshot().messages.some((entry) => JSON.stringify(entry.payload).includes("manager-process-exited"))).toBe(false);
+      await f.coordinator.tick();
+      await Bun.sleep(600);
+      await f.coordinator.tick();
+      await Bun.sleep(600);
+      expect(f.store.snapshot().messages.filter((entry) => JSON.stringify(entry.payload).includes("worktree-writers"))).toHaveLength(1);
+      expect(f.store.managerRuns()[0]?.termination).toBeUndefined();
+      expect(scanCount).toBe(1);
+      writer.kill();
+      await new Promise<void>((resolve) => writer.once("close", () => resolve()));
+      f.advance(6001);
+      manager = await f.admit("manager");
+      await f.coordinator.tick();
+    }
+    for (let i = 0; i < 100 && !f.store.managerRuns()[0]?.termination; i++) await Bun.sleep(20);
+    if (writer) expect(scanCount).toBe(2);
     expect(f.store.managerRuns()[0]).toMatchObject({ state: "completed", termination: { status: "terminated" } });
     await f.coordinator.command(manager, request);
     expect(calls).toBe(1);
-  } finally { if (ownedClient) await ownedClient.close(); process.env.PATH = previousPath; }
+  } finally { writer?.kill(); if (ownedClient) await ownedClient.close(); process.env.PATH = previousPath; }
 }, 180000);
+
+test("restart reconciles an absent original process without replaying uncertain work", async () => {
+  const f = fixture(8);
+  await f.coordinator.start();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "lost-owner", input: "work", amendItemIds: [] } });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "lost-owner-capture", eventId: "lost-owner", rows: ["gone", "present"].map((id) => ({ id, expectedRevision: null, fields: { status: "QUEUED", request: id, acceptance: "done", blocked_on: null } })), receipt: "captured" } });
+  const other = join(f.root, "other-worktree");
+  mkdirSync(other);
+  const base = { manager: f.store.managerBinding, workflow: "pipeline" as const, limit: 2, target: "main", repository: f.config.boundRoot };
+  f.store.reserveManagerRun({ ...base, itemId: "gone", launchKey: "gone-run", branch: "gone-branch", worktree: f.config.boundRoot });
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  const deadPid = child.pid;
+  if (!deadPid) throw new Error("fixture process did not start");
+  await new Promise<void>((resolve) => child.once("close", () => resolve()));
+  const location = { kind: "omp-rpc", pid: deadPid, sessionId: "lost-session" };
+  f.store.acceptManagerRun({ manager: f.store.managerBinding, launchKey: "gone-run", location });
+  f.store.reserveManagerRun({ ...base, itemId: "present", launchKey: "present-run", branch: "present-branch", worktree: other });
+  f.store.acceptManagerRun({ manager: f.store.managerBinding, launchKey: "present-run", location: { kind: "omp-rpc", pid: process.pid, sessionId: "other-session" } });
+  f.store.close();
+  const reopened = openStore({ path: join(f.config.stateDirectory, "staff.sqlite"), scope: { skillsHome: f.config.skillsHome, startupRoot: f.config.startupRoot, boundRoot: f.config.boundRoot, host: "host", name: f.config.name, managerSession: f.config.managerSession }, owner: { id: "restarted", managerGeneration: 1, leaseMs: 60000 }, now: () => 2000 });
+  stores.push(reopened);
+  const coordinator = openCoordinator({ store: reopened, herdr: f.herdr, config: f.config, now: () => 2000 });
+  await coordinator.start();
+  await coordinator.tick();
+  for (let i = 0; i < 100 && !reopened.managerRuns().find((run) => run.launchKey === "gone-run")?.termination; i++) await Bun.sleep(20);
+  expect(reopened.managerRunExit("gone-run")).toEqual(location);
+  expect(reopened.managerRuns().find((run) => run.launchKey === "gone-run")).toMatchObject({ state: "uncertain", termination: { status: "terminated" } });
+  expect(reopened.managerRunExit("present-run")).toBeNull();
+  expect(() => reopened.reserveManagerRun({ ...base, manager: reopened.managerBinding, itemId: "gone", launchKey: "gone-retry", branch: "gone-branch", worktree: f.config.boundRoot })).toThrow();
+  await coordinator.shutdown();
+}, 30000);

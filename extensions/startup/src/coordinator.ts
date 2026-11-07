@@ -19,6 +19,7 @@ import { claudeEmployeeArgs, claudeIntegrationPath, requireClaudeTrust, writeCla
 import { startWorkflowBridge, type WorkflowBridge } from "./workflow-bridge";
 import { createWorkflowBridgeLauncher, WorkflowLaunchUncertainError } from "./workflow-bridge-launch";
 import { migrateLegacyStartup } from "./legacy-migration";
+import { scanWorktreeWriters } from "./worktree-writers";
 import { OmpReviewRejectedError, OmpRpcStartupError, startOwnedOmpRpc, type ExpectedReview } from "./omp-rpc-supervisor";
 
 type CommonCoordinatorConfig = Readonly<{
@@ -108,7 +109,7 @@ class AdmissionRevokedError extends StoreFenceError {}
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function json(value: unknown): Json { return jsonSchema.parse(JSON.parse(JSON.stringify(value))); }
 
-export function openCoordinator(input: Readonly<{ store: StartupStore; config: CoordinatorConfig; now: () => number; managerRpc?: typeof startOwnedOmpRpc } & ({ herdr: HerdrRuntime; tern?: never } | { tern: TernRuntime; herdr?: never })>): Coordinator {
+export function openCoordinator(input: Readonly<{ store: StartupStore; config: CoordinatorConfig; now: () => number; managerRpc?: typeof startOwnedOmpRpc; writerScan?: typeof scanWorktreeWriters } & ({ herdr: HerdrRuntime; tern?: never } | { tern: TernRuntime; herdr?: never })>): Coordinator {
   const { store, config, now } = input;
   const herdr = input.herdr;
   const tern = input.tern;
@@ -126,6 +127,33 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
   const workflowBridges = new Map<string, Set<WorkflowBridge>>();
   const managerProcesses = new Map<string, Awaited<ReturnType<typeof startOwnedOmpRpc>>>();
   const managerExits = new Set<Promise<unknown>>();
+  const scanningWorktrees = new Set<string>();
+  const nextWorktreeScan = new Map<string, number>();
+  function reconcileExitedRun(launchKey: string, location: Json): void {
+    if (scanningWorktrees.has(launchKey) || (nextWorktreeScan.get(launchKey) ?? 0) > now()) return;
+    scanningWorktrees.add(launchKey);
+    nextWorktreeScan.set(launchKey, now() + 5000);
+    const operation = (async () => {
+      const run = store.managerRuns().find((entry) => entry.launchKey === launchKey);
+      if (!run || run.termination || !["uncertain", "failed", "completed"].includes(run.state) || encode(run.location) !== encode(location)) return;
+      const scan = await (input.writerScan ?? scanWorktreeWriters)(run.worktree);
+      if (scan.status === "observed" && scan.writers.length) {
+        const alertId = `worktree-writers-${digest(launchKey)}`;
+        if (!store.hasMessage(alertId)) store.runtimeAlert({ id: alertId, correlation: launchKey, payload: json({ kind: "worktree-writers", itemId: run.itemId, worktree: run.worktree, writers: scan.writers }) });
+        return;
+      }
+      if (scan.status === "unavailable") {
+        process.stderr.write(JSON.stringify({ level: "warn", component: "worktree-writer-scan", launchKey, itemId: run.itemId, worktree: run.worktree, reason: scan.reason }) + "\n");
+      }
+      await store.releaseManagerRun({ manager: store.managerBinding, launchKey, verify: async (original) => {
+        if (encode(original.location) !== encode(location)) throw new StoreFenceError("Original OMP process location changed");
+        return { launchKey: original.launchKey, itemId: original.itemId, location, status: "terminated", evidence: scan.status === "observed" ? "Original OMP process exited and no open worktree write handles were observed" : "Original OMP process exited; worktree writer scan was unavailable" };
+      } });
+      nextWorktreeScan.delete(launchKey);
+    })();
+    managerExits.add(operation);
+    void operation.catch((error: unknown) => process.stderr.write(JSON.stringify({ level: "warn", component: "manager-process-reconcile", launchKey, error: error instanceof Error ? error.message : String(error) }) + "\n")).finally(() => { managerExits.delete(operation); scanningWorktrees.delete(launchKey); });
+  }
   const admissionAttempts = new Map<string, string>();
   function revoke(connection: string): void {
     const current = connections.get(connection);
@@ -780,13 +808,9 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
                 for (const receipt of store.managerInputs(request.launchKey).filter((entry) => entry.state === "sending")) store.settleManagerInput({ manager: current.binding, launchKey: request.launchKey, messageId: receipt.messageId, state: "uncertain" });
                 const run = store.managerRuns().find((entry) => entry.launchKey === request.launchKey);
                 if (run?.state === "accepted" || run?.state === "reported") store.settleManagerRun({ manager: current.binding, launchKey: request.launchKey, state: "uncertain", outcome: json({ reason: "Original OMP RPC process exited before verified completion" }) });
-                if (run && ["accepted", "reported", "uncertain", "failed", "completed"].includes(run.state)) {
-                  const release = store.releaseManagerRun({ manager: current.binding, launchKey: request.launchKey, verify: async (original) => {
-                    if (location === null || encode(original.location) !== encode(location)) throw new StoreFenceError("Original OMP process location changed");
-                    return { launchKey: original.launchKey, itemId: original.itemId, location, status: "terminated", evidence: "Coordinator observed the original OMP RPC process exit" };
-                  } });
-                  managerExits.add(release);
-                  void release.catch((error: unknown) => process.stderr.write(JSON.stringify({ level: "warn", component: "manager-process-reconcile", launchKey: request.launchKey, error: error instanceof Error ? error.message : String(error) }) + "\n")).finally(() => managerExits.delete(release));
+                if (run && location !== null) {
+                  store.recordManagerRunExit({ manager: current.binding, launchKey: request.launchKey, location });
+                  reconcileExitedRun(request.launchKey, location);
                 }
 
               } catch (error: unknown) { process.stderr.write(JSON.stringify({ level: "warn", component: "manager-process-exit", launchKey: request.launchKey, error: error instanceof Error ? error.message : String(error) }) + "\n"); }
@@ -1031,6 +1055,20 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
   }
   async function supervise(): Promise<void> {
     store.renewLease();
+    for (const run of store.managerRuns()) {
+      if (run.termination || !["uncertain", "failed", "completed"].includes(run.state) || managerProcesses.has(run.launchKey)) continue;
+      let exit = store.managerRunExit(run.launchKey);
+      if (exit === null) {
+        const native = z.object({ kind: z.literal("omp-rpc"), pid: z.number().int().positive() }).safeParse(run.location);
+        if (!native.success) continue;
+        try { process.kill(native.data.pid, 0); continue; }
+        catch (error: unknown) { if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) continue; }
+        store.recordManagerRunExit({ manager: store.managerBinding, launchKey: run.launchKey, location: run.location });
+        exit = run.location;
+      }
+      if (encode(exit) !== encode(run.location)) continue;
+      reconcileExitedRun(run.launchKey, run.location);
+    }
     supervision = { ...supervision, lastStartedAt: now() };
     const errors: SupervisionFailure[] = [];
     function failure(component: SupervisionFailure["component"], employeeId: string | null, error: unknown): void {

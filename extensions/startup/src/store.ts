@@ -2345,6 +2345,19 @@ export function openStore(args: {
     managerRuns(): readonly ManagerRun[] {
       return all("managerRun", managerRunSchema);
     },
+    managerRunExit(launchKey: string): Json | null {
+      return read("managerRunExit", idSchema.parse(launchKey), jsonSchema);
+    },
+    recordManagerRunExit(input: { readonly manager: Binding; readonly launchKey: string; readonly location: Json }): void {
+      tx(() => {
+        manager(input.manager);
+        const run = read("managerRun", input.launchKey, managerRunSchema);
+        if (run === null || run.location === null || !sameDocument(run.location, input.location)) throw new StoreFenceError("Exit observation does not match the original run");
+        const previous = read("managerRunExit", run.launchKey, jsonSchema);
+        if (previous !== null && !sameDocument(previous, input.location)) throw new StoreConflictError("Exit observation belongs to a different native location");
+        if (previous === null) put("managerRunExit", run.launchKey, input.location);
+      });
+    },
     reserveManagerRun(input: { readonly manager: Binding; readonly itemId: string; readonly workflow: "pipeline" | "hotfix"; readonly limit: number; readonly target: string; readonly branch: string; readonly launchKey: string; readonly repository: string; readonly worktree: string }): Readonly<{ run: ManagerRun; created: boolean }> {
       pendingWrites();
       return tx(() => {

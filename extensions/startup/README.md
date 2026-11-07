@@ -185,6 +185,8 @@ The manager captures input, schedules independent pipeline or hotfix runs, track
 | `startup_migrate` | `{migrationId}` | Adopt eligible scoped queue rows subject to the migration limits above. |
 | `startup_import_legacy` | `{migrationId,sourceRoot}` | Archive an older separate root and quarantine nonterminal rows as described above. |
 
+After an observed worker exit, Startup checks for currently open worktree write handles. It retries a positive observation at most once every five seconds; a process without an open handle is not detected. An unavailable scan is logged and does not hold the worktree. Uncertain assignments remain fenced against redispatch.
+
 Use stable launch and message IDs. Reconcile uncertain launch and input outcomes without replaying them. Continue unrelated ready work. Load the complete [manager](../../skills/jp-startup-role-manager/SKILL.md) and [shared loop](../../skills/jp-startup-loop/SKILL.md). Legacy crews and their roles remain available for recovery of existing work.
 
 ### Public employee tools and legacy contracts
