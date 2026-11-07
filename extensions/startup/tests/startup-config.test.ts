@@ -49,3 +49,39 @@ test("a Startup saved in the old format is skipped by listStartups and refused b
   expect(listStartups(f.home)).toEqual([{ name: "alpha", harness: "omp", profile: "old" }]);
   expect(() => readStartupConfig({ home: f.home, name: "legacy", key: null })).toThrow(StartupConfigError);
 });
+
+test("an old-shape runtime-config without binding.json fails as named StartupConfigError, not ZodError", () => {
+  const f = fixture(base);
+  const directory = join(f.home, "startup", "oldshape");
+  mkdirSync(directory);
+  const badPath = join(directory, "runtime-config.json");
+  writeFileSync(badPath, JSON.stringify({ name: "oldshape", home: "/h" }), { mode: 0o600 });
+  for (const run of [() => listStartups(f.home), () => readStartupConfig({ home: f.home, name: "oldshape", key: null })]) {
+    try {
+      run();
+      throw new Error("expected StartupConfigError");
+    } catch (error: unknown) {
+      expect(error).toBeInstanceOf(StartupConfigError);
+      expect((error as Error).name).not.toBe("ZodError");
+      expect((error as Error).message).toContain("oldshape");
+      expect((error as Error).message).toContain(badPath);
+      expect((error as Error).message).not.toContain("secret");
+    }
+  }
+});
+
+test("a corrupt runtime-config fails as named StartupConfigError, not SyntaxError", () => {
+  const f = fixture(base);
+  writeFileSync(f.path, "{not json", { mode: 0o600 });
+  for (const run of [() => listStartups(f.home), () => readStartupConfig({ home: f.home, name: "alpha", key: null })]) {
+    try {
+      run();
+      throw new Error("expected StartupConfigError");
+    } catch (error: unknown) {
+      expect(error).toBeInstanceOf(StartupConfigError);
+      expect(error).not.toBeInstanceOf(SyntaxError);
+      expect((error as Error).message).toContain("alpha");
+      expect((error as Error).message).toContain(f.path);
+    }
+  }
+});

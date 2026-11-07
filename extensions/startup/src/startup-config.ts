@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isLegacyBinding, startupsDirectory } from "./boot";
 import type { Json } from "./contracts";
-import { parseRuntimeHostConfig, readPrivateJson, type RuntimeHostConfig } from "./v7-launch";
+import { parseRuntimeHostConfig, readPrivateJson, RuntimeLaunchError, type RuntimeHostConfig } from "./v7-launch";
 
 export class StartupConfigError extends Error {}
 export type StartupSummary = Readonly<{ name: string; harness: "omp" | "claude"; profile: string }>;
@@ -15,7 +15,12 @@ function loadConfig(home: string, name: string): RuntimeHostConfig {
   const path: string = configPath(home, name);
   if (!existsSync(path)) throw new StartupConfigError(`No saved Startup named ${name} under ${startupsDirectory(home)}; run list to see saved Startups`);
   if (isLegacyBinding(dirname(path))) throw new StartupConfigError(`Startup ${name} was saved in an older format that this version does not read: ${path}`);
-  return parseRuntimeHostConfig(readPrivateJson(path));
+  try {
+    return parseRuntimeHostConfig(readPrivateJson(path));
+  } catch (error: unknown) {
+    if (error instanceof StartupConfigError || error instanceof RuntimeLaunchError) throw error;
+    throw new StartupConfigError(`Startup ${name} saved config is invalid and needs explicit recovery: ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 function harnessOf(config: RuntimeHostConfig): "omp" | "claude" {
   return "harness" in config ? "claude" : "omp";
