@@ -12,7 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openStore } from "../src/store";
+import { openStore, type StartupStore } from "../src/store";
+import { StoreConflictError } from "../src/contracts";
 
 const roots: string[] = [];
 afterEach((): void => {
@@ -635,6 +636,102 @@ test("workflow reviews use an owned settled reviewer claim and enforce the manag
   expect(f.store.workflowReview({ employee: t.architectBinding, request: { action: "settle", reservationId: "review-1", resultId: "review-result" } }).verdict).toBe("changes-requested");
   expect(() => f.store.workflowReview({ employee: f.store.managerBinding, request: { ...request, reservationId: "review-2", head: "commit-two" } })).toThrow();
   f.store.close();
+});
+
+test("workflow review finalizer projects strict core from extensible result output", (): void => {
+  function setup(eventId: string) {
+    const f = fixture();
+    const t = active(f, eventId, []);
+    f.store.captureIntake({ architect: t.architectBinding, capture: {
+      captureId: `review-receipt-capture-${eventId}`, eventId,
+      rows: [{ id: "review-receipt-item", expectedRevision: null, fields: fields("Review this change") }], receipt: "captured",
+    } });
+    for (const binding of [t.architectBinding, t.qaBinding, t.devBinding]) {
+      const notice = f.store.claimNext({ employee: binding });
+      if (!notice) throw new Error("Missing readiness notice");
+      f.store.settleClaim({ employee: binding, claimId: notice.claim.id, result: completed(`notice-${binding.employeeId}`) });
+    }
+    return { f, t };
+  }
+  function storedTriple(store: StartupStore, resultId: string, claimId: string, messageId: string) {
+    const snapshot = store.snapshot();
+    const resultRecord = snapshot.results.find((entry) => entry.result.id === resultId);
+    const claimRecord = snapshot.claims.find((entry) => entry.id === claimId);
+    const messageRecord = snapshot.messages.find((entry) => entry.id === messageId);
+    if (resultRecord === undefined || claimRecord === undefined || messageRecord === undefined) throw new Error("Missing stored result/claim/message");
+    return { resultRecord, claimRecord, messageRecord };
+  }
+  {
+    const { f, t } = setup("review-receipt-match");
+    f.store.workflowReview({ employee: f.store.managerBinding, request: { action: "reserve", changeId: "review-receipt-item", reservationId: "receipt-1", head: "commit-one", limit: 1, reviewerId: t.qa } });
+    const claim = f.store.claimNext({ employee: t.qaBinding });
+    if (!claim) throw new Error("Missing review assignment");
+    expect(claim.message.id).toBe("workflow-review-receipt-1");
+    f.store.settleClaim({ employee: t.qaBinding, claimId: claim.claim.id, result: {
+      ...completed("receipt-result"), output: { kind: "workflow-review", reservationId: "receipt-1", head: "commit-one", verdict: "changes-requested", detail: "extra report metadata", evidence: { lines: 3 } },
+    } });
+    const before = storedTriple(f.store, "receipt-result", claim.claim.id, claim.message.id);
+    expect(before.resultRecord.result.output).toMatchObject({ kind: "workflow-review", reservationId: "receipt-1", head: "commit-one", verdict: "changes-requested", detail: "extra report metadata", evidence: { lines: 3 } });
+    const beforeResult = JSON.stringify(before.resultRecord);
+    const beforeClaim = JSON.stringify(before.claimRecord);
+    const beforeMessage = JSON.stringify(before.messageRecord);
+    expect(f.store.workflowReview({ employee: t.architectBinding, request: { action: "settle", reservationId: "receipt-1", resultId: "receipt-result" } }).verdict).toBe("changes-requested");
+    const after = storedTriple(f.store, "receipt-result", claim.claim.id, claim.message.id);
+    expect(JSON.stringify(after.resultRecord)).toBe(beforeResult);
+    expect(JSON.stringify(after.claimRecord)).toBe(beforeClaim);
+    expect(JSON.stringify(after.messageRecord)).toBe(beforeMessage);
+    f.store.close();
+  }
+  {
+    const { f, t } = setup("review-receipt-wrong-res");
+    f.store.workflowReview({ employee: f.store.managerBinding, request: { action: "reserve", changeId: "review-receipt-item", reservationId: "receipt-wrong-res", head: "commit-one", limit: 1, reviewerId: t.qa } });
+    const claim = f.store.claimNext({ employee: t.qaBinding });
+    if (!claim) throw new Error("Missing review assignment");
+    f.store.settleClaim({ employee: t.qaBinding, claimId: claim.claim.id, result: {
+      ...completed("receipt-wrong-res"), output: { kind: "workflow-review", reservationId: "receipt-OTHER", head: "commit-one", verdict: "changes-requested", detail: "extra report metadata", evidence: { lines: 3 } },
+    } });
+    const before = storedTriple(f.store, "receipt-wrong-res", claim.claim.id, claim.message.id);
+    expect(before.resultRecord.result.output).toMatchObject({ reservationId: "receipt-OTHER", head: "commit-one", detail: "extra report metadata", evidence: { lines: 3 } });
+    const beforeResult = JSON.stringify(before.resultRecord);
+    const beforeClaim = JSON.stringify(before.claimRecord);
+    const beforeMessage = JSON.stringify(before.messageRecord);
+    try {
+      f.store.workflowReview({ employee: t.architectBinding, request: { action: "settle", reservationId: "receipt-wrong-res", resultId: "receipt-wrong-res" } });
+      throw new Error("Expected StoreConflictError for wrong reservation");
+    } catch (error) {
+      expect(error).toBeInstanceOf(StoreConflictError);
+    }
+    const after = storedTriple(f.store, "receipt-wrong-res", claim.claim.id, claim.message.id);
+    expect(JSON.stringify(after.resultRecord)).toBe(beforeResult);
+    expect(JSON.stringify(after.claimRecord)).toBe(beforeClaim);
+    expect(JSON.stringify(after.messageRecord)).toBe(beforeMessage);
+    f.store.close();
+  }
+  {
+    const { f, t } = setup("review-receipt-wrong-head");
+    f.store.workflowReview({ employee: f.store.managerBinding, request: { action: "reserve", changeId: "review-receipt-item", reservationId: "receipt-wrong-head", head: "commit-one", limit: 1, reviewerId: t.qa } });
+    const claim = f.store.claimNext({ employee: t.qaBinding });
+    if (!claim) throw new Error("Missing review assignment");
+    f.store.settleClaim({ employee: t.qaBinding, claimId: claim.claim.id, result: {
+      ...completed("receipt-wrong-head"), output: { kind: "workflow-review", reservationId: "receipt-wrong-head", head: "commit-OTHER", verdict: "changes-requested", detail: "extra report metadata", evidence: { lines: 3 } },
+    } });
+    const before = storedTriple(f.store, "receipt-wrong-head", claim.claim.id, claim.message.id);
+    expect(before.resultRecord.result.output).toMatchObject({ reservationId: "receipt-wrong-head", head: "commit-OTHER", detail: "extra report metadata", evidence: { lines: 3 } });
+    const beforeResult = JSON.stringify(before.resultRecord);
+    const beforeClaim = JSON.stringify(before.claimRecord);
+    const beforeMessage = JSON.stringify(before.messageRecord);
+    try {
+      f.store.workflowReview({ employee: t.architectBinding, request: { action: "settle", reservationId: "receipt-wrong-head", resultId: "receipt-wrong-head" } });
+      throw new Error("Expected StoreConflictError for wrong head");
+    } catch (error) {
+      expect(error).toBeInstanceOf(StoreConflictError);
+    }
+    const after = storedTriple(f.store, "receipt-wrong-head", claim.claim.id, claim.message.id);
+    expect(JSON.stringify(after.resultRecord)).toBe(beforeResult);
+    expect(JSON.stringify(after.claimRecord)).toBe(beforeClaim);
+    expect(JSON.stringify(after.messageRecord)).toBe(beforeMessage);
+    f.store.close();
+  }
 });
 
 test.each(["code", "research"])("completion respects review scope for %s items", (kind: string): void => {

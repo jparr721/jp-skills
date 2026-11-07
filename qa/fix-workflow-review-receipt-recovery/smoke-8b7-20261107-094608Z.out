@@ -1,0 +1,49 @@
+wallStart=2026-11-07T09:46:08.574Z monoStart=32607014
+A before claim hash=71233da20aaaae69 msg hash=22cda82870a23909 ids=workflow-review-receipt-1/649a1939-1517-41f0-9a84-f393c46c00b1
+A output hash before=04f2ca638af8e37d after=04f2ca638af8e37d immutable=true
+A nominal finalize verdict=changes-requested resultId=receipt-result PASS=true
+A exact replay verdict=changes-requested PASS=true
+A overwrite conflict=StoreConflictError:Review already settled with another result
+A overwrite rejected PASS=true
+A budget exhausted=Review budget exhausted
+A budget exhausted PASS=true
+B missing core rejected=[
+  {
+    "expected": "string",
+    "code": "invalid_type",
+    "path": [
+      "reservationId"
+    ],
+    "message": "Invalid input: expect
+B missing core PASS=true
+B invalid verdict rejected=[
+  {
+    "code": "invalid_value",
+    "values": [
+      "approve",
+      "changes-requested",
+      "block"
+    ],
+    "path": [
+      "ver
+B invalid verdict PASS=true
+B wrong reservation rejected=Review result does not match its reservation and exact head
+B wrong reservation PASS=true
+B wrong head rejected=Review result does not match its reservation and exact head
+B wrong head PASS=true
+C wrong actor dev rejected=Only the manager or owning architect may settle a review
+C wrong actor PASS=true
+C stale generation rejected=StoreFenceError:Native binding is stale for employee 81e77925-4953-40f0-ad14-0ed7d54dbc60
+C stale generation PASS=true
+C nominal after negatives verdict=approve PASS=true
+C unsettled missing result rejected=Review requires its reviewer's completed, settled assignment result
+C unsettled PASS=true
+C noncompleted question rejected=Review requires its reviewer's completed, settled assignment result
+C noncompleted PASS=true
+C nominal r-h settles verdict=block PASS=true
+C foreign result rejected=Review requires its reviewer's completed, settled assignment result
+C foreign result PASS=true
+C nominal r-h2 settles verdict=approve PASS=true
+wallEnd=2026-11-07T09:46:08.637Z monoEnd=95804799
+LAYER=public-store-API-only no-coordinator-HTTP native-deployment-gap-owner-lease-local
+SUPP SMOKE COMPLETE
