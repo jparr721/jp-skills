@@ -1,0 +1,30 @@
+wallStart=2026-11-07T10:02:36.503Z monoStart=30658650
+runSourceHead=bc500d85239840b6622e24a28c3d8c75a5b9e706
+BEFORE result sha256=20359a93cbe42e257cb2f9a5d439a6a7c3a73802990c70fd6c805fb594066900
+BEFORE claim sha256=781a8aa50610fa944c3c55b31e9019fd0a37abfd4ee9fdd6ca82e908a614e9f9
+BEFORE message sha256=3efd5582550f4343fd774564d7c64442ac475710b19f15c36c2481ab5b5507cf
+BEFORE result={"claimId":"ed58912b-2e94-4a60-b4be-9a1ae1782485","result":{"id":"receipt-p1","kind":"completed","output":{"detail":"extra report metadata","evidence":{"lines":3},"head":"h-p1","kind":"workflow-review","reservationId":"r-p1","verdict":"changes-requested"},"checkpoint":null,"outgoing":[]},"messages":[]}
+BEFORE claim={"id":"ed58912b-2e94-4a60-b4be-9a1ae1782485","employeeId":"37d1a5e7-e7e7-4b2a-a025-acb4e65d1350","messageId":"workflow-review-r-p1","ownerEpoch":1,"generation":1,"status":"settled"}
+BEFORE message={"id":"workflow-review-r-p1","recipient":"37d1a5e7-e7e7-4b2a-a025-acb4e65d1350","kind":"assignment","correlation":"item1","payload":{"changeId":"item1","head":"h-p1","instruction":"Review the exact head. Settle the claim with output {kind:'workflow-review', reservationId, head, verdict} where verdict is approve, changes-requested, or block.","kind":"workflow-review","reservationId":"r-p1"},"sender":"manager","sequence":4,"teamId":"46014575-bef7-4c54-ab7a-68ee565702be","status":"acknowledged"}
+FINALIZE verdict=changes-requested resultId=receipt-p1 reservation=r-p1
+AFTER result sha256=20359a93cbe42e257cb2f9a5d439a6a7c3a73802990c70fd6c805fb594066900
+AFTER claim sha256=781a8aa50610fa944c3c55b31e9019fd0a37abfd4ee9fdd6ca82e908a614e9f9
+AFTER message sha256=3efd5582550f4343fd774564d7c64442ac475710b19f15c36c2481ab5b5507cf
+AFTER result={"claimId":"ed58912b-2e94-4a60-b4be-9a1ae1782485","result":{"id":"receipt-p1","kind":"completed","output":{"detail":"extra report metadata","evidence":{"lines":3},"head":"h-p1","kind":"workflow-review","reservationId":"r-p1","verdict":"changes-requested"},"checkpoint":null,"outgoing":[]},"messages":[]}
+AFTER claim={"id":"ed58912b-2e94-4a60-b4be-9a1ae1782485","employeeId":"37d1a5e7-e7e7-4b2a-a025-acb4e65d1350","messageId":"workflow-review-r-p1","ownerEpoch":1,"generation":1,"status":"settled"}
+AFTER message={"id":"workflow-review-r-p1","recipient":"37d1a5e7-e7e7-4b2a-a025-acb4e65d1350","kind":"assignment","correlation":"item1","payload":{"changeId":"item1","head":"h-p1","instruction":"Review the exact head. Settle the claim with output {kind:'workflow-review', reservationId, head, verdict} where verdict is approve, changes-requested, or block.","kind":"workflow-review","reservationId":"r-p1"},"sender":"manager","sequence":4,"teamId":"46014575-bef7-4c54-ab7a-68ee565702be","status":"acknowledged"}
+PAIR result byteEqual=true hashEqual=true
+PAIR claim byteEqual=true hashEqual=true
+PAIR message byteEqual=true hashEqual=true
+PRESERVE ids/result=receipt-p1 claim=ed58912b-2e94-4a60-b4be-9a1ae1782485 message=workflow-review-r-p1 actor=37d1a5e7-e7e7-4b2a-a025-acb4e65d1350 gen=1 resv=r-p1 head=h-p1 verdict=changes-requested detail=extra report metadata evidence={"lines":3}
+REPLAY exact same id+payload returned saved claimId=ed58912b-2e94-4a60-b4be-9a1ae1782485
+REPLAY stored result unchanged=true sha=20359a93cbe42e257cb2f9a5d439a6a7c3a73802990c70fd6c805fb594066900
+CHANGED-PAYLOAD reuse rejected=ClaimSettlementError:result_replay_conflict: This result ID already names a different claim or payload. Reuse the exact original result to recover its receipt, or use a unique result ID for genuinely new work. Do not retry changed content under the same ID.; employee=37d1a5e7-e7e7-4b2a-a025-acb4e65d1350; generation=1; c recovery={"code":"result_replay_conflict","retryable":false,"action":"This result ID already names a different claim or payload. Reuse the exact original result to recover its receipt, or use a unique result ID for genuinely new work. Do not retry changed content under the same ID.","employeeId":"37d1a5e7-e7e7-4b2a-a025-acb4e65d1350","generation":1,"claimId":"ed58912b-2e94-4a60-b4be-9a1ae1782485"}
+CHANGED-PAYLOAD rejected=true
+AFTER-CHANGED result unchanged=true sha=20359a93cbe42e257cb2f9a5d439a6a7c3a73802990c70fd6c805fb594066900
+NEW-ID on settled claim rejected=ClaimSettlementError:claim_already_settled: This claim already has a result. Reuse the original result ID and exact payload to recover its receipt; do not create another result.; employee=37d1a5e7-e7e7-4b2a-a025-acb4e65d1350; generation=1; claim=ed58912b-2e94-4a60-b4be-9a1ae1782485 recovery={"code":"claim_already_settled","retryable":false,"action":"This claim already has a result. Reuse the original result ID and exact payload to recover its receipt; do not create another result.","employeeId":"37d1a5e7-e7e7-4b2a-a025-acb4e65d1350","generation":1,"claimId":"ed58912b-2e94-4a60-b4be-9a1ae1782485"}
+NEW-ID rejected=true
+AFTER-NEWID result unchanged=true claim unchanged=true message unchanged=true
+wallEnd=2026-11-07T10:02:36.545Z monoEnd=72596145
+LAYER=public-store-API-only snapshot-results-claims-messages no-coordinator-HTTP
+PAIR SMOKE COMPLETE pairEqual=true replayOk=true changedRejected=true newIdRejected=true
