@@ -108,6 +108,7 @@ import {
 import { dispatchWorkflow, executeWorkflow, type WorkflowRequest, type WorkflowView } from "./workflow-engine";
 import type { WorkflowBridgeAuthority, WorkflowRoleAssignment, WorkflowRunHandoff } from "./workflow-bridge";
 type WorkflowRoleReceipt = Parameters<NonNullable<WorkflowBridgeAuthority["settleRole"]>>[2];
+// Historical-envelope consumer: intentionally non-strict projection of the four core receipt fields. Producers stay strict; the saved immutable result is never rewritten.
 const workflowReviewReceiptSchema = z
   .object({
     kind: z.literal("workflow-review"),
