@@ -637,6 +637,32 @@ test("workflow reviews use an owned settled reviewer claim and enforce the manag
   f.store.close();
 });
 
+test("workflow review finalizer projects strict core from extensible result output", (): void => {
+  const f = fixture();
+  const t = active(f, "review-receipt-event", []);
+  f.store.captureIntake({ architect: t.architectBinding, capture: {
+    captureId: "review-receipt-capture", eventId: "review-receipt-event",
+    rows: [{ id: "review-receipt-item", expectedRevision: null, fields: fields("Review this change") }], receipt: "captured",
+  } });
+  for (const binding of [t.architectBinding, t.qaBinding, t.devBinding]) {
+    const notice = f.store.claimNext({ employee: binding });
+    if (!notice) throw new Error("Missing readiness notice");
+    f.store.settleClaim({ employee: binding, claimId: notice.claim.id, result: completed(`notice-${binding.employeeId}`) });
+  }
+  f.store.workflowReview({ employee: f.store.managerBinding, request: { action: "reserve", changeId: "review-receipt-item", reservationId: "receipt-1", head: "commit-one", limit: 1, reviewerId: t.qa } });
+  const claim = f.store.claimNext({ employee: t.qaBinding });
+  if (!claim) throw new Error("Missing review assignment");
+  expect(claim.message.id).toBe("workflow-review-receipt-1");
+  // Generic settlement accepts extra report metadata; finalizer must project the strict core.
+  f.store.settleClaim({ employee: t.qaBinding, claimId: claim.claim.id, result: {
+    ...completed("receipt-result"), output: { kind: "workflow-review", reservationId: "receipt-1", head: "commit-one", verdict: "changes-requested", detail: "extra report metadata", evidence: { lines: 3 } },
+  } });
+  expect(f.store.workflowReview({ employee: t.architectBinding, request: { action: "settle", reservationId: "receipt-1", resultId: "receipt-result" } }).verdict).toBe("changes-requested");
+  // Core authority still enforced: reservation/head mismatch must reject even with extra keys present.
+  expect(() => f.store.workflowReview({ employee: t.architectBinding, request: { action: "settle", reservationId: "receipt-1", resultId: "receipt-result-missing" } })).toThrow();
+  f.store.close();
+});
+
 test.each(["code", "research"])("completion respects review scope for %s items", (kind: string): void => {
   const f = fixture();
   const t = active(f, `completion-${kind}`, []);
