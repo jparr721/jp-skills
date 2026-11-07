@@ -63,7 +63,7 @@ bun extensions/startup/install.ts uninstall [PROFILE]
 
 With no profile on a terminal, `install` asks for an OMP profile name (existing or new); Enter selects the default profile. It links with `omp plugin link` and `OMP_PROFILE` set to the profile, whether or not a named profile exists yet. The default profile's plugin directory is `~/.omp/plugins` (or `$XDG_DATA_HOME/omp/plugins` once that directory exists), so the extension is installed for your regular OMP. With no terminal and no profile, `install` uses the default profile, so a script or agent that means another profile must pass `PROFILE` (or `default`) explicitly. The ownership receipt records the profile as its name or `default`.
 
-`config.ts` reads saved Startups under `<skills home>/startup`. A Startup saved in the old format (`binding.json` without `scope`) is skipped by `list` and refused by `get`:
+`config.ts` reads saved Startups under `<skills home>/startup`. A Startup saved in the old format (`binding.json` without `scope`, or a `runtime-config.json` that still carries the old `home` key instead of `skillsHome`/`startupRoot`) is skipped by `list` and refused by `get`:
 
 ```sh
 bun extensions/startup/config.ts list                           # saved Startups, harness and profile

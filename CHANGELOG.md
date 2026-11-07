@@ -2,6 +2,12 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [8.1.8] - 2026-11-07
+
+- Skip positively-recognized legacy Startup roots in `config.ts list` (old `binding.json` without `scope`, or a `runtime-config.json` still carrying the old `home` key instead of `skillsHome`/`startupRoot`) while refusing them with an actionable `StartupConfigError` on explicit `get`.
+- Wrap unreadable or malformed current `runtime-config.json` failures into a named `StartupConfigError` (Startup name + path) instead of letting raw `ZodError`/`SyntaxError` escape `config.ts list`/`get`.
+- Keep strict current schemas, redacted credentials, no auto-migration and no saved-state writes.
+
 ## [8.1.7] - 2026-11-06
 
 - Allow a new review after a correlated terminal review returns no valid verdict, without replaying an uncertain assignment or inventing approval.
