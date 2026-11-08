@@ -124,6 +124,13 @@ const workflowReviewSchema = z.strictObject({
   verdict: z.enum(["approve", "changes-requested", "block"]).nullable(),
   resultId: idSchema.nullable(),
 }).readonly();
+const legacyTransferEvidenceSchema = z.strictObject({
+  itemId: idSchema, migrationId: idSchema, original: jsonSchema, source: z.string().trim().min(1),
+  ownerFenced: z.literal(true), notDispatched: z.literal(true),
+  limit: z.number().int().min(1).max(3).nullable(), target: z.string().trim().min(1).nullable(),
+  reviews: z.array(workflowReviewSchema), evidence: z.string().trim().min(1),
+}).readonly();
+export type LegacyTransferEvidence = z.infer<typeof legacyTransferEvidenceSchema>;
 const workflowScopeSchema = z.strictObject({
   id: idSchema, parentId: idSchema.nullable(), itemId: idSchema, claimId: idSchema,
   employeeId: idSchema, generation: timeSchema, ownerEpoch: timeSchema,
@@ -303,6 +310,7 @@ const writeIntentSchema = z
       original: managerRunSchema, evidence: managerCompletionSchema,
       revision: timeSchema, status: z.enum(["MERGED", "READY_TO_LAND"]),
     }).optional(),
+    legacyTransfer: z.strictObject({ evidence: legacyTransferEvidenceSchema, eventId: idSchema, originalRevision: timeSchema, revision: timeSchema }).optional(),
     item: itemTransitionSchema.optional(),
     hostCancel: hostCancelFinalizeSchema.optional(),
   })
@@ -1030,6 +1038,11 @@ export function openStore(args: {
   function queueText(document: ReturnType<typeof canonicalQueue>, rows: readonly z.infer<typeof rowSchema>[]): string {
     return JSON.stringify(document.container === null ? rows : { ...document.container, [document.key]: rows }, null, 2) + "\n";
   }
+  function managerReviewBudget(itemId: string, workflow: "pipeline" | "hotfix", requestedLimit: number): Readonly<{ limit: number; completed: number; remaining: number }> {
+    const cap = Math.min(requestedLimit, workflow === "hotfix" ? 1 : 2, read("workflowLimit", itemId, z.number().int().min(1).max(3)) ?? requestedLimit);
+    const completed = all("workflowReview", workflowReviewSchema).filter((review) => review.changeId === itemId && review.state === "completed").length + all("managerReview", managerReviewSchema).filter((review) => review.itemId === itemId && review.state === "completed").length;
+    return { limit: cap, completed, remaining: Math.max(0, cap - completed) };
+  }
   function finalizeItem(receipt: ItemTransition): void {
     const current = team(receipt.teamId);
     put("queueOwner", receipt.request.itemId, {
@@ -1067,6 +1080,18 @@ export function openStore(args: {
     put("queueOwner", current.itemId, { id: current.itemId, eventId: current.eventId, revision: completion.revision });
     observeItemProgress({ itemId: current.itemId, revision: completion.revision, status: completion.status, observedAt: now() });
     put("managerRun", current.launchKey, managerRunSchema.parse({ ...current, state: "completed", completion: completion.evidence }));
+  }
+  function finalizeLegacyTransfer(transfer: NonNullable<z.infer<typeof writeIntentSchema>["legacyTransfer"]>): void {
+    const { evidence } = transfer;
+    const owner = read("queueOwner", evidence.itemId, queueOwnerSchema);
+    const row = canonicalQueue().rows.find((entry) => entry.id === evidence.itemId);
+    if (owner === null || owner.eventId !== transfer.eventId || owner.revision !== transfer.originalRevision || row?.status !== "QUEUED") throw new StoreFenceError("Legacy transfer ownership or queue changed before finalization");
+    for (const review of evidence.reviews) put("workflowReview", review.reservationId, review);
+    if (evidence.limit !== null) put("workflowLimit", evidence.itemId, evidence.limit);
+    if (evidence.target !== null) put("workflowTarget", evidence.itemId, evidence.target);
+    put("queueOwner", evidence.itemId, { id: evidence.itemId, eventId: owner.eventId, revision: transfer.revision });
+    observeItemProgress({ itemId: evidence.itemId, revision: transfer.revision, status: "QUEUED", observedAt: now() });
+    put("legacyTransfer", evidence.itemId, evidence);
   }
   function finalizeHostCancel(cancel: z.infer<typeof hostCancelFinalizeSchema>): void {
     const saved = hostCancelFinalizeSchema.parse(cancel);
@@ -1110,6 +1135,7 @@ export function openStore(args: {
         );
       if (intent.capture !== null) finalizeCapture(intent.capture);
       if (intent.managerCompletion !== undefined) finalizeManagerCompletion(intent.managerCompletion);
+      if (intent.legacyTransfer !== undefined) finalizeLegacyTransfer(intent.legacyTransfer);
       if (intent.item !== undefined) finalizeItem(intent.item);
       if (intent.hostCancel !== undefined) finalizeHostCancel(intent.hostCancel);
       if (intent.file === "resources.json")
@@ -2289,6 +2315,42 @@ export function openStore(args: {
       applyIntent(`capture/${receipt.request.captureId}`);
       return receipt;
     },
+    async reconcileLegacyItem(input: { readonly manager: Binding; readonly itemId: string; readonly verify: (row: z.infer<typeof rowSchema>) => Promise<unknown> }): Promise<LegacyTransferEvidence> {
+      pendingWrites();
+      const original = tx(() => {
+        manager(input.manager);
+        const itemId = idSchema.parse(input.itemId);
+        const previous = read("legacyTransfer", itemId, legacyTransferEvidenceSchema);
+        if (previous !== null) return { previous, row: null, owner: null };
+        const row = canonicalQueue().rows.find((entry) => entry.id === itemId);
+        const owner = read("queueOwner", itemId, queueOwnerSchema);
+        if (row === undefined || row.status !== "NEEDS_DECISION" || owner === null || row.legacy_import == null || all("managerRun", managerRunSchema).some((run) => run.itemId === itemId)) throw new StoreFenceError("Legacy item is not an undispatched imported queue item");
+        return { previous: null, row, owner };
+      });
+      if (original.previous !== null) return original.previous;
+      if (original.row === null || original.owner === null) throw new StoreRecoveryError("Legacy transfer lost its queue snapshot");
+      const evidence = legacyTransferEvidenceSchema.parse(await input.verify(original.row));
+      const imported = z.object({ migrationId: idSchema, original: z.object({ id: idSchema, status: z.literal("QUEUED"), dispatched_at: jsonSchema.nullable().optional() }).passthrough() }).parse(original.row.legacy_import);
+      if (evidence.itemId !== original.row.id || evidence.migrationId !== imported.migrationId || !sameDocument(evidence.original, imported.original) || imported.original.id !== evidence.itemId || imported.original.dispatched_at != null) throw new StoreAuthorityError("Verified legacy transfer does not match the original undispatched item");
+      const inheritedLimit = evidence.limit;
+      if (new Set(evidence.reviews.map((entry) => entry.reservationId)).size !== evidence.reviews.length || evidence.reviews.some((entry) => entry.changeId !== evidence.itemId || entry.state !== "completed" || entry.verdict === null || entry.verdict === "approve" || entry.resultId === null) || (evidence.reviews.length > 0 && (inheritedLimit === null || evidence.reviews.length >= inheritedLimit || evidence.reviews.some((entry) => entry.limit < inheritedLimit)))) throw new StoreAuthorityError("Legacy review history is unresolved, approved or exceeds its inherited budget");
+      pendingWrites();
+      const intentId = `legacy-transfer/${evidence.itemId}`;
+      tx(() => {
+        manager(input.manager);
+        const document = canonicalQueue();
+        const row = document.rows.find((entry) => entry.id === evidence.itemId);
+        const owner = read("queueOwner", evidence.itemId, queueOwnerSchema);
+        if (row === undefined || owner === null || !sameDocument(row, original.row) || !sameDocument(owner, original.owner) || all("managerRun", managerRunSchema).some((run) => run.itemId === evidence.itemId)) throw new StoreFenceError("Legacy item changed during verification");
+        if (read("workflowLimit", evidence.itemId, z.unknown()) !== null || read("workflowTarget", evidence.itemId, z.unknown()) !== null || all("workflowReview", workflowReviewSchema).some((review) => review.changeId === evidence.itemId || evidence.reviews.some((saved) => saved.reservationId === review.reservationId))) throw new StoreConflictError("Legacy workflow history conflicts with existing state");
+        const next = rowSchema.parse({ ...row, status: "QUEUED", blocked_on: imported.original.blocked_on ?? null, dispatched_at: null });
+        put("intent", intentId, { file: "queue.json", before: document.before, after: queueText(document, document.rows.map((entry) => entry.id === evidence.itemId ? next : entry)), state: "pending", capture: null, legacyTransfer: { evidence, eventId: owner.eventId, originalRevision: owner.revision, revision: owner.revision + 1 } });
+      });
+      applyIntent(intentId);
+      const saved = read("legacyTransfer", evidence.itemId, legacyTransferEvidenceSchema);
+      if (saved === null) throw new StoreRecoveryError("Legacy transfer did not persist");
+      return saved;
+    },
     migrateManagerQueue(input: { readonly manager: Binding; readonly migrationId: string }): z.infer<typeof managerMigrationSchema> {
       pendingWrites();
       return tx(() => {
@@ -2342,6 +2404,11 @@ export function openStore(args: {
         return receipt;
       });
     },
+    managerReviewBudget(input: { readonly itemId: string; readonly workflow: "pipeline" | "hotfix"; readonly limit: number }): Readonly<{ limit: number; completed: number; remaining: number }> {
+      const itemId = idSchema.parse(input.itemId);
+      const limit = z.number().int().min(1).max(input.workflow === "hotfix" ? 1 : 2).parse(input.limit);
+      return managerReviewBudget(itemId, input.workflow, limit);
+    },
     managerRuns(): readonly ManagerRun[] {
       return all("managerRun", managerRunSchema);
     },
@@ -2393,7 +2460,7 @@ export function openStore(args: {
         const reviews = all("workflowReview", workflowReviewSchema).filter((entry) => entry.changeId === itemId);
         if (reviews.some((entry) => entry.state !== "completed" || entry.verdict === null || entry.verdict === "approve")) throw new StoreAuthorityError("Prior review is unresolved or already approved");
         const inheritedLimit = savedLimit ?? (reviews.length ? Math.min(...reviews.map((entry) => entry.limit)) : limit);
-        if (limit + reviews.length > inheritedLimit || managerReviews.length >= limit) throw new StoreAuthorityError("Run exceeds the remaining inherited review limit");
+        if (reviews.length + managerReviews.length >= Math.min(inheritedLimit, limit, input.workflow === "hotfix" ? 1 : 2)) throw new StoreAuthorityError("Run exceeds the remaining inherited review limit");
         if (savedTarget !== null && target !== savedTarget) throw new StoreAuthorityError("Run target differs from the frozen target");
         if (savedLimit === null) put("workflowLimit", itemId, inheritedLimit);
         if (savedTarget === null) put("workflowTarget", itemId, target);
@@ -2474,7 +2541,7 @@ export function openStore(args: {
         const reviews = all("managerReview", managerReviewSchema).filter((entry) => entry.itemId === run.itemId && entry.state !== "failed" && entry.state !== "cancelled");
         if (reviews.some((entry) => entry.state !== "completed")) throw new StoreConflictError("Existing review is active or uncertain");
         if (reviews.some((entry) => entry.verdict === "approve")) throw new StoreConflictError("Review already approved");
-        if (reviews.length >= run.limit) throw new StoreConflictError("Review budget exhausted");
+        if (managerReviewBudget(run.itemId, run.workflow, run.limit).remaining === 0) throw new StoreConflictError("Review budget exhausted");
         put("managerReview", review.reviewId, review);
         return review;
       });
@@ -2598,7 +2665,7 @@ export function openStore(args: {
           throw new StoreFenceError("Manager run item changed during completion verification");
         const reviews = all("managerReview", managerReviewSchema).filter((review) => review.itemId === current.itemId && review.state === "completed");
         const review = reviews.find((entry) => entry.reviewId === evidence.review.reviewId);
-        if (review === undefined || review.verdict !== "approve" || review.head !== evidence.head || review.reviewerId !== evidence.review.reviewerId || review.invocationId !== evidence.review.invocationId || review.launchKey !== current.launchKey || reviews.length !== evidence.review.rounds)
+        if (review === undefined || review.verdict !== "approve" || review.head !== evidence.head || review.reviewerId !== evidence.review.reviewerId || review.invocationId !== evidence.review.invocationId || review.launchKey !== current.launchKey || managerReviewBudget(current.itemId, current.workflow, current.limit).completed !== evidence.review.rounds)
           throw new StoreAuthorityError("Completion requires the independently verified exact-head review receipt");
         const document = canonicalQueue();
         const row = document.rows.find((entry) => entry.id === current.itemId);

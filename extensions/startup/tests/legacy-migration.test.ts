@@ -1,10 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openStore } from "../src/store";
-import { migrateLegacyStartup } from "../src/legacy-migration";
+import { verifyCancelledLegacySnapshot } from "../src/legacy-cancel-verifier";
+import { migrateLegacyStartup, transferCancelledLegacyItem } from "../src/legacy-migration";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -137,5 +139,93 @@ test("archives a terminal-only queue without reopening work or claiming old effe
   const snapshot = new Database(join(receipt.archive, "staff.sqlite"), { readonly: true });
   expect(snapshot.query("SELECT id FROM records WHERE kind='claim'").all()).toEqual([{ id: "old-claim" }]);
   snapshot.close();
+  f.store.close();
+});
+
+test("transfers a cooperatively cancelled undispatched item after its team finishes", async () => {
+  const f = fixture();
+  const scope = { skillsHome: join(f.root, "old-home"), startupRoot: f.source, boundRoot: join(f.root, "repo"), host: "host", name: "old", managerSession: "old-session" };
+  writeFileSync(join(f.source, "binding.json"), JSON.stringify({ scope, executionLimit: 4 }));
+  const db = new Database(join(f.source, "staff.sqlite"));
+  const put = (kind: string, id: string, value: unknown): void => { db.run("INSERT INTO records VALUES(?,?,?)", [kind, id, JSON.stringify(value)]); };
+  const before = [{ id: "A", status: "QUEUED", request: "A", acceptance: "works" }, { id: "B", status: "QUEUED", request: "B" }];
+  const after = [{ ...before[0], status: "CANCELLED" }, before[1]];
+  put("meta", "scope", scope);
+  put("hostReceipt", "cancel:cancel-a", { kind: "cancel", id: "cancel:cancel-a", intentId: "cancel-a", requestOrItemId: "A", digest: createHash("sha256").update(JSON.stringify({ intentId: "cancel-a", requestOrItemId: "A" })).digest("hex"), createdAt: 1, target: { kind: "item", itemId: "A", revision: 2, status: "CANCELLED", slots: [] } });
+  put("intent", "host-cancel/cancel-a", { state: "complete", file: "queue.json", before: JSON.stringify(before), after: JSON.stringify(after), hostCancel: { itemId: "A", eventId: "event-a", teamId: "team-a", revision: 2 } });
+  put("queueOwner", "A", { id: "A", eventId: "event-a", revision: 2 });
+  put("team", "team-a", { id: "team-a", eventId: "event-a", state: "finished" });
+  put("workflowLimit", "A", 2);
+  put("workflowTarget", "A", "main");
+  put("workflowScope", "empty-scope", { itemId: "A", claimId: "unclaimed" });
+  const verify = () => verifyCancelledLegacySnapshot({ snapshot: join(f.source, "staff.sqlite"), sourceRoot: f.source, itemId: "A", intentId: "cancel-a", migrationId: "move-a" });
+  db.run("UPDATE records SET payload=? WHERE kind='team' AND id='team-a'", [JSON.stringify({ id: "team-a", eventId: "event-a", state: "ready" })]);
+  expect(verify).toThrow();
+  db.run("UPDATE records SET payload=? WHERE kind='team' AND id='team-a'", [JSON.stringify({ id: "team-a", eventId: "event-a", state: "finished" })]);
+  put("itemExecution", "A", { itemId: "A" });
+  expect(verify).toThrow("execution history");
+  db.run("DELETE FROM records WHERE kind='itemExecution' AND id='A'");
+  put("workflowLaunch", "launched", { scopeId: "empty-scope" });
+  expect(verify).toThrow("workflow or execution history");
+  db.run("DELETE FROM records WHERE kind='workflowLaunch' AND id='launched'");
+  put("workflowLaunch", "closed-launch", { scopeId: "empty-scope", state: "closed", location: { pane: "old" } });
+  expect(verify).toThrow("workflow or execution history");
+  db.run("DELETE FROM records WHERE kind='workflowLaunch' AND id='closed-launch'");
+  put("workflowChild", "failed-child", { itemId: "A", state: "failed" });
+  expect(verify).toThrow("workflow or execution history");
+  db.run("DELETE FROM records WHERE kind='workflowChild' AND id='failed-child'");
+  put("claim", "unclaimed", { status: "active" });
+  expect(verify).toThrow("workflow or execution history");
+  db.run("DELETE FROM records WHERE kind='claim' AND id='unclaimed'");
+  db.run("UPDATE records SET payload=json_set(payload,'$.state','pending') WHERE kind='intent' AND id='host-cancel/cancel-a'");
+  expect(verify).toThrow();
+  db.run("UPDATE records SET payload=json_set(payload,'$.state','complete') WHERE kind='intent' AND id='host-cancel/cancel-a'");
+  db.run("UPDATE records SET payload='3' WHERE kind='workflowLimit' AND id='A'");
+  expect(verify().limit).toBe(3);
+  db.run("UPDATE records SET payload='2' WHERE kind='workflowLimit' AND id='A'");
+  db.close();
+  writeFileSync(join(f.source, "queue.json"), JSON.stringify({ items: before }));
+  migrateLegacyStartup({ sourceRoot: f.source, targetRoot: f.target, migrationId: "move-a", store: f.store, manager: f.store.managerBinding });
+  const oldQueue = JSON.parse(readFileSync(join(f.target, "queue.json"), "utf8"));
+  delete oldQueue.find((row: { id: string }) => row.id === "A").legacy_import.sourceRoot;
+  writeFileSync(join(f.target, "queue.json"), JSON.stringify(oldQueue));
+  writeFileSync(join(f.source, "queue.json"), JSON.stringify({ items: after }));
+  const input = { sourceRoot: f.source, targetRoot: f.target, migrationId: "move-a", itemId: "A", intentId: "cancel-a", store: f.store, manager: f.store.managerBinding };
+  const other = fixture();
+  await expect(transferCancelledLegacyItem({ ...input, store: other.store, manager: other.store.managerBinding })).rejects.toThrow("destination does not match");
+  other.store.recordIntake({ manager: other.store.managerBinding, event: { eventId: "conflict-event", input: "other", amendItemIds: [] } });
+  other.store.captureIntake({ architect: other.store.managerBinding, capture: { captureId: "conflict-capture", eventId: "conflict-event", rows: [{ id: "A", expectedRevision: null, fields: { request: "different", acceptance: null, blocked_on: null, status: "QUEUED" } }], receipt: null } });
+  await expect(transferCancelledLegacyItem({ ...input, targetRoot: other.target, store: other.store, manager: other.store.managerBinding })).rejects.toThrow("different source");
+  expect(existsSync(join(f.source, "legacy-handovers"))).toBe(false);
+  other.store.close();
+  const competitor = fixture();
+  const interrupted = new Proxy(f.store, { get(target, property, receiver) { if (property === "reconcileLegacyItem") return () => { throw new Error("Simulated crash after source receipt"); }; return Reflect.get(target, property, receiver); } });
+  const attempts = await Promise.allSettled([
+    transferCancelledLegacyItem({ ...input, store: interrupted }),
+    transferCancelledLegacyItem({ ...input, targetRoot: competitor.target, store: competitor.store, manager: competitor.store.managerBinding }),
+  ]);
+  expect(attempts[0]).toMatchObject({ status: "rejected" });
+  expect(attempts[1]).toMatchObject({ status: "rejected" });
+  expect(competitor.store.queueItems()).toEqual([]);
+  const receipt = await transferCancelledLegacyItem(input);
+  expect(receipt).toMatchObject({ itemId: "A", limit: 2, target: "main", original: before[0] });
+  competitor.store.close();
+  expect(await transferCancelledLegacyItem(input)).toEqual(receipt);
+  expect(f.store.queueItems().find((row) => row.id === "A")?.status).toBe("QUEUED");
+  expect(JSON.parse(readFileSync(join(f.source, "queue.json"), "utf8")).items).toEqual(after);
+  f.store.close();
+});
+
+test("source handover receipt has one winner across concurrent processes", async () => {
+  const f = fixture();
+  const modulePath = join(import.meta.dir, "../src/legacy-migration.ts");
+  const program = `import { claimLegacyHandover } from ${JSON.stringify(modulePath)}; const [sourceRoot, targetRoot] = process.argv.slice(1); claimLegacyHandover({ sourceRoot, targetRoot, itemId: "parallel-item", intentId: "cancel", migrationId: "move" });`;
+  const start = (targetRoot: string) => Bun.spawn([process.execPath, "-e", program, f.source, targetRoot], { stdout: "pipe", stderr: "pipe" });
+  const first = start(join(f.root, "destination-a"));
+  const second = start(join(f.root, "destination-b"));
+  const codes = await Promise.all([first.exited, second.exited]);
+  expect([...codes].sort()).toEqual([0, 1]);
+  const winner = codes[0] === 0 ? join(f.root, "destination-a") : join(f.root, "destination-b");
+  expect(await start(winner).exited).toBe(0);
   f.store.close();
 });

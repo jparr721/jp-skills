@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
@@ -19,17 +19,17 @@ import { startOwnedOmpRpc } from "../src/omp-rpc-supervisor";
 
 const roots: string[] = [];
 const stores: StartupStore[] = [];
-const servers: ReturnType<typeof serveCoordinator>[] = [];
+const servers: { stop: (closeActiveConnections?: boolean) => unknown }[] = [];
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true);
   for (const store of stores.splice(0)) store.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 const manifestSchema = z.object({ credential: z.string(), source: sourceSchema });
-function fixture(executionLimit: number) {
-  return harnessFixture(executionLimit, "omp");
+function fixture(executionLimit: number, storeFactory?: typeof openStore) {
+  return harnessFixture(executionLimit, "omp", undefined, undefined, storeFactory);
 }
-function harnessFixture(executionLimit: number, harness: "omp" | "claude", managerRpc?: typeof startOwnedOmpRpc, writerScan?: typeof scanWorktreeWriters) {
+function harnessFixture(executionLimit: number, harness: "omp" | "claude", managerRpc?: typeof startOwnedOmpRpc, writerScan?: typeof scanWorktreeWriters, storeFactory?: typeof openStore) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "sv7-")));
   roots.push(root);
   const home = join(root, "home");
@@ -46,7 +46,7 @@ function harnessFixture(executionLimit: number, harness: "omp" | "claude", manag
   writeFileSync(managerFile, JSON.stringify({ type: "session", id: "manager-session" }) + "\n");
   let now = 1000;
   let clockStep = 0;
-  const store = openStore({ path: join(stateDirectory, "staff.sqlite"), scope: { skillsHome: home, startupRoot, boundRoot, host: "host", name: "test", managerSession: "manager-session" }, owner: { id: "coordinator", managerGeneration: 1, leaseMs: 60000 }, now: () => now });
+  const store = (storeFactory ?? openStore)({ path: join(stateDirectory, "staff.sqlite"), scope: { skillsHome: home, startupRoot, boundRoot, host: "host", name: "test", managerSession: "manager-session" }, owner: { id: "coordinator", managerGeneration: 1, leaseMs: 60000 }, now: () => now });
   stores.push(store);
   store.initializeRoleSettings(harness);
   const managerNative = harness === "claude" ? "manager-session" : managerFile;
@@ -1790,7 +1790,7 @@ if [ "$JP_COORDINATOR_BAD_HEAD" = 1 ]; then head=0000000000000000000000000000000
 printf '{"headRefOid":"%s","baseRefName":"main","state":"OPEN","isDraft":false,"url":"https://example.test/pr/1","mergeCommit":null}\n' "$head"
 `);
       chmodSync(gh, 0o755);
-      for (const scenario of ["success", "bad-head", "shutdown", "exit", "preaccept", "prespawn", "invalid-review", "live-writer"]) execFileSync(process.execPath, ["test", import.meta.path, "-t", "coordinator settles an offline OMP run"], { env: { ...process.env, JP_COORDINATOR_OFFLINE_CHILD: "1", JP_COORDINATOR_SCENARIO: scenario, JP_COORDINATOR_BAD_HEAD: scenario === "bad-head" ? "1" : "0", PATH: `${directory}:${process.env.PATH ?? ""}` }, stdio: "pipe", timeout: 40000 });
+      for (const scenario of ["success", "bad-head", "shutdown", "exit", "preaccept", "prespawn", "invalid-review", "live-writer", "legacy-round", "repo-notice"]) execFileSync(process.execPath, ["test", import.meta.path, "-t", "coordinator settles an offline OMP run"], { env: { ...process.env, JP_COORDINATOR_OFFLINE_CHILD: "1", JP_COORDINATOR_SCENARIO: scenario, JP_COORDINATOR_BAD_HEAD: scenario === "bad-head" ? "1" : "0", PATH: `${directory}:${process.env.PATH ?? ""}` }, stdio: "pipe", timeout: 40000 });
     } finally { rmSync(directory, { recursive: true, force: true }); }
     return;
   }
@@ -1798,12 +1798,13 @@ printf '{"headRefOid":"%s","baseRefName":"main","state":"OPEN","isDraft":false,"
   if (!binary) throw new Error("Real OMP binary is required for coordinator integration");
   let extension = "";
   let calls = 0;
+  let directive = "";
   let ownedClient: Awaited<ReturnType<typeof startOwnedOmpRpc>> | undefined;
   const managerRpc: typeof startOwnedOmpRpc = async (input) => {
     calls++;
     const client = await startOwnedOmpRpc({ ...input, binary, args: ["--mode", "rpc", "--no-ui", "--no-extensions", "--no-skills", "--no-context-files", "--extension", extension] });
     ownedClient = client;
-    return { ...client, call: (command) => process.env.JP_COORDINATOR_SCENARIO === "preaccept" && calls === 1 && command.type === "get_state" ? Promise.reject(new Error("fixture preaccept failure")) : client.call(command.type === "prompt" ? { ...command, message: "/coordinator-probe" } : command) };
+    return { ...client, call: (command) => { if (command.type === "prompt") directive = String(command.message); return process.env.JP_COORDINATOR_SCENARIO === "preaccept" && calls === 1 && command.type === "get_state" ? Promise.reject(new Error("fixture preaccept failure")) : client.call(command.type === "prompt" ? { ...command, message: "/coordinator-probe" } : command); } };
   };
   let scanCount = 0;
   const f = harnessFixture(8, "omp", managerRpc, async (worktree) => { scanCount++; return scanWorktreeWriters(worktree); });
@@ -1837,7 +1838,12 @@ export default function(pi) {
     await f.coordinator.start();
     let manager = await f.admit("manager");
     f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "offline-event", input: "request", amendItemIds: [] } });
-    f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "offline-capture", eventId: "offline-event", rows: [{ id: "item", expectedRevision: null, fields: { status: "QUEUED", request: "fix", acceptance: "works", blocked_on: null } }], receipt: "captured" } });
+    const original = { id: "item", status: "QUEUED", request: "fix", acceptance: "works", blocked_on: null };
+    f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "offline-capture", eventId: "offline-event", rows: [{ id: "item", expectedRevision: null, fields: process.env.JP_COORDINATOR_SCENARIO === "legacy-round" ? { ...original, status: "NEEDS_DECISION", legacy_import: { migrationId: "legacy", original } } : process.env.JP_COORDINATOR_SCENARIO === "repo-notice" ? { ...original, remote: "https://github.com/example/project" } : original }], receipt: "captured" } });
+    if (process.env.JP_COORDINATOR_SCENARIO === "legacy-round") {
+      const review = { changeId: "item", reservationId: "legacy-review", head, reviewerId: "old-reviewer", messageId: "legacy-message", limit: 2, state: "completed", verdict: "changes-requested", resultId: "legacy-result" };
+      await f.store.reconcileLegacyItem({ manager: f.store.managerBinding, itemId: "item", verify: async () => ({ itemId: "item", migrationId: "legacy", original, source: "verified source", ownerFenced: true, notDispatched: true, limit: 2, target: "main", reviews: [review], evidence: "verified fixture" }) });
+    }
     const request = { kind: "manager_run_start", itemId: "item", workflow: "pipeline", limit: 2, target: "main", launchKey: "offline-run", worktree: worktree };
     if (process.env.JP_COORDINATOR_SCENARIO === "prespawn") {
       const key = createHash("sha256").update("offline-run").digest("hex");
@@ -1853,6 +1859,8 @@ export default function(pi) {
       return;
     }
     await f.coordinator.command(manager, request);
+    if (process.env.JP_COORDINATOR_SCENARIO === "legacy-round") expect(directive).toContain("maximum review rounds 1");
+    if (process.env.JP_COORDINATOR_SCENARIO === "repo-notice") expect(directive).toContain("saved remote is not configured");
     const message = { kind: "manager_run_send", launchKey: "offline-run", messageId: "follow-one", text: "Continue with the approved details" } as const;
     const receipt = await f.coordinator.command(manager, message);
     expect(receipt).toMatchObject({ messageId: "follow-one", state: "queued" });
@@ -1940,3 +1948,96 @@ test("restart reconciles an absent original process without replaying uncertain 
   expect(() => reopened.reserveManagerRun({ ...base, manager: reopened.managerBinding, itemId: "gone", launchKey: "gone-retry", branch: "gone-branch", worktree: f.config.boundRoot })).toThrow();
   await coordinator.shutdown();
 }, 30000);
+
+test("cooperative cancellation transfers a finished team's queued item while another team continues", async () => {
+  const historical = realpathSync(mkdtempSync(join(tmpdir(), "startup-v818-")));
+  roots.push(historical);
+  const archive = join(historical, "v818.tar");
+  execFileSync("git", ["archive", "--output", archive, "v8.1.8", "extensions/startup/src"], { cwd: resolve(import.meta.dir, "../../..") });
+  execFileSync("tar", ["-xf", archive, "-C", historical]);
+  symlinkSync(resolve(import.meta.dir, "../node_modules"), join(historical, "extensions/startup/node_modules"));
+  const historicalStore = await import(join(historical, "extensions/startup/src/store.ts"));
+  const source = fixture(8, historicalStore.openStore);
+  const target = fixture(8);
+  const { manager } = await source.ready();
+  const destination = await target.ready();
+  const team = await source.delegate(manager, "transfer-event");
+  const workers = new Map<string, string>();
+  for (const id of [team.architect, team.qa, ...team.devs]) workers.set(id, await source.admit(id));
+  for (const [id, connection] of workers) {
+    const claimed = z.object({ claim: z.object({ id: z.string() }) }).parse(await source.coordinator.command(connection, { kind: "claim" }));
+    if (id === team.architect) await source.coordinator.command(connection, { kind: "capture", capture: { captureId: "transfer-capture", eventId: "transfer-event", rows: [{ id: "TRANSFER", expectedRevision: null, fields: { status: "QUEUED", request: "work", acceptance: "proof", blocked_on: null } }], receipt: "captured" } });
+    await source.coordinator.command(connection, { kind: "settle", claimId: claimed.claim.id, result: { id: `ready-${id}`, kind: "completed", output: "ready", checkpoint: null, outgoing: [] } });
+  }
+  await source.coordinator.command(manager, { kind: "workflow_limit", itemId: "TRANSFER", limit: 2, target: "main" });
+  await source.coordinator.command(manager, { kind: "workflow_review", action: "reserve", changeId: "TRANSFER", reservationId: "historical-review", head: "old-head", limit: 2, reviewerId: team.qa });
+  const qa = workers.get(team.qa);
+  if (!qa) throw new Error("Missing QA connection");
+  const reviewClaim = z.object({ claim: z.object({ id: z.string() }) }).parse(await source.coordinator.command(qa, { kind: "claim" }));
+  await source.coordinator.command(qa, { kind: "settle", claimId: reviewClaim.claim.id, result: { id: "historical-result", kind: "completed", output: { kind: "workflow-review", reservationId: "historical-review", head: "old-head", verdict: "changes-requested" }, checkpoint: null, outgoing: [] } });
+  await source.coordinator.command(manager, { kind: "workflow_review", action: "settle", reservationId: "historical-review", resultId: "historical-result" });
+  await source.coordinator.hostCancel({ requestOrItemId: "TRANSFER", intentId: "transfer-cancel" });
+  await source.coordinator.command(manager, { kind: "finish", teamId: team.id, evidence: "cancelled" });
+  const other = await source.delegate(manager, "other-event");
+  writeFileSync(join(source.config.startupRoot, "binding.json"), JSON.stringify({ scope: source.store.scope, executionLimit: 8 }));
+  const receipt = await target.coordinator.command(destination.manager, { kind: "manager_transfer_legacy", migrationId: "transfer-one", sourceRoot: source.config.startupRoot, itemId: "TRANSFER", intentId: "transfer-cancel" });
+  expect(receipt).toMatchObject({ itemId: "TRANSFER", limit: 2, target: "main", reviews: [{ reservationId: "historical-review", verdict: "changes-requested" }] });
+  expect(target.store.queueItems().find((row) => row.id === "TRANSFER")?.status).toBe("QUEUED");
+  expect(target.store.managerReviewBudget({ itemId: "TRANSFER", workflow: "pipeline", limit: 2 })).toEqual({ limit: 2, completed: 1, remaining: 1 });
+  expect(source.store.snapshot().teams.find((row) => row.id === other.id)?.state).not.toBe("finished");
+});
+
+test("manager requests cooperative legacy handover idempotently through the original host", async () => {
+  const source = fixture(8);
+  const target = fixture(8);
+  await source.ready();
+  const destination = await target.ready();
+  servers.push(serveCoordinator({ coordinator: source.coordinator, socketPath: source.config.socketPath }));
+  writeFileSync(join(source.config.startupRoot, "binding.json"), JSON.stringify({ scope: source.store.scope, executionLimit: 8 }), { mode: 0o600 });
+  writeFileSync(join(source.config.startupRoot, "runtime-config.json"), JSON.stringify({ ...source.config, herdrBinary: "herdr", workspaceId: "w1", ownerGeneration: 1 }), { mode: 0o600 });
+  const request = { kind: "manager_request_handover", migrationId: "migrate-one", sourceRoot: source.config.startupRoot, itemId: "ITEM-1", intentId: "cancel-one" };
+  await expect(target.coordinator.command(destination.manager, { ...request, migrationId: "invalid/id" })).rejects.toThrow();
+  const altered = new Database(join(source.config.startupRoot, "staff.sqlite"));
+  altered.run("UPDATE records SET payload=? WHERE kind='meta' AND id='scope'", [JSON.stringify({ ...source.store.scope, managerSession: "foreign" })]);
+  await expect(target.coordinator.command(destination.manager, request)).rejects.toThrow("database scope");
+  altered.run("UPDATE records SET payload=? WHERE kind='meta' AND id='scope'", [JSON.stringify(source.store.scope)]);
+  altered.close();
+  const runtimePath = join(source.config.startupRoot, "runtime-config.json");
+  const originalConfig = readFileSync(runtimePath, "utf8");
+  symlinkSync(source.config.startupRoot, join(source.config.startupRoot, "alias"));
+  writeFileSync(runtimePath, JSON.stringify({ ...JSON.parse(originalConfig), socketPath: join(source.config.startupRoot, "alias", "runtime.sock") }), { mode: 0o600 });
+  await expect(target.coordinator.command(destination.manager, request)).rejects.toThrow("symlink");
+  writeFileSync(runtimePath, originalConfig, { mode: 0o600 });
+  expect(source.store.snapshot().inputs).toHaveLength(0);
+  const first = await target.coordinator.command(destination.manager, request);
+  expect(first).toMatchObject({ state: "admitted", requestId: expect.stringMatching(/^handover-/) });
+  expect(await target.coordinator.command(destination.manager, request)).toEqual(first);
+  const inputs = source.store.snapshot().inputs;
+  expect(inputs).toHaveLength(1);
+  expect(JSON.stringify(inputs[0])).toContain("Only if it is still queued, never dispatched");
+  expect(source.store.snapshot().intakes).toHaveLength(0);
+  const originalServer = servers.pop();
+  if (!originalServer) throw new Error("Missing legacy server");
+  originalServer.stop(true);
+  rmSync(source.config.socketPath, { force: true });
+  let foreignSession = false;
+  let forgedReceipt = false;
+  const lostResponseServer = Bun.serve({ unix: source.config.socketPath, async fetch(request) {
+    const path = new URL(request.url).pathname;
+    if (path === "/status") { const picture = source.coordinator.hostStatus({}); return Response.json(foreignSession ? { ...picture, staff: { ...picture.staff, rows: picture.staff.rows.map((row) => row.id === "manager" ? { ...row, nativeSession: "foreign" } : row) } } : picture); }
+    if (path === "/host/admit") { await source.coordinator.hostAdmit(await request.json()); return new Response("lost response", { status: 500 }); }
+    if (path.startsWith("/host/receipt/")) { const receipt = source.coordinator.hostReceipt(decodeURIComponent(path.slice("/host/receipt/".length))); return Response.json(forgedReceipt ? { ...receipt, inputId: "foreign" } : receipt); }
+    return new Response("missing", { status: 404 });
+  } });
+  chmodSync(source.config.socketPath, 0o600);
+  servers.push(lostResponseServer);
+  const recovered = await target.coordinator.command(destination.manager, { ...request, itemId: "ITEM-2", intentId: "cancel-two" });
+  expect(recovered).toMatchObject({ state: "admitted" });
+  expect(source.store.snapshot().inputs).toHaveLength(2);
+  foreignSession = true;
+  await expect(target.coordinator.command(destination.manager, { ...request, itemId: "ITEM-3" })).rejects.toThrow("native manager session");
+  foreignSession = false;
+  forgedReceipt = true;
+  const unverified = await target.coordinator.command(destination.manager, { ...request, itemId: "ITEM-4" });
+  expect(unverified).toMatchObject({ state: "uncertain", receipt: null, recovery: { postError: "Legacy host returned HTTP 500", lookupError: "Legacy handover receipt does not match request" } });
+});

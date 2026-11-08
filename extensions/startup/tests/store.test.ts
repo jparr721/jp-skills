@@ -2341,8 +2341,8 @@ test("legacy migration retains review history and remaining review budget", () =
   expect(receipt.migrated).toEqual(["prior-review"]);
   expect(receipt.blocked).toContainEqual(expect.objectContaining({ itemId: "uncertain-review" }));
   const args = { manager: f.store.managerBinding, itemId: "prior-review", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work-one", launchKey: "history-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
-  expect(() => f.store.reserveManagerRun(args)).toThrow("remaining inherited review limit");
-  expect(f.store.reserveManagerRun({ ...args, limit: 1 }).run.limit).toBe(1);
+  expect(() => f.store.reserveManagerRun({ ...args, limit: 1 })).toThrow("remaining inherited review limit");
+  expect(f.store.reserveManagerRun(args).run.limit).toBe(2);
   f.store.close();
 });
 
@@ -2647,5 +2647,104 @@ test("review cancellation requires verified no-dispatch and leaves original key 
   expect((await f.store.cancelManagerReview({ manager: args.manager, reviewId: review.reviewId, verify: async () => ({ reviewId: review.reviewId, launchKey: args.launchKey, status: "not-dispatched", evidence: "host rejected before invocation" }) })).state).toBe("cancelled");
   expect(() => f.store.reserveManagerReview(review)).toThrow();
   expect(f.store.reserveManagerReview({ ...review, reviewId: "next-review" }).state).toBe("active");
+  f.store.close();
+});
+
+test("verified legacy transfer atomically preserves review history and remaining budget", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "legacy-resume-event", input: "legacy", amendItemIds: [] } });
+  const original = { id: "old", status: "QUEUED", request: "Old" };
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "legacy-resume-capture", eventId: "legacy-resume-event", rows: [{ id: "old", expectedRevision: null, fields: { ...fields("Old"), status: "NEEDS_DECISION", legacy_import: { migrationId: "migration", original } } }], receipt: "imported" } });
+  const review = { changeId: "old", reservationId: "legacy-review", head: "old-head", reviewerId: "legacy-reviewer", messageId: "legacy-message", limit: 2, state: "completed", verdict: "changes-requested", resultId: "legacy-result" };
+  const proof = { itemId: "old", migrationId: "migration", original, source: "archive digest", ownerFenced: true, notDispatched: true, limit: 2, target: "main", reviews: [review], evidence: "archived old owner and matching immutable snapshot" };
+  await expect(f.store.reconcileLegacyItem({ manager: f.store.managerBinding, itemId: "old", verify: async () => ({ ...proof, original: { ...original, request: "other" } }) })).rejects.toThrow();
+  expect(f.store.queueItems()[0]?.status).toBe("NEEDS_DECISION");
+  const result = await f.store.reconcileLegacyItem({ manager: f.store.managerBinding, itemId: "old", verify: async () => proof });
+  expect(result.itemId).toBe("old");
+  expect(f.store.queueItems()[0]).toMatchObject({ status: "QUEUED", legacy_import: { migrationId: "migration", original } });
+  const args = { manager: f.store.managerBinding, itemId: "old", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work", launchKey: "legacy-resume-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  expect(() => f.store.reserveManagerRun({ ...args, limit: 1 })).toThrow();
+  expect(() => f.store.reserveManagerRun({ ...args, target: "other" })).toThrow();
+  expect(f.store.reserveManagerRun(args).created).toBe(true);
+  expect((await f.store.reconcileLegacyItem({ manager: f.store.managerBinding, itemId: "old", verify: async () => { throw new Error("must not reverify"); } })).itemId).toBe("old");
+  f.store.close();
+});
+
+test("interrupted legacy transfer restores its history and owner revision on restart", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "legacy-crash-event", input: "legacy", amendItemIds: [] } });
+  const original = { id: "old", status: "QUEUED", request: "Old" };
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "legacy-crash-capture", eventId: "legacy-crash-event", rows: [{ id: "old", expectedRevision: null, fields: { ...fields("Old"), status: "NEEDS_DECISION", legacy_import: { migrationId: "migration", original } } }], receipt: "imported" } });
+  const review = { changeId: "old", reservationId: "legacy-review", head: "old-head", reviewerId: "legacy-reviewer", messageId: "legacy-message", limit: 2, state: "completed", verdict: "changes-requested", resultId: "legacy-result" };
+  const proof = { itemId: "old", migrationId: "migration", original, source: "archive digest", ownerFenced: true, notDispatched: true, limit: 2, target: "main", reviews: [review], evidence: "original owner fenced" };
+  await f.store.reconcileLegacyItem({ manager: f.store.managerBinding, itemId: "old", verify: async () => proof });
+  f.store.close();
+  const db = new Database(f.path);
+  db.query("UPDATE records SET payload=json_set(payload,'$.state','pending') WHERE kind='intent' AND id='legacy-transfer/old'").run();
+  db.query("UPDATE records SET payload=json_set(payload,'$.revision',1) WHERE kind='queueOwner' AND id='old'").run();
+  db.query("DELETE FROM records WHERE kind IN ('legacyTransfer','workflowLimit','workflowTarget','workflowReview')").run();
+  db.close();
+  const reopened = openStore({ path: f.path, scope: f.scope, owner: f.owner, now: () => 1200 });
+  reopened.bindEmployee({ manager: reopened.managerBinding, binding: { ...reopened.managerBinding, assignment: null, source: source("manager") } });
+  expect((await reopened.reconcileLegacyItem({ manager: reopened.managerBinding, itemId: "old", verify: async () => { throw new Error("unexpected reverify"); } })).migrationId).toBe("migration");
+  expect(reopened.snapshot().queueRevisions.find((owner) => owner.id === "old")?.revision).toBe(2);
+  const args = { manager: reopened.managerBinding, itemId: "old", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work", launchKey: "recovered-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  expect(() => reopened.reserveManagerRun({ ...args, limit: 1 })).toThrow();
+  expect(reopened.reserveManagerRun(args).created).toBe(true);
+  reopened.close();
+});
+
+test("legacy transfer fences unresolved reviews and concurrent amendments", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "legacy-race-event", input: "legacy", amendItemIds: [] } });
+  const original = { id: "old", status: "QUEUED", request: "Old", blocked_on: ["dependency"] };
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "legacy-race-capture", eventId: "legacy-race-event", rows: [{ id: "old", expectedRevision: null, fields: { ...fields("Old"), status: "NEEDS_DECISION", legacy_import: { migrationId: "migration", original } } }], receipt: "imported" } });
+  const proof = { itemId: "old", migrationId: "migration", original, source: "archive", ownerFenced: true, notDispatched: true, limit: 2, target: "main", reviews: [{ changeId: "old", reservationId: "uncertain-review", head: "head", reviewerId: "reviewer", messageId: "message", limit: 2, state: "uncertain", verdict: null, resultId: null }], evidence: "fenced" };
+  await expect(f.store.reconcileLegacyItem({ manager: f.store.managerBinding, itemId: "old", verify: async () => proof })).rejects.toThrow("review history");
+  const pending = Promise.withResolvers<unknown>();
+  const transfer = f.store.reconcileLegacyItem({ manager: f.store.managerBinding, itemId: "old", verify: () => pending.promise });
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "legacy-race-amend", eventId: "legacy-race-event", rows: [{ id: "old", expectedRevision: 1, fields: { request: "Old changed" } }], receipt: "amended" } });
+  pending.resolve({ ...proof, reviews: [] });
+  await expect(transfer).rejects.toThrow("changed during verification");
+  expect(f.store.queueItems()[0]?.status).toBe("NEEDS_DECISION");
+  f.store.close();
+});
+
+test("legacy transfer leaves absent source workflow settings for the manager to choose", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "legacy-unset-event", input: "legacy", amendItemIds: [] } });
+  const original = { id: "old", status: "QUEUED", request: "Old", blocked_on: ["dependency"] };
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "legacy-unset-capture", eventId: "legacy-unset-event", rows: [{ id: "old", expectedRevision: null, fields: { ...fields("Old"), status: "NEEDS_DECISION", legacy_import: { migrationId: "migration", original } } }], receipt: "imported" } });
+  const proof = { itemId: "old", migrationId: "migration", original, source: "archive", ownerFenced: true, notDispatched: true, limit: null, target: null, reviews: [], evidence: "source team finished before transfer" };
+  await f.store.reconcileLegacyItem({ manager: f.store.managerBinding, itemId: "old", verify: async () => proof });
+  expect(f.store.queueItems()[0]).toMatchObject({ status: "QUEUED", blocked_on: ["dependency"] });
+  const args = { manager: f.store.managerBinding, itemId: "old", workflow: "pipeline" as const, limit: 2, target: "chosen-target", branch: "work", launchKey: "legacy-unset-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  const reserved = f.store.reserveManagerRun(args);
+  expect(reserved).toMatchObject({ created: true, run: { limit: 2, target: "chosen-target" } });
+  f.store.close();
+});
+
+test("legacy factory cap three cannot give a pipeline more than two total rounds", async () => {
+  const f = fixture();
+  f.store.recordIntake({ manager: f.store.managerBinding, event: { eventId: "legacy-cap-three-event", input: "legacy", amendItemIds: [] } });
+  const original = { id: "old", status: "QUEUED", request: "Old" };
+  f.store.captureIntake({ architect: f.store.managerBinding, capture: { captureId: "legacy-cap-three-capture", eventId: "legacy-cap-three-event", rows: [{ id: "old", expectedRevision: null, fields: { ...fields("Old"), status: "NEEDS_DECISION", legacy_import: { migrationId: "migration", original } } }], receipt: "imported" } });
+  const review = { changeId: "old", reservationId: "legacy-review", head: "old-head", reviewerId: "reviewer", messageId: "message", limit: 3, state: "completed", verdict: "changes-requested", resultId: "result" };
+  const evidence = { itemId: "old", migrationId: "migration", original, source: "archive", ownerFenced: true, notDispatched: true, limit: 3, target: "main", reviews: [review], evidence: "source team finished" };
+  await f.store.reconcileLegacyItem({ manager: f.store.managerBinding, itemId: "old", verify: async () => evidence });
+  const args = { manager: f.store.managerBinding, itemId: "old", workflow: "pipeline" as const, limit: 2, target: "main", branch: "work", launchKey: "legacy-three-run", repository: f.scope.boundRoot, worktree: f.scope.boundRoot };
+  expect(() => f.store.reserveManagerRun({ ...args, limit: 1 })).toThrow("remaining inherited review limit");
+  expect(f.store.reserveManagerRun(args).created).toBe(true);
+  expect(f.store.managerReviewBudget({ itemId: "old", workflow: "pipeline", limit: 2 })).toEqual({ limit: 2, completed: 1, remaining: 1 });
+  f.store.acceptManagerRun({ manager: args.manager, launchKey: args.launchKey, location: { pane: "one" } });
+  const head = "a".repeat(40);
+  f.store.reserveManagerReview({ manager: args.manager, launchKey: args.launchKey, reviewId: "new-review", head });
+  f.store.bindManagerReview({ manager: args.manager, reviewId: "new-review", reviewerId: "reviewer", invocationId: "invoke" });
+  await f.store.settleManagerReview({ manager: args.manager, reviewId: "new-review", verify: async () => ({ reviewId: "new-review", launchKey: args.launchKey, head, reviewerId: "reviewer", invocationId: "invoke", verdict: "approve" }) });
+  expect(f.store.managerReviewBudget({ itemId: "old", workflow: "pipeline", limit: 2 })).toEqual({ limit: 2, completed: 2, remaining: 0 });
+  expect(() => f.store.reserveManagerReview({ manager: args.manager, launchKey: args.launchKey, reviewId: "too-many", head })).toThrow();
+  const completion = { launchKey: args.launchKey, itemId: args.itemId, location: { pane: "one" }, repository: args.repository, worktree: args.worktree, target: args.target, head, prNumber: 1, prState: "OPEN", prDraft: false, mergeCommit: null, review: { reviewId: "new-review", reviewerId: "reviewer", invocationId: "invoke", head, verdict: "approve", rounds: 2 } };
+  await expect(f.store.completeManagerRun({ manager: args.manager, launchKey: args.launchKey, verify: async () => ({ ...completion, review: { ...completion.review, rounds: 1 } }) })).rejects.toThrow();
+  expect((await f.store.completeManagerRun({ manager: args.manager, launchKey: args.launchKey, verify: async () => completion })).state).toBe("completed");
   f.store.close();
 });

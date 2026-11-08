@@ -12,7 +12,7 @@ The manager saves and classifies each event, captures its actionable passages an
 3. Persist passages before lookup or clarification using `startup_capture {captureId,eventId,rows,receipt}`. Each row is `{id,expectedRevision,fields}`; a new row has a null revision. Use `NEEDS_DECISION` for incomplete work and record request, acceptance and concrete `blocked_on`. Map passages to IDs in the receipt. Stable retries must carry identical data; later edits use the current revision and a new capture ID.
 4. Resolve procedure, repository, target, acceptance and actual dependencies. Queue ready items and start independent pipeline or hotfix runs without waiting for unrelated lookup or clarification. Ask only for missing decisions; use the PA when helpful. Preserve explicit user constraints and authorization.
 
-The coordinator is the queue writer; do not replace queue files directly. Historical architect-led work retains its original assignment and recovery procedure in `references/queue-records.md`; do not create a crew for new manager-led work. Legacy imported rows remain quarantined until an evidence-backed reconciliation path is supported. Preserve source roots, execution history and review budgets.
+The coordinator is the queue writer; do not replace queue files directly. Historical architect-led work retains its original assignment and recovery procedure in `references/queue-records.md`; do not create a crew for new manager-led work. Legacy imported rows remain quarantined unless an eligible cooperative transfer verifies the old cancellation and review history. Preserve source roots, execution history and review budgets.
 
 ## Framework tail
 

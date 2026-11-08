@@ -18,8 +18,10 @@ import { readPreparedManagerSettings } from "./v7-launch";
 import { claudeEmployeeArgs, claudeIntegrationPath, requireClaudeTrust, writeClaudeFiles } from "./claude-launch";
 import { startWorkflowBridge, type WorkflowBridge } from "./workflow-bridge";
 import { createWorkflowBridgeLauncher, WorkflowLaunchUncertainError } from "./workflow-bridge-launch";
-import { migrateLegacyStartup } from "./legacy-migration";
+import { migrateLegacyStartup, transferCancelledLegacyItem } from "./legacy-migration";
+import { requestLegacyHandover } from "./legacy-handover";
 import { scanWorktreeWriters } from "./worktree-writers";
+import { inspectRepository } from "./repository-identity";
 import { OmpReviewRejectedError, OmpRpcStartupError, startOwnedOmpRpc, type ExpectedReview } from "./omp-rpc-supervisor";
 
 type CommonCoordinatorConfig = Readonly<{
@@ -40,6 +42,8 @@ const commandSchema = z.union([
   z.strictObject({ kind: z.literal("ensure_pa") }),
   z.strictObject({ kind: z.literal("manager_migrate"), migrationId: idSchema }),
   z.strictObject({ kind: z.literal("manager_import_legacy"), migrationId: idSchema, sourceRoot: z.string().startsWith("/") }),
+  z.strictObject({ kind: z.literal("manager_transfer_legacy"), migrationId: idSchema, sourceRoot: z.string().startsWith("/"), itemId: idSchema, intentId: idSchema }),
+  z.strictObject({ kind: z.literal("manager_request_handover"), migrationId: idSchema, sourceRoot: z.string().startsWith("/"), itemId: idSchema, intentId: idSchema }),
   z.strictObject({ kind: z.literal("manager_run_start"), itemId: idSchema, workflow: z.enum(["pipeline", "hotfix"]), limit: z.number().int().min(1).max(2), target: idSchema, launchKey: idSchema, worktree: z.string().startsWith("/") }),
   z.strictObject({ kind: z.literal("manager_run_list") }),
   z.strictObject({ kind: z.literal("manager_run_inputs"), launchKey: idSchema }),
@@ -702,6 +706,8 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
       case "route": manager(connection); output = store.routeInput({ manager: current.binding, inputId: request.inputId, disposition: { kind: request.disposition, reason: request.reason, amendItemIds: request.amendItemIds } }); break;
       case "manager_migrate": manager(connection); output = store.migrateManagerQueue({ manager: current.binding, migrationId: request.migrationId }); break;
       case "manager_import_legacy": manager(connection); output = migrateLegacyStartup({ manager: current.binding, store, migrationId: request.migrationId, sourceRoot: request.sourceRoot, targetRoot: root }); break;
+      case "manager_transfer_legacy": manager(connection); output = json(await transferCancelledLegacyItem({ manager: current.binding, store, migrationId: request.migrationId, sourceRoot: request.sourceRoot, targetRoot: root, itemId: request.itemId, intentId: request.intentId })); break;
+      case "manager_request_handover": manager(connection); output = json(await requestLegacyHandover({ sourceRoot: request.sourceRoot, targetRoot: root, migrationId: request.migrationId, itemId: request.itemId, intentId: request.intentId })); break;
       case "manager_run_list": manager(connection); output = json(store.managerRuns()); break;
       case "manager_run_inputs": {
         manager(connection);
@@ -742,6 +748,8 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
         const branch = git("symbolic-ref", "--quiet", "--short", "HEAD");
         if (branch === request.target || realpathSync(resolve(cwd, git("rev-parse", "--git-dir"))) === repository) throw new StoreAuthorityError("Manager runs require a dedicated worktree on a branch different from the target");
         if (!store.managerRuns().some((run) => run.launchKey === request.launchKey) && !Bun.which("omp")) throw new StoreAuthorityError("Manager-led workflows require the OMP executable, including with a Claude manager");
+        const item = store.queueItems().find((row) => row.id === request.itemId);
+        const repositoryNotice = item ? inspectRepository({ cwd, repo: item.repo, remote: item.remote }) : null;
         const reserved = store.reserveManagerRun({ manager: current.binding, itemId: request.itemId, workflow: request.workflow, limit: request.limit, target: request.target, launchKey: request.launchKey, repository, worktree: cwd, branch });
         if (!reserved.created) { output = json(reserved.run); break; }
         let location: Json = null;
@@ -760,10 +768,9 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
         try {
           const assignmentPath = join(launchDirectory, `run-${digest(request.launchKey)}.json`);
           writeFileSync(assignmentPath, encode(reserved.run.assignment), { mode: 0o600, flag: "wx" });
-          const usedRounds = store.managerRuns().filter((run) => run.itemId === request.itemId).flatMap((run) => store.managerReviews(run.launchKey)).filter((review) => review.state !== "failed" && review.state !== "cancelled").length;
-          const remainingRounds = request.limit - usedRounds;
+          const remainingRounds = store.managerReviewBudget({ itemId: request.itemId, workflow: request.workflow, limit: request.limit }).remaining;
           if (remainingRounds < 1) throw new StoreAuthorityError("No inherited review rounds remain");
-          const directive = `Run the jp-${request.workflow} skill in manager-led Startup mode. Read the assignment from ${assignmentPath}. Begin the bounded workflow with execution set to manager-led. Perform all work in the assigned worktree ${cwd} on branch ${branch}; do not change worktrees or branches. Target ${request.target}; maximum review rounds ${remainingRounds}. Use startup_run_report to send questions or progress to the Startup manager; use a stable eventId for each report. Return the actual outcome to the Startup manager.`;
+          const directive = `Run the jp-${request.workflow} skill in manager-led Startup mode. Read the assignment from ${assignmentPath}. Begin the bounded workflow with execution set to manager-led. Perform all work in the assigned worktree ${cwd} on branch ${branch}; do not change worktrees or branches. Target ${request.target}; maximum review rounds ${remainingRounds}. ${repositoryNotice ? `${repositoryNotice} ` : ""}Use startup_run_report to send questions or progress to the Startup manager; use a stable eventId for each report. Return the actual outcome to the Startup manager.`;
           spawnAttempted = true;
           native = await (input.managerRpc ?? startOwnedOmpRpc)({ binary: "omp", args: ["--mode", "rpc", "--no-ui", "--no-extensions", "--extension", join(config.skillsRoot, "extensions", "startup", "bounded-entry.ts"), "--cwd", cwd, "--profile", config.profile], cwd, env: { ...process.env, JP_STARTUP_MANAGER_RPC: "1" }, journalPath: join(launchDirectory, `rpc-${digest(request.launchKey)}.jsonl`), timeoutMs: 30000,
             reserveReview: async (review) => {
@@ -795,7 +802,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
                 if (pr.state === "MERGED") { if (!pr.mergeCommit) throw new StoreFenceError("Merged PR has no merge commit"); git("fetch", "--no-tags", "origin", `refs/heads/${request.target}`); git("merge-base", "--is-ancestor", pr.mergeCommit.oid, "FETCH_HEAD"); }
                 const record = store.managerReviews(request.launchKey).find((entry) => entry.reviewId === hint.reviewId);
                 if (!record || record.state !== "completed" || record.verdict !== "approve" || !record.reviewerId || !record.invocationId) throw new StoreFenceError("Independent approved review is unavailable");
-                const rounds = store.managerRuns().filter((entry) => entry.itemId === request.itemId).flatMap((entry) => store.managerReviews(entry.launchKey)).filter((entry) => entry.state === "completed").length;
+                const rounds = store.managerReviewBudget({ itemId: request.itemId, workflow: request.workflow, limit: request.limit }).completed;
                 return { launchKey: run.launchKey, itemId: run.itemId, location: run.location, repository, worktree: cwd, target: request.target, head: hint.head, prNumber: hint.prNumber, prState: pr.state, prDraft: pr.isDraft, mergeCommit: pr.mergeCommit?.oid ?? null, review: { reviewId: record.reviewId, reviewerId: record.reviewerId, invocationId: record.invocationId, head: record.head, verdict: "approve", rounds } };
               } });
               const alertId = `manager-run-complete-${digest(request.launchKey)}`;

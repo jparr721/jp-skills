@@ -181,6 +181,8 @@ export function registerTools(host: HostAPI, admission: () => Admission | null):
   register("startup_ensure_pa", {}, direct("ensure_pa"));
   register("startup_migrate", { migrationId: text }, direct("manager_migrate"));
   register("startup_import_legacy", { migrationId: text, sourceRoot: text }, direct("manager_import_legacy"));
+  register("startup_transfer_legacy", { migrationId: text, sourceRoot: text, itemId: text, intentId: text }, direct("manager_transfer_legacy"));
+  register("startup_request_handover", { migrationId: text, sourceRoot: text, itemId: text, intentId: text }, direct("manager_request_handover"));
   register("startup_run_start", { itemId: text, workflow: { native: b.enum(["pipeline", "hotfix"]), schema: z.enum(["pipeline", "hotfix"]) }, limit: { native: b.number(), schema: z.number().int().min(1).max(2) }, target: text, launchKey: text, worktree: text }, direct("manager_run_start"));
   register("startup_runs", {}, direct("manager_run_list"));
   register("startup_run_send", { launchKey: text, messageId: text, text }, direct("manager_run_send"));
