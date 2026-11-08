@@ -15,6 +15,8 @@ No phase is skipped otherwise.
 
 Before dispatch, read the shared authority at the installed `jp-pipeline` skill's `references/workflow-policy.md`, or `$JP_SKILLS_REPO/skills/jp-pipeline/references/workflow-policy.md`. Use the inherited per-change budget (hotfix maximum one); do not spawn a full task crew. Use this skill for a small, knowable bug.
 
+When an installed version 9 manager-led Startup path actually invokes this run, the Startup manager remains the central scheduler and user contact. The run owns its review, verification and requested landing; use temporary helpers only when useful and do not recreate a permanent role hierarchy. This conditional instruction does not claim that the installed runtime already exposes that path.
+
 Start or inherit a single-item hotfix scope through the bounded host in that policy before dispatch. Route its narrow assignments, single review and completion through the host; never create a separate scope to escape an inherited budget. Default the landing mode to `merged`; select `ready-pr` only when the user requests no merge or a parent workflow owns landing.
 
 **Non-negotiable constraints:**

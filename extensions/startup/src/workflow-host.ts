@@ -14,11 +14,14 @@ export class BoundedWorkflowHost {
   private readonly reservations: Reservation[] = [];
   private readonly reservationScopes = new Map<string, string>();
   private readonly completedItems: string[] = [];
+  private readonly completedHeads = new Map<string, string>();
   private readonly reviews: Review[] = [];
   private readonly reviewScopes = new Map<string, string>();
   private readonly reviewLimits = new Map<string, number>();
   private readonly roleReceipts: RoleReceipt[] = [];
   private readonly reviewActors = new Map<string, string>();
+  private readonly implementationActors = new Map<string, Set<string>>();
+  private readonly managerLedOwner: string | undefined;
   private readonly landingHeads = new Map<string, string>();
   private readonly dependencyReadyItems: string[] = [];
   private readonly readinessHeads = new Map<string, string>();
@@ -28,7 +31,9 @@ export class BoundedWorkflowHost {
   private targets: Readonly<Record<string, readonly string[]>> = {};
   readonly rootId: string;
 
-  constructor(workflow: BoundedKind, itemIds: readonly string[], reviewLimit: number, dependencies?: Readonly<Record<string, readonly string[]>>) {
+  constructor(workflow: BoundedKind, itemIds: readonly string[], reviewLimit: number, dependencies?: Readonly<Record<string, readonly string[]>>, options?: Readonly<{ mode: "manager-led"; ownerId: string }>) {
+    if (options && (workflow === "factory" || !options.ownerId.trim())) throw new Error("Manager-led mode requires a pipeline or hotfix owner");
+    this.managerLedOwner = options?.ownerId;
     const cap = workflow === "factory" ? 3 : workflow === "pipeline" ? 2 : 1;
     if (!itemIds.length || itemIds.some((id) => !id.trim()) || new Set(itemIds).size !== itemIds.length || (workflow !== "factory" && itemIds.length !== 1)) throw new Error("Invalid frozen workflow scope");
     if (!Number.isSafeInteger(reviewLimit) || reviewLimit < 1 || reviewLimit > cap) throw new Error("Invalid workflow review limit");
@@ -250,9 +255,29 @@ export class BoundedWorkflowHost {
     entry.roleEvidence = "invalid";
   }
 
+  recordImplementationActor(scopeId: string, itemId: string, reservationId: string, agentId: string): void {
+    if (!agentId || this.reservationScopes.get(reservationId) !== scopeId || !this.reservations.some((entry) => entry.id === reservationId && entry.itemIds.includes(itemId) && entry.state === "completed")) throw new Error("Implementation actor has no completed scoped assignment");
+    const actors = this.implementationActors.get(itemId) ?? new Set<string>();
+    actors.add(agentId);
+    this.implementationActors.set(itemId, actors);
+  }
+
   recordReviewActor(scopeId: string, reservationId: string, agentId: string): void {
     if (this.reviewScopes.get(reservationId) !== scopeId || !agentId) throw new Error("Review actor is not scoped");
     this.reviewActors.set(reservationId, agentId);
+  }
+
+  managerLedReview(scopeId: string, itemId: string, head: string): Readonly<{ reservationId: string; agentId: string; head: string; verdict: "approve"; completedRounds: number; limit: number }> | null {
+    if (!this.managerLedOwner) return null;
+    const scope = this.scope(scopeId);
+    if (!scope.itemIds.includes(itemId)) throw new Error("Review is outside the scope");
+    const review = this.reviews.find((entry) => {
+      const actor = this.reviewActors.get(entry.reservationId);
+      return entry.changeId === itemId && entry.head === head && entry.state === "completed" && entry.verdict === "approve" && actor !== undefined && actor !== this.managerLedOwner && !this.implementationActors.get(itemId)?.has(actor);
+    });
+    const agentId = review ? this.reviewActors.get(review.reservationId) : undefined;
+    if (!review || !agentId) throw new Error("Independent review is unavailable");
+    return { reservationId: review.reservationId, agentId, head, verdict: "approve", completedRounds: this.reviews.filter((entry) => entry.changeId === itemId && entry.state === "completed").length, limit: Math.min(scope.reviewLimit, this.reviewLimits.get(itemId) ?? scope.reviewLimit) };
   }
 
   private readyable(itemId: string, workflow: BoundedKind): boolean {
@@ -307,6 +332,12 @@ export class BoundedWorkflowHost {
   private completable(itemId: string, workflow: BoundedKind): boolean {
     const head = this.landingHeads.get(itemId);
     if (!head) return false;
+    if (this.managerLedOwner) {
+      return this.reviews.some((entry) => {
+        const reviewer = this.reviewActors.get(entry.reservationId);
+        return entry.changeId === itemId && entry.head === head && entry.state === "completed" && entry.verdict === "approve" && reviewer !== undefined && reviewer !== this.managerLedOwner && !this.implementationActors.get(itemId)?.has(reviewer);
+      });
+    }
     const dev = this.roleReceipts.find((entry) => entry.itemId === itemId && entry.role === "dev" && entry.head === head);
     const architect = this.roleReceipts.find((entry) => entry.itemId === itemId && entry.role === "architect");
     const qa = this.roleReceipts.find((entry) => entry.itemId === itemId && entry.role === "qa" && entry.head === head && entry.agentId !== dev?.agentId);
@@ -315,9 +346,11 @@ export class BoundedWorkflowHost {
   }
 
   complete(scopeId: string, itemId: string, landedHead: string): void {
-    this.scope(scopeId);
+    if (!this.scope(scopeId).itemIds.includes(itemId)) throw new Error("Work is outside the admitted scope");
+    const prior = this.completedHeads.get(itemId);
+    if (prior !== undefined) { if (prior !== landedHead) throw new Error("Completed work cannot change its reviewed head"); return; }
     this.landingHeads.set(itemId, landedHead);
-    try { this.transition(scopeId, { kind: "complete-item", role: "owner", itemId }); }
+    try { this.transition(scopeId, { kind: "complete-item", role: "owner", itemId }); this.completedHeads.set(itemId, landedHead); }
     finally { this.landingHeads.delete(itemId); }
   }
 }

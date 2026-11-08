@@ -449,7 +449,7 @@ test("manager /startup new boots inside UserPromptSubmit through the unchanged V
   await shim.ledger({ kind: "end", marker: "turn_duration" });
   const failed: ClaudeHookReply = await shim.hook(ups("/startup select missing", "p2"));
   expect(failed).toMatchObject({ decision: "block" });
-  expect(String(failed.reason)).toContain("Startup V7 boot blocked");
+  expect(String(failed.reason)).toContain("Startup boot blocked");
   expect(existsSync(transcript)).toBe(false);
 });
 

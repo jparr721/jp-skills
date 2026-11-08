@@ -16,7 +16,7 @@
   },
   "omp": {
     "extensions": [
-      "v7.ts"
+      "startup.ts"
     ]
   }
 }

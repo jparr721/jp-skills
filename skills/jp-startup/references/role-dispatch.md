@@ -1,34 +1,15 @@
-# Startup role dispatch
+# Startup execution and legacy role dispatch
 
-## Runtime admission
+## Manager-led work
 
-The Startup's selected harness, supported pane runtime and coordinator are mandatory. OMP can use Herdr or Tern; Claude Code requires Herdr. The coordinator owns durable workflow state; the pane runtime owns panes/processes; the harness owns execution/transcripts. An installed binary or a pane label does not prove admission. Every employee has one directly interactive pane and an authenticated, source-bound root session in its selected harness. Missing runtime readiness blocks staffing.
+The selected harness, pane runtime and coordinator own admission and durable state. Load the complete manager role and `jp-startup-loop` from canonical sources. Authenticated identity determines authority; a pane label or self-report is not admission. Context projection binds source paths and hashes: changed instructions are not automatically admitted. Manager source handover is not yet implemented; preserve the active session and do not relabel it.
 
-## Binding
+The manager saves input, captures actionable rows and schedules independent `jp-pipeline` or `jp-hotfix` runs. Each run owns implementation, independent review, verification, QA and the user-requested landing mode. The manager tracks cross-run dependencies and actual outcomes. Start a PA with `startup_ensure_pa` only when needed for questions. Do not require a persistent architect, developer and QA crew for new work. Helpers follow their assigned workflow and applicable review budget.
 
-1. Load the entire `skills/jp-startup-role-<assigned-role>/SKILL.md` and `skills/jp-startup-loop/SKILL.md` from the canonical repository. The manager loads its manager role; every employee loads its assigned role. A named skill, discoverable profile, summary, or self-report does not prove loading.
-2. Actual context projection via the OMP extension or the Claude Startup bridge uses those exact source texts and hashes. Record real source paths/revisions, native session identity/generation, pane locator, assignment and admission receipt. Authenticated runtime identity determines the actor; tool arguments never select it. Missing/changed sources block admission until supported reconciliation/refresh; an old handle is not source readiness.
-3. Keep request, acceptance, repo/base, kind/procedure, authorization and source-tagged overrides in assignment data. Preserve persona authority. Overrides apply only to their named item/repo; resolve global standing instructions, selected config preferences, then repo/role guidance without granting new authority.
-4. Record canonical role/procedure ID, source path, actual binding mechanism/handle, UTC time, result or concrete blocker in the ledger. Runtime launch intent precedes external process startup; ambiguous outcomes remain uncertain until matching evidence resolves them.
+Use stable run identities and inspect actual receipts. A launch or report does not prove completion. Manager-led execution is covered by repository tests including an offline OMP coordinator fixture; live deployment remains unverified. Reconcile uncertain process launches or external effects before another attempt and continue unrelated work.
 
-## Routing
+## Historical crew recovery
 
-| Work | Binding and route |
-| --- | --- |
-| High-level human decisions, team capacity, authorization, landing | Current `jp-startup-role-manager` |
-| Each distinct intake event | Fresh complete team; `jp-startup-role-architect` runs full `jp-startup-intake`, leads devs/QA, reports only to manager |
-| Item execution | `jp-startup-role-dev`, assigned kind/procedure; reports to own architect |
-| Required item proof | Own `jp-startup-role-qa`; reports to architect |
-| Buddy/depth review | Ordinary bounded helper (OMP `task` or Claude Code Agent subagent) with complete assigned canonical review source; reports to architect or its assigned pipeline supervisor within the team |
-| Resource/explicit DevOps request | Manager relays team's unchanged technical request/authorization to shared `jp-startup-role-devops` |
-| Supervision reminders | Mandatory resident `jp-startup-role-pa` receives own scoped cues/coordinator summary and reports to manager |
+Previously admitted employees, teams, claims, grants and source receipts retain their original identities and authority. Do not overwrite a legacy binding, reinterpret a role receipt as a new manager run, or launch a replacement while its outcome is uncertain. Use the runtime README and the historical queue-records procedures for supported reconciliation and replacement. Tern replacement requires its saved pane and attested process to be proven absent as well as normal recovery evidence.
 
-Manager uses `startup_hire`, `startup_delegate`, `startup_activate` and `startup_replace` for employee management. Tern replacement requires proven absence of the saved pane and attested process as well as the normal recovery evidence; it does not support finished-crew reuse. Crew membership determines manager -> owning event architect -> dev/QA hierarchy, not harness root parent IDs or pane names. Humans may interact directly with each pane without promoting its role or bypassing approval gates.
-
-Ordinary OMP `task` or Claude Code Agent subagent pipeline supervisors/buddy/review helpers consume their root's local helper capacity, separately from coordinator root-turn slots. There is no aggregate cross-root helper enforcement. Helpers have no employee admission, durable employee inbox, staffing or workflow approval authority. Explicitly bind their complete assigned canonical procedure before work. Shipping restrictions must come from the user; helper status alone neither grants workflow approval nor requires repository credential isolation.
-
-Intake retains every explicit canonical role request in `requested_roles`; older rows without it behave as `[]`. Ready items fulfill requested specialists before the affected execution starts. Explicit DevOps coordination returns READY, NEEDS_INPUT or NO_ACTION; assessment alone authorizes no provisioning. Existing complete team members fulfill their own requested role; external specialist capacity goes through manager. A team has immutable membership; use new intake/team assignment when new scope requires one.
-
-The architect preserves required buddy review, per-kind QA and bounded architectural APPROVE/scoped REDO gates. QA APPROVE supplies evidence; only the owning architect approves its gate and only manager approves final landing/acceptance. These permissions govern recorded workflow progression. Shipping restrictions come from explicit user instructions; V7 does not require repository-level merge denial or credential isolation. A user-authorized shipping agent reports its result through the crew so manager can record completion.
-
-The coordinator saves observed idle/done transitions as durable system messages to manager. Lifecycle state never settles a claim, accepts work or approves a merge. PA source admission and continuing supervision gate new delegation/landing; degraded supervision leaves independent existing safe work eligible to continue. Binding/activation retries preserve identities and pending work; missing source, capacity or runtime health remains an explicit blocker.
+For migration, preserve the old root and external transcripts. Scoped queue migration adopts only eligible rows; separate-root legacy import archives its scoped or unscoped source and quarantines nonterminal rows. Snapshot hashes do not fence an active old process, establish whether work was dispatched, or transfer review authority. Eligible cooperatively cancelled, never-dispatched items can transfer with verified review history through `startup_transfer_legacy`; uncertain work remains quarantined and in-place manager handover remains unsupported. Unrelated new work may proceed in the separate root without replaying old items.

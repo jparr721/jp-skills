@@ -5,47 +5,39 @@ description: Use to boot a named Startup, route later human requests, or invoke 
 
 # Startup
 
-## Runtime preflight
-Use a supported pane and the coordinator: OMP can use Herdr or Tern; Claude Code requires Herdr. Follow `../../extensions/startup/README.md` for backend-specific boot and identity requirements. Missing runtime readiness blocks Startup boot and dispatch; never bypass admission or substitute an in-process helper for an employee.
+One Startup has one central manager and a durable coordinator. The manager captures requests, schedules independent pipeline or hotfix runs, tracks dependencies and outcomes, and calls a PA only when needed for questions. Runs own their review, verification, QA and user-requested landing mode. Do not create a persistent architect, developer and QA crew for new manager-led work.
 
-One selected Startup has one canonical manager, a permanently supervised PA and persistent employees. Read `references/role-dispatch.md` before role binding. The manager handles high-level intake disposition; an event-scoped architect-led crew performs every distinct technical intake invocation.
+Manager-led runs require an OMP worker executable even with a Claude Code manager. Missing OMP fails launch before reservation.
 
-Shared workflow hierarchy, crew and review budget: the installed `jp-pipeline` skill's `references/workflow-policy.md`, or `$JP_SKILLS_REPO/skills/jp-pipeline/references/workflow-policy.md`.
-
-For code review and landing use the authenticated `startup_workflow_review` protocol in `$JP_SKILLS_REPO/extensions/startup/README.md` and the shared policy. The native coordinator owns the reservation and budget; verify the actual git head before landing. Keep native intake, delegation, employee admission and fencing in this Startup root.
+Manager-led execution is enabled and covered by repository tests, including a real offline OMP coordinator fixture. Live deployment and legacy nonterminal handover are not verified. Report actual receipts and evidence; do not claim a run completed or landed based on a launch or status alone. Product and runtime names remain `startup`.
 
 ## Boot and selection
 
-For boot, coordinator installation and reconciliation read `../../extensions/startup/README.md`. Use `/startup new <name> [--dir <JSON-quoted-path>] [-- <work>]`, `/startup select <name> [-- <work>]`, or `/startup` for the nearest bound root. In Claude Code start the manager with `startup-claude`; `/startup` is intercepted by the Startup bridge. The owner binds canonical role and loop sources through each native launch. Repository guidance stays repository-owned; boot writes its binding and runtime artifacts under the selected Startup root. Employees retain their assigned role.
+Read `../../extensions/startup/README.md` for coordinator, harness and pane requirements. Use `/startup new <name> [--dir <JSON-quoted-path>] [-- <work>]`, `/startup select <name> [-- <work>]`, or `/startup` for the nearest bound root. Claude Code uses `startup-claude` and its Startup bridge. Use the installed supported binaries and actual admission evidence. A version difference alone is not a blocker.
 
-Use the installed OMP or Claude Code and pane runtime binaries first. Treat release numbers, including newer major versions, as compatibility hints; standard boot checks required native and backend capabilities. A version difference alone does not justify blocking startup, changing binaries or creating an isolated installation. Escalate a concrete missing-capability error instead.
+Selection stays fixed in the manager chat. `startupRoot` comes from absolute `STARTUP_ROOT` or `<skills home>/startup/<name>` and its canonical binding. An item's repository does not change selection. Load the complete `jp-startup-role-manager` and `jp-startup-loop` sources. The coordinator binds source paths and hashes to sessions: changing these instructions does not re-admit an existing session. Preserve active old sessions. The existing refresh tool does not refresh the manager; a safe manager source handover is not yet implemented. Do not assume a changed manager or loop source can be admitted or call migration tools.
 
-Boot the canonical manager in its supported pane with an online coordinator. Coordinator startup automatically reserves its singleton permanent PA; admit that identity with complete canonical source before any new delegation or landing. Missing harness (OMP or Claude Code), pane runtime, coordinator or PA supervision is an explicit blocker. Use actual absolute canonical paths; preserve existing configuration and selection ownership.
+## Work
 
-Selection remains fixed in the manager chat. Resolve `startupRoot` from absolute `STARTUP_ROOT`, or `<skills home>/startup/<name>`; the canonical `binding.json` there owns the selection. Without a name, the owner searches canonical Startup bindings for the nearest bound repository. An item's repo never changes selection. `JP_SKILLS_HOME` owns tooling, caches, worktrees and the default Startup roots. Preserve explicit limits. Coordinator root-turn slots and each harness root's local helper capacity are separate; see `../jp-hire/SKILL.md`.
+Save and classify each input with `startup_route`, or use `startup_intake` for explicit intake. Read the full input and attachments. Capture each actionable passage with `startup_capture`; use stable event and capture IDs and current row revisions. Resolve repository, acceptance and dependencies, then start each ready independent item with `startup_run_start {itemId,workflow,limit,target,launchKey,worktree}`. `workflow` is `pipeline` or `hotfix`, `limit` is one or two review rounds, `target` is the target branch, and `worktree` is an absolute Git worktree root. Keep a stable launch key for each assignment and inspect `startup_runs` and actual evidence before reporting an outcome with `startup_run_report {launchKey,state,outcome}`.
 
-## Every request
+Call `startup_ensure_pa {}` only when a PA is needed to help handle questions. A PA is not a prerequisite for independent work. Sweep ready work after each result or new dependency and before waiting. Reconcile an uncertain launch or effect using its original identity; never redispatch it merely because its result is missing.
 
-1. Load complete `jp-startup-role-manager` and `jp-startup-loop`. Native human input is saved before lookup. Manager uses `startup_route` for work/status/control/conversation/decision with a reason. Explicit procedure input uses `startup_intake`. Preserve raw input and stable event identity.
-2. For each distinct work event immediately use `startup_delegate {eventId,developers}`. Exactly one architect, one QA and one or more devs form a fresh crew. Each employee runs an admitted OMP or Claude Code root in its own interactive pane; the crew shares a tab. Retry returns the original crew. Membership is immutable. The architect loads `jp-startup-intake`, captures every passage, resolves technical detail and coordinates execution.
-3. Delegate independent ready work while other teams triage, clarify, build or review. On Herdr, reuse follows the whole finished-crew rules in `../jp-hire/SKILL.md`; Tern does not support reuse. Otherwise delegation reserves a new crew. An incomplete crew remains pending with its real blocker. Before wait, standby or final, repeat the ready-work sweep in `jp-startup-loop`.
-4. Team members report to architect; architect reports only to manager. Manager relays authorization and resource requests to shared DevOps, scales that pool, enforces gates and owns final landing. Technical code/diff/log inspection stays behind the execution firewall.
+## Migration and recovery
 
-Humans may interact directly with every employee pane. Pane access does not change the employee's role, crew or approval authority; questions and scoped decisions retain the reporting hierarchy.
+For an already scoped root, `startup_migrate {migrationId}` adopts eligible undispatched queue rows and reports rows that need reconciliation. For a scoped or unscoped legacy root, `startup_import_legacy {migrationId,sourceRoot}` imports into a separate selected root and preserves a restricted archive of the binding, queue and SQLite snapshot. Nonterminal rows remain `NEEDS_DECISION`; terminal rows remain in the archive. Original files and external transcripts must be preserved. Hashes and snapshots do not fence a live old owner or prove a row was never dispatched. Imported nonterminal rows remain quarantined unless a supported evidence-backed transfer applies; do not re-enter or redispatch uncertain work. Unrelated new work can proceed separately in the new root. Do not infer completion or authorization from migration.
+
+Ask a live old manager to assess a potential transfer with `startup_request_handover {migrationId,sourceRoot,itemId,intentId}`. A saved request is not completed handover; inspect its original cancellation and finished-team evidence while independent work continues.
+
+For an eligible scoped item already cooperatively cancelled under its old owner and whose old team is finished, use `startup_transfer_legacy {migrationId,sourceRoot,itemId,intentId}`. The runtime verifies the committed cancellation and absence of prior execution, preserves inherited review history and cap, and rejects uncertain work. Do not automatically issue the old cancellation. See the README for exact eligibility.
+
+Keep the old runtime available while it cooperates on eligible transfers and reconciles active effects. A separate-root import of a terminal-only queue retains those rows in the archive and returns no unresolved rows; it does not prove old claims, effects or processes are resolved. Preserve the old root and avoid running both roots against the same work. See the README drain-and-switch procedure.
+
+Changed manager and loop source hashes currently prevent an existing manager from admission and tool commands. Manager handover is not yet implemented; do not relabel the old identity or overwrite its binding. Existing legacy crews, claims and grants retain their original recovery path and identities. See the runtime README for exact migration limits and tool availability.
 
 ## Commands and state
 
-| Intent | Procedure |
-| --- | --- |
-| `hire <role> <count>` or `startup hire` | `../jp-hire/SKILL.md` |
-| `startup status` | `../jp-startup-status/SKILL.md` |
-| `startup retro` | `../jp-startup-retro/SKILL.md` |
-| `startup stop-doing` | `../jp-startup-stop-doing/SKILL.md` |
-| `startup bulletin wipe` | Explicit archive procedure in status |
-
-Native `/startup status` (in Claude Code intercepted by the Startup bridge) shows supported runtime staffing/duties; the broader skill renders queue/bulletin too. `jp-startup-sprint` is internal, every five merged items.
-
-State stays under selected `startupRoot`: `staff.sqlite`, canonical `queue.json`, ledger, memory (64KB), standing instructions, bulletin, resource inventory and completions. Preserve this owner's IDs and receipts. Boot is a hard cut: an old-format Startup (`binding.json` without `scope`) under home/startup and repository .startup files remain historical evidence, never an import source or alternate mutable namespace. OMP's own configuration and `mcp.json` in the Startup profile's OMP agent directory are shared native state; they do not select Startup authority.
+Use `jp-startup-status`, `jp-startup-retro` or `jp-startup-stop-doing` for their named requests. Existing role and hire instructions remain relevant to legacy work, not the default new-work path. Preserve the selected root's queue, ledger, receipts and unresolved history.
 
 ## Framework tail
 

@@ -31,6 +31,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
     `You are assigned the ${kind} role for item ${itemId}. Worktree: ${worktree}. Only return pass if the assigned work is complete. Your final response must be exactly one JSON object, with no prose or additional keys: top-level role (exactly "${kind}"), itemId (exactly ${JSON.stringify(itemId)}), head (the full current Git HEAD commit), verdict (exactly "pass"), and evidence. Evidence must be an object containing exactly ${kind === "architect" ? "findings and decision" : kind === "dev" ? "implementation and artifact" : "method, result, and artifact"}; every evidence value must be a nonblank string.`;
   const registry = pi.pi.AgentRegistry.global();
   let host: BoundedWorkflowHost | undefined;
+  let managerLed = false;
   let owner: string | undefined;
   let ownerSession: string | undefined;
   const landingScopes = new Map<string, { mode: "merged" | "ready-pr"; target: string; allowedChildTargets: readonly string[] }>();
@@ -39,6 +40,8 @@ export default function boundedEntry(pi: ExtensionAPI): void {
   const childScopes = new Map<string, Set<string>>();
   const childItems = new Map<string, string>();
   const observedJobs = new Map<string, { raw: unknown; scopeId: string; jobId: string; ownerId: string; nativeId: string; agent: string }>();
+  const reviewJobs = new Map<string, string>();
+  const pendingReviewReservations = new Map<string, { reviewId: string; signature: string }>();
   const inheritedManifest = process.env.JP_WORKFLOW_INHERITED_MANIFEST;
   let inheritedSocket: string | undefined;
   const inheritedClients = new Map<string, WorkflowBridgeClient>();
@@ -95,7 +98,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
     if (pr.headRefOid !== handoff.head || !(planned?.length ? planned.includes(pr.baseRefName) : pr.baseRefName === policy.target) || pr.state !== "OPEN" || pr.isDraft) throw new Error("Prerequisite PR does not match the assigned head and target");
     return { url: pr.url, target: pr.baseRefName };
   }
-  pi.registerTool({ name: "bounded_begin", label: "Begin bounded workflow", description: "Freeze the queue, dependency graph, target and landing mode for this OMP session.", parameters: z.object({ workflow: kind, itemIds: z.array(text).min(1), dependencies: z.record(z.string(), z.array(text)).optional(), reviewLimit: z.number().int(), landing: z.object({ mode: z.enum(["merged", "ready-pr"]), target: text, allowedChildTargets: z.array(text).optional() }).strict() }),
+  pi.registerTool({ name: "bounded_begin", label: "Begin bounded workflow", description: "Freeze the queue, dependency graph, target and landing mode for this OMP session.", parameters: z.object({ workflow: kind, itemIds: z.array(text).min(1), dependencies: z.record(z.string(), z.array(text)).optional(), reviewLimit: z.number().int(), execution: z.literal("manager-led").optional(), landing: z.object({ mode: z.enum(["merged", "ready-pr"]), target: text, allowedChildTargets: z.array(text).optional() }).strict() }),
     async execute(_id, params, _signal, _update, ctx) {
       if (inheritedManifest) throw new Error("Inherited execution must attach to its parent; standalone begin is forbidden");
       if (ctx.agent.kind !== "main" || host) throw new Error("A bounded owner already exists or caller is not main");
@@ -103,7 +106,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
       if (ref?.session?.sessionManager.getSessionId() !== ctx.sessionManager.getSessionId()) throw new Error("Bounded owner is not bound to its native session");
       const allowedChildTargets = params.landing.allowedChildTargets ?? [];
       for (const target of [params.landing.target, ...allowedChildTargets]) execFileSync("git", ["check-ref-format", `refs/heads/${target}`], { cwd: ctx.cwd });
-      host = new BoundedWorkflowHost(params.workflow, params.itemIds, params.reviewLimit, params.dependencies); owner = ctx.agent.id; ownerSession = ctx.sessionManager.getSessionId();
+      host = new BoundedWorkflowHost(params.workflow, params.itemIds, params.reviewLimit, params.dependencies, params.execution ? { mode: params.execution, ownerId: ctx.agent.id } : undefined); managerLed = params.execution === "manager-led"; owner = ctx.agent.id; ownerSession = ctx.sessionManager.getSessionId();
       const landing = { mode: params.landing.mode, target: params.landing.target, allowedChildTargets };
       landingScopes.set(host.rootId, landing);
       return result({ scopeId: host.rootId, view: host.view(host.rootId), landing, durable: false });
@@ -182,8 +185,15 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         execFileSync("git", ["merge-base", "--is-ancestor", pr.mergeCommit.oid, landingRef], { cwd });
       } else if (pr.state !== "OPEN" || pr.isDraft) throw new Error("PR is not open and ready");
       const artifact = { prNumber: params.prNumber, url: pr.url, target: pr.baseRefName, state: pr.state, mergeCommit: pr.mergeCommit?.oid ?? null };
+      const review = current.managerLedReview(params.scopeId, params.itemId, params.head);
       current.complete(params.scopeId, params.itemId, params.head);
-      return result({ itemId: params.itemId, head: params.head, outcome: "completed", landing: artifact });
+      if (review && process.env.JP_STARTUP_MANAGER_RPC === "1") {
+        const completion = ctx.sessionManager && pi.pi.AgentRegistry.global().get(ctx.agent.id)?.session?.getToolByName("startup_run_complete");
+        if (!completion) throw new Error("Coordinator completion verification is unavailable");
+        const response = await completion.execute(`run-complete-${review.reservationId}`, { itemId: params.itemId, reviewId: review.reservationId, head: params.head, worktree: cwd, prNumber: params.prNumber });
+        if (response.isError) throw new Error("Coordinator rejected run completion");
+      }
+      return result({ itemId: params.itemId, head: params.head, outcome: "completed", landing: artifact, ...(review ? { nativeHint: { sessionId: ctx.sessionManager.getSessionId(), scopeId: params.scopeId, worktree: cwd, ...review, jobId: reviewJobs.get(review.reservationId) ?? null } } : {}) });
     },
   });
   pi.registerTool({ name: "bounded_reconcile", label: "Reconcile native assignment", description: "Resolve uncertainty only from the original correlated terminal job retained by this host.", parameters: z.object({ scopeId: text, reservationId: text }),
@@ -513,7 +523,41 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         verifyWorktrees();
         if (current.view(params.scopeId).reservations.some((entry) => entry.purpose === "assignment" && entry.itemIds.includes(params.itemId) && entry.assignmentKey === params.assignmentKey && entry.state !== "failed")) throw new Error("Assignment already reserved, completed or uncertain");
       }
-      const reviewId = changes ? current.reserveReview(params.scopeId, changes.map(({ changeId, head }) => ({ changeId, head }))) : undefined;
+      const pendingKey = JSON.stringify([params.scopeId, params.itemId, params.assignmentKey]);
+      const signature = JSON.stringify({ changes, reviewer: task.name, agent: task.agent });
+      const previousReview = pendingReviewReservations.get(pendingKey);
+      if (previousReview && previousReview.signature !== signature) throw new Error("Pending review reservation cannot change its assignment");
+      const reviewId = changes ? previousReview?.reviewId ?? current.reserveReview(params.scopeId, changes.map(({ changeId, head }) => ({ changeId, head }))) : undefined;
+      if (managerLed && process.env.JP_STARTUP_MANAGER_RPC === "1" && changes && reviewId) pendingReviewReservations.set(pendingKey, { reviewId, signature });
+      let reviewToken: string | undefined;
+      if (managerLed && process.env.JP_STARTUP_MANAGER_RPC === "1" && changes && reviewId) {
+        try {
+          const reserved = changes[0];
+          const native = root.session.getToolByName("startup_review_reserve");
+          if (!reserved || changes.length !== 1 || !task.name || !native) throw new Error("Coordinator review reservation requires one named reviewer and the RPC host tool");
+          let response: Awaited<ReturnType<typeof native.execute>> | undefined;
+          let lastError: unknown;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              response = await native.execute(`review-reserve-${reviewId}-${attempt}`, { scopeId: params.scopeId, itemId: params.itemId, assignmentKey: params.assignmentKey, reviewId, reviewerId: task.name, head: reserved.head, worktree: reserved.worktree });
+              if (response.isError) throw new Error("Coordinator rejected the review reservation");
+              break;
+            } catch (error: unknown) { lastError = error; }
+          }
+          if (!response || response.isError) throw lastError ?? new Error("Coordinator review reservation failed");
+          const block = response.content.find((entry) => entry.type === "text");
+          if (block?.type === "text" && block.text.startsWith("rejected:")) {
+            current.failReview(params.scopeId, reviewId);
+            pendingReviewReservations.delete(pendingKey);
+            throw new Error(block.text.slice("rejected:".length));
+          }
+          if (!block || block.type !== "text" || !/^[a-f0-9-]{36}$/.test(block.text)) throw new Error("Coordinator did not return a review token");
+          reviewToken = block.text;
+          pendingReviewReservations.delete(pendingKey);
+        } catch (error: unknown) {
+          throw error;
+        }
+      }
       let reviewFinished = false;
       const finishReview = (childId: string | null, completed: boolean) => {
         if (!changes || !reviewId || reviewFinished) return;
@@ -537,7 +581,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         current.settleReview(params.scopeId, reviewId, changes, verdict);
         reviewFinished = true;
       };
-      const nativeTasks = changes ? [{ ...task, task: `${task.task}\nReview the exact changes and heads below. Your final response must be one JSON object with exactly changes and verdict (approve, changes-requested, or block): ${JSON.stringify(changes)}` }] : params.role ? [{ ...task, task: `${task.task}\n${rolePrompt(params.role.kind, params.itemId, params.role.worktree)}` }] : params.tasks;
+      const nativeTasks = changes ? [{ ...task, task: `${task.task}${reviewToken ? `\nreview-token:${reviewToken}` : ""}\nReview the exact changes and heads below. Your final response must be one JSON object with exactly changes and verdict (approve, changes-requested, or block): ${JSON.stringify(changes)}` }] : params.role ? [{ ...task, task: `${task.task}\n${rolePrompt(params.role.kind, params.itemId, params.role.worktree)}` }] : params.tasks;
       const finishRole = (childId: string, reservationId: string) => {
         if (!params.role) return;
         try {
@@ -581,6 +625,7 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         childItems.set(child.id, params.itemId);
         const job = match.parsed.data;
         observedJobs.set(reservationId, { raw: match.raw, scopeId: params.scopeId, jobId: job.id, ownerId: ctx.agent.id, nativeId: child.id, agent: child.agent });
+        if (reviewId) reviewJobs.set(reviewId, job.id);
         void job.promise.then(() => {
           try {
             const terminal = jobSchema.parse(match.raw);
@@ -594,7 +639,10 @@ export default function boundedEntry(pi: ExtensionAPI): void {
             return;
           }
           finishReview(child.id, jobSchema.parse(match.raw).status === "completed");
-          if (jobSchema.parse(match.raw).status === "completed") finishRole(child.id, reservationId);
+          if (jobSchema.parse(match.raw).status === "completed") {
+            if (!changes) current.recordImplementationActor(params.scopeId, params.itemId, reservationId, child.id);
+            finishRole(child.id, reservationId);
+          }
         }, () => {
           current.settle(params.scopeId, reservationId, "uncertain");
           finishReview(null, false);
@@ -602,7 +650,10 @@ export default function boundedEntry(pi: ExtensionAPI): void {
         return { reservationId, status: "accepted" };
       });
       const syncRole = syncRoles[0];
-      if (syncRole) finishRole(syncRole.childId, syncRole.reservationId);
+      if (syncRole) {
+        if (!changes) current.recordImplementationActor(params.scopeId, params.itemId, syncRole.reservationId, syncRole.childId);
+        finishRole(syncRole.childId, syncRole.reservationId);
+      }
       } catch (error: unknown) {
         finishReview(null, false);
         throw error;

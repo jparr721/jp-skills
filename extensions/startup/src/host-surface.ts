@@ -163,10 +163,8 @@ function setup(observation: HostObservation): { phase: z.infer<typeof setupPhase
   if (observation.pa?.sourceRevision) receipts.push({ kind: "source-load", employeeId: observation.pa.id, generation: observation.pa.generation, roleRevision: observation.pa.sourceRevision });
   const phase = runtime === null ? "unprepared"
     : runtime.state !== "ready" ? "manager-pending"
-      : observation.paCount === 0 ? "pa-unhired"
-        : observation.paCount > 1 ? "pa-conflict"
-          : observation.pa?.runtime?.state !== "ready" || observation.pa.sourceRevision === null ? "pa-pending"
-            : "ready";
+      : observation.paCount > 1 ? "pa-conflict"
+        : "ready";
   return { phase: setupPhaseSchema.parse(phase), receipts: receipts.map((receipt) => setupReceiptSchema.parse(receipt)) };
 }
 function reasonsFor(observation: HostObservation, pa: string | null, supervision: HostSupervision, deadlines: { connectionDeadlineMs: number; progressDeadlineMs: number }): HostReason[] {

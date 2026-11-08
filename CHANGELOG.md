@@ -2,6 +2,13 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [9.0.0] - 2026-11-07
+
+- Replace persistent Startup crews with one manager, an on-demand PA and parallel pipeline or hotfix runs. The runtime and command are named `startup`.
+- Preserve bounded review budgets, correlated native results and duplicate-dispatch protection across failures and handover.
+- Provide a migration path for older Startup roots while preserving original records and uncertain work.
+- Accept extensible review-result metadata while validating the saved review identity, head and verdict.
+
 ## [8.1.8] - 2026-11-07
 
 - Skip positively-recognized legacy Startup roots in `config.ts list` (old `binding.json` without `scope`, or a `runtime-config.json` still carrying the old `home` key instead of `skillsHome`/`startupRoot`) while refusing them with an actionable `StartupConfigError` on explicit `get`.

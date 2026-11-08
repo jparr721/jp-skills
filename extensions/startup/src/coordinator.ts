@@ -18,6 +18,11 @@ import { readPreparedManagerSettings } from "./v7-launch";
 import { claudeEmployeeArgs, claudeIntegrationPath, requireClaudeTrust, writeClaudeFiles } from "./claude-launch";
 import { startWorkflowBridge, type WorkflowBridge } from "./workflow-bridge";
 import { createWorkflowBridgeLauncher, WorkflowLaunchUncertainError } from "./workflow-bridge-launch";
+import { migrateLegacyStartup, transferCancelledLegacyItem } from "./legacy-migration";
+import { requestLegacyHandover } from "./legacy-handover";
+import { scanWorktreeWriters } from "./worktree-writers";
+import { inspectRepository } from "./repository-identity";
+import { OmpReviewRejectedError, OmpRpcStartupError, startOwnedOmpRpc, type ExpectedReview } from "./omp-rpc-supervisor";
 
 type CommonCoordinatorConfig = Readonly<{
   name: string; stateDirectory: string; startupRoot: string; skillsHome: string; boundRoot: string; skillsRoot: string;
@@ -34,6 +39,16 @@ export function isClaudeConfig(config: CoordinatorConfig): config is ClaudeCoord
 }
 const commandSchema = z.union([
   z.strictObject({ kind: z.literal("claim") }),
+  z.strictObject({ kind: z.literal("ensure_pa") }),
+  z.strictObject({ kind: z.literal("manager_migrate"), migrationId: idSchema }),
+  z.strictObject({ kind: z.literal("manager_import_legacy"), migrationId: idSchema, sourceRoot: z.string().startsWith("/") }),
+  z.strictObject({ kind: z.literal("manager_transfer_legacy"), migrationId: idSchema, sourceRoot: z.string().startsWith("/"), itemId: idSchema, intentId: idSchema }),
+  z.strictObject({ kind: z.literal("manager_request_handover"), migrationId: idSchema, sourceRoot: z.string().startsWith("/"), itemId: idSchema, intentId: idSchema }),
+  z.strictObject({ kind: z.literal("manager_run_start"), itemId: idSchema, workflow: z.enum(["pipeline", "hotfix"]), limit: z.number().int().min(1).max(2), target: idSchema, launchKey: idSchema, worktree: z.string().startsWith("/") }),
+  z.strictObject({ kind: z.literal("manager_run_list") }),
+  z.strictObject({ kind: z.literal("manager_run_inputs"), launchKey: idSchema }),
+  z.strictObject({ kind: z.literal("manager_run_send"), launchKey: idSchema, messageId: idSchema, text: z.string().trim().min(1).max(16384) }),
+  z.strictObject({ kind: z.literal("manager_run_report"), launchKey: idSchema, state: z.enum(["reported", "failed", "uncertain"]), outcome: jsonSchema }),
   z.strictObject({ kind: z.literal("workflow_context"), itemId: idSchema }),
   z.strictObject({ kind: z.literal("workflow_limit"), itemId: idSchema, limit: z.number().int().min(1).max(3), target: z.string().min(1).max(512) }),
   z.strictObject({ kind: z.literal("workflow_start"), itemId: idSchema, workflow: z.enum(["pipeline", "hotfix"]), limit: z.number().int().min(1).max(3), launchKey: idSchema }),
@@ -76,6 +91,7 @@ type CoordinatorHealth = Readonly<{
 }>;
 export type Coordinator = Readonly<{
   start: () => Promise<void>;
+  shutdown: () => Promise<void>;
   health: () => CoordinatorHealth;
   admit: (input: Readonly<{ credential: string; nativeSession: string; agentSessionId?: string; paneId: string; pid?: number; source: Source }>, signal?: AbortSignal) => Promise<{ connection: string; lifecycleSequence?: number }>;
   revoke: (connection: string) => void;
@@ -97,7 +113,7 @@ class AdmissionRevokedError extends StoreFenceError {}
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function json(value: unknown): Json { return jsonSchema.parse(JSON.parse(JSON.stringify(value))); }
 
-export function openCoordinator(input: Readonly<{ store: StartupStore; config: CoordinatorConfig; now: () => number } & ({ herdr: HerdrRuntime; tern?: never } | { tern: TernRuntime; herdr?: never })>): Coordinator {
+export function openCoordinator(input: Readonly<{ store: StartupStore; config: CoordinatorConfig; now: () => number; managerRpc?: typeof startOwnedOmpRpc; writerScan?: typeof scanWorktreeWriters } & ({ herdr: HerdrRuntime; tern?: never } | { tern: TernRuntime; herdr?: never })>): Coordinator {
   const { store, config, now } = input;
   const herdr = input.herdr;
   const tern = input.tern;
@@ -113,6 +129,35 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
   const policy = runtimePolicySchema.parse(config.policy);
   const connections = new Map<string, Readonly<{ employeeId: string; generation: number; epoch: number; launchId: string; nativeSession: string; connectionEpoch: string; agentSessionId: string | null; pid: number | null; paneId: string }>>();
   const workflowBridges = new Map<string, Set<WorkflowBridge>>();
+  const managerProcesses = new Map<string, Awaited<ReturnType<typeof startOwnedOmpRpc>>>();
+  const managerExits = new Set<Promise<unknown>>();
+  const scanningWorktrees = new Set<string>();
+  const nextWorktreeScan = new Map<string, number>();
+  function reconcileExitedRun(launchKey: string, location: Json): void {
+    if (scanningWorktrees.has(launchKey) || (nextWorktreeScan.get(launchKey) ?? 0) > now()) return;
+    scanningWorktrees.add(launchKey);
+    nextWorktreeScan.set(launchKey, now() + 5000);
+    const operation = (async () => {
+      const run = store.managerRuns().find((entry) => entry.launchKey === launchKey);
+      if (!run || run.termination || !["uncertain", "failed", "completed"].includes(run.state) || encode(run.location) !== encode(location)) return;
+      const scan = await (input.writerScan ?? scanWorktreeWriters)(run.worktree);
+      if (scan.status === "observed" && scan.writers.length) {
+        const alertId = `worktree-writers-${digest(launchKey)}`;
+        if (!store.hasMessage(alertId)) store.runtimeAlert({ id: alertId, correlation: launchKey, payload: json({ kind: "worktree-writers", itemId: run.itemId, worktree: run.worktree, writers: scan.writers }) });
+        return;
+      }
+      if (scan.status === "unavailable") {
+        process.stderr.write(JSON.stringify({ level: "warn", component: "worktree-writer-scan", launchKey, itemId: run.itemId, worktree: run.worktree, reason: scan.reason }) + "\n");
+      }
+      await store.releaseManagerRun({ manager: store.managerBinding, launchKey, verify: async (original) => {
+        if (encode(original.location) !== encode(location)) throw new StoreFenceError("Original OMP process location changed");
+        return { launchKey: original.launchKey, itemId: original.itemId, location, status: "terminated", evidence: scan.status === "observed" ? "Original OMP process exited and no open worktree write handles were observed" : "Original OMP process exited; worktree writer scan was unavailable" };
+      } });
+      nextWorktreeScan.delete(launchKey);
+    })();
+    managerExits.add(operation);
+    void operation.catch((error: unknown) => process.stderr.write(JSON.stringify({ level: "warn", component: "manager-process-reconcile", launchKey, error: error instanceof Error ? error.message : String(error) }) + "\n")).finally(() => { managerExits.delete(operation); scanningWorktrees.delete(launchKey); });
+  }
   const admissionAttempts = new Map<string, string>();
   function revoke(connection: string): void {
     const current = connections.get(connection);
@@ -240,6 +285,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
   }
   function paState(): string | null {
     const pa = store.employees().filter((e) => e.role === "pa" && e.employment === "hired");
+    if (pa.length === 0) return null;
     if (pa.length !== 1) return "pa-missing";
     const current = pa[0];
     if (!current || current.source === null || current.error !== null) return "pa-not-admitted";
@@ -264,11 +310,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
     if (current.role === "manager" || current.role === "pa") return true;
     if (runtime(current.id).turnActive) return true;
     const active = currentRuntimes().filter((r) => r.turnActive && !["manager", "pa"].includes(employee(r.employeeId).role)).length;
-    return active < policy.executionLimit - 2;
-  }
-  function requirePA(): void {
-    const blocker = paState();
-    if (blocker !== null) throw new StoreAuthorityError(`Mandatory PA supervision is not ready: ${blocker}`);
+    return active < policy.executionLimit - 1;
   }
   function crewBlock(current: Employee): string | null {
     if (current.assignment === null) return null;
@@ -287,7 +329,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
     try {
       const selected = current.settings.requested;
       const args = harness === "omp"
-        ? ["--no-extensions", "--extension", ("herdrIntegration" in config ? config.herdrIntegration : ""), "--extension", bootstrap, "--cwd", config.boundRoot, ...(selected.model.value === null ? ompModelArgs(selected.role) : []), ...ompSettingsArgs(current.settings)]
+        ? ["--no-extensions", "--extension", ("herdrIntegration" in config ? config.herdrIntegration : ""), "--extension", bootstrap, "--cwd", config.boundRoot, ...(selected.model.value === null && selected.role !== "pa" ? ompModelArgs(selected.role) : []), ...ompSettingsArgs(current.settings)]
         : (() => {
           const files = claudeRuntimeFiles();
           return claudeEmployeeArgs({ sessionId: current.launchId, promptFile: bootstrap, settingsFile: files.settingsFile, mcpFile: files.mcpFile, name, model: selected.model.value, effort: selected.effort.value });
@@ -353,7 +395,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
     const selected = saved.settings.requested;
     return ["/usr/bin/env", ...Object.entries(paneEnvironment(saved)).map(([key, value]) => `${key}=${value}`),
       "omp", "--no-extensions", "--extension", launchArtifact(saved), "--cwd", config.boundRoot,
-      ...(selected.model.value === null ? ompModelArgs(selected.role) : []), ...ompSettingsArgs(saved.settings)];
+      ...(selected.model.value === null && selected.role !== "pa" ? ompModelArgs(selected.role) : []), ...ompSettingsArgs(saved.settings)];
   }
   async function createEmployeeTab(id: string, label: string): Promise<Readonly<{ tabId: string; paneId: string }>> {
     const saved = runtime(id);
@@ -385,17 +427,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
     if (currentManager.settings.requested.harness !== managerHarness) throw new StoreConflictError("The saved manager launch harness differs from its active native session; start a new manager session to apply that future-launch setting");
     if (managerHarness === "claude") claudeRuntimeFiles();
     if (currentManager.state === "prepared") store.updateRuntime({ ...currentManager, ...managerLocation, state: "starting" });
-    const paProfile = loadProfile({ skillsRoot: config.skillsRoot, role: "pa", employeeId: "pending", generation: 1 });
-    const receipt = store.reserveHire({ authority: { kind: "employee", binding: store.managerBinding }, request: { requestId: "v7-manager-pa", role: "pa", additional: 1, revision: paProfile.source.roleRevision } });
-    const pa = receipt.employees[0];
-    if (!pa) throw new StoreConflictError("Mandatory PA reservation is missing");
-    const saved = store.runtimeBindings().findLast((r) => r.employeeId === pa.id);
-    if (saved) {
-      if (saved.state === "prepared") await launch(pa.id, await createEmployeeTab(pa.id, `${config.name} manager PA`));
-      return;
-    }
-    prepare(pa.id, randomBytes(32).toString("hex"));
-    await launch(pa.id, await createEmployeeTab(pa.id, `${config.name} manager PA`));
+
   }
   async function admit(value: Readonly<{ credential: string; nativeSession: string; agentSessionId?: string; paneId: string; pid?: number; source: Source }>, signal?: AbortSignal): Promise<{ connection: string; lifecycleSequence?: number }> {
     const request = admissionSchema.parse(value);
@@ -540,7 +572,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
       case "begin_turn": {
         const blocker = crewBlock(current.employee);
         if (blocker !== null) throw new StoreAuthorityError(blocker);
-        if (!turnAvailable(current.employee)) throw new StoreAuthorityError("Root execution capacity is reserved for other employees; manager and PA slots remain available");
+        if (!turnAvailable(current.employee)) throw new StoreAuthorityError("Root execution capacity is reserved for other work; the manager slot remains available");
         store.updateRuntime({ ...current.runtime, turnActive: true }); output = { admitted: true }; break;
       }
       case "workflow_context": {
@@ -643,7 +675,6 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
       case "send": output = store.sendCue({ sender: current.binding, cue: request.cue }); break;
       case "capture": output = store.captureIntake({ architect: current.binding, capture: request.capture }); break;
       case "item":
-        if ((request.request.action === "decide" && ["MERGED", "DONE"].includes(request.request.status)) || (request.request.action === "gate" && request.request.verdict === "APPROVE")) requirePA();
         output = store.transitionItem({ employee: current.binding, request: request.request }); break;
       case "receive_status": {
         const snapshot = store.snapshot();
@@ -673,6 +704,157 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
       }
       case "intake": manager(connection); output = store.recordIntake({ manager: current.binding, event: { eventId: request.eventId, input: request.input, amendItemIds: request.amendItemIds } }); break;
       case "route": manager(connection); output = store.routeInput({ manager: current.binding, inputId: request.inputId, disposition: { kind: request.disposition, reason: request.reason, amendItemIds: request.amendItemIds } }); break;
+      case "manager_migrate": manager(connection); output = store.migrateManagerQueue({ manager: current.binding, migrationId: request.migrationId }); break;
+      case "manager_import_legacy": manager(connection); output = migrateLegacyStartup({ manager: current.binding, store, migrationId: request.migrationId, sourceRoot: request.sourceRoot, targetRoot: root }); break;
+      case "manager_transfer_legacy": manager(connection); output = json(await transferCancelledLegacyItem({ manager: current.binding, store, migrationId: request.migrationId, sourceRoot: request.sourceRoot, targetRoot: root, itemId: request.itemId, intentId: request.intentId })); break;
+      case "manager_request_handover": manager(connection); output = json(await requestLegacyHandover({ sourceRoot: request.sourceRoot, targetRoot: root, migrationId: request.migrationId, itemId: request.itemId, intentId: request.intentId })); break;
+      case "manager_run_list": manager(connection); output = json(store.managerRuns()); break;
+      case "manager_run_inputs": {
+        manager(connection);
+        output = json(store.managerInputs(request.launchKey).map((receipt) => ({ ...receipt, state: receipt.state === "delivered" ? "queued" : receipt.state })));
+        break;
+      }
+      case "manager_run_send": {
+        manager(connection);
+        const receipt = store.reserveManagerInput({ manager: current.binding, launchKey: request.launchKey, messageId: request.messageId, text: request.text });
+        if (!receipt.created) { output = json({ ...receipt.receipt, state: receipt.receipt.state === "delivered" ? "queued" : receipt.receipt.state }); break; }
+        try {
+          const native = managerProcesses.get(request.launchKey);
+          if (!native) throw new StoreFenceError("Original OMP RPC process is unavailable for input");
+          await native.call({ type: "steer", message: request.text });
+          const delivered = store.settleManagerInput({ manager: current.binding, launchKey: request.launchKey, messageId: request.messageId, state: "delivered" });
+          output = json({ ...delivered, state: "queued" });
+        } catch (error: unknown) {
+          store.settleManagerInput({ manager: current.binding, launchKey: request.launchKey, messageId: request.messageId, state: "uncertain" });
+          throw error;
+        }
+        break;
+      }
+      case "manager_run_report": manager(connection); output = store.settleManagerRun({ manager: current.binding, launchKey: request.launchKey, state: request.state, outcome: request.outcome }); break;
+      case "manager_run_start": {
+        manager(connection);
+        const previous = store.managerRuns().find((run) => run.launchKey === request.launchKey);
+        if (previous) {
+          const requestedPath = existsSync(request.worktree) ? realpathSync(request.worktree) : resolve(request.worktree);
+          if (previous.itemId !== request.itemId || previous.workflow !== request.workflow || previous.limit !== request.limit || previous.target !== request.target || previous.worktree !== requestedPath) throw new StoreConflictError("Manager launch key belongs to a different request");
+          output = json(previous);
+          break;
+        }
+        const cwd = realpathSync(request.worktree);
+        const git = (...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+        if (realpathSync(git("rev-parse", "--show-toplevel")) !== cwd) throw new StoreAuthorityError("Run worktree must be a Git repository root");
+        const repository = realpathSync(resolve(cwd, git("rev-parse", "--git-common-dir")));
+        git("check-ref-format", `refs/heads/${request.target}`);
+        const branch = git("symbolic-ref", "--quiet", "--short", "HEAD");
+        if (branch === request.target || realpathSync(resolve(cwd, git("rev-parse", "--git-dir"))) === repository) throw new StoreAuthorityError("Manager runs require a dedicated worktree on a branch different from the target");
+        if (!store.managerRuns().some((run) => run.launchKey === request.launchKey) && !Bun.which("omp")) throw new StoreAuthorityError("Manager-led workflows require the OMP executable, including with a Claude manager");
+        const item = store.queueItems().find((row) => row.id === request.itemId);
+        const repositoryNotice = item ? inspectRepository({ cwd, repo: item.repo, remote: item.remote }) : null;
+        const reserved = store.reserveManagerRun({ manager: current.binding, itemId: request.itemId, workflow: request.workflow, limit: request.limit, target: request.target, launchKey: request.launchKey, repository, worktree: cwd, branch });
+        if (!reserved.created) { output = json(reserved.run); break; }
+        let location: Json = null;
+        let native: Awaited<ReturnType<typeof startOwnedOmpRpc>> | undefined;
+        let accepted = false;
+        let spawnAttempted = false;
+        const reviews = new Map<string, ExpectedReview>();
+        const settlements = new Map<string, Promise<void>>();
+        const settle = async (review: ExpectedReview): Promise<void> => {
+          if (!native) throw new StoreFenceError("Original OMP supervisor is unavailable");
+          const evidence = await native.observeReview(review);
+          store.bindManagerReview({ manager: current.binding, reviewId: review.reviewId, reviewerId: evidence.reviewerId, invocationId: evidence.invocationId });
+          if (evidence.verdict === "invalid") await store.failManagerReview({ manager: current.binding, reviewId: review.reviewId, verify: async () => ({ reviewId: evidence.reviewId, launchKey: request.launchKey, head: evidence.head, reviewerId: evidence.reviewerId, invocationId: evidence.invocationId, status: "invalid", evidence: "Original correlated reviewer terminated unsuccessfully or produced invalid output" }) });
+          else await store.settleManagerReview({ manager: current.binding, reviewId: review.reviewId, verify: async () => ({ reviewId: evidence.reviewId, launchKey: request.launchKey, head: evidence.head, reviewerId: evidence.reviewerId, invocationId: evidence.invocationId, verdict: evidence.verdict }) });
+        };
+        try {
+          const assignmentPath = join(launchDirectory, `run-${digest(request.launchKey)}.json`);
+          writeFileSync(assignmentPath, encode(reserved.run.assignment), { mode: 0o600, flag: "wx" });
+          const remainingRounds = store.managerReviewBudget({ itemId: request.itemId, workflow: request.workflow, limit: request.limit }).remaining;
+          if (remainingRounds < 1) throw new StoreAuthorityError("No inherited review rounds remain");
+          const directive = `Run the jp-${request.workflow} skill in manager-led Startup mode. Read the assignment from ${assignmentPath}. Begin the bounded workflow with execution set to manager-led. Perform all work in the assigned worktree ${cwd} on branch ${branch}; do not change worktrees or branches. Target ${request.target}; maximum review rounds ${remainingRounds}. ${repositoryNotice ? `${repositoryNotice} ` : ""}Use startup_run_report to send questions or progress to the Startup manager; use a stable eventId for each report. Return the actual outcome to the Startup manager.`;
+          spawnAttempted = true;
+          native = await (input.managerRpc ?? startOwnedOmpRpc)({ binary: "omp", args: ["--mode", "rpc", "--no-ui", "--no-extensions", "--extension", join(config.skillsRoot, "extensions", "startup", "bounded-entry.ts"), "--cwd", cwd, "--profile", config.profile], cwd, env: { ...process.env, JP_STARTUP_MANAGER_RPC: "1" }, journalPath: join(launchDirectory, `rpc-${digest(request.launchKey)}.jsonl`), timeoutMs: 30000,
+            reserveReview: async (review) => {
+              if (review.itemId !== request.itemId || realpathSync(review.worktree) !== cwd || git("symbolic-ref", "--quiet", "--short", "HEAD") !== branch || git("rev-parse", "HEAD") !== review.head || [...reviews.values()].some((entry) => entry.reviewerId === review.reviewerId && entry.reviewId !== review.reviewId)) throw new OmpReviewRejectedError("Native review does not match this run or reuses a reviewer identity");
+              store.reserveManagerReview({ manager: current.binding, launchKey: request.launchKey, reviewId: review.reviewId, head: review.head });
+              reviews.set(review.reviewId, review);
+            },
+            reportRun: async (report) => { store.runtimeAlert({ id: `run-report-${digest(`${request.launchKey}/${report.eventId}`)}`, correlation: request.launchKey, payload: { kind: "manager-run-report", itemId: request.itemId, reportKind: report.kind, text: report.text } }); },
+            onNativeEvent: (event) => {
+              const parsed = z.object({ type: z.literal("subagent_lifecycle"), payload: z.object({ id: z.string(), status: z.enum(["completed", "failed", "cancelled"]) }) }).safeParse(event);
+              if (!parsed.success) return;
+              const review = [...reviews.values()].find((entry) => entry.reviewerId === parsed.data.payload.id);
+              if (!review || settlements.has(review.reviewId)) return;
+              const promise = settle(review);
+              settlements.set(review.reviewId, promise);
+              void promise.catch((error: unknown) => { if (settlements.get(review.reviewId) === promise) settlements.delete(review.reviewId); process.stderr.write(JSON.stringify({ level: "warn", component: "manager-review", launchKey: request.launchKey, reviewId: review.reviewId, error: error instanceof Error ? error.message : String(error) }) + "\n"); });
+            },
+            completeRun: async (hint) => {
+              const review = reviews.get(hint.reviewId);
+              if (!review || hint.itemId !== request.itemId || hint.head !== review.head || realpathSync(hint.worktree) !== cwd) throw new StoreAuthorityError("Completion does not match the reserved review");
+              let settlement = settlements.get(hint.reviewId);
+              if (!settlement) { settlement = settle(review); settlements.set(hint.reviewId, settlement); }
+              try { await settlement; }
+              catch (error: unknown) { if (settlements.get(hint.reviewId) === settlement) settlements.delete(hint.reviewId); throw error; }
+              await store.completeManagerRun({ manager: current.binding, launchKey: request.launchKey, verify: async (run) => {
+                if (git("symbolic-ref", "--quiet", "--short", "HEAD") !== branch || git("rev-parse", "HEAD") !== hint.head || git("status", "--porcelain") !== "" || realpathSync(resolve(cwd, git("rev-parse", "--git-common-dir"))) !== repository) throw new StoreFenceError("Reviewed worktree changed before completion");
+                const pr = z.object({ headRefOid: z.string(), baseRefName: z.string(), state: z.enum(["OPEN", "MERGED"]), isDraft: z.boolean(), mergeCommit: z.object({ oid: z.string() }).nullable() }).parse(JSON.parse(execFileSync("gh", ["pr", "view", String(hint.prNumber), "--json", "headRefOid,baseRefName,state,isDraft,mergeCommit"], { cwd, encoding: "utf8" })));
+                if (pr.headRefOid !== hint.head || pr.baseRefName !== request.target || pr.isDraft) throw new StoreFenceError("PR does not match the reviewed head and target");
+                if (pr.state === "MERGED") { if (!pr.mergeCommit) throw new StoreFenceError("Merged PR has no merge commit"); git("fetch", "--no-tags", "origin", `refs/heads/${request.target}`); git("merge-base", "--is-ancestor", pr.mergeCommit.oid, "FETCH_HEAD"); }
+                const record = store.managerReviews(request.launchKey).find((entry) => entry.reviewId === hint.reviewId);
+                if (!record || record.state !== "completed" || record.verdict !== "approve" || !record.reviewerId || !record.invocationId) throw new StoreFenceError("Independent approved review is unavailable");
+                const rounds = store.managerReviewBudget({ itemId: request.itemId, workflow: request.workflow, limit: request.limit }).completed;
+                return { launchKey: run.launchKey, itemId: run.itemId, location: run.location, repository, worktree: cwd, target: request.target, head: hint.head, prNumber: hint.prNumber, prState: pr.state, prDraft: pr.isDraft, mergeCommit: pr.mergeCommit?.oid ?? null, review: { reviewId: record.reviewId, reviewerId: record.reviewerId, invocationId: record.invocationId, head: record.head, verdict: "approve", rounds } };
+              } });
+              const alertId = `manager-run-complete-${digest(request.launchKey)}`;
+              if (!store.hasMessage(alertId)) store.runtimeAlert({ id: alertId, correlation: request.launchKey, payload: { kind: "manager-run-complete", itemId: request.itemId, launchKey: request.launchKey } });
+            },
+            onCompletedTurn: () => { const process = managerProcesses.get(request.launchKey); if (process) void process.close(); },
+            onExit: () => {
+              if (!managerProcesses.delete(request.launchKey)) return;
+              try {
+                for (const receipt of store.managerInputs(request.launchKey).filter((entry) => entry.state === "sending")) store.settleManagerInput({ manager: current.binding, launchKey: request.launchKey, messageId: receipt.messageId, state: "uncertain" });
+                const run = store.managerRuns().find((entry) => entry.launchKey === request.launchKey);
+                if (run?.state === "accepted" || run?.state === "reported") store.settleManagerRun({ manager: current.binding, launchKey: request.launchKey, state: "uncertain", outcome: json({ reason: "Original OMP RPC process exited before verified completion" }) });
+                if (run && location !== null) {
+                  store.recordManagerRunExit({ manager: current.binding, launchKey: request.launchKey, location });
+                  reconcileExitedRun(request.launchKey, location);
+                }
+
+              } catch (error: unknown) { process.stderr.write(JSON.stringify({ level: "warn", component: "manager-process-exit", launchKey: request.launchKey, error: error instanceof Error ? error.message : String(error) }) + "\n"); }
+            },
+          });
+          const state = z.object({ data: z.object({ sessionId: z.string().min(1) }) }).parse(await native.call({ type: "get_state" }));
+          location = json({ kind: "omp-rpc", pid: native.pid, sessionId: state.data.sessionId });
+          actor(connection);
+          output = store.acceptManagerRun({ manager: current.binding, launchKey: request.launchKey, location });
+          accepted = true;
+          managerProcesses.set(request.launchKey, native);
+          await native.call({ type: "prompt", message: directive });
+        } catch (error: unknown) {
+          if (native) await native.close();
+          managerProcesses.delete(request.launchKey);
+          const run = store.managerRuns().find((entry) => entry.launchKey === request.launchKey);
+          if (run?.state === "starting" || run?.state === "accepted" || run?.state === "reported") store.settleManagerRun({ manager: current.binding, launchKey: request.launchKey, state: "uncertain", outcome: json({ location, error: error instanceof Error ? error.message : String(error) }) });
+          if (!accepted && (native || !spawnAttempted || error instanceof OmpRpcStartupError)) await store.releaseUndispatchedManagerRun({ manager: current.binding, launchKey: request.launchKey, verify: async (original) => ({ launchKey: original.launchKey, itemId: original.itemId, status: "not-dispatched", evidence: native || error instanceof OmpRpcStartupError ? "Original supervised OMP process was absent or confirmed exited before any prompt was submitted" : "No OMP process was started or prompt submitted" }) });
+          throw error;
+        }
+        break;
+      }
+      case "ensure_pa": {
+        manager(connection);
+        const paProfile = loadProfile({ skillsRoot: config.skillsRoot, role: "pa", employeeId: "pending", generation: 1 });
+        const receipt = store.reserveHire({ authority: { kind: "employee", binding: store.managerBinding }, request: { requestId: "v7-manager-pa", role: "pa", additional: 1, revision: paProfile.source.roleRevision } });
+        const pa = receipt.employees[0];
+        if (!pa) throw new StoreConflictError("PA reservation is missing");
+        const saved = store.runtimeBindings().findLast((r) => r.employeeId === pa.id);
+        if (saved) {
+          if (saved.state === "prepared") await launch(pa.id, await createEmployeeTab(pa.id, `${config.name} manager PA`));
+          output = { employeeId: pa.id }; break;
+        }
+        prepare(pa.id, randomBytes(32).toString("hex"));
+        await launch(pa.id, await createEmployeeTab(pa.id, `${config.name} manager PA`));
+        output = { employeeId: pa.id }; break;
+      }
       case "hire": {
         manager(connection);
         if (request.role === "pa") throw new StoreAuthorityError("The manager has exactly one permanent PA; retry its existing identity");
@@ -682,7 +864,7 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
         output = receipt; break;
       }
       case "delegate": {
-        manager(connection); requirePA();
+        manager(connection);
         const saved = store.snapshot().intakes.find((i) => i.request.eventId === request.eventId);
         if (!saved) throw new StoreConflictError("Persist raw intake before delegating a crew");
         if (saved.teamId !== null) { output = store.snapshot().teams.find((t) => t.id === saved.teamId); break; }
@@ -806,13 +988,12 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
     if (view.messages.length > 0 && view.team?.state !== "reserved") return "Claim your pending durable inbox before ending.";
     if (view.itemReview !== null) return `Submit startup_item review for item ${view.itemReview.itemId} using resultId ${view.itemReview.resultId}, expectedRevision ${view.itemReview.revision}, and actual verification evidence. Your saved completed result must reach its owning architect before idling.`;
     if (current.role !== "manager") return null;
-    const paHealth = paState();
-    if (paHealth !== null) return `PA supervision is degraded: ${paHealth}. Report and recover the existing PA identity.`;
     const pending = store.managerPendingWork();
     if (pending.unclassifiedInput) return "Classify saved human inputs before ending.";
     if (pending.undelegatedIntake) return "Delegate every saved independent work event before ending.";
     try {
-      const ready = store.queueItems().find((row) => ["QUEUED", "READY_TO_LAND"].includes(z.string().parse(row.status)));
+      const runningItems = new Set(store.managerRuns().map((run) => run.itemId));
+      const ready = store.queueItems().find((row) => ["QUEUED", "READY_TO_LAND"].includes(z.string().parse(row.status)) && !runningItems.has(row.id));
       return ready ? `Advance ready item ${ready.id} or record its concrete blocker before ending.` : null;
     } catch (error: unknown) {
       return `Canonical queue unavailable; preserve its contents and repair the reported read error: ${error instanceof Error ? error.message : String(error)}`;
@@ -881,6 +1062,20 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
   }
   async function supervise(): Promise<void> {
     store.renewLease();
+    for (const run of store.managerRuns()) {
+      if (run.termination || !["uncertain", "failed", "completed"].includes(run.state) || managerProcesses.has(run.launchKey)) continue;
+      let exit = store.managerRunExit(run.launchKey);
+      if (exit === null) {
+        const native = z.object({ kind: z.literal("omp-rpc"), pid: z.number().int().positive() }).safeParse(run.location);
+        if (!native.success) continue;
+        try { process.kill(native.data.pid, 0); continue; }
+        catch (error: unknown) { if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) continue; }
+        store.recordManagerRunExit({ manager: store.managerBinding, launchKey: run.launchKey, location: run.location });
+        exit = run.location;
+      }
+      if (encode(exit) !== encode(run.location)) continue;
+      reconcileExitedRun(run.launchKey, run.location);
+    }
     supervision = { ...supervision, lastStartedAt: now() };
     const errors: SupervisionFailure[] = [];
     function failure(component: SupervisionFailure["component"], employeeId: string | null, error: unknown): void {
@@ -930,23 +1125,11 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
       : [...connections.values()].some((entry) => entry.employeeId === "manager");
     if (tern === undefined && observerAvailable && managerObserved) store.updateRuntime({ ...managerRuntime, lastSeen: now() });
     const managerOffline = (observerAvailable && !managerObserved) || now() - managerRuntime.lastPoll > policy.connectionDeadlineMs;
-    const managerPresence = managerOffline ? "offline" : observerAvailable ? "online" : "unknown";
     const snapshot = store.supervisionView();
-    const pa = snapshot.employees.find((e) => e.role === "pa" && e.employment === "hired");
-    if (pa?.source !== null && pa !== undefined) {
-      if (managerOffline) {
-        const id = `manager-offline-${managerRuntime.launchId}-${managerRuntime.lastPoll}`;
-        alertOnce({ id, correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, ...(tern === undefined ? { herdrObserved: observerAvailable ? managerObserved : null } : { ternConnected: managerObserved }), observedAt: now() } });
-        if (!store.hasMessage(`${id}-pa`)) store.sendCue({ sender: store.managerBinding, cue: { id: `${id}-pa`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, ...(tern === undefined ? { herdrObserved: observerAvailable ? managerObserved : null } : { ternConnected: managerObserved }), observedAt: now() } } });
-      }
-      const checks = snapshot.messages.filter((m) => m.recipient === pa.id && m.id.startsWith("pa-check-"));
-      const outstanding = checks.some((m) => m.status !== "acknowledged");
-      const last = store.lastPaCheck(pa.id);
-      const lastDue = last ? z.object({ scheduledAt: z.number() }).parse(last.payload).scheduledAt : 0;
-      if (!outstanding && now() - lastDue >= policy.paCadenceMs) store.sendCue({ sender: store.managerBinding, cue: { id: `pa-check-${runtime(pa.id).launchId}-${now()}`, recipient: pa.id, kind: "duty", correlation: "manager-supervision", payload: { kind: "pa-check", scheduledAt: now(), managerPresence, unclassifiedInputs: snapshot.inputs.filter((i) => i.disposition === null).length, unresolvedClaims: snapshot.claims.filter((c) => c.status !== "settled").length, pendingMessages: snapshot.messages.filter((m) => m.status === "pending").length, crews: snapshot.teams.map((t) => ({ id: t.id, state: t.state })) } } });
+    if (managerOffline) {
+      const id = `manager-offline-${managerRuntime.launchId}-${managerRuntime.lastPoll}`;
+      alertOnce({ id, correlation: "manager-supervision", payload: { kind: "manager-offline", lastPoll: managerRuntime.lastPoll, observedAt: now() } });
     }
-    const health = paState();
-    if (health !== null) alertOnce({ id: `pa-health-${health}-${pa ? runtime(pa.id).launchId : "missing"}`, correlation: "manager-supervision", payload: { kind: health, observedAt: now() } });
     for (const saved of snapshot.inputs) {
       if (saved.disposition === null && now() - saved.receivedAt > policy.progressDeadlineMs)
         alertOnce({ id: `stale-input-${saved.id}`, correlation: saved.id, payload: { kind: "stale-input", inputId: saved.id, receivedAt: saved.receivedAt } });
@@ -982,6 +1165,19 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
   });
   return {
     start,
+    shutdown: async () => {
+      const processes = [...managerProcesses.entries()];
+      try {
+        for (const [launchKey] of processes) {
+          const run = store.managerRuns().find((entry) => entry.launchKey === launchKey);
+          if (run?.state === "accepted" || run?.state === "reported") store.settleManagerRun({ manager: store.managerBinding, launchKey, state: "uncertain", outcome: json({ reason: "Coordinator shut down before verified completion" }) });
+        }
+      } finally {
+        await Promise.all(processes.map(([, process]) => process.close()));
+        await Promise.allSettled([...managerExits]);
+        managerProcesses.clear();
+      }
+    },
     hostAssociations: (query) => {
       if (!("herdrSession" in config)) throw new StoreAuthorityError("Herdr host associations are unavailable for the Tern backend");
       return store.hostAssociations({ ...hostAssociationQuerySchema.parse(query), herdrSession: config.herdrSession, connectionDeadlineMs: policy.connectionDeadlineMs });

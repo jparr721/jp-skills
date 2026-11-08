@@ -18,29 +18,24 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 |-------|-------------|--------|
 | [`jp-pipeline`](skills/jp-pipeline/SKILL.md) | A single unit of work — Linear ticket, bug fix, feature — driven from idea to merged PR: design deliberation, parallel implementation, PR, at most two review rounds, stopping on first approval, merge on green CI. Commits early and often; stacks when the caller passes a parent base. | Changes code, merges PR |
 | [`jp-dark-factory`](skills/jp-dark-factory/SKILL.md) | A fixed Linear epic driven to merged-on-main autonomously — a swarm of implement/review/fix agents plus background QA under a context firewall. Dependent tickets stack as `--base` chains; merges proceed bottom-up with child retarget. Workers can run in Herdr or Tern panes, or in-process without either terminal. Startup is optional; `STARTUP_MODE=off` runs independently. At most three review rounds per change, including inherited rounds. | Changes code, can merge to `main` |
-| [`jp-startup`](skills/jp-startup/SKILL.md) | A persistent queue with one manager, a permanent PA, and architect-led crews in interactive panes. V7 supports OMP with Herdr or Tern, and Claude Code (2.1.302+) with Herdr; full role/loop sources bind each employee. | Changes code, enforces scoped landing gates, monitors progress |
+| [`jp-startup`](skills/jp-startup/SKILL.md) | A persistent queue with one manager, an on-demand PA for questions, and independent pipeline or hotfix runs. | Schedules work, tracks outcomes and preserves review budgets |
 | [`jp-hotfix`](skills/jp-hotfix/SKILL.md) | A scoped bug fix through a ready PR, CI, merge and verification, with at most one light review. | Changes code and merges by default |
 | [`jp-quickfix`](skills/jp-quickfix/SKILL.md) | A small fix shipped quickly with minimal coordination and CI. | Changes code and merges by default |
 
-Review budgets are per change and inherited across nested workflows: `jp-hotfix` allows at most one round, `jp-pipeline` at most two, and `jp-dark-factory` at most three; the stricter inherited or nested cap applies. Stop on the first APPROVE. A round is a completed review with a verdict, not an individual review angle or debate. Startup is optional for all three workflows; when used, its manager chooses a cap of at most three and passes it down.
+Review budgets are per change and inherited across nested workflows: `jp-hotfix` allows at most one round, `jp-pipeline` at most two, and `jp-dark-factory` at most three; the stricter inherited or nested cap applies. Stop on the first APPROVE. A round is a completed review with a verdict, not an individual review angle or debate. Startup schedules pipeline or hotfix runs with their respective limits.
 
-These workflows use the same coordinator transition engine for scoped assignments, dependency readiness and inherited review budgets. Startup persists its authority; standalone OMP and Claude Code hosts keep their authority for the lifetime of their root process. A selected Startup can delegate bounded work without handing off its queue or landing authority. See the [runtime instructions](extensions/startup/README.md#shared-bounded-workflows).
+These workflows use the same coordinator transition engine for scoped assignments, dependency readiness and inherited review budgets. Startup persists its queue and review authority while each run performs its requested work and landing. Standalone OMP and Claude Code hosts keep their authority for the lifetime of their root process. See the [runtime instructions](extensions/startup/README.md#shared-bounded-workflows).
 
-Startup family (roles + procedures):
+Startup procedures:
 
 | Skill | Use it when |
 |-------|-------------|
-| [`jp-hire`](skills/jp-hire/SKILL.md) | Add staff through manager authority with idempotent retries and real readiness receipts. |
-| [`jp-startup-loop`](skills/jp-startup-loop/SKILL.md) | Every employee wake, scoped inbox result, waiting assignment or duty. |
-| [`jp-startup-role-manager`](skills/jp-startup-role-manager/SKILL.md) | Every startup command needs the canonical manager role - sole boss contact, architect-led intake, complete-team dispatch, outcome enforcement, merges. |
-| [`jp-startup-role-pa`](skills/jp-startup-role-pa/SKILL.md) | The manager needs its reminder tick — time, check-ins, priorities, sprint count, aging blockers. |
-| [`jp-startup-role-dev`](skills/jp-startup-role-dev/SKILL.md) | A worker drains one queue item through the full pipeline with don't-merge and an outcome block. |
-| [`jp-startup-role-architect`](skills/jp-startup-role-architect/SKILL.md) | A fresh intake team needs its technical leader, scoped intake, member coordination and required merge gate. |
-| [`jp-startup-role-qa`](skills/jp-startup-role-qa/SKILL.md) | Per-item proof or cross-item overlap checks are needed, using the proof standard for the item's kind. |
-| [`jp-startup-role-devops`](skills/jp-startup-role-devops/SKILL.md) | The user explicitly requests DevOps coordination, or an item needs environment, resource, or operation adjudication. |
+| [`jp-startup-loop`](skills/jp-startup-loop/SKILL.md) | Handle a manager or PA wake, result, or recovery cue. |
+| [`jp-startup-role-manager`](skills/jp-startup-role-manager/SKILL.md) | Capture requests, schedule independent runs and track outcomes. |
+| [`jp-startup-role-pa`](skills/jp-startup-role-pa/SKILL.md) | Help the manager relay questions when needed. |
 | [`jp-startup-intake`](skills/jp-startup-intake/SKILL.md) | New or successive requests arrive in a Startup, including multiple tasks, shorthand, missing details, and clarifications. Every work intent receives a durable queue record and receipt before readiness checks. |
-| [`jp-startup-sprint`](skills/jp-startup-sprint/SKILL.md) | INTERNAL - every 5 merged items record a retro and compress memory while independent ready work continues. |
-| [`jp-startup-retro`](skills/jp-startup-retro/SKILL.md) | An on-demand retro is wanted — same procedure as the sprint boundary. |
+| [`jp-startup-sprint`](skills/jp-startup-sprint/SKILL.md) | Review a requested legacy sprint boundary. |
+| [`jp-startup-retro`](skills/jp-startup-retro/SKILL.md) | Run a requested retro using saved outcome evidence. |
 | [`jp-startup-stop-doing`](skills/jp-startup-stop-doing/SKILL.md) | A text rule or screenshot complaint must become a standing instruction now. |
 | [`jp-startup-status`](skills/jp-startup-status/SKILL.md) | The queue, bulletin, sprint count, or parked blockers need rendering (or explicit wipe). |
 
@@ -89,7 +84,7 @@ Startup family (roles + procedures):
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (8.1.8). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (9.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
@@ -222,8 +217,8 @@ New skills use a `jp-` name and directory and follow the same shape: one directo
 
 Skill instructions are written as generic actions. Each harness maps actions such as dispatching agents, asking the user, reading files, searching files, editing files, and running commands to its native tools.
 
-Pane orchestration is optional for ordinary skills. `jp-dark-factory` supports Herdr, Tern or in-process fan-out; only the principal controls panes created by its run. Startup V7 has separate runtime admission requirements described below.
+Pane orchestration is optional for ordinary skills. `jp-dark-factory` supports Herdr, Tern or in-process fan-out; only the principal controls panes created by its run. Startup has separate runtime admission requirements described below.
 
-Startup V7 requires Bun, the companion, and a supported harness/pane backend: OMP with Herdr or Tern, or Claude Code (2.1.302+) with Herdr. Herdr uses its managed harness integration; Tern uses native lifecycle and process attestation. Compatibility follows required live APIs and native hooks; release numbers are diagnostic metadata, including across major upgrades. It runs one independent coordinator and one harness root per employee, grouped into hierarchical crews. Linking skills alone does not install the runtime. See [install, boot and tool contracts](extensions/startup/README.md), [design and deployment limits](docs/startup-v7/design.md), and [native guard proof](extensions/startup/probes/v7-native-guards.json). The [live acceptance report](docs/startup-v7/acceptance.md) records a Herdr run, not Tern acceptance. V6 migration and automatic restore remain unsupported/unverified; companion installation remains profile-specific. The [V6 acceptance record](extensions/startup/probes/v6-acceptance.md) remains historical. Full-source binding is specified in [role-dispatch](skills/jp-startup/references/role-dispatch.md).
+Startup uses one manager and coordinator, an on-demand PA for questions, and independent pipeline or hotfix runs. It requires Bun, the companion, a supported manager harness and pane backend, and an OMP worker. Linking skills alone does not install the runtime. See [install, boot, migration and tool contracts](extensions/startup/README.md). Existing nonterminal work requires reconciliation with its original owner; the separate-root importer preserves and quarantines it. Earlier [live acceptance evidence](docs/startup-v7/acceptance.md) describes the historical crew runtime, not the new manager-led path.
 
 Oh My Pi surfaces linked skills as namespaced slash commands: type `/skill:` (e.g. `/skill:jp-pipeline`), not `/<skill-name>`. Restart `omp` after linking so startup discovery picks them up.

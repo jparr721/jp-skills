@@ -642,18 +642,27 @@ test("invalid profiles and missing native abort are reported without launching a
   }
 });
 
-test("an OMP profile missing a bound model role is reported without launching a coordinator", async () => {
+test("manager startup does not require legacy employee model roles", async () => {
   for (const kind of ["unresolved", "unsupported"]) {
     const f = fixture();
     let launched: boolean = false;
     const { models: _models, ...withoutModels } = f.ctx;
     const context: NativeContext = kind === "unsupported" ? withoutModels : { ...f.ctx, models: { resolve: (spec: string) => spec === "@plan" ? undefined : { id: "model" } } };
-    installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched = true; return config; } });
-    expect(await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, context)).toEqual({ handled: true });
-    expect(launched).toBe(false);
-    expect(f.messages.join("\n")).toContain(kind === "unresolved" ? "@plan (architect)" : "ctx.models");
-    expect(f.admissions).toHaveLength(0);
+    installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 6, environment: f.environment, launch: async (config) => { launched = true; return { ...config, socketPath: f.socketPath }; } });
+    await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, context);
+    expect(launched).toBe(true);
+    expect(f.admissions).toHaveLength(1);
   }
+});
+
+test("manager startup accepts capacity for one manager and one worker", async () => {
+  const f = fixture();
+  f.environment.STARTUP_EXECUTION_LIMIT = "2";
+  let launched = false;
+  installStartupV7(f.host, { ...omp, ...entryRoots(f), nativeLimit: () => 1, environment: f.environment, launch: async (config) => { launched = true; return { ...config, socketPath: f.socketPath }; } });
+  await f.emit("input", { text: "/startup new alpha", source: "interactive", images: [] }, f.ctx);
+  expect(launched).toBe(true);
+  expect(f.admissions).toHaveLength(1);
 });
 
 test("an admitted manager is not blocked when a bound model role later stops resolving", async () => {
@@ -744,34 +753,29 @@ process.stdout.write(JSON.stringify(result));
   return { config: harness === "claude" ? { ...config, harness } : config, stateFile };
 }
 
-test("production timer keeps issuing PA checks while queue reads fail and recovers from degraded health", async () => {
+test("production timer continues supervision during queue failures and recovers", async () => {
   const f = fixture(); f.useEnvironment();
   const { config: initial } = runtimeFixture(f);
-  const config = { ...initial, policy: { ...initial.policy, tickMs: 10, paCadenceMs: 20 } };
+  const config = { ...initial, policy: { ...initial.policy, tickMs: 10 } };
   mkdirSync(config.stateDirectory, { recursive: true, mode: 0o700 });
   const queue = join(config.stateDirectory, "queue.json");
   writeFileSync(queue, '{"rows":');
   const runtime = await startRuntimeHost(config);
-  let client: Awaited<ReturnType<typeof connectEmployee>> | null = null;
   try {
-    const database = new Database(join(config.stateDirectory, "staff.sqlite"), { readonly: true });
-    const saved = z.object({ payload: z.string() }).parse(database.query("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId') != 'manager'").get());
-    database.close();
-    const pa = z.object({ employeeId: z.string(), launchId: z.string() }).parse(JSON.parse(saved.payload));
-    const manifest = z.object({ credential: z.string(), source: sourceSchema }).parse(JSON.parse(readFileSync(join(config.stateDirectory, "launches", `${pa.launchId}.json`), "utf8")));
-    client = await connectEmployee({ socketPath: config.socketPath, credential: manifest.credential, source: manifest.source, nativeSession: join(f.root, "fake-pa.jsonl"), paneId: "w1:p2" });
+    let previous = 0;
     for (let index = 0; index < 2; index += 1) {
       const deadline = Date.now() + 5000;
-      while (!(await client.poll()).pendingMessageIds.some((id) => id.startsWith("pa-check-"))) {
-        if (Date.now() >= deadline) throw new Error("Production timer starved the PA");
+      while (true) {
+        const response = await fetch("http://localhost/health", { unix: config.socketPath });
+        const health = z.object({ supervision: z.object({ lastCompletedAt: z.number().nullable(), errors: z.array(z.object({ component: z.string() })) }) }).parse(await response.json());
+        if (health.supervision.lastCompletedAt !== null && health.supervision.lastCompletedAt > previous && health.supervision.errors.some((error) => error.component === "queue")) {
+          expect(response.status).toBe(503);
+          previous = health.supervision.lastCompletedAt;
+          break;
+        }
+        if (Date.now() >= deadline) throw new Error("Production timer stopped supervising queue failures");
         await Bun.sleep(20);
       }
-      while (true) {
-        const claim = z.object({ claim: z.object({ id: z.string() }), message: z.object({ id: z.string() }) }).parse(await client.request({ kind: "claim" }));
-        await client.request({ kind: "settle", claimId: claim.claim.id, result: { id: `timer-result-${index}-${claim.claim.id}`, kind: "completed", output: "PA check during queue failure", checkpoint: null, outgoing: [{ id: `timer-report-${claim.claim.id}`, recipient: "manager", kind: "report", correlation: "manager-supervision", payload: "PA remains active" }] } });
-        if (claim.message.id.startsWith("pa-check-")) break;
-      }
-      expect((await fetch("http://localhost/health", { unix: config.socketPath })).status).toBe(503);
     }
     writeFileSync(queue, '{"rows":[]}');
     const deadline = Date.now() + 5000;
@@ -779,7 +783,7 @@ test("production timer keeps issuing PA checks while queue reads fail and recove
       if (Date.now() >= deadline) throw new Error("Degraded coordinator never resumed supervision");
       await Bun.sleep(20);
     }
-  } finally { client?.close(); await runtime.close(); }
+  } finally { await runtime.close(); }
 });
 
 test("runtime serves admission before launching roots and owns separate V7 state", async () => {
@@ -788,6 +792,8 @@ test("runtime serves admission before launching roots and owns separate V7 state
   const stateDirectory: string = config.stateDirectory;
   const runtime = await startRuntimeHost(config);
   try {
+    const manager = await connectEmployee({ socketPath: config.socketPath, credential: config.managerCredential, nativeSession: config.managerFile, paneId: config.managerPaneId, source: loadProfile({ skillsRoot: f.skillsRoot, role: "manager", employeeId: "manager", generation: 1 }).source });
+    try { await manager.request({ kind: "ensure_pa" }); } finally { manager.close(); }
     expect(z.object({ serverSeenBeforeLaunch: z.literal(true) }).parse(JSON.parse(readFileSync(stateFile, "utf8"))).serverSeenBeforeLaunch).toBe(true);
     const database = new Database(join(stateDirectory, "staff.sqlite"), { readonly: true });
     try {
@@ -808,6 +814,7 @@ test("manager and assigned PA retain manager-only Startup command authority", as
     manager = await connectEmployee({ socketPath: config.socketPath, credential: config.managerCredential, nativeSession: config.managerFile, paneId: config.managerPaneId, source: managerSource });
     const managerStaff = await manager.request({ kind: "staff" });
     expect(z.object({ manager: z.object({ id: z.literal("manager") }) }).parse(managerStaff).manager.id).toBe("manager");
+    await manager.request({ kind: "ensure_pa" });
 
     await runtime.coordinator.tick();
     const database = new Database(join(config.stateDirectory, "staff.sqlite"), { readonly: true });
@@ -876,23 +883,21 @@ test("detached runtime launches from private intent and admits manager independe
 });
 
 
-test("partial PA launch failure preserves admission endpoint for later pane recovery", async () => {
+test("on-demand PA launch failure preserves manager admission for retry", async () => {
   const f = fixture(); f.useEnvironment();
   const { config, stateFile } = runtimeFixture(f);
   const state = z.record(z.string(), z.json()).parse(JSON.parse(readFileSync(stateFile, "utf8")));
   writeFileSync(stateFile, JSON.stringify({ ...state, rejectLaunch: true }));
   const runtime = await startRuntimeHost(config);
   try {
-    const response = await fetch("http://localhost/health", { unix: config.socketPath });
-    expect(response.status).toBe(200);
     const client = await connectEmployee({ socketPath: config.socketPath, credential: config.managerCredential, nativeSession: f.file, paneId: "w1:p1", source: loadProfile({ skillsRoot: f.skillsRoot, role: "manager", employeeId: "manager", generation: 1 }).source });
-    try { expect((await client.poll()).pendingMessageIds.length).toBeGreaterThan(0); }
-    finally { client.close(); }
-    const database = new Database(join(config.stateDirectory, "staff.sqlite"), { readonly: true });
     try {
-      const messages = z.array(z.object({ payload: z.string() })).parse(database.query("SELECT payload FROM records WHERE kind='message'").all());
-      expect(messages.some((message) => message.payload.includes("startup-blocked"))).toBe(true);
-    } finally { database.close(); }
+      await expect(client.request({ kind: "ensure_pa" })).rejects.toThrow();
+      expect((await fetch("http://localhost/health", { unix: config.socketPath })).status).toBe(200);
+      expect(await client.request({ kind: "staff" })).toBeDefined();
+      writeFileSync(stateFile, JSON.stringify(state));
+      expect(await client.request({ kind: "ensure_pa" })).toMatchObject({ employeeId: expect.any(String) });
+    } finally { client.close(); }
   } finally { await runtime.close(); }
 });
 
@@ -1150,6 +1155,8 @@ test("Claude runtime launches the PA with the claude kind and admits it by its a
   const runtime = await startRuntimeHost(config);
   const clients: Awaited<ReturnType<typeof connectEmployee>>[] = [];
   try {
+    const manager = await connectEmployee({ socketPath: config.socketPath, credential: config.managerCredential, nativeSession: "native-root", paneId: "w1:p1", source: loadProfile({ skillsRoot: f.skillsRoot, role: "manager", employeeId: "manager", generation: 1 }).source });
+    try { await manager.request({ kind: "ensure_pa" }); } finally { manager.close(); }
     const database = new Database(join(config.stateDirectory, "staff.sqlite"), { readonly: true });
     const saved = z.object({ payload: z.string() }).parse(database.query("SELECT payload FROM records WHERE kind='runtimeBinding' AND json_extract(payload,'$.employeeId') != 'manager'").get());
     database.close();
@@ -1312,6 +1319,9 @@ async function lifecycleOwnerFixture() {
   };
   const coordinator = openCoordinator({ store, config, herdr, now: () => now });
   await coordinator.start();
+  const managerSource = store.runtimeBindings().find((bound) => bound.employeeId === "manager")!.source;
+  const manager = await coordinator.admit({ credential: config.managerCredential, nativeSession: f.file, paneId: config.managerPaneId, source: managerSource });
+  await coordinator.command(manager.connection, { kind: "ensure_pa" });
   const server = serveCoordinator({ coordinator: { ...coordinator, command: async (connection, command) => {
     lastConnection = connection;
     if (commandBarrier !== null) { commandBarrier.entered(); await commandBarrier.wait; }

@@ -1,20 +1,17 @@
 ---
 name: jp-startup-retro
-description: Use for requested Startup retros or a new five-merge boundary, with evidence-backed rule and bulletin updates.
+description: Use for a requested Startup retrospective or evidence-backed improvement review.
 ---
 
 # Startup retro
 
+The manager reviews the requested period using saved completion, review, QA and operational evidence. Inspect source records when needed to substantiate a finding. Distinguish coding time from CI, review and other waits when the evidence supports that distinction.
 
-Use selected Startup memory/ledger/completion evidence since the last recorded retro. Manager owns high-level governance; route new technical investigation through a fresh complete intake team. Independent teams and input capture continue during retro.
+Report actionable weaknesses with proving item handles. Record scoped standing-rule changes and improvement items only when supported by the findings, with their source and status. Preserve source records, audit history, open work and existing bulletin entries; archive or remove entries only when explicitly requested. Record the retro handle so repeated requests can identify previously considered outcomes.
 
-Inspect repeated review findings, QA escapes/overlapping flows, blockers/resource contention, assumption misses and oversized coding time. Distinguish coding from CI/review/block waiting using recorded evidence; do not reopen execution code/logs in manager context.
+Capture any new technical investigation or fix as Startup work. Schedule it through `jp-pipeline` or `jp-hotfix` as appropriate. Continue independent runs and intake while the retro proceeds; use the PA for questions only when useful. Existing legacy teams keep their assigned work and recovery paths.
 
-Return weaknesses with proving item handles. Append scoped rule deltas to standing instructions and improvement items to bulletin as open with retro source. Record the retro handle/boundary so the same outcomes are not processed twice. Technical work gets its own saved input and architect-led team.
-
-Compress manager memory to 64KB while retaining open work, decisions, blockers and live handles. Summarize scanned completion reports with coding/wait/verdict/proof handles; preserve source reports and runtime audit history. Verified bulletin items become done-with-proof; only explicit bulletin wipe archives/removes them.
-
-Sweep ready independent work before waiting. Queue drain means logical waiting, with persistent checkpoint/history.
+Run this procedure when requested; a merge count alone does not create recurring retro work or mandatory memory compression.
 
 ## Framework tail
 

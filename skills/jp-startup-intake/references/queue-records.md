@@ -1,4 +1,6 @@
-# Intake queue records
+# Historical intake queue records
+
+These procedures describe existing architect-led teams and apply only to recovery of work already owned by those teams. For new manager-led intake and runs use `../../jp-startup-intake/SKILL.md`, `../../jp-startup-role-manager/SKILL.md`, and `../../jp-startup-loop/SKILL.md`. Do not apply historical crew or PA prerequisites to new manager-led work. Preserve existing assignments, claims and review history.
 
 ## Ownership and preservation
 

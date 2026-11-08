@@ -1,16 +1,15 @@
 ---
 name: jp-startup-sprint
-description: Use internally at each five-merge Startup boundary to record retro and compress memory while independent teams continue.
+description: Use when a Startup sprint summary or retrospective is requested.
 ---
 
 # Startup sprint
 
+The manager summarizes the requested period using saved queue outcomes, review and QA evidence, and relevant ledger records. Count only verified merges as merges. Report completed work, open work, meaningful delays and their evidence. Preserve existing audit history and unresolved work.
 
-Manager-internal procedure. At each newly reached multiple of SPRINT_SIZE (default 5) merged items, run `../jp-startup-retro/SKILL.md` once since its last recorded boundary. Record the retro handle and boundary in ledger; pending/rejected rows do not count as merges.
+If the request calls for a retrospective, follow `../jp-startup-retro/SKILL.md`. Record the summary or retro handle so the same outcomes are not presented as new. A merge count does not automatically trigger a retro, memory compression or a coordination ceremony.
 
-Keep intake capture and independent team dispatch progressing during this bounded governance work. A retro is not a global admission pause. Record a concrete dependency only for work actually affected by its decision. Run the shared loop ready-work sweep before wait/final.
-
-Compress memory to 64KB: closed outcomes become one line with proving handle, retain decisions/standing instructions, open work/blockers/live handles. Preserve audit history in its persistent ledger/store. Resume normal coordination with the boundary receipt recorded.
+Keep independent pipeline and hotfix runs progressing. The PA may help with questions when needed. Existing legacy teams retain their original assignments and recovery paths.
 
 ## Framework tail
 

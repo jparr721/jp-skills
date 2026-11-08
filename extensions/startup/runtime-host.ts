@@ -76,6 +76,7 @@ export async function serveRuntimeHost(input: Readonly<{ config: RuntimeHostConf
     server.stop(true);
     if (tickWork !== null) await tickWork;
     await coordinator.launching();
+    await coordinator.shutdown();
     store.close();
   }
   try { await coordinator.start(); }
