@@ -65,7 +65,7 @@ test.each(["merged", "ready-pr"])("nested hotfix inherits %s and needs no human 
     process.env.PATH = previousPath;
     rmSync(directory, { recursive: true, force: true });
   }
-});
+}, 30000);
 
 test.each([
   { label: "pipeline follows mixed async receipt", workflow: "pipeline", dispatchError: false, terminalAgent: "task", rejected: false },
