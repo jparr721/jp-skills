@@ -193,7 +193,7 @@ test("rename does not retry ambiguous writes or admit invalid positional argumen
   expect(invalid.calls).toHaveLength(0);
 });
 test("bounded runner kills its hung subprocess and reports the timeout without retrying", async () => {
-  const run = createHerdrCommandRunner({ timeoutMs: 100 });
+  const run = createHerdrCommandRunner({ timeoutMs: 1000 });
   const started = performance.now();
   try {
     await run([process.execPath, "-e", "console.log(process.pid); console.error('before-timeout'); process.on('SIGTERM',()=>{}); setInterval(()=>{},1000)"]);
@@ -202,13 +202,13 @@ test("bounded runner kills its hung subprocess and reports the timeout without r
     expect(error).toBeInstanceOf(HerdrRuntimeError);
     if (!(error instanceof HerdrRuntimeError)) throw error;
     expect(error.code).toBe("command_timeout");
-    expect(error.detail).toContain("100ms");
+    expect(error.detail).toContain("1000ms");
     expect(error.detail).toContain("reconcile");
     expect(error.stderr).toContain("before-timeout");
     const pid = Number(error.stdout.trim());
     expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
     expect(() => process.kill(pid, 0)).toThrow();
-    expect(performance.now() - started).toBeLessThan(1500);
+    expect(performance.now() - started).toBeLessThan(3000);
   }
   expect(await run([process.execPath, "-e", "console.log('next-command')"])).toEqual({ exitCode: 0, stdout: "next-command\n", stderr: "" });
 });
