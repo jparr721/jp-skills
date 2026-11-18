@@ -4,6 +4,8 @@ Use when CI-only verification produces generated files, publication measurements
 
 ## 1. Inspect the exact check graph
 
+On a Blade repository (origin `<host>/sythe3.git`) use the `bl` equivalents in `blade.md` instead of every `gh` command in this file: `bl checks <n> --json` for the check graph, `bl logs <job>` for logs, `bl deploys --json` after landing. Blade keeps job logs, not artifacts, and has no GitHub rate limit.
+
 ```sh
 gh pr view <pr> --repo <owner/repo> \
   --json headRefOid,baseRefName,state,statusCheckRollup

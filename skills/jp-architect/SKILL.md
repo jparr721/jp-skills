@@ -48,7 +48,7 @@ Ground every status claim in evidence you can actually read. Verify PR metadata 
 **Scope from evidence, not from the tracker's state column.** A ticket marked In Progress can have no branch, no
 code and no deployed resource behind it, and its parent epic can be closed Done while none of it exists. Read the
 epic, its spec sibling, its children and its comments for the intended shape, then settle each claimed deliverable
-against the repos (`gh pr list`, branch existence, the files actually on the default branch) and against the
+against the repos (`gh pr list`, or `bl change list --json` on a Blade repository, branch existence, the files actually on the default branch) and against the
 provider census in `deployment-verification`. Report claimed-but-absent work as its own line: it changes the plan,
 not the prose.
 

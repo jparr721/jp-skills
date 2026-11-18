@@ -69,7 +69,7 @@ Useful commands when available:
 - `git status --short`
 - `git diff --name-only`
 - `git diff --cached --name-only`
-- `gh pr view --json number,title,headRefName,baseRefName,files` for an existing PR
+- `gh pr view --json number,title,headRefName,baseRefName,files` for an existing PR (on a Blade repository, origin `<host>/sythe3.git`: `bl change view <n> --json` and `git diff <baseSha>..<latestRevision.commitSha>`; see `../jp-pipeline/references/blade.md`)
 
 ## Step 1 - Angles (independent, capacity-batched)
 

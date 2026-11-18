@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { BoundedWorkflowHost } from "./workflow-host";
 import { ClaudeBoundedHost } from "./claude-bounded-host";
+import { execForge, viewReview } from "./forge";
 
 const text = z.string().trim().min(1);
 const role = z.enum(["architect", "dev", "qa"]);
@@ -96,15 +97,15 @@ export class ClaudeBoundedController {
       const input = tools.bounded_complete.schema.parse(args);
       const policy = this.targets.get(input.scopeId);
       if (!policy || !this.verifyWorktree(input.worktree, input.head) || this.git(input.worktree, "status", "--porcelain") !== "") throw new Error("Scoped worktree and head must be clean and current");
-      const pr = z.object({ headRefOid: text, baseRefName: text, state: text, isDraft: z.boolean(), url: text, mergeCommit: z.object({ oid: text }).nullable() }).parse(JSON.parse(execFileSync("gh", ["pr", "view", String(input.prNumber), "--json", "headRefOid,baseRefName,state,isDraft,url,mergeCommit"], { cwd: input.worktree, encoding: "utf8" })));
-      if (pr.headRefOid !== input.head || pr.baseRefName !== policy.target) throw new Error("PR does not match scoped head and target");
+      const pr = viewReview(input.worktree, input.prNumber, execForge);
+      if (pr.head !== input.head || pr.base !== policy.target) throw new Error("PR does not match scoped head and target");
       if (name === "bounded_ready") {
         if (pr.state !== "OPEN") throw new Error("Prerequisite PR is not open");
         authority.ready(input.scopeId, input.itemId, input.head);
       } else {
         if (policy.landing === "merged") {
           if (pr.state !== "MERGED" || !pr.mergeCommit) throw new Error("PR has not merged");
-          this.git(input.worktree, "merge-base", "--is-ancestor", pr.mergeCommit.oid, `refs/remotes/origin/${policy.target}`);
+          this.git(input.worktree, "merge-base", "--is-ancestor", pr.mergeCommit, `refs/remotes/origin/${policy.target}`);
         } else if (pr.state !== "OPEN" || pr.isDraft) throw new Error("PR is not open and ready");
         authority.complete(input.scopeId, input.itemId, input.head);
       }
