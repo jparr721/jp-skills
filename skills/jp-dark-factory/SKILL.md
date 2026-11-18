@@ -39,7 +39,9 @@ Resolve `jp-pipeline` from the installed registry or the configured skills check
    env only, never lands in files, logs, ledger, or outcome blocks. Pipelines whose QA needs no
    auth ignore it; a missing/expired token bubbles up as a single question, not one per ticket.
 6. **No red merges, no force-push to `main`, no permission/settings changes.** Ever.
-7. **Never manually merge ticket branches.** Ticket work lands via `gh pr merge` in
+7. **Never manually merge ticket branches.** Ticket work lands via `gh pr merge` (on a Blade repository
+   `bl submit <n> --watch`; on Blade every `gh` command in this skill, including
+   `gh pr checks` and `gh pr ready`, uses its `bl` equivalent from `../jp-pipeline/references/blade.md`) in
    topological order only. The orchestrator worktree is bookkeeping space, never modified.
 8. **No silent scope creep.** Decisions are escalated or become Linear `follow-up` tickets
    under the epic, never silent inline expansion.
@@ -348,6 +350,8 @@ it on failure and close only after successful collection.
 ### 5.4 PR MERGE (topological order; skipped when `AUTO_MERGE=false`)
 
 Merge ticket PRs in topological order (no PR is merged before all its `blocks`/`blockedBy` deps are `MERGED`):
+
+On a Blade repository (origin `<host>/sythe3.git`) every `gh` command in this section and in the stack driver uses its `bl` equivalent from `../jp-pipeline/references/blade.md`: merge is `bl submit <n> --watch` after `bl checks <n> --watch` is green, a conflict is `bl sync` then `bl upload`, and there are no stacked changes or drafts (land a parent, then branch its child from the new `main`).
 
 1. For each eligible PR: verify CI is green, then run `gh pr merge <PR> --squash --delete-branch` (or `--merge` per repo convention). Abort and surface the failure if red.
   **Stacked children:** after each parent merge, retarget each direct child onto the merged line (`gh pr edit <child> --base {{TARGET_BRANCH}}`), re-green in its `verify-mode`, then merge it. Stacking failure (base unsupported, protection blocks it) → flat fallback for that child: rebase onto `{{TARGET_BRANCH}}`, record the reason, continue.

@@ -309,7 +309,7 @@ surface:   ci runs: <commands>
 
 ### Step 4b - Run the gate
 
-`verify-mode` governs this gate. In `local` mode run the list below. In `ci-only` mode run
+`verify-mode` governs this gate. On a Blade repository (origin `<host>/sythe3.git`) every `gh` step in this skill uses its `bl` equivalent from `references/blade.md`: `bl upload`, `bl checks <n> --watch`, `bl change view <n> --json`, `bl submit <n> --watch`. In `local` mode run the list below. In `ci-only` mode run
 none of it locally - push (or wait on the existing PR) and read `gh pr checks` instead; every
 line below is then logged as not-run with reason `ci-only mode`, and "re-verify (Step 4b)"
 everywhere in Steps 5-8 means push plus CI green, not a local run.
@@ -381,10 +381,10 @@ those points is push-plus-CI-green instead; never run the local gate to "be safe
 Invoke `commit-and-push`. It splits the work into logical commits by architectural layer,
 re-verifies the committed tree, pushes, and opens the PR with a structured body. When `target` names a stack-parent branch (constraint 11), the PR opens with `--base <target>` so the chain is visible to CI and reviewers.
 
-PRs are always opened ready, never --draft; if the repo defaults to drafts, run `gh pr ready` in the same step.
+PRs are always opened ready, never --draft; if the repo defaults to drafts, run `gh pr ready` in the same step. On Blade, open the change with `bl upload` (no drafts, always against `main`; a stack-parent `target` is not supported there).
 
 Confirm the PR exists and capture its number:
-`gh pr view --json number,title,baseRefName,headRefName,url`.
+`gh pr view --json number,title,baseRefName,headRefName,url` (Blade: `bl change view --json`, which reads the branch's change).
 
 ## Step 6 - REVIEW LOOP
 
@@ -472,7 +472,7 @@ Merge by default, without a separate approval prompt. Follow CI and resolve fail
 - the **Step 4b gate is green on the exact commit being merged** - in local mode re-run the full
   gate here; a previous gate is not evidence about this commit. In ci-only
   mode this bullet is CI green on the exact commit.
-- `gh pr checks <PR>` reports every required check green (wait for pending ones). In local mode
+- `gh pr checks <PR>` (Blade: `bl checks <n> --watch`, exit 0) reports every required check green (wait for pending ones). In local mode
   CI green is necessary and not sufficient: it is the trimmed lane, and the local gate above is
   the real one. In ci-only mode CI green on the exact commit plus clean reviews IS the merge gate.
 - the PR targets the intended base branch from Step 1
@@ -483,6 +483,7 @@ Then merge using **the repository's own convention** - read it from
 Guard the write with the exact qualified source head:
 - Squash-merge repos: `gh pr merge <PR> --repo <owner/repo> --squash --match-head-commit <qualified-head>`.
 - Merge-commit repos: `gh pr merge <PR> --repo <owner/repo> --merge --match-head-commit <qualified-head>`.
+- Blade repos: check `bl change view <n> --json` has `latestRevision.commitSha` equal to `<qualified-head>`, then `bl submit <n> --watch` (Blade lands the latest candidate green on current `main`; no squash or merge choice).
 
 Inspect rules applicable to the actual target branch, not just the repository's ruleset list;
 a queue rule scoped to a different branch does not gate this merge. Read back `state`,

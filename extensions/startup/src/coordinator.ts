@@ -17,6 +17,7 @@ import type { TernRuntime } from "./tern-runtime";
 import { readPreparedManagerSettings } from "./v7-launch";
 import { claudeEmployeeArgs, claudeIntegrationPath, requireClaudeTrust, writeClaudeFiles } from "./claude-launch";
 import { startWorkflowBridge, type WorkflowBridge } from "./workflow-bridge";
+import { execForge, viewReview } from "./forge";
 import { createWorkflowBridgeLauncher, WorkflowLaunchUncertainError } from "./workflow-bridge-launch";
 import { migrateLegacyStartup, transferCancelledLegacyItem } from "./legacy-migration";
 import { requestLegacyHandover } from "./legacy-handover";
@@ -518,8 +519,8 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
       const target = authority.finishTarget(scopeId, item.itemId);
       const cwd = canonicalWorktree(item.worktree);
       if (target === null || cwd !== item.worktree || git(cwd, "rev-parse", "HEAD") !== item.head || git(cwd, "status", "--porcelain") !== "") return false;
-      const pr = z.object({ headRefOid: z.string(), baseRefName: z.string(), state: z.string(), isDraft: z.boolean() }).parse(JSON.parse(execFileSync("gh", ["pr", "view", String(item.prNumber), "--json", "headRefOid,baseRefName,state,isDraft"], { cwd, encoding: "utf8" })));
-      return pr.headRefOid === item.head && pr.baseRefName === target && pr.state === "OPEN" && !pr.isDraft;
+      const pr = viewReview(cwd, item.prNumber, execForge);
+      return pr.head === item.head && pr.base === target && pr.state === "OPEN" && !pr.isDraft;
     };
     return {
       acceptBoundHostReceipts: true,
@@ -797,13 +798,13 @@ export function openCoordinator(input: Readonly<{ store: StartupStore; config: C
               catch (error: unknown) { if (settlements.get(hint.reviewId) === settlement) settlements.delete(hint.reviewId); throw error; }
               await store.completeManagerRun({ manager: current.binding, launchKey: request.launchKey, verify: async (run) => {
                 if (git("symbolic-ref", "--quiet", "--short", "HEAD") !== branch || git("rev-parse", "HEAD") !== hint.head || git("status", "--porcelain") !== "" || realpathSync(resolve(cwd, git("rev-parse", "--git-common-dir"))) !== repository) throw new StoreFenceError("Reviewed worktree changed before completion");
-                const pr = z.object({ headRefOid: z.string(), baseRefName: z.string(), state: z.enum(["OPEN", "MERGED"]), isDraft: z.boolean(), mergeCommit: z.object({ oid: z.string() }).nullable() }).parse(JSON.parse(execFileSync("gh", ["pr", "view", String(hint.prNumber), "--json", "headRefOid,baseRefName,state,isDraft,mergeCommit"], { cwd, encoding: "utf8" })));
-                if (pr.headRefOid !== hint.head || pr.baseRefName !== request.target || pr.isDraft) throw new StoreFenceError("PR does not match the reviewed head and target");
-                if (pr.state === "MERGED") { if (!pr.mergeCommit) throw new StoreFenceError("Merged PR has no merge commit"); git("fetch", "--no-tags", "origin", `refs/heads/${request.target}`); git("merge-base", "--is-ancestor", pr.mergeCommit.oid, "FETCH_HEAD"); }
+                const pr = viewReview(cwd, hint.prNumber, execForge);
+                if (pr.head !== hint.head || pr.base !== request.target || pr.isDraft || pr.state === "CLOSED") throw new StoreFenceError("PR does not match the reviewed head and target");
+                if (pr.state === "MERGED") { if (!pr.mergeCommit) throw new StoreFenceError("Merged PR has no merge commit"); git("fetch", "--no-tags", "origin", `refs/heads/${request.target}`); git("merge-base", "--is-ancestor", pr.mergeCommit, "FETCH_HEAD"); }
                 const record = store.managerReviews(request.launchKey).find((entry) => entry.reviewId === hint.reviewId);
                 if (!record || record.state !== "completed" || record.verdict !== "approve" || !record.reviewerId || !record.invocationId) throw new StoreFenceError("Independent approved review is unavailable");
                 const rounds = store.managerReviewBudget({ itemId: request.itemId, workflow: request.workflow, limit: request.limit }).completed;
-                return { launchKey: run.launchKey, itemId: run.itemId, location: run.location, repository, worktree: cwd, target: request.target, head: hint.head, prNumber: hint.prNumber, prState: pr.state, prDraft: pr.isDraft, mergeCommit: pr.mergeCommit?.oid ?? null, review: { reviewId: record.reviewId, reviewerId: record.reviewerId, invocationId: record.invocationId, head: record.head, verdict: "approve", rounds } };
+                return { launchKey: run.launchKey, itemId: run.itemId, location: run.location, repository, worktree: cwd, target: request.target, head: hint.head, prNumber: hint.prNumber, prState: pr.state, prDraft: pr.isDraft, mergeCommit: pr.mergeCommit, review: { reviewId: record.reviewId, reviewerId: record.reviewerId, invocationId: record.invocationId, head: record.head, verdict: "approve", rounds } };
               } });
               const alertId = `manager-run-complete-${digest(request.launchKey)}`;
               if (!store.hasMessage(alertId)) store.runtimeAlert({ id: alertId, correlation: request.launchKey, payload: { kind: "manager-run-complete", itemId: request.itemId, launchKey: request.launchKey } });

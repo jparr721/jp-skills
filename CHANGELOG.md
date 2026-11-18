@@ -2,6 +2,11 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [9.1.0] - 2026-11-18
+
+- Run reviews and CI on Blade when a repository's origin is a Blade host (`<host>/sythe3.git`): `jp-pipeline`, `jp-dark-factory`, `jp-pr-review-toolkit` and `jp-architect` use the `bl` equivalent of each `gh` step (`skills/jp-pipeline/references/blade.md`); every other repository stays on `gh`.
+- The Startup coordinator and the bounded Claude controller read a pull request or a Blade change through one review view (`extensions/startup/src/forge.ts`), so their ready and completion gates work on both forges.
+
 ## [9.0.0] - 2026-11-07
 
 - Replace persistent Startup crews with one manager, an on-demand PA and parallel pipeline or hotfix runs. The runtime and command are named `startup`.
