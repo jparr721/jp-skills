@@ -40,7 +40,8 @@ Resolve `jp-pipeline` from the installed registry or the configured skills check
    auth ignore it; a missing/expired token bubbles up as a single question, not one per ticket.
 6. **No red merges, no force-push to `main`, no permission/settings changes.** Ever.
 7. **Never manually merge ticket branches.** Ticket work lands via `gh pr merge` (on a Blade repository
-   `bl submit <n> --watch`, see `../jp-pipeline/references/blade.md`) in
+   `bl submit <n> --watch`; on Blade every `gh` command in this skill, including
+   `gh pr checks` and `gh pr ready`, uses its `bl` equivalent from `../jp-pipeline/references/blade.md`) in
    topological order only. The orchestrator worktree is bookkeeping space, never modified.
 8. **No silent scope creep.** Decisions are escalated or become Linear `follow-up` tickets
    under the epic, never silent inline expansion.
