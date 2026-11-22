@@ -2,6 +2,10 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [9.1.0] - 2026-11-22
+
+- Add `jp-ohfuck`: the full hotfix sequence run in place on the current branch — no worktree, no branch switch, no pull request. Asks only when a fix is otherwise impossible, ignores unrelated branch state, and commits everything in place when ownership is unclear (excluding secrets and local settings).
+
 ## [9.0.0] - 2026-11-07
 
 - Replace persistent Startup crews with one manager, an on-demand PA and parallel pipeline or hotfix runs. The runtime and command are named `startup`.

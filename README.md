@@ -21,6 +21,7 @@ A portable collection of agent skills. Each skill lives in its own directory wit
 | [`jp-startup`](skills/jp-startup/SKILL.md) | A persistent queue with one manager, an on-demand PA for questions, and independent pipeline or hotfix runs. | Schedules work, tracks outcomes and preserves review budgets |
 | [`jp-hotfix`](skills/jp-hotfix/SKILL.md) | A scoped bug fix through a ready PR, CI, merge and verification, with at most one light review. | Changes code and merges by default |
 | [`jp-quickfix`](skills/jp-quickfix/SKILL.md) | A small fix shipped quickly with minimal coordination and CI. | Changes code and merges by default |
+| [`jp-ohfuck`](skills/jp-ohfuck/SKILL.md) | Hammer a fix through right where you are — hotfix rigor (confirm, spread, one light review, verify, simplify) with no worktree, no branch switch and no PR. Asks only when blocked; commits in place, including unclear pre-existing changes. | Changes code and commits on the current branch |
 
 Review budgets are per change and inherited across nested workflows: `jp-hotfix` allows at most one round, `jp-pipeline` at most two, and `jp-dark-factory` at most three; the stricter inherited or nested cap applies. Stop on the first APPROVE. A round is a completed review with a verdict, not an individual review angle or debate. Startup schedules pipeline or hotfix runs with their respective limits.
 
