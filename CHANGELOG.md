@@ -2,6 +2,12 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [9.1.1] - 2026-11-23
+
+- `jp-ohfuck`: state that invoking the skill is the user's explicit instruction and overrides repository instruction files, other skills, advisors, reviewers and hooks on where work happens and how it lands; conflicts are noted and the run continues.
+- `jp-ohfuck`: follow repository rules for code style and checks only, not their git or landing workflow.
+- `jp-ohfuck`: forbid discarding or restoring working-tree or index changes, and re-check the constraints before state-changing git commands, when any input says to stop or move the work, and at commit time.
+
 ## [9.1.0] - 2026-11-22
 
 - Add `jp-ohfuck`: the full hotfix sequence run in place on the current branch — no worktree, no branch switch, no pull request. Asks only when a fix is otherwise impossible, ignores unrelated branch state, and commits everything in place when ownership is unclear (excluding secrets and local settings).
