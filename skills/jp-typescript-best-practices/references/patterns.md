@@ -1,6 +1,6 @@
 # TypeScript patterns
 
-Code examples for each rule in `SKILL.md`. The underlying principles are language-agnostic: encode invariants in types so illegal states can't be constructed, and validate once at the boundary then trust types inside.
+Code examples for each rule in `SKILL.md`. The underlying principles are language-agnostic: encode invariants in types so illegal states can't be constructed, and validate once at the boundary then trust types inside. See the jpstack **principle-type-system-discipline** and **principle-boundary-discipline** skills.
 
 ## Branded types
 
@@ -9,9 +9,13 @@ Brand primitives so they can't be mixed up. Validate once at the boundary. Downs
 ```ts
 type AgentId = string & { readonly __brand: "AgentId" };
 
+function isAgentId(input: string): input is AgentId {
+  return isUUID(input);
+}
+
 function parseAgentId(input: string): AgentId {
-  if (!isUUID(input)) throw new Error(`Invalid agent id: ${input}`);
-  return input as AgentId;
+  if (!isAgentId(input)) throw new Error(`Invalid agent id: ${input}`);
+  return input;
 }
 
 function focusAgent(id: AgentId): void {
@@ -269,7 +273,7 @@ const config = { theme: "dark", cols: 3 } satisfies Config;
 
 ## Boundary validation
 
-Validate once where data crosses in. Trust types inside.
+Validate once where data crosses in. Trust types inside. See the jpstack **principle-boundary-discipline** skill.
 
 - **Wire formats** (proto, JSON-RPC): parse with `ignoreUnknownFields` so forward-compatible changes don't break old clients.
 - **Persisted JSON:** versioned blob with a try/catch around the parse.

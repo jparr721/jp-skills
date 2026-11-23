@@ -1,0 +1,21 @@
+{
+  "repo": "https://github.com/cursor/plugins.git",
+  "branch": "main",
+  "path": "pstack",
+  "commit": "7a583913eb1b8d1a0ee76753d1a2cf072e7b54f9",
+  "synced_at": "2026-11-23T05:00:00Z",
+  "include": [
+    "skills",
+    "agents",
+    "docs/guide",
+    "LICENSE"
+  ],
+  "exclude": {
+    "skills/make-bot-ui": "Cursor Automations webhook UI; no harness-neutral equivalent",
+    "skills/correct": "superseded by jp-skills jp-correct",
+    "skills/typescript-best-practices": "superseded by jp-skills jp-typescript-best-practices"
+  },
+  "rename": {
+    "skills/setup-pstack": "skills/setup-jpstack"
+  }
+}

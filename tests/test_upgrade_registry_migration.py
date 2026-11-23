@@ -100,6 +100,62 @@ class UpgradeRegistryMigrationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(os.readlink(legacy), str(self.base / 'elsewhere'))
 
+    def add_jpstack(self, *names, agents=()):
+        for name in names:
+            source = self.repo / 'jpstack/skills' / name
+            source.mkdir(parents=True)
+            (source / 'SKILL.md').write_text(name)
+        for agent in agents:
+            path = self.repo / 'jpstack/agents' / agent
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(agent)
+
+    def test_jpstack_replaces_retired_pstack_links_and_links_agents(self):
+        self.add_jpstack('why', 'poteto-mode', agents=('poteto-agent.md',))
+        pstack = self.base / 'cursor-plugins/pstack/skills'
+        for registry in self.registries:
+            for name in ('why', 'poteto-mode', 'setup-pstack'):
+                (registry / name).symlink_to(pstack / name)
+        foreign_why = self.base / 'mine/why'
+        first = self.relink()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        for registry in self.registries:
+            for name in ('why', 'poteto-mode'):
+                self.assertEqual((registry / name).resolve(),
+                                 (self.repo / 'jpstack/skills' / name).resolve())
+            self.assertFalse((registry / 'setup-pstack').is_symlink())
+        agent = self.home / '.claude/agents/poteto-agent.md'
+        self.assertEqual(agent.resolve(), (self.repo / 'jpstack/agents/poteto-agent.md').resolve())
+        second = self.relink()
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertNotIn('created ', second.stdout)
+        # A non-pstack foreign link with a jpstack name still aborts.
+        (self.registries[0] / 'why').unlink()
+        (self.registries[0] / 'why').symlink_to(foreign_why)
+        self.assertNotEqual(self.relink().returncode, 0)
+
+    def test_removed_jp_and_jpstack_skills_lose_their_links(self):
+        self.add_jpstack('why', 'gone')
+        self.assertEqual(self.relink().returncode, 0)
+        for name in ('jp-retired',):
+            for registry in self.registries:
+                (registry / name).symlink_to(self.skills / name)
+        for path in (self.repo / 'jpstack/skills/gone').iterdir():
+            path.unlink()
+        (self.repo / 'jpstack/skills/gone').rmdir()
+        result = self.relink()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for registry in self.registries:
+            self.assertFalse((registry / 'jp-retired').is_symlink())
+            self.assertFalse((registry / 'gone').is_symlink())
+            self.assertTrue((registry / 'why').is_symlink())
+
+    def test_jpstack_name_colliding_with_legacy_jp_name_aborts(self):
+        self.add_jpstack('alpha')
+        self.assertNotEqual(self.relink().returncode, 0)
+        for registry in self.registries:
+            self.assertEqual(list(registry.iterdir()), [])
+
 
 if __name__ == '__main__':
     unittest.main()

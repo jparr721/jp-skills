@@ -24,7 +24,7 @@ Start or inherit a single-item hotfix scope through the bounded host in that pol
 1. **Isolate the fix.** Reuse a suitable task branch or create a worktree and branch from the target. Keep unrelated dirty changes untouched.
 2. **Ship by default.** Open a ready PR, follow CI, fix failures, merge when checks and review pass, and verify the recorded merge and applicable post-merge checks. If the user says not to merge, leave the ready PR open and verify its checks.
 3. **Stay in scope.** Keep unrelated dirty files excluded; resolve ordinary implementation choices without an approval prompt.
-4. **Confirm the cause.** Pin the relevant source and evidence before fixing; ask only when a missing fact blocks the fix.
+4. **Confirm the cause.** Pin the relevant source and evidence before fixing; ask only when a missing fact blocks the fix. Use jpstack's **principle-fix-root-causes** (fix where the system first went wrong; a guard is a fix only for a legitimate state), and its **why** skill when the bug may be a regression.
 5. **No silent scope creep.** Anything beyond the requested fix becomes a follow-up or a `jp-pipeline` run.
 6. **Creds stay session-only.** Live-repro credentials are held in memory and passed via
    env, never baked into files, never printed in logs or the report — record only

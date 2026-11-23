@@ -44,14 +44,14 @@ Completion criterion: the verdict block is printed, every must-fix has location 
 - Before commit, PR, merge, or after review feedback — full fight.
 - After FIX in hotfix — light variant, one round, verdict still required.
 - Inside pipeline Step 6 (full fight per review round).
-- Against a design sketch in architect Phase C — fight protocol with scope set to the sketch.
+- Against a design sketch from the jpstack `architect` skill — fight protocol with scope set to the chosen sketch.
 
 ## Canonical Callers
 
 - `jp-pipeline` Step 6 runs the full fight every review round; the verdict drives enforce, terminate, and merge. Polish after APPROVE belongs to `jp-code-simplifier` (pipeline and hotfix Step 7), never to this skill.
 - `jp-dark-factory` coordinates bounded cross-queue review before landing, charged against each covered change's inherited budget.
 - `jp-hotfix` runs the light variant once after FIX. BLOCK stops SHIP and escalates to pipeline.
-- `jp-architect` Phase C may run the fight protocol against the synthesized sketch before implementing.
+- The jpstack `architect` skill may run the fight protocol against its chosen sketch before implementing.
 
 ## Step 0 - Scope
 

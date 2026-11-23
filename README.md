@@ -68,7 +68,7 @@ Startup procedures:
 
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
-| [`jp-architect`](skills/jp-architect/SKILL.md) | Designing before implementing — sketching types, signatures, module shape for non-trivial work. Parallel candidates, red-flag screen, synthesis, implement-against-sketch, scrap-on-friction. | Writes design + code |
+| [`architect`](jpstack/skills/architect/SKILL.md) (jpstack) | Designing before implementing — trace every touched system, sketch two shapes, pick by single ownership and least caller knowledge; `arena` for contested designs. Replaced `jp-architect` in v10. | Writes design + code |
 | [`jp-correct`](skills/jp-correct/SKILL.md) | An operator keeps correcting agents for the same repo mistakes — find each class, fix at the highest level (architecture > types > lint > test, docs last), prove each check. | Changes repo to prevent mistakes |
 
 ### Disciplines
@@ -76,6 +76,10 @@ Startup procedures:
 | Skill | Use it when | Effect |
 |-------|-------------|--------|
 | [`jp-typescript-best-practices`](skills/jp-typescript-best-practices/SKILL.md) | Reading or editing any `.ts`/`.tsx` file — discriminated unions, branded types, constructive modeling, `unknown`-over-`any`, schema-derived types, exhaustiveness. | Editing guidance, read-only effect |
+
+### jpstack
+
+[`jpstack/`](jpstack/README.md) is a harness-neutral fork of poteto's [pstack](https://github.com/cursor/plugins/tree/main/pstack) (MIT), vendored as plain files: `/poteto-mode` with 23 playbooks, the `principle-*` skills, `architect`, `arena`, `swarm`, `interrogate`, `why`, `how`, `unslop`, `no-comments`, `technical-writing`, `tdd`, verification-skill generators and more. Skills link unprefixed (`/poteto-mode`, `/why`). `/setup-jpstack` stores model choices in `<home>/jpstack/models.md`. Each upgrade three-way merges upstream pstack changes into the vendored copy and strips Cursor-specific text; nothing links to the upstream clone. `jp-pipeline` plans with superpowers or its party and always executes through poteto-mode's **Plan execution** playbook. See the [synergy map](jpstack/README.md#how-it-fits-with-jp-skills-and-superpowers).
 
 ### Meta
 
@@ -85,7 +89,7 @@ Startup procedures:
 
 ## Versioning
 
-`VERSION` at the repo root is the version source of truth (9.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
+`VERSION` at the repo root is the version source of truth (10.0.0). `CHANGELOG.md` records every release; v1.0.0 logs the breaking changes. Consumers pin trust to released versions, not `main`.
 
 ## Stable home
 
@@ -93,7 +97,7 @@ Canonical home `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.co
 
 ## Upgrading
 
-Run the [`jp-upgrading-jp-skills`](skills/jp-upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, relinks the five standard harness registries, and stamps `installed_version`. Hermes is checked only on explicit request. Every upgrade also checks private-storage migration: assume `gh` is installed and authenticated, ask once for the repo name (default `jp-skills-storage`), have the agent create/clone it privately, import and verify legacy records, then commit/reconcile/push. Migration is tracked separately from the installed skill version; legacy files remain recovery copies. See [private storage](skills/jp-server-maintenance/references/private-storage.md).
+Run the [`jp-upgrading-jp-skills`](skills/jp-upgrading-jp-skills/SKILL.md) skill: resolves the cached clone (`$JP_SKILLS_REPO` → `config.json` → ask once), `git pull --ff-only`, migrates pre-v1 server records, reconciles vendored jpstack against upstream pstack, relinks the five standard harness registries (plus jpstack agents into `~/.claude/agents`), and stamps `installed_version`. Hermes is checked only on explicit request. Every upgrade also checks private-storage migration: assume `gh` is installed and authenticated, ask once for the repo name (default `jp-skills-storage`), have the agent create/clone it privately, import and verify legacy records, then commit/reconcile/push. Migration is tracked separately from the installed skill version; legacy files remain recovery copies. See [private storage](skills/jp-server-maintenance/references/private-storage.md).
 
 ## Private ledger storage
 

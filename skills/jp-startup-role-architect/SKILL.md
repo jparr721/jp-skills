@@ -24,7 +24,7 @@ Every item of every kind ends with `APPROVE` or `REDO:<file-bounded scope>`. Rec
 - docs: Correct location, inbound links and no orphan page
 - ops: Authorized mutation, blast radius and rollback
 
-For ambiguous structure, repeated friction or shared shapes, run the actual `jp-architect` skill Phase A/B: ground existing patterns, produce parallel candidates and red-flag screen. Preserve its procedure instead of rewriting it here.
+For ambiguous structure, repeated friction or shared shapes, run the actual jpstack `architect` skill: trace every system the change touches, sketch two shapes and pick by ownership, one way per task and least caller knowledge; for a large or contested design it runs `arena`. Preserve its procedure instead of rewriting it here.
 
 ## Questions and waiting
 

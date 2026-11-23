@@ -2,6 +2,18 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [10.0.0] - 2026-11-23
+
+Breaking: `jp-architect` is removed; use jpstack `architect`. Registries gain unprefixed jpstack skills and replace any pstack install.
+
+- Add `jpstack/`: a vendored, harness-neutral fork of poteto's pstack (cursor/plugins `pstack/` at `7a58391`, MIT). Cursor tools, paths and features map through `jpstack/docs/harness.md`; model choices move to `<home>/jpstack/models.md` via `/setup-jpstack`. `make-bot-ui` and `automations/` are dropped. Upstream `correct` and `typescript-best-practices` are dropped in favor of the jp- versions.
+- `jp-upgrading-jp-skills`: every upgrade fetches upstream pstack into a read-only reference clone, three-way merges changes since the pinned commit (`jpstack/scripts/upstream.py`), strips Cursor residue until `upstream.py check` is clean, pins and commits locally. It also retires a pstack install (Claude Code plugin, `pstack-models` rule). Nothing ever links into the upstream clone.
+- `relink.py`: links jpstack skills unprefixed into all five registries and jpstack agents into `~/.claude/agents`; replaces links into a pstack install; removes links to jp- or jpstack skills deleted from the checkout.
+- `jp-pipeline`: Step 3 always executes through poteto-mode's new **Plan execution** playbook with `poteto-agent` delegates; superpowers `writing-plans` plans count as detailed plans; the party's Architect voice and slice shapes use jpstack `architect`; PR prose uses `technical-writing` and `unslop`.
+- poteto-mode: add the **Plan execution** playbook (runs a superpowers plan, a Multi-phase plan or a pipeline slice table task by task with per-task review, check and commit, and dated plan-deviation notes).
+- `jp-typescript-best-practices`: brands come from a verifying type guard, never `as`; link the type-system and boundary principles. `jp-correct`: tests must fail when behavior breaks and pass when only internals change.
+- `jp-hotfix`, `jp-ohfuck`: confirm the cause with `principle-fix-root-causes` and `why`.
+
 ## [9.1.1] - 2026-11-23
 
 - `jp-ohfuck`: state that invoking the skill is the user's explicit instruction and overrides repository instruction files, other skills, advisors, reviewers and hooks on where work happens and how it lands; conflicts are noted and the run continues.

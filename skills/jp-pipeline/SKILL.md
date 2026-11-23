@@ -26,6 +26,8 @@ workers route questions to it via `hub`; it batches questions and returns the fi
 
 Step 2 uses BMAD party deliberation when a detailed plan is absent; Step 3 uses per-slice plans with cross-review and auto-proceeds.
 
+**Planner and executor split.** Planning comes from a written plan (best: `superpowers:brainstorming` -> `superpowers:writing-plans`) or from the Step 2 party. Execution is always jpstack's poteto-mode **Plan execution** playbook (Step 3). The plan says what to build and the executor builds it with poteto-mode rigor. Neither one redoes the other's job.
+
 **Activation.** When this skill activates, open with exactly this line as a header, in the same turn as the first Step 1 action (git state + worktree + supervisor spawn) — never end a turn on the line alone: `Oh yeah, it's piping time! 🚀🔧🎉🤖💥`
 Stall rule: no user-visible progress within ~2 min of activation → emit the intake block and continue without waiting.
 
@@ -136,7 +138,7 @@ Resolve exactly what is being built and where it lands. Keep this tight.
 
 1. **Classify the input** into ticket / plan-path / free-form.
 2. **If it is a Linear ticket**, fetch it through the user's selected tracker connection; for this user, use Composio rather than direct Linear MCP. Verify the workspace/team, then read the identifier, title, full acceptance, comments, labels, branch name and both incoming/outgoing relations. Inspect the chosen provider's schema: Linear GraphQL exposes `branchName`, while wrappers may name it `gitBranchName`. If the worker cannot retrieve it, have the authorized supervisor perform the same read and supply the actual response before asking the user to paste retrievable content.
-3. **If it is a plan path**, read the file.
+3. **If it is a plan path**, read the file. A `superpowers:writing-plans` plan (task list with files, steps and checks) is a detailed plan for Step 2; record `plan: already-specified (<path>)`.
 4. **Establish git state**: `git status --short`, `git branch --show-current`,
    `git log --oneline origin/<target>..HEAD`. A dirty tree unrelated to the task is relayed by
    the supervisor as a batched question, not swept into the PR.
@@ -197,7 +199,7 @@ Otherwise convene the party. Adapted from BMAD party mode. Goal: super-detailed 
 consensus, then **start implementing without making anyone step through the insane plan**.
 
 1. **Convene the party in subagent mode.** One agent per persona, each substantive round.
-   Domain voices as needed (PM, Architect, Dev, QA, UX). Anti-Consensus Club always present:
+   Domain voices as needed (PM, Architect, Dev, QA, UX). The Architect voice runs the jpstack `architect` skill for any slice that crosses a function boundary. Anti-Consensus Club always present:
    Wildcard (alternative problem statements, assumptions, examples), Level (claim checker:
    support, gaps, confidence), Killjoy (loop stopper: halts repetition, fake disagreement,
    unsupported speculation), Splinter (consensus challenger: questions easy agreement and
@@ -218,6 +220,8 @@ consensus, then **start implementing without making anyone step through the insa
    [Run Multi-Agent Discussions](https://docs.bmad-method.org/customize/run-multi-agent-discussions/).
 
 ## Step 3 - IMPLEMENT
+
+**Executor: poteto-mode Plan execution.** Read jpstack's `poteto-mode` skill (`<repo>/jpstack/skills/poteto-mode/SKILL.md`, including its Principles index) and run `playbooks/plan-execution.md` with the Step 2 slice table or the already-specified plan as the plan. Delegates are `poteto-agent` subagents. The playbook's per-task review, real-surface check, per-task commit and plan-deviation notes all apply. Its hand-back returns here with no PR. The pipeline rules below override the playbook wherever they are stricter: the worktree path, supervisor-only questions via `hub`, disjoint-write waves, the formatter freeze and per-wave commits. A slice that needs a shape not in the plan goes through jpstack `architect` before its delegate starts.
 
 Parallelize as much as the file graph allows, and not one step further.
 
@@ -378,7 +382,7 @@ those points is push-plus-CI-green instead; never run the local gate to "be safe
 
 ## Step 5 - PR
 
-Invoke `commit-and-push`. It splits the work into logical commits by architectural layer,
+Write the PR body and commit messages with jpstack **technical-writing** and run **unslop** over them; carry the Plan execution deviation notes into the body's Tradeoffs. Invoke `commit-and-push`. It splits the work into logical commits by architectural layer,
 re-verifies the committed tree, pushes, and opens the PR with a structured body. When `target` names a stack-parent branch (constraint 11), the PR opens with `--base <target>` so the chain is visible to CI and reviewers.
 
 PRs are always opened ready, never --draft; if the repo defaults to drafts, run `gh pr ready` in the same step.
