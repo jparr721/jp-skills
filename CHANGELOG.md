@@ -2,6 +2,10 @@
 
 `VERSION` at the repo root is the version source of truth. The installed copy lives in `<canonical-home>/config.json` (`installed_version`); canonical home is `$JP_SKILLS_HOME`, else `$XDG_CONFIG_HOME/jp-skills`, else `~/.config/jp-skills`.
 
+## [10.1.0] - 2026-11-25
+
+- jpstack: sync upstream pstack to `41e4009`. Add `reframe` (`/reframe`: teaches the expert terms for what you are building, borrows terms from neighboring fields, then rewrites your description with them). The poteto-mode guide and `poteto-help` point to it.
+
 ## [10.0.0] - 2026-11-23
 
 Breaking: `jp-architect` is removed; use jpstack `architect`. Registries gain unprefixed jpstack skills and replace any pstack install.
